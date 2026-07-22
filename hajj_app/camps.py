@@ -416,3 +416,20 @@ def export_tents_excel(plan: CampPlan, path: str | Path,
         wb.create_sheet("لا خيام")
     wb.save(path)
     return path
+
+
+_INVALID_FILE = re.compile(r'[\\/:*?"<>|]+')
+
+
+def single_tent_plan(plan: CampPlan, tent: Tent) -> CampPlan:
+    """خطة تحتوي خيمة واحدة فقط — لتصدير كل خيمة في ملف مستقل."""
+    return CampPlan(camp=plan.camp, sector=tent.sector,
+                    capacity=plan.capacity, tents=[tent], notes=[])
+
+
+def tent_filename(tent: Tent) -> str:
+    """اسم ملف مقترح لخيمة (بلا امتداد): «خيمة 3 - رجال - قطاع أ»."""
+    base = f"خيمة {tent.number} - {tent.classification}"
+    if tent.sector:
+        base += f" - قطاع {tent.sector}"
+    return _INVALID_FILE.sub("-", base).strip() or "خيمة"

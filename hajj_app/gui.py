@@ -1410,7 +1410,7 @@ class CampsDialog(Toplevel):
         # تصدير كل خيمة على حدة (بأعمدة مبسّطة) حسب الاختيارات أعلاه
         row = ttk.Frame(outer)
         row.pack(anchor="e", pady=(10, 0))
-        ttk.Label(row, text="تصدير كل خيمة على حدة:", font=("Segoe UI", 9),
+        ttk.Label(row, text="تصدير كل خيمة في ملف مستقل:", font=("Segoe UI", 9),
                   foreground="#666").pack(side=RIGHT, padx=(0, 4))
         ttk.Button(row, text=rtl("📊  تصدير إكسل"), style="Act.TButton",
                    command=self._tents_excel).pack(side=RIGHT, padx=3)
@@ -1518,56 +1518,58 @@ class CampsDialog(Toplevel):
         for iid, tent in self._tent_by_iid.items():
             self._tree.item(iid, text=tent_label(tent))
 
-    def _default(self, ext: str, prefix: str = "كشف_المخيمات") -> str:
-        camp = self._plan.camp if self._plan else ""
-        cls = self._class_var.get()
-        suffix = "" if cls == self._ALL_CLASSES else f"_{cls}"
-        return f"{prefix}_{camp}{suffix}_{date.today().isoformat()}.{ext}"
-
-    def _save_path(self, ext: str, prefix: str = "كشف_المخيمات") -> str | None:
-        return filedialog.asksaveasfilename(
-            parent=self, title="حفظ كشف المخيمات", defaultextension=f".{ext}",
-            initialfile=self._default(ext, prefix),
-            filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")),
-        )
-
-    def _run(self, export_fn, ext: str, prefix: str = "كشف_المخيمات") -> None:
+    def _export_each_tent(self, ext: str, export_fn) -> None:
+        """يصدّر **كل خيمة إلى ملف مستقل** داخل مجلّد يختاره المستخدم."""
         if not self._plan or not self._plan.tents:
-            messagebox.showinfo("لا يوجد توزيع", "لا يوجد حجّاج لتوزيعهم.", parent=self)
+            messagebox.showinfo("لا يوجد توزيع", "لا يوجد حجّاج لتوزيعهم.",
+                                parent=self)
             return
-        path = self._save_path(ext, prefix)
-        if not path:
+        folder = filedialog.askdirectory(
+            parent=self, title="اختر مجلّد حفظ ملفات الخيام (ملف لكل خيمة)",
+            mustexist=False)
+        if not folder:
             return
-        try:
-            export_fn(self._plan, path)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
-                                 parent=self)
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
-            return
-        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
-            import os
+        import os
+        from .camps import single_tent_plan, tent_filename
+        campaign = self._campaign_var.get()
+        used: set[str] = set()
+        written, failed = 0, []
+        for tent in self._plan.tents:
+            stem, name, n = tent_filename(tent), tent_filename(tent), 2
+            while name in used:
+                name = f"{stem} ({n})"
+                n += 1
+            used.add(name)
+            target = os.path.join(folder, f"{name}.{ext}")
             try:
-                os.startfile(path)
+                export_fn(single_tent_plan(self._plan, tent), target,
+                          campaign=campaign)
+            except PermissionError:
+                failed.append(f"{name} (الملف مفتوح)")
+            except Exception as exc:
+                failed.append(f"{name} ({exc})")
+            else:
+                written += 1
+        msg = f"حُفظت {written} خيمة — ملف مستقل لكل خيمة — في:\n{folder}"
+        if failed:
+            msg += "\n\nتعذّر حفظ:\n" + "\n".join(f"• {f}" for f in failed)
+        messagebox.showinfo("تم التصدير", msg, parent=self)
+        if written and messagebox.askyesno("فتح المجلّد", "فتح المجلّد الآن؟",
+                                           parent=self):
+            try:
+                os.startfile(folder)
             except Exception:
                 pass
 
     def _tents_excel(self) -> None:
-        """كل خيمة في ورقة إكسل مستقلة، بالأعمدة المبسّطة + اسم الحملة."""
+        """ملف إكسل مستقل لكل خيمة (أعمدة مبسّطة + اسم الحملة)."""
         from .camps import export_tents_excel
-        campaign = self._campaign_var.get()
-        self._run(lambda plan, p: export_tents_excel(plan, p, campaign=campaign),
-                  "xlsx", prefix="خيام_المخيمات")
+        self._export_each_tent("xlsx", export_tents_excel)
 
     def _tents_pdf(self) -> None:
-        """كل خيمة في صفحة PDF مستقلة، بالأعمدة المبسّطة + اسم الحملة."""
+        """ملف PDF مستقل لكل خيمة (أعمدة مبسّطة + اسم الحملة)."""
         from .pdf_io import export_tents_pdf
-        campaign = self._campaign_var.get()
-        self._run(lambda plan, p: export_tents_pdf(plan, p, campaign=campaign),
-                  "pdf", prefix="خيام_المخيمات")
+        self._export_each_tent("pdf", export_tents_pdf)
 
 
 class ImageKindDialog(Toplevel):

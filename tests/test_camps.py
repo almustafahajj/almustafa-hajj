@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 from hajj_app.camps import (
     CAMP_ARAFAT, CAMP_MINA, MEN, WOMEN, UNKNOWN, CAMP_COLUMNS, TENT_SHEET_COLUMNS,
     build_camp_plan, camp_rows, classification, export_camp_excel,
-    export_tents_excel, tent_label,
+    export_tents_excel, single_tent_plan, tent_filename, tent_label,
 )
 from hajj_app.pdf_io import export_camp_pdf, export_tents_pdf
 from hajj_app.mrz import PassportData
@@ -209,6 +209,37 @@ empty = build_camp_plan([], CAMP_MINA)
 export_tents_pdf(empty, _os.path.join(_OUTDIR, "tents_empty.pdf"))
 export_tents_excel(empty, _os.path.join(_OUTDIR, "tents_empty.xlsx"))
 print(f"  OK: PDF ({_os.path.getsize(tents_pdf)} بايت)، والخطة الفارغة لا تتعطّل")
+
+print("\n=== ملف مستقل لكل خيمة (single_tent_plan + tent_filename) ===")
+plan = build_camp_plan(
+    [rec(f"رجل {i}", "ذكر") for i in range(3)] +
+    [rec(f"امرأة {i}", "أنثى") for i in range(2)],
+    CAMP_MINA, capacity=2, sector="ب", start_number=1)
+assert len(plan.tents) == 3
+outdir = _os.path.join(_OUTDIR, "tents_split")
+_os.makedirs(outdir, exist_ok=True)
+names = []
+for tent in plan.tents:
+    sub = single_tent_plan(plan, tent)
+    assert len(sub.tents) == 1 and sub.tents[0] is tent
+    assert sub.camp == CAMP_MINA and sub.capacity == 2
+    fname = tent_filename(tent)
+    names.append(fname)
+    assert fname.startswith("خيمة ") and tent.classification in fname
+    # ملف PDF مستقل لهذه الخيمة (صفحة واحدة)
+    p = _os.path.join(outdir, fname + ".pdf")
+    export_tents_pdf(sub, p, campaign="المصطفى للحج والعمرة")
+    with open(p, "rb") as fh:
+        assert fh.read(5) == b"%PDF-"
+    # ملف إكسل مستقل (ورقة واحدة)
+    x = _os.path.join(outdir, fname + ".xlsx")
+    export_tents_excel(sub, x, campaign="المصطفى للحج والعمرة")
+    assert len(load_workbook(x).sheetnames) == 1
+# لا رموز ملفّات ممنوعة في الأسماء
+import re as _re
+for nm in names:
+    assert not _re.search(r'[\\/:*?"<>|]', nm), nm
+print(f"  OK: {len(plan.tents)} ملفات مستقلة، أسماء آمنة: {names}")
 
 print("\n=== نافذة المخيمات (CampsDialog) ===")
 try:
