@@ -291,6 +291,56 @@ class HajjApp:
         self.root.option_add("*Menu.activeBackground", BRONZE)
         self.root.option_add("*Menu.activeForeground", "white")
 
+        # ---- حواف دائرية حقيقية (صور 9-slice) فوق البيفل، مع تراجع آمن ----
+        self._round_refs = []
+        self._rounded_style(s, "Primary.TButton", BRONZE, BRONZE_LIGHT, BRONZE_EDGE,
+                            BRONZE_DARK, "white")
+        self._rounded_style(s, "Danger.TButton", DANGER, DANGER_LIGHT, DANGER_EDGE,
+                            DANGER_HOVER, "white")
+        self._rounded_style(s, "Ghost.TButton", GHOST_BG, GHOST_LIGHT, GHOST_EDGE,
+                            GHOST_HOVER, TEXT)
+        self._rounded_style(s, "Act.TButton", GHOST_BG, GHOST_LIGHT, GHOST_EDGE,
+                            GHOST_HOVER, TEXT)
+        self._rounded_style(s, "Toolbar.TMenubutton", BRONZE, BRONZE_LIGHT,
+                            BRONZE_EDGE, BRONZE_DARK, "white", arrow="white", menu=True)
+        self._rounded_style(s, "Ghost.TMenubutton", GHOST_BG, GHOST_LIGHT, GHOST_EDGE,
+                            GHOST_HOVER, TEXT, arrow=TEXT, menu=True)
+
+    def _rounded_style(self, s, style, bg, light, dark, hover, fg,
+                       *, arrow=None, menu=False) -> None:
+        """يعطي النمط حوافَّ دائرية عبر عنصر صورة 9-slice (يتراجع للبيفل عند الفشل)."""
+        try:
+            from PIL import ImageTk
+            from . import icons as iconlib
+            base = ImageTk.PhotoImage(iconlib.button_bg(bg, light, dark))
+            act = ImageTk.PhotoImage(iconlib.button_bg(hover, light, dark))
+            prs = ImageTk.PhotoImage(iconlib.button_bg(bg, light, dark, pressed=True))
+            self._round_refs += [base, act, prs]
+            elem = style.replace(".", "_") + "_rbg"
+            s.element_create(elem, "image", base, ("pressed", prs), ("active", act),
+                             border=13, sticky="nsew", padding=(16, 8))
+            font = ("Segoe UI Semibold", 11) if menu else \
+                (("Segoe UI Semibold", 10) if "Primary" in style or "Danger" in style
+                 else ("Segoe UI", 10))
+            if menu:
+                s.layout(style, [(elem, {"sticky": "nsew", "children": [
+                    ("Menubutton.padding", {"sticky": "nsew", "children": [
+                        ("Menubutton.indicator", {"side": "left", "sticky": ""}),
+                        ("Menubutton.label", {"sticky": "nsew"}),
+                    ]})]})])
+            else:
+                s.layout(style, [(elem, {"sticky": "nsew", "children": [
+                    ("Button.padding", {"sticky": "nsew", "children": [
+                        ("Button.label", {"sticky": "nsew"}),
+                    ]})]})])
+            cfg = dict(background=bg, foreground=fg, font=font, borderwidth=0,
+                       focuscolor=bg)
+            if arrow is not None:
+                cfg["arrowcolor"] = arrow
+            s.configure(style, **cfg)
+        except Exception:
+            pass          # نُبقي مظهر البيفل ثلاثي الأبعاد
+
     def _apply_table_style(self) -> None:
         """يطبّق كثافة الصفوف وحجم الخط على الجدول (قابل للتغيير حياً)."""
         rowheight = self._DENSITY.get(self._density, 26)

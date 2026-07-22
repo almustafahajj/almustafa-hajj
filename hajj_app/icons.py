@@ -25,6 +25,25 @@ def _rr(d, box, r, fill=None, outline=None, width=1):
     d.rounded_rectangle(box, radius=r, fill=fill, outline=outline, width=width)
 
 
+def button_bg(fill: str, light: str, dark: str, *, size: int = 46,
+              radius: int = 12, pressed: bool = False) -> Image.Image:
+    """خلفية زرّ بحواف دائرية + شطف ثلاثي الأبعاد (للـ 9-slice)."""
+    S = 4
+    P, R = size * S, radius * S
+    inset = 2 * S
+    img = Image.new("RGBA", (P, P), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    box = [inset, inset, P - inset, P - inset]
+    d.rounded_rectangle(box, radius=R, fill=fill)
+    lw = max(2, int(P * 0.028))
+    top, bot = (dark, light) if pressed else (light, dark)
+    # قوس علوي مضيء وسفلي داكن يعطي إحساس البروز داخل الحواف الدائرية
+    d.arc(box, 130, 310, fill=top, width=lw)
+    d.arc(box, 310, 360, fill=bot, width=lw)
+    d.arc(box, 0, 130, fill=bot, width=lw)
+    return img.resize((size, size), Image.LANCZOS)
+
+
 def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
     """يعيد أيقونة PIL بالاسم واللون المطلوبين."""
     img, d, P = _canvas(size)
