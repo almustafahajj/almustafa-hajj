@@ -74,8 +74,10 @@ assert d.page_count == 3, d.page_count
 page = d[0]
 assert page.rect.height > page.rect.width, "الصفحة يجب أن تكون طولية"
 d.close()
-# باص كبير (60 راكباً) يبقى صفحة واحدة (بضبط الخط تلقائياً)
-big = [rec(full_name_ar=f"راكب {i}", transport="باص 7", phone=f"05{i:08d}")
+# باص كبير (60 راكباً بأسماء طويلة وفنادق) يبقى صفحة واحدة، كل حاج سطر واحد
+big = [rec(full_name_ar=f"عبدالله محمد راشد الشامسي {i}", transport="باص 7",
+           phone=f"05{i:08d}", hotel="فندق دار الصفوة المكية",
+           wheelchair=("نعم" if i % 7 == 0 else ""))
        for i in range(60)]
 big_pdf = _os.path.join(_OUTDIR, "transport_big.pdf")
 export_transport_pdf(big, big_pdf)

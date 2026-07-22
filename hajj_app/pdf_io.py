@@ -836,6 +836,12 @@ def export_transport_pdf(records: list, path: str | Path,
                                  alignment=1, textColor=_INK, spaceAfter=4)
     sub_style = ParagraphStyle("trs", fontName=_FONT, fontSize=10.5, alignment=1,
                                textColor=colors.HexColor("#666666"), spaceAfter=8)
+    # رأس العمود يسمح بسطرين (لعنوان طويل مثل «كرسي متحرك»)
+    head_style = ParagraphStyle("trh", fontName=_FONT_BOLD, fontSize=11,
+                                alignment=1, textColor=_HEADER_TEXT, leading=13)
+    HPAD = 4
+    HEAD_ROW_H = 30
+    NAME_COL = len(labels) - 2          # موضع عمود الاسم في الترتيب المرسوم
 
     story: list = []
     for index, (name, occ) in enumerate(blocks):
@@ -848,25 +854,34 @@ def export_transport_pdf(records: list, path: str | Path,
             f"عدد الركّاب: {ltr(len(occ))}  •  التاريخ: {ltr(date.today().isoformat())}"),
             sub_style)
 
-        # نقيس ارتفاع الترويسة فعلياً، فنحسب حجم خطّ الصفوف ليتّسع الكل
-        # في صفحة واحدة **مع بقاء الأعمدة بعرض الصفحة كاملاً**.
+        # نصوص الصفوف مُشكّلة كنصّ لا يلتفّ — كل حاج في سطر واحد
+        body = []
+        for serial, rec in enumerate(occ, start=1):
+            values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
+                      ltr(str(rec.phone or "").strip() or "—"),
+                      str(rec.hotel or "").strip() or "—",
+                      str(rec.wheelchair or "").strip() or "—"]
+            body.append([ar(v) for v in reversed(values)])
+
+        # قياس ارتفاع الترويسة فعلياً
         header_h = (title_p.wrap(doc.width, doc.height)[1] + 4
                     + sub_p.wrap(doc.width, doc.height)[1] + 8)
         if logo is not None:
             header_h += logo.wrap(doc.width, doc.height)[1] + 4
-        n_rows = len(occ) + 1
-        table_avail = doc.height - header_h - 12
-        row_h = min(38, table_avail / max(1, n_rows))
-        font_size = max(6, min(16, row_h - 3))
-        leading = font_size + 1
-        pad = max(0.5, (row_h - leading) / 2)
+        n_body = max(1, len(occ))
+        body_avail = doc.height - header_h - HEAD_ROW_H - 12
+        row_h = min(34, body_avail / n_body)
 
-        head_style = ParagraphStyle("trh", fontName=_FONT_BOLD, fontSize=font_size + 1,
-                                    alignment=1, textColor=_HEADER_TEXT, leading=leading + 1)
-        cell_style = ParagraphStyle("trc", fontName=_FONT, fontSize=font_size,
-                                    alignment=1, leading=leading)
-        name_style = ParagraphStyle("trn", fontName=_FONT, fontSize=font_size,
-                                    alignment=2, leading=leading)
+        # الخط: يفي بارتفاع السطر **وبعرض كل عمود** فلا يلتفّ نصّ أبداً
+        font_v = row_h / 1.32
+        font_h = 99.0
+        for c in range(len(draw_labels)):
+            widest = max((pdfmetrics.stringWidth(r[c], _FONT, 1.0) for r in body),
+                         default=0.0)
+            if widest > 0:
+                font_h = min(font_h, (col_widths[c] - 2 * HPAD) / widest)
+        font_size = max(5.0, min(15.0, font_v, font_h))
+        row_h = min(34, body_avail / n_body)         # يملأ الارتفاع المتاح
 
         if logo is not None:
             story.append(logo)
@@ -874,28 +889,21 @@ def export_transport_pdf(records: list, path: str | Path,
         story.append(title_p)
         story.append(sub_p)
 
-        data = [[Paragraph(ar(lbl), head_style) for lbl in draw_labels]]
-        for serial, rec in enumerate(occ, start=1):
-            values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
-                      ltr(str(rec.phone or "").strip()),
-                      str(rec.hotel or "").strip(),
-                      str(rec.wheelchair or "").strip()]
-            cells = []
-            for i, v in enumerate(reversed(values)):
-                # عمود الاسم (الثاني من اليمين) بمحاذاة لليمين، والبقية وسط
-                s = name_style if i == len(values) - 2 else cell_style
-                cells.append(Paragraph(ar(v), s))
-            data.append(cells)
-
-        table = Table(data, colWidths=col_widths, rowHeights=[row_h] * n_rows,
-                      repeatRows=1)
+        data = [[Paragraph(ar(lbl), head_style) for lbl in draw_labels]] + body
+        row_heights = [HEAD_ROW_H] + [row_h] * n_body
+        table = Table(data, colWidths=col_widths, rowHeights=row_heights, repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("GRID", (0, 0), (-1, -1), 0.5, _GRID),
-            ("TOPPADDING", (0, 0), (-1, -1), pad),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("FONTNAME", (0, 1), (-1, -1), _FONT),
+            ("FONTSIZE", (0, 1), (-1, -1), font_size),
+            ("LEFTPADDING", (0, 0), (-1, -1), HPAD),
+            ("RIGHTPADDING", (0, 0), (-1, -1), HPAD),
+            ("ALIGN", (0, 1), (-1, -1), "CENTER"),
+            ("ALIGN", (NAME_COL, 1), (NAME_COL, -1), "RIGHT"),
+            ("RIGHTPADDING", (NAME_COL, 1), (NAME_COL, -1), 8),
         ]))
         story.append(table)
 
