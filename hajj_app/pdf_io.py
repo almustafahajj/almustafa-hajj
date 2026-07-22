@@ -526,6 +526,104 @@ def export_airline_pdf(
     return path
 
 
+# لون رأس الخيمة حسب التصنيف (رجال/نساء) — تمييز بصري في كشف المخيمات
+_CLASS_COLORS = {
+    "رجال": colors.HexColor("#2F6F76"),
+    "نساء": colors.HexColor("#8A4B52"),
+    "غير محدد": colors.HexColor("#3A342B"),
+}
+
+
+def export_camp_pdf(plan, path: str | Path,
+                    *, title: str = "كشف تسكين المخيمات") -> Path:
+    """يصدّر خطة المخيّم إلى PDF — مجموعاً بالخيام، كل خيمة كتلة ملوّنة بالتصنيف."""
+    from .camps import tent_label
+
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=landscape(A4),
+        rightMargin=10 * mm, leftMargin=10 * mm,
+        topMargin=12 * mm, bottomMargin=16 * mm,
+        title=title, author="برنامج الحج",
+    )
+
+    full_title = f"{title} — مخيّم {plan.camp}" if plan.camp else title
+    story: list = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 5))
+    story.append(Paragraph(ar(full_title), st["title"]))
+    story.append(Paragraph(ar(
+        f"القطاع: {ltr(plan.sector or '—')}  •  عدد الأشخاص في الخيمة: {ltr(plan.capacity)}"
+        f"  •  عدد الخيام: {ltr(len(plan.tents))}  •  المجموع: {ltr(plan.total)}"
+        f"  •  التاريخ: {ltr(date.today().isoformat())}"
+    ), st["subtitle"]))
+
+    # الأعمدة معكوسة لأن التخطيط من اليمين لليسار: «م» أقصى اليمين
+    labels = ["م", "اسم الحاج", "رقم العائلة", "الفندق", "الغرفة", "الجنس", "الهاتف"]
+    draw_labels = list(reversed(labels))
+    table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
+    class_rows: list[tuple[int, str]] = []
+
+    tent_head = ParagraphStyle(
+        "tent_group", parent=st["cell"], fontName=_FONT_BOLD,
+        textColor=colors.white, alignment=2, fontSize=8.5, leading=11,
+    )
+
+    def _room_of(rec) -> str:
+        from .rooming import room_number_in_type
+        return (str(rec.room_number or "").strip()
+                or room_number_in_type(str(rec.room_type or "")))
+
+    serial = 0
+    for tent in plan.tents:
+        row = ["" for _ in labels]
+        row[0] = Paragraph(ar(tent_label(tent)), tent_head)
+        class_rows.append((len(table_data), tent.classification))
+        table_data.append(row)
+        for occ in tent.occupants:
+            serial += 1
+            values = [
+                ltr(serial), occ.name, ltr(occ.family),
+                str(occ.record.hotel or "").strip(), ltr(_room_of(occ.record)),
+                occ.sex, ltr(str(occ.record.phone or "").strip()),
+            ]
+            table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
+
+    weights = list(reversed([22, 122, 46, 74, 44, 40, 68]))
+    scale = doc.width / sum(weights)
+    col_widths = [w * scale for w in weights]
+
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+    ]
+    for r, cls in class_rows:
+        style.append(("SPAN", (0, r), (-1, r)))
+        style.append(("BACKGROUND", (0, r), (-1, r),
+                      _CLASS_COLORS.get(cls, _ROOM_HEAD)))
+
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle(style))
+    story.append(table)
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _footer(c, d, full_title),
+        onLaterPages=lambda c, d: _footer(c, d, full_title),
+    )
+    return path
+
+
 def export_passports_pdf(
     entries: list[tuple[str, str]], path: str | Path, *, title: str = "جوازات الحجاج"
 ) -> Path:

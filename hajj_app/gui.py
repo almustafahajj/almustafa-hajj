@@ -244,6 +244,7 @@ class HajjApp:
             ("✈  كشف الطيران", self.do_airline),
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
+            ("⛺  كشف المخيمات", self.do_camps),
             ("🪪  طباعة الصور", self.do_print_images),
             ("🧹  مسح الكل", self.clear_all),
         ]
@@ -920,6 +921,16 @@ class HajjApp:
             return
         AirlineDialog(self.root, records)
 
+    def do_camps(self) -> None:
+        """يفتح نافذة كشف تسكين المخيمات (منى/عرفة): توزيع على الخيام وتصدير."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+        CampsDialog(self.root, records)
+
     def do_export_excel(self) -> None:
         if not self._require_records():
             return
@@ -1282,6 +1293,251 @@ class AirlineDialog(Toplevel):
         self.clipboard_append(self._amadeus)
         messagebox.showinfo("نُسخ", "نُسخت إدخالات أماديوس — الصقها في النظام.",
                             parent=self)
+
+
+class CampsDialog(Toplevel):
+    """كشف تسكين المخيمات (منى/عرفة): توزيع الحجّاج على الخيام وتصديرها.
+
+    يفصل الرجال عن النساء، ويبقي العائلة وسكّان الغرفة معاً. المستخدم يحدّد
+    المخيّم والقطاع وعدد الأشخاص في الخيمة ورقم الخيمة الأول، ويستطيع تعديل
+    رقم/قطاع أي خيمة بالنقر المزدوج. التوزيع يُبنى عند الطلب ولا يُحفظ.
+    """
+
+    def __init__(self, parent, records: list[PassportData]) -> None:
+        super().__init__(parent)
+        self._records = records
+        self._plan = None
+        self._tent_by_iid: dict[str, object] = {}
+        self.title("كشف تسكين المخيمات")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        from .camps import CAMP_MINA, CAMPS
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+
+        # ---- شريط المعطيات ----
+        form = ttk.Frame(outer)
+        form.pack(fill=X)
+        self._camp_var = StringVar(value=CAMP_MINA)
+        self._sector_var = StringVar(value="")
+        self._cap_var = StringVar(value="40")
+        self._start_var = StringVar(value="1")
+
+        def field(label: str, var: StringVar, width: int, combo=None):
+            cell = ttk.Frame(form)
+            cell.pack(side=RIGHT, padx=(6, 0))
+            ttk.Label(cell, text=label, font=("Segoe UI", 10),
+                      foreground=ACCENT).pack(anchor="e")
+            if combo is not None:
+                w = ttk.Combobox(cell, textvariable=var, state="readonly",
+                                 width=width, values=combo, font=("Segoe UI", 10))
+                w.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
+            else:
+                w = ttk.Entry(cell, textvariable=var, width=width,
+                              justify="center", font=("Segoe UI", 10))
+                install_entry_editing(w)
+                w.bind("<Return>", lambda _e: self._rebuild())
+                w.bind("<FocusOut>", lambda _e: self._rebuild())
+            w.pack(anchor="e")
+            return w
+
+        field("المخيّم", self._camp_var, 12, combo=list(CAMPS))
+        field("القطاع", self._sector_var, 10)
+        field("عدد الأشخاص في الخيمة", self._cap_var, 8)
+        field("رقم الخيمة يبدأ من", self._start_var, 8)
+        ttk.Button(form, text=rtl("↻  تحديث التوزيع"), style="Act.TButton",
+                   command=lambda: self._rebuild(force=True)).pack(side=RIGHT, padx=(6, 0))
+
+        self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 11),
+                                  foreground=ACCENT)
+        self._summary.pack(anchor="e", pady=(10, 2))
+        self._notes = ttk.Label(outer, foreground="#B26A00", font=("Segoe UI", 9),
+                                justify="right", wraplength=760)
+        self._notes.pack(anchor="e")
+        ttk.Label(outer, foreground="#666", font=("Segoe UI", 9), justify="right",
+                  text=rtl("انقر نقراً مزدوجاً على خيمة لتعديل رقمها أو قطاعها. "
+                           "الرجال والنساء في خيام منفصلة، والعائلة وسكّان الغرفة معاً."))\
+            .pack(anchor="e", pady=(2, 8))
+
+        # ---- شجرة الخيام وسكانها ----
+        table = ttk.Frame(outer)
+        table.pack(fill=BOTH, expand=True)
+        scroll = ttk.Scrollbar(table, orient="vertical")
+        scroll.pack(side=RIGHT, fill=Y)
+        self._tree = ttk.Treeview(
+            table, columns=("fam", "hotel", "room", "sex", "phone"),
+            show="tree headings", height=14, yscrollcommand=scroll.set)
+        self._tree.heading("#0", text="الخيمة / الحاج")
+        self._tree.heading("fam", text="العائلة")
+        self._tree.heading("hotel", text="الفندق")
+        self._tree.heading("room", text="الغرفة")
+        self._tree.heading("sex", text="الجنس")
+        self._tree.heading("phone", text="الهاتف")
+        self._tree.column("#0", width=300, anchor="w", stretch=True)
+        self._tree.column("fam", width=70, anchor="center", stretch=False)
+        self._tree.column("hotel", width=140, anchor="center", stretch=False)
+        self._tree.column("room", width=60, anchor="center", stretch=False)
+        self._tree.column("sex", width=60, anchor="center", stretch=False)
+        self._tree.column("phone", width=110, anchor="center", stretch=False)
+        self._tree.pack(side=LEFT, fill=BOTH, expand=True)
+        scroll.config(command=self._tree.yview)
+        self._tree.tag_configure("men", background="#E6F0F1")
+        self._tree.tag_configure("women", background="#F5E7EA")
+        self._tree.tag_configure("unknown", background="#EFEBE4")
+        self._tree.bind("<Double-1>", lambda _e: self._edit_tent())
+
+        # ---- أزرار ----
+        row = ttk.Frame(outer)
+        row.pack(anchor="e", pady=(10, 0))
+        ttk.Button(row, text=rtl("📊  تصدير إكسل"), style="Act.TButton",
+                   command=self._excel).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
+                   command=self._pdf).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._last_key = None
+        self._rebuild(force=True)
+
+    def _tag_for(self, classification: str) -> str:
+        from .camps import MEN, WOMEN
+        return {MEN: "men", WOMEN: "women"}.get(classification, "unknown")
+
+    def _rebuild(self, force: bool = False) -> None:
+        """يعيد بناء التوزيع من المعطيات ويملأ الشجرة.
+
+        لا يُعيد البناء إن لم تتغيّر المعطيات (إلا بالضغط على «تحديث»)، حتى
+        لا يُمحى التعديل اليدوي لأرقام الخيام عند مجرّد مغادرة حقل الإدخال.
+        """
+        from .camps import build_camp_plan, tent_label
+        key = (self._camp_var.get(), self._sector_var.get().strip(),
+               self._cap_var.get().strip(), self._start_var.get().strip())
+        if not force and key == self._last_key:
+            return
+        self._last_key = key
+        plan = build_camp_plan(
+            self._records, self._camp_var.get(),
+            capacity=self._cap_var.get(), sector=self._sector_var.get(),
+            start_number=self._start_var.get(),
+        )
+        self._plan = plan
+        self._tree.delete(*self._tree.get_children())
+        self._tent_by_iid = {}
+        for i, tent in enumerate(plan.tents):
+            tag = self._tag_for(tent.classification)
+            tid = self._tree.insert("", END, iid=f"t{i}", open=True,
+                                    text=tent_label(tent), tags=(tag,))
+            self._tent_by_iid[tid] = tent
+            for occ in tent.occupants:
+                room = (str(occ.record.room_number or "").strip()
+                        or "")
+                self._tree.insert(tid, END, text=occ.name, tags=(tag,), values=(
+                    occ.family, str(occ.record.hotel or "").strip(),
+                    room, occ.sex, str(occ.record.phone or "").strip(),
+                ))
+        self._summary.config(
+            text=f"عدد الخيام: {len(plan.tents)}  •  إجمالي الأشخاص: {plan.total}")
+        self._notes.config(text=rtl("  •  ".join(plan.notes)) if plan.notes else "")
+
+    def _selected_tent(self):
+        """الخيمة المحدّدة (أو خيمة العنصر المحدّد إن كان ساكناً)."""
+        sel = self._tree.selection()
+        if not sel:
+            return None
+        iid = sel[0]
+        if iid not in self._tent_by_iid:            # ساكن — نصعد لأبيه (الخيمة)
+            iid = self._tree.parent(iid)
+        return self._tent_by_iid.get(iid)
+
+    def _edit_tent(self) -> None:
+        """نافذة صغيرة لتعديل رقم الخيمة وقطاعها (تجاوز يدوي)."""
+        tent = self._selected_tent()
+        if tent is None:
+            return
+        dlg = Toplevel(self)
+        dlg.title("تعديل الخيمة")
+        dlg.configure(bg=BG)
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+        frame = ttk.Frame(dlg, padding=16)
+        frame.pack(fill=BOTH, expand=True)
+        num_var = StringVar(value=tent.number)
+        sec_var = StringVar(value=tent.sector)
+        for label, var in (("رقم الخيمة", num_var), ("القطاع", sec_var)):
+            ttk.Label(frame, text=label, font=("Segoe UI", 10),
+                      foreground=ACCENT).pack(anchor="e")
+            entry = ttk.Entry(frame, textvariable=var, width=18, justify="center")
+            install_entry_editing(entry)
+            entry.pack(anchor="e", pady=(0, 8))
+
+        def save():
+            tent.number = str(num_var.get()).strip() or tent.number
+            tent.sector = str(sec_var.get()).strip()
+            dlg.destroy()
+            self._refresh_labels()
+
+        btns = ttk.Frame(frame)
+        btns.pack(anchor="e", pady=(4, 0))
+        ttk.Button(btns, text="حفظ", style="Act.TButton", command=save).pack(
+            side=RIGHT, padx=3)
+        ttk.Button(btns, text="إلغاء", style="Act.TButton",
+                   command=dlg.destroy).pack(side=RIGHT, padx=3)
+        dlg.bind("<Return>", lambda _e: save())
+        dlg.bind("<Escape>", lambda _e: dlg.destroy())
+
+    def _refresh_labels(self) -> None:
+        """يحدّث عناوين الخيام في الشجرة بعد تعديل يدوي (بلا إعادة توزيع)."""
+        from .camps import tent_label
+        for iid, tent in self._tent_by_iid.items():
+            self._tree.item(iid, text=tent_label(tent))
+
+    def _default(self, ext: str) -> str:
+        camp = self._plan.camp if self._plan else ""
+        return f"كشف_المخيمات_{camp}_{date.today().isoformat()}.{ext}"
+
+    def _save_path(self, ext: str) -> str | None:
+        return filedialog.asksaveasfilename(
+            parent=self, title="حفظ كشف المخيمات", defaultextension=f".{ext}",
+            initialfile=self._default(ext),
+            filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")),
+        )
+
+    def _run(self, export_fn, ext: str) -> None:
+        if not self._plan or not self._plan.tents:
+            messagebox.showinfo("لا يوجد توزيع", "لا يوجد حجّاج لتوزيعهم.", parent=self)
+            return
+        path = self._save_path(ext)
+        if not path:
+            return
+        try:
+            export_fn(self._plan, path)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
+                                 parent=self)
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
+            return
+        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
+            import os
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
+
+    def _excel(self) -> None:
+        from .camps import export_camp_excel
+        self._run(export_camp_excel, "xlsx")
+
+    def _pdf(self) -> None:
+        from .pdf_io import export_camp_pdf
+        self._run(export_camp_pdf, "pdf")
 
 
 class ImageKindDialog(Toplevel):
