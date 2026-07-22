@@ -343,11 +343,13 @@ class HajjApp:
             ("📄  تصدير PDF", self.do_export_pdf),
             None,
             ("✈  كشف الطيران وأماديوس", self.do_airline),
+            ("🚌  كشف المواصلات", self.do_transport),
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
             ("⛺  خيام المخيمات", self.do_camps),
             None,
-            ("🪪  طباعة الصور", self.do_print_images),
+            ("🪪  بطاقات الحجّاج (QR)", self.do_badges),
+            ("🖼  طباعة الصور", self.do_print_images),
         ])
         rep_mb.pack(side=RIGHT, padx=(4, 3))
 
@@ -762,6 +764,8 @@ class HajjApp:
         # قائمة يمين الفأرة على الصف
         self._row_menu = tk.Menu(self.tree, tearoff=0, font=("Segoe UI", 10))
         self._row_menu.add_command(label="✏️  تعديل السجل", command=self.edit_selected)
+        self._row_menu.add_command(label="✏️  تعديل جماعي للمحدّدين",
+                                   command=self.bulk_edit_selected)
         self._row_menu.add_command(label="🗑  حذف المحدد", command=self.delete_selected)
         self._row_menu.add_separator()
         self._row_menu.add_command(label="نسخ اسم الحاج",
@@ -1254,6 +1258,68 @@ class HajjApp:
         if not self._require_records():
             return
         StatsDialog(self.root, list(self.records), season=self.season_year.get())
+
+    def do_transport(self) -> None:
+        """يفتح كشف المواصلات (توزيع حسب الباص)."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+        TransportDialog(self.root, records)
+
+    def do_badges(self) -> None:
+        """يصدّر بطاقات هوية للحجّاج (QR) — للحجّاج الظاهرين حسب الفلتر."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="حفظ بطاقات الحجّاج", defaultextension=".pdf",
+            initialfile=f"بطاقات_الحجاج_{date.today().isoformat()}.pdf",
+            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
+        if not path:
+            return
+        from .pdf_io import export_badges_pdf
+        try:
+            export_badges_pdf(records, path)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في البطاقات", str(exc))
+            return
+        self.set_status(f"حُفظت {len(records)} بطاقة (QR): {path}", ok=True)
+        self._offer_open(path)
+
+    def bulk_edit_selected(self) -> None:
+        """تعديل جماعي: يطبّق حقولاً على كل السجلات المحدّدة."""
+        idxs = self._selected_indices()
+        if len(idxs) < 2:
+            messagebox.showinfo(
+                "تعديل جماعي",
+                "حدّد سجلين أو أكثر أولاً (استعمل Ctrl أو Shift للتحديد المتعدّد).")
+            return
+
+        def apply(changes: dict) -> None:
+            n = self._apply_bulk(idxs, changes)
+            self.refresh()
+            self.save_data()
+            self.set_status(f"عُدّل {n} سجلاً في {len(changes)} حقلاً", ok=True)
+
+        BulkEditDialog(self.root, len(idxs), apply)
+
+    def _apply_bulk(self, indices: list[int], changes: dict) -> int:
+        """يطبّق التغييرات على السجلات المحدّدة (قابل للاختبار). يعيد العدد."""
+        for i in indices:
+            rec = self.records[i]
+            for key, value in changes.items():
+                setattr(rec, key, value)
+        return len(indices)
 
     def _receipt_selected(self) -> None:
         """يُصدّر إيصال دفع PDF للحاج المحدّد (من قائمة يمين الفأرة)."""
@@ -1944,6 +2010,194 @@ class CampsDialog(Toplevel):
                 os.startfile(path)
             except Exception:
                 pass
+
+
+class BulkEditDialog(Toplevel):
+    """تعديل جماعي: يضبط حقولاً مختارة لكل السجلات المحدّدة دفعةً واحدة."""
+
+    _FIELDS = (
+        ("hotel", "الفندق"),
+        ("room_type", "نوع الغرفة"),
+        ("airline", "الطيران"),
+        ("flight_number", "رقم الرحلة"),
+        ("travel_class", "درجة السفر"),
+        ("transport", "المواصلات"),
+        ("executive_service", "خدمة التنفيذي"),
+        ("wheelchair", "كرسي متحرك"),
+        ("hady", "الهدي"),
+        ("nationality_ar", "الجنسية"),
+        ("arrival_date", "تاريخ الوصول"),
+        ("departure_date", "تاريخ المغادرة"),
+        ("staff", "الموظف المسؤول"),
+    )
+
+    def __init__(self, parent, count: int, on_apply) -> None:
+        super().__init__(parent)
+        self._on_apply = on_apply
+        self.title(f"تعديل جماعي — {count} سجلاً")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=f"سيُطبّق على {count} سجلاً محدّداً",
+                  font=("Segoe UI Semibold", 12), foreground=ACCENT,
+                  background=BG).pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+                  background=BG,
+                  text=rtl("علّم «طبّق» بجانب الحقل واكتب قيمته — تُطبَّق على "
+                           "الجميع. الحقول غير المعلّمة تبقى كما هي.")).pack(
+            anchor="e", pady=(2, 10))
+
+        grid = ttk.Frame(outer)
+        grid.pack(fill=X)
+        self._vars: dict[str, tuple[tk.BooleanVar, StringVar]] = {}
+        for row, (key, label) in enumerate(self._FIELDS):
+            apply_var = tk.BooleanVar(value=False)
+            val_var = StringVar()
+            chk = ttk.Checkbutton(grid, text=label, variable=apply_var)
+            chk.grid(row=row, column=1, sticky="e", padx=(8, 0), pady=2)
+            entry = ttk.Entry(grid, textvariable=val_var, width=26, justify="right",
+                              font=("Segoe UI", 10))
+            install_entry_editing(entry)
+            entry.grid(row=row, column=0, sticky="e", pady=2)
+            # الكتابة في الحقل تعلّم «طبّق» تلقائياً
+            entry.bind("<KeyRelease>", lambda _e, v=apply_var: v.set(True))
+            self._vars[key] = (apply_var, val_var)
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(16, 0))
+        ttk.Button(btns, text=rtl("✔  تطبيق على المحدّدين"), style="Primary.TButton",
+                   command=self._apply).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إلغاء", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    def _apply(self) -> None:
+        changes = {k: v.get() for k, (a, v) in self._vars.items() if a.get()}
+        if not changes:
+            messagebox.showinfo("لا تغييرات",
+                                "علّم «طبّق» بجانب حقل واحد على الأقل.", parent=self)
+            return
+        self._on_apply(changes)
+        self.destroy()
+
+
+class TransportDialog(Toplevel):
+    """كشف المواصلات: يختار الوسيلة (أو الكل) ويصدّر إكسل/PDF مجموعاً بالباص."""
+
+    _ALL = "كل الوسائل"
+
+    def __init__(self, parent, records) -> None:
+        super().__init__(parent)
+        self._all = records
+        self.title("🚌 كشف المواصلات")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        from .transport import distinct_transports
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        top = ttk.Frame(outer)
+        top.pack(fill=X)
+        self._count = ttk.Label(top, font=("Segoe UI Semibold", 11), foreground=ACCENT)
+        self._count.pack(side=LEFT)
+        self._var = StringVar(value=self._ALL)
+        box = ttk.Combobox(top, textvariable=self._var, state="readonly", width=24,
+                           font=("Segoe UI", 10),
+                           values=[self._ALL, *distinct_transports(records)])
+        box.pack(side=RIGHT)
+        box.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
+        ttk.Label(top, text="الوسيلة:", font=("Segoe UI", 10),
+                  foreground=ACCENT).pack(side=RIGHT, padx=(2, 5))
+
+        cols = ("passport", "phone", "hotel", "room")
+        self._tree = ttk.Treeview(outer, columns=cols, show="tree headings", height=13)
+        self._tree.heading("#0", text="الباص / الحاج")
+        for c, lbl, w in (("passport", "الجواز", 120), ("phone", "الهاتف", 120),
+                          ("hotel", "الفندق", 150), ("room", "الغرفة", 70)):
+            self._tree.heading(c, text=lbl)
+            self._tree.column(c, width=w, anchor="center", stretch=False)
+        self._tree.column("#0", width=240, anchor="e", stretch=True)
+        self._tree.pack(fill=BOTH, expand=True, pady=(10, 8))
+
+        row = ttk.Frame(outer)
+        row.pack(anchor="e")
+        ttk.Button(row, text=rtl("📊  تصدير إكسل"), style="Act.TButton",
+                   command=self._excel).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
+                   command=self._pdf).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._rebuild()
+
+    def _current(self):
+        sel = self._var.get()
+        if sel == self._ALL:
+            return list(self._all)
+        return [r for r in self._all if str(r.transport or "").strip() == sel]
+
+    def _rebuild(self) -> None:
+        from .transport import group_by_transport
+        from .cards import room_of
+        records = self._current()
+        self._tree.delete(*self._tree.get_children())
+        groups, unassigned = group_by_transport(records)
+        blocks = list(groups) + ([("بلا مواصلات", unassigned)] if unassigned else [])
+        for name, occ in blocks:
+            gid = self._tree.insert("", END, text=f"{name}  ({len(occ)})", open=True)
+            for rec in occ:
+                self._tree.insert(gid, END,
+                                  text=rec.full_name_ar or rec.full_name_en or "—",
+                                  values=(str(rec.passport_number or "").strip() or "—",
+                                          str(rec.phone or "").strip() or "—",
+                                          str(rec.hotel or "").strip() or "—",
+                                          room_of(rec) or "—"))
+        self._count.config(text=f"عدد الحجّاج: {len(records)}")
+
+    def _default(self, ext):
+        return f"كشف_المواصلات_{date.today().isoformat()}.{ext}"
+
+    def _run(self, export_fn, ext):
+        records = self._current()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حجّاج.", parent=self)
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self, title="حفظ كشف المواصلات", defaultextension=f".{ext}",
+            initialfile=self._default(ext),
+            filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")))
+        if not path:
+            return
+        try:
+            export_fn(records, path)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
+                                 parent=self)
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
+            return
+        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
+            import os
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
+
+    def _excel(self):
+        from .transport import export_transport_excel
+        self._run(export_transport_excel, "xlsx")
+
+    def _pdf(self):
+        from .pdf_io import export_transport_pdf
+        self._run(export_transport_pdf, "pdf")
 
 
 class StatsDialog(Toplevel):

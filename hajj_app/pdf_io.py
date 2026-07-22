@@ -803,6 +803,161 @@ def export_receipt_pdf(rec, path: str | Path, *,
     return path
 
 
+def export_transport_pdf(records: list, path: str | Path,
+                         *, title: str = "كشف المواصلات") -> Path:
+    """يصدّر كشف المواصلات إلى PDF، مجموعاً بوسيلة النقل (رأس ملوّن لكل مجموعة)."""
+    from .cards import room_of
+    from .transport import group_by_transport
+
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+    doc = SimpleDocTemplate(
+        str(path), pagesize=landscape(A4),
+        rightMargin=10 * mm, leftMargin=10 * mm,
+        topMargin=12 * mm, bottomMargin=16 * mm,
+        title=title, author="برنامج الحج",
+    )
+    story: list = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 5))
+    story.append(Paragraph(ar(title), st["title"]))
+    story.append(Paragraph(ar(
+        f"عدد الحجّاج: {ltr(len(records))}  •  التاريخ: {ltr(date.today().isoformat())}"),
+        st["subtitle"]))
+
+    labels = ["م", "اسم الحاج", "رقم الجواز", "الهاتف", "الفندق", "الغرفة"]
+    draw_labels = list(reversed(labels))
+    table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
+    group_rows: list[int] = []
+    group_head = ParagraphStyle("tr_group", parent=st["cell"], fontName=_FONT_BOLD,
+                                textColor=colors.white, alignment=2, fontSize=8.5, leading=11)
+
+    groups, unassigned = group_by_transport(records)
+    blocks = list(groups) + ([("بلا مواصلات", unassigned)] if unassigned else [])
+    serial = 0
+    for name, occ in blocks:
+        row = ["" for _ in labels]
+        row[0] = Paragraph(ar(f"{name}  ({ltr(len(occ))})"), group_head)
+        group_rows.append(len(table_data))
+        table_data.append(row)
+        for rec in occ:
+            serial += 1
+            values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
+                      ltr(str(rec.passport_number or "").strip()),
+                      ltr(str(rec.phone or "").strip()),
+                      str(rec.hotel or "").strip(), ltr(room_of(rec))]
+            table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
+
+    weights = list(reversed([22, 150, 78, 78, 90, 44]))
+    scale = doc.width / sum(weights)
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    for r in group_rows:
+        style.append(("SPAN", (0, r), (-1, r)))
+        style.append(("BACKGROUND", (0, r), (-1, r), _ROOM_HEAD))
+    table = Table(table_data, colWidths=[w * scale for w in weights], repeatRows=1)
+    table.setStyle(TableStyle(style))
+    story.append(table)
+    doc.build(story, onFirstPage=lambda c, d: _footer(c, d, title),
+              onLaterPages=lambda c, d: _footer(c, d, title))
+    return path
+
+
+def export_badges_pdf(records: list, path: str | Path, *,
+                      company: str = "المصطفى للحج والعمرة",
+                      title: str = "بطاقات الحجّاج") -> Path:
+    """يبني بطاقات هوية للحجّاج (10 لكل صفحة) بها رمز QR وبيانات الحاج."""
+    from reportlab.graphics.barcode import qr
+    from reportlab.graphics.shapes import Drawing
+
+    from .cards import qr_payload
+
+    _register_fonts()
+    path = Path(path)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4,
+        rightMargin=12 * mm, leftMargin=12 * mm,
+        topMargin=12 * mm, bottomMargin=14 * mm,
+        title=title, author="برنامج الحج",
+    )
+    name_style = ParagraphStyle("bname", fontName=_FONT_BOLD, fontSize=11,
+                                alignment=2, textColor=_INK, leading=14)
+    small = ParagraphStyle("bsmall", fontName=_FONT, fontSize=8, alignment=2,
+                           leading=11, textColor=colors.HexColor("#333333"))
+    comp = ParagraphStyle("bcomp", fontName=_FONT, fontSize=7.5, alignment=2,
+                          textColor=_ACCENT)
+
+    per_row, rows_per_page = 2, 4          # 8 بطاقات/صفحة — ترقيم نظيف بلا انقسام
+    per_page = per_row * rows_per_page
+    card_w = (doc.width - 10) / per_row
+    card_h = (doc.height - 34) / rows_per_page
+
+    def qr_draw(text: str, size: float = 74):
+        widget = qr.QrCodeWidget(text)
+        b = widget.getBounds()
+        bw, bh = b[2] - b[0], b[3] - b[1]
+        d = Drawing(size, size, transform=[size / bw, 0, 0, size / bh, 0, 0])
+        d.add(widget)
+        return d
+
+    def make_card(rec):
+        payload = qr_payload(rec)
+        name = rec.full_name_ar or rec.full_name_en or "—"
+        details = payload.split("\n")[1:]
+        cell = [Paragraph(ar(name), name_style)]
+        cell += [Paragraph(ar(d), small) for d in details]
+        if company:
+            cell.append(Spacer(1, 3))
+            cell.append(Paragraph(ar(company), comp))
+        card = Table([[qr_draw(payload), cell]],
+                     colWidths=[80, card_w - 86], rowHeights=[card_h - 8])
+        card.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.9, _ACCENT),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return card
+
+    cards = [make_card(r) for r in records]
+    story: list = []
+    for start in range(0, len(cards), per_page):
+        if start:
+            story.append(PageBreak())
+        page = cards[start:start + per_page]
+        grid_rows = []
+        for i in range(0, len(page), per_row):
+            pair = page[i:i + per_row]
+            while len(pair) < per_row:
+                pair.append("")
+            grid_rows.append(list(reversed(pair)))    # RTL: أول بطاقة يميناً
+        grid = Table(grid_rows, colWidths=[card_w] * per_row,
+                     rowHeights=[card_h] * len(grid_rows))
+        grid.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(grid)
+
+    if not cards:
+        story.append(Paragraph(ar("لا حجّاج."), _styles()["subtitle"]))
+    doc.build(story)
+    return path
+
+
 def export_passports_pdf(
     entries: list[tuple[str, str]], path: str | Path, *, title: str = "جوازات الحجاج"
 ) -> Path:

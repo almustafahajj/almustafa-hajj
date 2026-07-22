@@ -237,6 +237,32 @@ app._focus_record(1)
 assert app.tree.selection() == ("1",), app.tree.selection()
 print("  OK: يعرض المشكلات مجمّعة، والقفز إلى السجل يعمل")
 
+print("\n=== تعديل جماعي وكشف المواصلات ===")
+from hajj_app.gui import TransportDialog
+app.clear_filters()
+app.records = [
+    PassportData(full_name_ar="حاج1", passport_number="B1", transport="باص 1"),
+    PassportData(full_name_ar="حاج2", passport_number="B2", transport="باص 2"),
+    PassportData(full_name_ar="حاج3", passport_number="B3"),
+]
+app.refresh()
+# تعديل جماعي: يضبط الفندق والطيران لسجلين
+n = app._apply_bulk([0, 2], {"hotel": "الصفوة", "airline": "الاتحاد"})
+assert n == 2
+assert app.records[0].hotel == "الصفوة" and app.records[0].airline == "الاتحاد"
+assert app.records[2].hotel == "الصفوة"
+assert app.records[1].hotel == "", "السجل غير المحدّد تغيّر خطأً"
+print("  OK: التعديل الجماعي يطبّق الحقول على المحدّدين فقط")
+# كشف المواصلات: يعرض المجموعات
+td = TransportDialog(root, list(app.records))
+tgroups = td._tree.get_children()
+labels = [td._tree.item(g, "text") for g in tgroups]
+assert any("باص 1" in t for t in labels) and any("بلا مواصلات" in t for t in labels), labels
+td._var.set("باص 1"); td._rebuild()
+assert len(td._current()) == 1
+td.destroy()
+print("  OK: كشف المواصلات يجمع بالباص ويصفّي بالاختيار")
+
 print("\n=== لوحة الإحصاءات والمالية (StatsDialog) ===")
 from hajj_app.gui import StatsDialog
 app.clear_filters()
