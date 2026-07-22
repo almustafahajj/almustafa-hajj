@@ -43,34 +43,57 @@ EXCEL_TYPES = (("ملفات إكسل", "*.xlsx *.xlsm"), ("كل الملفات",
 HIJRI_YEARS = tuple(str(y) for y in range(1445, 1456))
 _DEFAULT_SEASON = "1447"
 
-# ألوان علامة المصطفى للحج والعمرة — مأخوذة من ملف الشعار نفسه
-BG = "#F7F5F2"              # أبيض دافئ يجاور البرونزي
-ACCENT = "#111111"          # الأسود — العناوين ورؤوس الجدول
+# ---- ألوان العلامة الثابتة (لا تتبدّل بين الفاتح والداكن) ----
+ACCENT = "#111111"          # الأسود — سطح رؤوس الجدول
 BRONZE = "#8A6E4B"          # البرونزي — التمييز والتفاعل
-BRONZE_DARK = "#6F5738"     # برونزي أغمق لحالة المرور (hover)
+BRONZE_DARK = "#6F5738"
 ACCENT_HOVER = BRONZE
-WARN_BG = "#FBF0DC"         # كهرماني باهت يتناغم مع البرونزي
-
-# ألوان مساندة للتحسينات البصرية
-PANEL = "#FFFFFF"           # خلفية الجدول
-ROW_ALT = "#F2ECE3"         # صفّ متناوب (بيج فاتح)
-HOVER_BG = "#EADFCB"        # تمييز صفّ مرور الفأرة
-BORDER = "#E2DACE"          # حدود ناعمة
-MUTED = "#777777"           # نص ثانوي
-SUCCESS_FG = "#2E6B45"      # أخضر النجاح
+WARN_BG = "#FBF0DC"         # كهرماني باهت (تمييز صفوف التنبيه)
+SUCCESS_FG = "#2E6B45"
 SUCCESS_BG = "#E6F1E9"
-AMBER_FG = "#B26A00"        # كهرماني التنبيه
-DANGER = "#B23A3A"          # أحمر هادئ للحذف/المسح
+AMBER_FG = "#B26A00"
+DANGER = "#B23A3A"
 DANGER_HOVER = "#8F2C2C"
-
-# درجات فاتحة/غامقة لإبراز الأزرار ثلاثية الأبعاد (حواف مشطوفة)
-BRONZE_LIGHT = "#B4986E"    # حافة علوية مضيئة
-BRONZE_EDGE = "#4E3C25"     # حافة سفلية داكنة
+BRONZE_LIGHT = "#B4986E"    # حواف الأزرار ثلاثية الأبعاد
+BRONZE_EDGE = "#4E3C25"
 DANGER_LIGHT = "#D57B7B"
 DANGER_EDGE = "#7A2222"
-GHOST_LIGHT = "#FFFFFF"     # حافة مضيئة للزر الثانوي
-GHOST_EDGE = "#C7BBA6"
-PANEL_EDGE = "#D8CFC0"      # حافة الألواح البارزة
+
+# ---- أدوار الألوان (تتبدّل مع الوضع الفاتح/الداكن) ----
+_PALETTES = {
+    "فاتح": {
+        "BG": "#F7F5F2", "PANEL": "#FFFFFF", "ROW_ALT": "#F2ECE3",
+        "HOVER_BG": "#EADFCB", "BORDER": "#E2DACE", "MUTED": "#777777",
+        "TEXT": "#111111", "GHOST_BG": "#F1ECE3", "GHOST_HOVER": "#E7DECF",
+        "GHOST_LIGHT": "#FFFFFF", "GHOST_EDGE": "#C7BBA6", "PANEL_EDGE": "#D8CFC0",
+    },
+    "داكن": {
+        "BG": "#1E1E22", "PANEL": "#26262B", "ROW_ALT": "#2C2C33",
+        "HOVER_BG": "#3A3A44", "BORDER": "#3A3A44", "MUTED": "#9A948B",
+        "TEXT": "#EAE6DF", "GHOST_BG": "#33333A", "GHOST_HOVER": "#3E3E48",
+        "GHOST_LIGHT": "#4A4A54", "GHOST_EDGE": "#141418", "PANEL_EDGE": "#141418",
+    },
+}
+THEMES = tuple(_PALETTES)
+
+# القيم الحالية (تُضبط بـ apply_theme)
+BG = PANEL = ROW_ALT = HOVER_BG = BORDER = MUTED = TEXT = ""
+GHOST_BG = GHOST_HOVER = GHOST_LIGHT = GHOST_EDGE = PANEL_EDGE = ""
+
+
+def apply_theme(name: str) -> None:
+    """يضبط أدوار الألوان حسب الوضع (فاتح/داكن)."""
+    global BG, PANEL, ROW_ALT, HOVER_BG, BORDER, MUTED, TEXT
+    global GHOST_BG, GHOST_HOVER, GHOST_LIGHT, GHOST_EDGE, PANEL_EDGE
+    pal = _PALETTES.get(name, _PALETTES["فاتح"])
+    BG, PANEL, ROW_ALT = pal["BG"], pal["PANEL"], pal["ROW_ALT"]
+    HOVER_BG, BORDER, MUTED = pal["HOVER_BG"], pal["BORDER"], pal["MUTED"]
+    TEXT = pal["TEXT"]
+    GHOST_BG, GHOST_HOVER = pal["GHOST_BG"], pal["GHOST_HOVER"]
+    GHOST_LIGHT, GHOST_EDGE, PANEL_EDGE = pal["GHOST_LIGHT"], pal["GHOST_EDGE"], pal["PANEL_EDGE"]
+
+
+apply_theme("فاتح")            # الافتراضي حتى تُحمَّل الإعدادات
 
 
 def install_entry_editing(widget) -> None:
@@ -149,6 +172,11 @@ class HajjApp:
         if self._font_size not in self._FONT_SIZES:
             self._font_size = "متوسط"
         self._hidden_cols: set[str] = set(self._ui.get("hidden_columns", ["source_file"]))
+        # الوضع الفاتح/الداكن — يُطبّق قبل بناء الأنماط
+        self._theme = self._ui.get("theme", "فاتح")
+        if self._theme not in THEMES:
+            self._theme = "فاتح"
+        apply_theme(self._theme)
 
         root.title("برنامج الحج — إدارة بيانات الحجاج")
         geom = self._ui.get("geometry")
@@ -222,10 +250,10 @@ class HajjApp:
 
         bevel("Primary.TButton", BRONZE, "white", BRONZE_LIGHT, BRONZE_EDGE, BRONZE_DARK)
         bevel("Danger.TButton", DANGER, "white", DANGER_LIGHT, DANGER_EDGE, DANGER_HOVER)
-        bevel("Ghost.TButton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE, "#E7DECF",
+        bevel("Ghost.TButton", GHOST_BG, TEXT, GHOST_LIGHT, GHOST_EDGE, GHOST_HOVER,
               bold=False)
         # Act.TButton (يُستعمل في النوافذ) — بارز ثانوي
-        bevel("Act.TButton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE, "#E7DECF",
+        bevel("Act.TButton", GHOST_BG, TEXT, GHOST_LIGHT, GHOST_EDGE, GHOST_HOVER,
               bold=False, pad=(12, 7))
 
         # ---- قوائم منسدلة ثلاثية الأبعاد ----
@@ -245,14 +273,23 @@ class HajjApp:
         # إبراز القوائم الأساسية (إضافة/التقارير) بخطّ أكبر قليلاً
         s.configure("Toolbar.TMenubutton", font=("Segoe UI Semibold", 11),
                     padding=(17, 9))
-        bevel_mb("Ghost.TMenubutton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE,
-                 "#E7DECF", ACCENT, bold=False)
+        bevel_mb("Ghost.TMenubutton", GHOST_BG, TEXT, GHOST_LIGHT, GHOST_EDGE,
+                 GHOST_HOVER, TEXT, bold=False)
 
-        # حقول الإدخال والقوائم: أخدود غائر خفيف (يكمّل الأزرار البارزة)
+        # حقول الإدخال والقوائم: أخدود غائر + ألوان تتبع الوضع
         for widget in ("TEntry", "TCombobox", "TSpinbox"):
             s.configure(widget, relief="sunken", borderwidth=1,
+                        fieldbackground=PANEL, foreground=TEXT,
+                        insertcolor=TEXT, arrowcolor=TEXT, background=PANEL,
                         bordercolor=GHOST_EDGE, lightcolor=GHOST_EDGE,
                         darkcolor=GHOST_LIGHT)
+        s.map("TCombobox", fieldbackground=[("readonly", PANEL)],
+              foreground=[("readonly", TEXT)])
+        # قوائم Tk المنسدلة (يمين الفأرة/القوائم) تتبع الوضع
+        self.root.option_add("*Menu.background", PANEL)
+        self.root.option_add("*Menu.foreground", TEXT)
+        self.root.option_add("*Menu.activeBackground", BRONZE)
+        self.root.option_add("*Menu.activeForeground", "white")
 
     def _apply_table_style(self) -> None:
         """يطبّق كثافة الصفوف وحجم الخط على الجدول (قابل للتغيير حياً)."""
@@ -260,7 +297,8 @@ class HajjApp:
         size = self._FONT_SIZES.get(self._font_size, 10)
         s = self._style
         s.configure("Treeview", rowheight=rowheight, font=("Segoe UI", size),
-                    background=PANEL, fieldbackground=PANEL, borderwidth=0)
+                    background=PANEL, fieldbackground=PANEL, foreground=TEXT,
+                    borderwidth=0)
         s.map("Treeview",
               background=[("selected", BRONZE)], foreground=[("selected", "white")])
 
@@ -276,7 +314,7 @@ class HajjApp:
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
         ttk.Label(titles, text="برنامج الحج موسم", font=("Segoe UI Semibold", 17),
-                  foreground=ACCENT, background=BG).pack(side=RIGHT)
+                  foreground=TEXT, background=BG).pack(side=RIGHT)
         year_box = ttk.Combobox(
             titles, textvariable=self.season_year, state="readonly",
             width=6, font=("Segoe UI Semibold", 15), values=HIJRI_YEARS,
@@ -289,7 +327,7 @@ class HajjApp:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
             ttk.Label(info, text=f"👤  {self.session.username}",
-                      font=("Segoe UI Semibold", 10), foreground=ACCENT,
+                      font=("Segoe UI Semibold", 10), foreground=TEXT,
                       background=BG).pack(anchor="w")
             ttk.Label(info, text="🔒 البيانات مشفّرة", font=("Segoe UI", 9),
                       foreground=BRONZE, background=BG).pack(anchor="w")
@@ -298,7 +336,7 @@ class HajjApp:
                 ("مفتاح استرداد جديد", self.new_recovery_key),
             ):
                 link = ttk.Label(info, text=text, font=("Segoe UI", 9, "underline"),
-                                 foreground=ACCENT, background=BG, cursor="hand2")
+                                 foreground=TEXT, background=BG, cursor="hand2")
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
         elif self._open_mode:
@@ -396,7 +434,7 @@ class HajjApp:
         bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 10, 16, 12))
         bar.pack(fill=X)
         self._menus: list = []
-        WHITE, INK, RED = "#FFFFFF", ACCENT, "#FFFFFF"
+        WHITE, INK, RED = "#FFFFFF", TEXT, "#FFFFFF"
 
         # قائمة «إضافة ▾» (مبرزة) — يدوي / جوازات / استيراد
         add_mb = self._menubutton(bar, "إضافة  ▾", [
@@ -497,9 +535,9 @@ class HajjApp:
 
         # الأزرار أقصى يسار الصف الأول
         self._icon_button(row1, "طباعة المعروض", self.do_print_filtered,
-                          "Ghost.TButton", ("print", ACCENT)).pack(side=LEFT, padx=3)
+                          "Ghost.TButton", ("print", TEXT)).pack(side=LEFT, padx=3)
         self._icon_button(row1, "مسح الفلاتر", self.clear_filters,
-                          "Ghost.TButton", ("clear", ACCENT)).pack(side=LEFT, padx=3)
+                          "Ghost.TButton", ("clear", TEXT)).pack(side=LEFT, padx=3)
 
         # قائمتا «الأعمدة ▾» و«العرض ▾» (إظهار/إخفاء الأعمدة والكثافة والخط)
         self._build_columns_menubutton(row1).pack(side=LEFT, padx=3)
@@ -520,7 +558,7 @@ class HajjApp:
         sort_box.pack(side=LEFT, padx=(0, 4))
         sort_box.bind("<<ComboboxSelected>>", lambda _e: self._apply_sort())
         ttk.Label(sort_box_frame, text="ترتيب حسب", font=("Segoe UI", 9),
-                  background=BG, foreground=ACCENT).pack(side=LEFT, padx=(2, 0))
+                  background=BG, foreground=TEXT).pack(side=LEFT, padx=(2, 0))
 
         # مربّع البحث الحر أقصى يمين الصف الأول
         self.filter_search = StringVar()
@@ -531,7 +569,7 @@ class HajjApp:
         self._search_entry = entry
         install_entry_editing(entry)
         ttk.Label(row1, text="🔍 بحث", font=("Segoe UI", 9),
-                  background=BG, foreground=ACCENT).pack(side=RIGHT, padx=(2, 4))
+                  background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 4))
 
         # القوائم المنسدلة موزّعة على الصفّين — من اليمين لليسار
         self.filter_vars: dict[str, StringVar] = {}
@@ -539,7 +577,7 @@ class HajjApp:
         for index, (key, label) in enumerate(self._FILTER_FIELDS):
             parent = row1 if index < self._FILTERS_ROW1 else row2
             ttk.Label(parent, text=label, font=("Segoe UI", 9),
-                      background=BG, foreground=ACCENT).pack(side=RIGHT, padx=(2, 4))
+                      background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 4))
             var = StringVar(value=self._ALL)
             box = ttk.Combobox(parent, textvariable=var, state="readonly",
                                width=11, font=("Segoe UI", 9), values=[self._ALL])
@@ -563,7 +601,7 @@ class HajjApp:
     def _build_columns_menubutton(self, parent):
         mb = ttk.Menubutton(parent, text=rtl("الأعمدة ▾"),
                             style="Ghost.TMenubutton", direction="below")
-        _img = self._icon("columns", ACCENT)
+        _img = self._icon("columns", TEXT)
         if _img is not None:
             mb.configure(image=_img, compound="right")
         menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
@@ -605,7 +643,7 @@ class HajjApp:
     def _build_view_menubutton(self, parent):
         mb = ttk.Menubutton(parent, text=rtl("العرض ▾"),
                             style="Ghost.TMenubutton", direction="below")
-        _img = self._icon("gear", ACCENT)
+        _img = self._icon("gear", TEXT)
         if _img is not None:
             mb.configure(image=_img, compound="right")
         menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
@@ -623,9 +661,23 @@ class HajjApp:
                                   variable=self._fontsize_var,
                                   command=self._on_font_change)
         menu.add_cascade(label="حجم الخط", menu=fmenu)
+        menu.add_separator()
+        self._theme_var = tk.StringVar(value=self._theme)
+        tmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
+        for name in THEMES:
+            tmenu.add_radiobutton(label=name, value=name, variable=self._theme_var,
+                                  command=self._on_theme_change)
+        menu.add_cascade(label="الوضع (فاتح/داكن)", menu=tmenu)
         mb["menu"] = menu
-        self._menus += [menu, dmenu, fmenu]
+        self._menus += [menu, dmenu, fmenu, tmenu]
         return mb
+
+    def _on_theme_change(self) -> None:
+        self._theme = self._theme_var.get()
+        self._save_ui_settings()
+        messagebox.showinfo(
+            "الوضع",
+            f"سيُطبَّق الوضع «{self._theme}» عند إعادة تشغيل البرنامج.")
 
     def _on_density_change(self) -> None:
         self._density = self._density_var.get()
@@ -648,6 +700,7 @@ class HajjApp:
             "hidden_columns": sorted(self._hidden_cols),
             "density": self._density,
             "font_size": self._font_size,
+            "theme": getattr(self, "_theme", "فاتح"),
         })
         self._settings["ui"] = self._ui
         try:
@@ -875,7 +928,7 @@ class HajjApp:
         # تخطيط متناوب الألوان + تمييز صفوف التنبيه + تمييز صفّ مرور الفأرة
         self.tree.tag_configure("even", background=PANEL)
         self.tree.tag_configure("odd", background=ROW_ALT)
-        self.tree.tag_configure("warn", background=WARN_BG)
+        self.tree.tag_configure("warn", background=WARN_BG, foreground="#5A4A2E")
         self.tree.tag_configure("hover", background=HOVER_BG)
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
         self._hover_iid = None
@@ -906,7 +959,7 @@ class HajjApp:
             ttk.Label(self._empty, image=self._empty_logo,
                       background=BG).pack(pady=(0, 12))
         ttk.Label(self._empty, text="لا يوجد حجّاج بعد", background=BG,
-                  font=("Segoe UI Semibold", 16), foreground=ACCENT).pack()
+                  font=("Segoe UI Semibold", 16), foreground=TEXT).pack()
         ttk.Label(self._empty, text="ابدأ بإضافة صور الجوازات أو استيراد ملف إكسل",
                   background=BG, font=("Segoe UI", 10), foreground=MUTED).pack(
             pady=(4, 14))
@@ -953,10 +1006,10 @@ class HajjApp:
                                       font=("Segoe UI", 10), foreground="#444")
         self.status_label.pack(side=RIGHT)
         self.count_label = ttk.Label(bar, text="", font=("Segoe UI Semibold", 11),
-                                     foreground=ACCENT)
+                                     foreground=TEXT)
         self.count_label.pack(side=LEFT)
         ttk.Label(bar, text="💾 الحفظ تلقائي", font=("Segoe UI", 9),
-                  foreground="#777").pack(side=LEFT, padx=12)
+                  foreground=MUTED).pack(side=LEFT, padx=12)
 
     # ------------------------------------------------------------ حفظ واستعادة
     def _load_saved_data(self) -> None:
@@ -1016,7 +1069,7 @@ class HajjApp:
         elif ok:
             fg, icon = SUCCESS_FG, "✓"
         else:
-            fg, icon = "#444444", "•"
+            fg, icon = TEXT, "•"
         self.status.set(f"{icon}  {text}")
         self.status_label.configure(foreground=fg)
         if hasattr(self, "_status_dot"):
@@ -1778,7 +1831,7 @@ class HajjApp:
 
         ttk.Label(frame, text="⚠  مسح جميع السجلات", background=BG,
                   font=("Segoe UI Semibold", 13), foreground=DANGER).pack(anchor="e")
-        ttk.Label(frame, background=BG, foreground=ACCENT, justify="right",
+        ttk.Label(frame, background=BG, foreground=TEXT, justify="right",
                   font=("Segoe UI", 10), wraplength=340,
                   text=(f"سيُحذف {len(self.records)} سجلاً وكل صورهم نهائياً "
                         "(تبقى نسخة احتياطية .bak).")).pack(anchor="e", pady=(8, 10))
@@ -1787,7 +1840,7 @@ class HajjApp:
             prompt = f"للتأكيد، أدخل كلمة مرور حسابك «{self.session.username}»:"
         else:
             prompt = f"للتأكيد، اكتب كلمة «{self._CLEAR_CONFIRM_WORD}» في الحقل:"
-        ttk.Label(frame, text=prompt, background=BG, foreground=ACCENT,
+        ttk.Label(frame, text=prompt, background=BG, foreground=TEXT,
                   font=("Segoe UI", 10), wraplength=340, justify="right").pack(anchor="e")
 
         var = StringVar()
@@ -1863,7 +1916,7 @@ class AirlineDialog(Toplevel):
         top = ttk.Frame(outer)
         top.pack(fill=X)
         self._count_label = ttk.Label(top, font=("Segoe UI Semibold", 11),
-                                      foreground=ACCENT)
+                                      foreground=TEXT)
         self._count_label.pack(side=LEFT)
         self._flight_var = StringVar(value=self._ALL_FLIGHTS)
         box = ttk.Combobox(top, textvariable=self._flight_var, state="readonly",
@@ -1872,9 +1925,9 @@ class AirlineDialog(Toplevel):
         box.pack(side=RIGHT)
         box.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
         ttk.Label(top, text="الطيران:", font=("Segoe UI", 10),
-                  foreground=ACCENT).pack(side=RIGHT, padx=(2, 5))
+                  foreground=TEXT).pack(side=RIGHT, padx=(2, 5))
 
-        ttk.Label(outer, foreground="#666", font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
                   text=rtl("الأعمدة (إنجليزي، يسار←يمين): # • Last • First • "
                            "Passport • Expiry • DOB • Gender • Nationality • "
                            "Class • Family • PNR")).pack(anchor="e", pady=(4, 10))
@@ -1888,7 +1941,7 @@ class AirlineDialog(Toplevel):
 
         ttk.Separator(outer, orient="horizontal").pack(fill=X, pady=8)
         ttk.Label(outer, text="إدخالات أماديوس — انقر نقراً مزدوجاً على راكب لنسخ إدخاله:",
-                  font=("Segoe UI Semibold", 10), foreground=ACCENT).pack(anchor="e")
+                  font=("Segoe UI Semibold", 10), foreground=TEXT).pack(anchor="e")
 
         table_frame = ttk.Frame(outer)
         table_frame.pack(fill=BOTH, expand=True, pady=(6, 8))
@@ -2060,7 +2113,7 @@ class CampsDialog(Toplevel):
             cell = ttk.Frame(form)
             cell.pack(side=RIGHT, padx=(6, 0))
             ttk.Label(cell, text=label, font=("Segoe UI", 10),
-                      foreground=ACCENT).pack(anchor="e")
+                      foreground=TEXT).pack(anchor="e")
             if combo is not None:
                 w = ttk.Combobox(cell, textvariable=var, state="readonly",
                                  width=width, values=combo, font=("Segoe UI", 10))
@@ -2087,16 +2140,16 @@ class CampsDialog(Toplevel):
         camp_row = ttk.Frame(outer)
         camp_row.pack(fill=X, pady=(8, 0))
         ttk.Label(camp_row, text="اسم الحملة:", font=("Segoe UI", 10),
-                  foreground=ACCENT).pack(side=RIGHT, padx=(4, 5))
+                  foreground=TEXT).pack(side=RIGHT, padx=(4, 5))
         camp_entry = ttk.Entry(camp_row, textvariable=self._campaign_var, width=32,
                                justify="right", font=("Segoe UI", 10))
         install_entry_editing(camp_entry)
         camp_entry.pack(side=RIGHT)
 
         self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 11),
-                                  foreground=ACCENT)
+                                  foreground=TEXT)
         self._summary.pack(anchor="e", pady=(10, 2))
-        ttk.Label(outer, foreground="#666", font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
                   text=rtl("تُملأ الخيمة تلقائياً بعدد الأشخاص المحدّد من التصنيف "
                            "المختار (العائلة وسكّان الغرفة معاً). «تصدير» يُنشئ ملف "
                            "هذه الخيمة ثم ينتقل للتالية بمن تبقّى."))\
@@ -2258,7 +2311,7 @@ class BulkEditDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text=f"سيُطبّق على {count} سجلاً محدّداً",
-                  font=("Segoe UI Semibold", 12), foreground=ACCENT,
+                  font=("Segoe UI Semibold", 12), foreground=TEXT,
                   background=BG).pack(anchor="e")
         ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
                   background=BG,
@@ -2319,7 +2372,7 @@ class TransportDialog(Toplevel):
         outer.pack(fill=BOTH, expand=True)
         top = ttk.Frame(outer)
         top.pack(fill=X)
-        self._count = ttk.Label(top, font=("Segoe UI Semibold", 11), foreground=ACCENT)
+        self._count = ttk.Label(top, font=("Segoe UI Semibold", 11), foreground=TEXT)
         self._count.pack(side=LEFT)
         self._var = StringVar(value=self._ALL)
         box = ttk.Combobox(top, textvariable=self._var, state="readonly", width=24,
@@ -2328,7 +2381,7 @@ class TransportDialog(Toplevel):
         box.pack(side=RIGHT)
         box.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
         ttk.Label(top, text="الوسيلة:", font=("Segoe UI", 10),
-                  foreground=ACCENT).pack(side=RIGHT, padx=(2, 5))
+                  foreground=TEXT).pack(side=RIGHT, padx=(2, 5))
 
         cols = ("phone", "hotel", "executive", "wheelchair")
         self._tree = ttk.Treeview(outer, columns=cols, show="tree headings", height=13)
@@ -2467,7 +2520,7 @@ class StatsDialog(Toplevel):
         box.pack(side=RIGHT)
         box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_dist())
         ttk.Label(top, text="التوزيع حسب:", font=("Segoe UI", 10),
-                  foreground=ACCENT).pack(side=RIGHT, padx=(4, 6))
+                  foreground=TEXT).pack(side=RIGHT, padx=(4, 6))
 
         self._dist = ttk.Treeview(dist_tab, columns=("count", "pct", "bar"),
                                   show="tree headings", height=12)
@@ -2548,7 +2601,7 @@ class BadgesDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text=f"إنشاء بطاقات لـ {len(records)} حاجاً",
-                  font=("Segoe UI Semibold", 12), foreground=ACCENT,
+                  font=("Segoe UI Semibold", 12), foreground=TEXT,
                   background=BG).pack(anchor="e")
         ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
                   background=BG, wraplength=420,
@@ -2566,7 +2619,7 @@ class BadgesDialog(Toplevel):
         def row(label, var):
             fr = ttk.Frame(form)
             fr.pack(fill=X, pady=3)
-            ttk.Label(fr, text=label, font=("Segoe UI", 10), foreground=ACCENT,
+            ttk.Label(fr, text=label, font=("Segoe UI", 10), foreground=TEXT,
                       background=BG, width=18, anchor="e").pack(side=RIGHT, padx=(6, 0))
             e = ttk.Entry(fr, textvariable=var, width=30, justify="right",
                           font=("Segoe UI", 10))
@@ -2578,7 +2631,7 @@ class BadgesDialog(Toplevel):
         row("رقم الطوارئ", self._emergency)
 
         ttk.Label(outer, text="الإداريون (اختياري — سطر لكل إداري):",
-                  font=("Segoe UI", 10), foreground=ACCENT, background=BG).pack(
+                  font=("Segoe UI", 10), foreground=TEXT, background=BG).pack(
             anchor="e", pady=(8, 2))
         self._admins = tk.Text(outer, height=3, width=44, font=("Segoe UI", 10),
                                wrap="word")
@@ -2645,7 +2698,7 @@ class QualityDialog(Toplevel):
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
         self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 12),
-                                  foreground=ACCENT, background=BG)
+                                  foreground=TEXT, background=BG)
         self._summary.pack(anchor="e")
         ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
                   background=BG,
@@ -2727,7 +2780,7 @@ class RestoreDialog(Toplevel):
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text="اختر نسخة احتياطية لاستعادتها",
-                  font=("Segoe UI Semibold", 12), foreground=ACCENT,
+                  font=("Segoe UI Semibold", 12), foreground=TEXT,
                   background=BG).pack(anchor="e")
         ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
                   background=BG,
@@ -2800,7 +2853,7 @@ class ImageKindDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text="اختر نوع الصور للطباعة:",
-                  font=("Segoe UI Semibold", 11), foreground=ACCENT).pack(
+                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
             anchor="e", pady=(0, 10))
 
         self._choice = StringVar(value="passport")
@@ -2895,7 +2948,7 @@ class EditDialog(Toplevel):
 
         # المتبقي محسوب تلقائياً، فنعرضه للقراءة فقط
         self.remaining = ttk.Label(
-            outer, font=("Segoe UI Semibold", 10), foreground=ACCENT
+            outer, font=("Segoe UI Semibold", 10), foreground=TEXT
         )
         self.remaining.pack(anchor="e", pady=(10, 0))
         self._update_remaining()
@@ -2959,7 +3012,7 @@ class EditDialog(Toplevel):
             box = ttk.Frame(frame, padding=6)
             box.grid(row=row, column=col, padx=10, pady=4, sticky="n")
             ttk.Label(box, text=KIND_LABELS[kind], font=("Segoe UI Semibold", 10),
-                      foreground=ACCENT).pack()
+                      foreground=TEXT).pack()
             preview = ttk.Label(box, relief="solid", borderwidth=1,
                                 anchor="center", width=22)
             preview.pack(pady=4, ipadx=3, ipady=3)
