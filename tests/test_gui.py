@@ -287,6 +287,40 @@ assert "المتبقّي" in sd._owe_total.cget("text")
 sd.destroy()
 print("  OK: بطاقات مالية + توزيع + كشف المتأخّرات")
 
+print("\n=== مؤثرات وحماية: حالة فارغة، toast، نسخ احتياطية ===")
+from hajj_app.gui import RestoreDialog
+import hajj_app.storage as _bk
+# الحالة الفارغة تظهر بلا سجلات وتُخفى بوجودها
+app.records = []
+app.refresh()
+assert app._empty.winfo_manager() == "place", "الحالة الفارغة لم تظهر"
+app.records = [PassportData(full_name_ar="حاج", passport_number="Z1")]
+app.refresh()
+assert app._empty.winfo_manager() == "", "الحالة الفارغة لم تُخفَ"
+# toast لا يتعطّل والنافذة مخفيّة
+app.toast("اختبار", kind="success")
+# نسخة احتياطية الآن ثم استعادة
+app.records = [PassportData(full_name_ar="أ", passport_number="A1"),
+               PassportData(full_name_ar="ب", passport_number="A2")]
+app.do_backup_now()
+snaps = _bk.list_snapshots()
+assert snaps, "لم تُنشأ لقطة"
+recs, _note = _bk.load_records(snaps[0], None)
+assert len(recs) == 2
+# محاكاة الاستعادة (نتخطّى التأكيد)
+app.records = [PassportData(full_name_ar="ج", passport_number="A3")]
+import tkinter.messagebox as _mb
+_orig_yes = _mb.askyesno
+_mb.askyesno = lambda *a, **k: True
+app._do_restore(recs, "لقطة")
+_mb.askyesno = _orig_yes
+assert [r.full_name_ar for r in app.records] == ["أ", "ب"], app.records
+# RestoreDialog يعرض اللقطات
+rd = RestoreDialog(root, None, lambda r, l: None)
+assert rd._tree.get_children(), "لا لقطات في نافذة الاستعادة"
+rd.destroy()
+print("  OK: حالة فارغة تظهر/تُخفى، toast آمن، ونسخة احتياطية + استعادة")
+
 print("\n=== بوابة أمان «مسح الكل» ===")
 # بلا جلسة: تُقبل كلمة «مسح» فقط، ويُرفض ما سواها (يمنع الضغط غير المقصود)
 assert app.session is None

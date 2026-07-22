@@ -353,6 +353,13 @@ class HajjApp:
         ])
         rep_mb.pack(side=RIGHT, padx=(4, 3))
 
+        # قائمة «الحماية ▾»: نسخ احتياطية مؤرّخة واستعادة
+        prot_mb = self._menubutton(bar, "🛡  الحماية  ▾", [
+            ("🛡  نسخة احتياطية الآن", self.do_backup_now),
+            ("↩  استعادة نسخة احتياطية", self.do_restore),
+        ], style="Ghost.TMenubutton")
+        prot_mb.pack(side=RIGHT, padx=3)
+
         # مسح الكل (خطر) أقصى اليسار بعد شريط التقدّم
         ttk.Button(bar, text=rtl("🧹  مسح الكل"), command=self.clear_all,
                    style="Danger.TButton").pack(side=LEFT, padx=(6, 0))
@@ -777,6 +784,24 @@ class HajjApp:
                                    command=self._receipt_selected)
         self.tree.bind("<Button-3>", self._show_row_menu)
 
+        # حالة فارغة أنيقة تظهر حين لا بيانات (تُخفى عند وجود سجلات)
+        self._empty = ttk.Frame(wrap, style="Toolbar.TFrame", padding=20)
+        self._empty_logo = logo_image(self.root, width=120)
+        if self._empty_logo is not None:
+            ttk.Label(self._empty, image=self._empty_logo,
+                      background=BG).pack(pady=(0, 12))
+        ttk.Label(self._empty, text="لا يوجد حجّاج بعد", background=BG,
+                  font=("Segoe UI Semibold", 16), foreground=ACCENT).pack()
+        ttk.Label(self._empty, text="ابدأ بإضافة صور الجوازات أو استيراد ملف إكسل",
+                  background=BG, font=("Segoe UI", 10), foreground=MUTED).pack(
+            pady=(4, 14))
+        eb = ttk.Frame(self._empty, style="Toolbar.TFrame")
+        eb.pack()
+        ttk.Button(eb, text=rtl("📷  إضافة جوازات"), style="Primary.TButton",
+                   command=self.add_images).pack(side=RIGHT, padx=4)
+        ttk.Button(eb, text=rtl("📁  استيراد إكسل"), style="Ghost.TButton",
+                   command=self.import_from_excel).pack(side=RIGHT, padx=4)
+
         # تطبيق الأعمدة الظاهرة المحفوظة
         self._apply_columns()
 
@@ -846,6 +871,12 @@ class HajjApp:
 
     def _on_close(self) -> None:
         self._save_ui_settings()          # يحفظ حجم النافذة والأعمدة والعرض
+        try:                              # لقطة نسخة احتياطية عند كل إغلاق
+            if self.records:
+                from .storage import write_snapshot
+                write_snapshot(self.records, self.session)
+        except Exception:
+            pass
         if self.save_data():
             self.root.destroy()
             return
@@ -866,6 +897,31 @@ class HajjApp:
             fg, icon = "#444444", "•"
         self.status.set(f"{icon}  {text}")
         self.status_label.configure(foreground=fg)
+
+    def toast(self, message: str, *, kind: str = "info", ms: int = 2600) -> None:
+        """إشعار منبثق سريع أسفل يمين النافذة، يختفي تلقائياً."""
+        try:
+            if not self.root.winfo_viewable():
+                return                      # لا إشعارات ونحن مخفيّون (الاختبارات)
+        except Exception:
+            return
+        bg = {"success": SUCCESS_FG, "warn": AMBER_FG}.get(kind, "#2B2B2B")
+        icon = {"success": "✓", "warn": "⚠"}.get(kind, "•")
+        try:
+            win = Toplevel(self.root)
+            win.overrideredirect(True)
+            win.configure(bg=bg)
+            win.attributes("-topmost", True)
+            tk.Label(win, text=f"   {icon}   {message}   ", bg=bg, fg="white",
+                     font=("Segoe UI Semibold", 10)).pack(ipady=9)
+            win.update_idletasks()
+            rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
+            rw, rh = self.root.winfo_width(), self.root.winfo_height()
+            ww, wh = win.winfo_width(), win.winfo_height()
+            win.geometry(f"+{rx + rw - ww - 26}+{ry + rh - wh - 44}")
+            win.after(ms, win.destroy)
+        except Exception:
+            pass
 
     def refresh(self) -> None:
         """يعيد رسم الجدول من self.records مطبّقاً الفلاتر النشطة.
@@ -898,6 +954,13 @@ class HajjApp:
         else:
             self.count_label.configure(text=f"إجمالي الحجاج: {total}")
 
+        # حالة فارغة: نُظهر اللوحة الترحيبية فوق الجدول حين لا سجلات
+        if hasattr(self, "_empty"):
+            if self.records:
+                self._empty.place_forget()
+            else:
+                self._empty.place(relx=0.5, rely=0.42, anchor="center")
+
         self._update_heading_arrows()
         self._scroll_to_start()
 
@@ -922,7 +985,8 @@ class HajjApp:
         self.tree.selection_set(last)
         self.tree.see(last)
         name = record.full_name_ar or record.full_name_en or "بدون اسم"
-        self.set_status(f"تمت إضافة: {name}")
+        self.set_status(f"تمت إضافة: {name}", ok=True)
+        self.toast(f"تمت إضافة: {name}", kind="success")
 
     # ------------------------------------------------------------- إضافة صور
     def add_images(self) -> None:
@@ -1259,6 +1323,49 @@ class HajjApp:
             return
         StatsDialog(self.root, list(self.records), season=self.season_year.get())
 
+    def do_backup_now(self) -> None:
+        """يُنشئ نسخة احتياطية مؤرّخة (لقطة) للكشف الحالي."""
+        if not self.records:
+            messagebox.showinfo("لا بيانات", "لا يوجد ما يُنسخ احتياطياً.")
+            return
+        from .storage import write_snapshot
+        try:
+            write_snapshot(self.records, self.session)
+        except Exception as exc:
+            messagebox.showerror("تعذّرت النسخة الاحتياطية", str(exc))
+            return
+        self.set_status("تم إنشاء نسخة احتياطية مؤرّخة", ok=True)
+        self.toast("تم إنشاء نسخة احتياطية", kind="success")
+
+    def do_restore(self) -> None:
+        """يفتح نافذة استعادة نسخة احتياطية."""
+        from .storage import list_snapshots
+        if not list_snapshots():
+            messagebox.showinfo(
+                "لا نسخ احتياطية",
+                "لا توجد نسخ احتياطية بعد.\nأنشئ واحدة من «🛡 نسخة احتياطية الآن».")
+            return
+        RestoreDialog(self.root, self.session, self._do_restore)
+
+    def _do_restore(self, records: list, label: str) -> None:
+        if not messagebox.askyesno(
+                "تأكيد الاستعادة",
+                f"استبدال الكشف الحالي ({len(self.records)} سجلاً) بنسخة "
+                f"{label} ({len(records)} سجلاً)؟\n\n"
+                "سيُحفظ الكشف الحالي كنسخة قبل الاستبدال."):
+            return
+        try:                                    # لقطة أمان للحالة الراهنة
+            from .storage import write_snapshot
+            if self.records:
+                write_snapshot(self.records, self.session)
+        except Exception:
+            pass
+        self.records = records
+        self.refresh()
+        self.save_data()
+        self.set_status(f"استُعيدت نسخة {label}: {len(records)} سجلاً", ok=True)
+        self.toast(f"استُعيدت نسخة {label}", kind="success")
+
     def do_transport(self) -> None:
         """يفتح كشف المواصلات (توزيع حسب الباص)."""
         if not self._require_records():
@@ -1310,6 +1417,7 @@ class HajjApp:
             self.refresh()
             self.save_data()
             self.set_status(f"عُدّل {n} سجلاً في {len(changes)} حقلاً", ok=True)
+            self.toast(f"عُدّل {n} سجلاً", kind="success")
 
         BulkEditDialog(self.root, len(idxs), apply)
 
@@ -2401,6 +2509,80 @@ class QualityDialog(Toplevel):
                 break
 
 
+class RestoreDialog(Toplevel):
+    """استعادة نسخة احتياطية مؤرّخة: يعرض اللقطات ويستعيد المختارة."""
+
+    def __init__(self, parent, session, on_restore) -> None:
+        super().__init__(parent)
+        self._session = session
+        self._on_restore = on_restore
+        self._paths: dict[str, object] = {}
+        self.title("↩ استعادة نسخة احتياطية")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("520x440")
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text="اختر نسخة احتياطية لاستعادتها",
+                  font=("Segoe UI Semibold", 12), foreground=ACCENT,
+                  background=BG).pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+                  background=BG,
+                  text=rtl("الاستعادة تستبدل الكشف الحالي — لكن يُحفظ الحالي "
+                           "كنسخة قبلها، فلا يضيع شيء.")).pack(anchor="e", pady=(2, 8))
+
+        table = ttk.Frame(outer)
+        table.pack(fill=BOTH, expand=True)
+        scroll = ttk.Scrollbar(table, orient="vertical")
+        scroll.pack(side=RIGHT, fill=Y)
+        self._tree = ttk.Treeview(table, columns=("count",), show="tree headings",
+                                  height=12, yscrollcommand=scroll.set)
+        self._tree.heading("#0", text="التاريخ والوقت")
+        self._tree.heading("count", text="عدد السجلات")
+        self._tree.column("#0", width=300, anchor="e", stretch=True)
+        self._tree.column("count", width=120, anchor="center", stretch=False)
+        self._tree.pack(side=LEFT, fill=BOTH, expand=True)
+        scroll.config(command=self._tree.yview)
+        self._tree.bind("<Double-1>", lambda _e: self._restore())
+
+        from .storage import list_snapshots, load_records, snapshot_label
+        for path in list_snapshots():
+            try:
+                records, _note = load_records(path, session)
+                count = str(len(records))
+            except Exception:
+                count = "—"
+            iid = self._tree.insert("", END, text=snapshot_label(path),
+                                    values=(count,))
+            self._paths[iid] = path
+
+        row = ttk.Frame(outer)
+        row.pack(anchor="e", pady=(10, 0))
+        ttk.Button(row, text=rtl("↩  استعادة المحدّدة"), style="Primary.TButton",
+                   command=self._restore).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    def _restore(self) -> None:
+        sel = self._tree.selection()
+        if not sel:
+            messagebox.showinfo("لم يتم التحديد", "اختر نسخة من القائمة.", parent=self)
+            return
+        path = self._paths.get(sel[0])
+        label = self._tree.item(sel[0], "text")
+        from .storage import load_records
+        try:
+            records, _note = load_records(path, self._session)
+        except Exception as exc:
+            messagebox.showerror("تعذّرت الاستعادة", str(exc), parent=self)
+            return
+        self.destroy()
+        self._on_restore(records, label)
+
+
 class ImageKindDialog(Toplevel):
     """اختيار نوع الصور المراد طباعتها. يضبط self.kinds أو يبقيه None عند الإلغاء."""
 
@@ -2690,6 +2872,33 @@ class EditDialog(Toplevel):
         self.destroy()
 
 
+def _show_splash(root):
+    """شاشة بداية بالشعار تظهر لحظةً أثناء تجهيز النافذة."""
+    try:
+        splash = Toplevel(root)
+        splash.overrideredirect(True)
+        splash.configure(bg=BG)
+        frame = tk.Frame(splash, bg=BG, padx=48, pady=40)
+        frame.pack()
+        img = logo_image(splash, width=240)
+        if img is not None:
+            lbl = tk.Label(frame, image=img, bg=BG)
+            lbl.image = img                    # مرجع يمنع جمع القمامة
+            lbl.pack()
+        tk.Label(frame, text="برنامج الحج", bg=BG, fg=ACCENT,
+                 font=("Segoe UI Semibold", 16)).pack(pady=(12, 0))
+        tk.Label(frame, text="جارٍ التحميل…", bg=BG, fg=MUTED,
+                 font=("Segoe UI", 10)).pack(pady=(4, 0))
+        splash.update_idletasks()
+        w, h = splash.winfo_width(), splash.winfo_height()
+        sw, sh = splash.winfo_screenwidth(), splash.winfo_screenheight()
+        splash.geometry(f"+{(sw - w) // 2}+{(sh - h) // 2}")
+        splash.update()
+        return splash
+    except Exception:
+        return None
+
+
 def main() -> None:
     # الدخول أولاً: النافذة الرئيسية لا تُبنى إلا بجلسة تحمل مفتاح فك التشفير
     session = authenticate()
@@ -2697,6 +2906,15 @@ def main() -> None:
         return
 
     root = Tk()
+    root.withdraw()                            # نخفيها حتى تجهز، خلف شاشة البداية
     apply_window_icon(root)
+    splash = _show_splash(root)
     HajjApp(root, session)
+
+    def _reveal():
+        if splash is not None:
+            splash.destroy()
+        root.deiconify()
+
+    root.after(900, _reveal)
     root.mainloop()

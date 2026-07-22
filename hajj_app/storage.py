@@ -99,14 +99,7 @@ def save_records(
     path = Path(path) if path else default_data_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = {
-        "schema": SCHEMA_VERSION,
-        "saved_at": datetime.now().isoformat(timespec="seconds"),
-        "count": len(records),
-        "records": [_to_dict(r) for r in records],
-    }
-    text = json.dumps(payload, ensure_ascii=False, indent=1).encode("utf-8")
-    blob = _ENCRYPTED_MAGIC + session.encrypt(text) if session else text
+    blob = _encode_records(records, session)
 
     # نسخة احتياطية من آخر حالة سليمة قبل الاستبدال
     if path.is_file():
@@ -122,6 +115,72 @@ def save_records(
         os.fsync(fh.fileno())
     os.replace(temp, path)      # عملية ذرّية على ويندوز ولينكس
     return path
+
+
+def _encode_records(records: list[PassportData], session: Session | None) -> bytes:
+    """يبني محتوى ملف الكشف (مشفّراً إن وُجدت جلسة)."""
+    payload = {
+        "schema": SCHEMA_VERSION,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+        "count": len(records),
+        "records": [_to_dict(r) for r in records],
+    }
+    text = json.dumps(payload, ensure_ascii=False, indent=1).encode("utf-8")
+    return _ENCRYPTED_MAGIC + session.encrypt(text) if session else text
+
+
+# ----------------------------------------------- نسخ احتياطية مؤرّخة (لقطات)
+def backups_dir() -> Path:
+    """مجلد النسخ الاحتياطية المؤرّخة، بجوار ملف البيانات."""
+    return default_data_path().parent / "backups"
+
+
+def list_snapshots() -> list[Path]:
+    """لقطات النسخ الاحتياطية، الأحدث أولاً (الاسم يتضمّن الطابع الزمني)."""
+    folder = backups_dir()
+    if not folder.is_dir():
+        return []
+    return sorted(folder.glob("hajjaj-*.json"), key=lambda p: p.name, reverse=True)
+
+
+def prune_snapshots(keep: int = 20) -> None:
+    """يُبقي أحدث `keep` لقطة ويحذف ما قبلها."""
+    for old in list_snapshots()[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+
+def write_snapshot(
+    records: list[PassportData], session: Session | None = None,
+    *, stamp: str | None = None, keep: int = 20,
+) -> Path:
+    """يكتب لقطة نسخة احتياطية مؤرّخة (مشفّرة كالأصل)، ويقلّم القديمة."""
+    folder = backups_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = stamp or f"{datetime.now():%Y%m%d-%H%M%S}"
+    path = folder / f"hajjaj-{stamp}.json"
+    blob = _encode_records(records, session)
+    temp = path.with_suffix(".tmp")
+    with open(temp, "wb") as fh:
+        fh.write(blob)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(temp, path)
+    prune_snapshots(keep)
+    return path
+
+
+def snapshot_label(path: Path) -> str:
+    """طابع زمني مقروء من اسم اللقطة: 'hajjaj-20260722-113605' -> '2026-07-22 11:36'."""
+    name = Path(path).stem
+    try:
+        stamp = name.split("hajjaj-", 1)[1]
+        dt = datetime.strptime(stamp, "%Y%m%d-%H%M%S")
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except (IndexError, ValueError):
+        return name
 
 
 def is_encrypted(path: str | Path | None = None) -> bool:
