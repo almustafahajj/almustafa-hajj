@@ -1,0 +1,1585 @@
+﻿"""واجهة سطح المكتب لبرنامج موسم الحج."""
+
+from __future__ import annotations
+
+import queue
+import re
+import threading
+import traceback
+import tkinter as tk
+from datetime import date
+from pathlib import Path
+from tkinter import BOTH, END, LEFT, RIGHT, X, Y, StringVar, Tk, Toplevel, filedialog, messagebox, ttk
+
+from .excel_io import export_excel, import_excel
+from .fields import (
+    DATE_KEYS, DIAG_FIELDS, EDITABLE, FIELDS, MONEY_KEYS, MRZ_FILLED, TIME_KEYS,
+    compute_remaining, format_amount, normalize_time, parse_amount, row_dict,
+)
+from .mrz import MRZError, PassportData
+from .ocr import extract_passport
+from .tesseract_setup import arabic_supported, configure_tesseract
+from .pdf_in import PDFError, extract_from_pdf
+from .pdf_io import export_pdf
+from .rooming import ROOM_CATEGORIES, room_capacity, room_category, room_number_in_type
+from .login import (
+    ChangePasswordDialog, NewRecoveryKeyDialog, RecoveryKeyDialog,
+    apply_window_icon, authenticate, logo_image, rtl,
+)
+from .storage import (
+    default_data_path, load_records, load_settings, save_records, save_settings,
+)
+
+_IMG_EXT = "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp"
+SCAN_TYPES = (
+    ("صور وملفات PDF", f"{_IMG_EXT} *.pdf"),
+    ("صور الجوازات", _IMG_EXT),
+    ("ملفات PDF", "*.pdf"),
+    ("كل الملفات", "*.*"),
+)
+EXCEL_TYPES = (("ملفات إكسل", "*.xlsx *.xlsm"), ("كل الملفات", "*.*"))
+
+# السنوات الهجرية المتاحة في قائمة الموسم (حج 2026 = 1447هـ)
+HIJRI_YEARS = tuple(str(y) for y in range(1445, 1456))
+_DEFAULT_SEASON = "1447"
+
+# ألوان علامة المصطفى للحج والعمرة — مأخوذة من ملف الشعار نفسه
+BG = "#F7F5F2"              # أبيض دافئ يجاور البرونزي
+ACCENT = "#111111"          # الأسود — العناوين ورؤوس الجدول
+BRONZE = "#8A6E4B"          # البرونزي — التمييز والتفاعل
+ACCENT_HOVER = BRONZE
+WARN_BG = "#FBF0DC"         # كهرماني باهت يتناغم مع البرونزي
+
+
+def install_entry_editing(widget) -> None:
+    """يفعّل النسخ/اللصق/القص/تحديد الكل بقائمة يمين ولوحة المفاتيح.
+
+    يعمل حتى مع **لوحة المفاتيح العربية**: نربط بالرمز الفيزيائي للمفتاح
+    (keycode) لا بحرفه، فاختصارات Ctrl تعمل مهما كانت لغة الإدخال.
+    """
+    def do(action: str) -> None:
+        try:
+            if action == "copy":
+                widget.event_generate("<<Copy>>")
+            elif action == "paste":
+                widget.event_generate("<<Paste>>")
+            elif action == "cut":
+                widget.event_generate("<<Cut>>")
+            elif action == "all":
+                widget.select_range(0, "end")
+                widget.icursor("end")
+        except tk.TclError:
+            pass
+
+    menu = tk.Menu(widget, tearoff=0)
+    menu.add_command(label="نسخ", command=lambda: do("copy"))
+    menu.add_command(label="لصق", command=lambda: do("paste"))
+    menu.add_command(label="قص", command=lambda: do("cut"))
+    menu.add_separator()
+    menu.add_command(label="تحديد الكل", command=lambda: do("all"))
+
+    def popup(event):
+        widget.focus_set()
+        menu.tk_popup(event.x_root, event.y_root)
+        return "break"
+
+    def ctrl(event):
+        act = {67: "copy", 86: "paste", 88: "cut", 65: "all"}.get(event.keycode)
+        if act:
+            do(act)
+            return "break"
+
+    widget.bind("<Button-3>", popup)
+    widget.bind("<Control-KeyPress>", ctrl)
+
+
+class HajjApp:
+    def __init__(self, root: Tk, session=None) -> None:
+        self.root = root
+        self.session = session      # يحمل مفتاح التشفير؛ None في الاختبارات
+        self.records: list[PassportData] = []
+        self.data_path = default_data_path()
+        self.tesseract_path = configure_tesseract()
+        # قائمة انتظار لنقل نتائج الخيط الخلفي إلى واجهة Tk بأمان
+        self.results: queue.Queue = queue.Queue()
+
+        # السنة الهجرية للموسم — تُحفظ ويحدّدها المستخدم
+        self._settings = load_settings()
+        saved_year = str(self._settings.get("season_year", "")).strip()
+        self.season_year = StringVar(
+            value=saved_year if saved_year in HIJRI_YEARS else _DEFAULT_SEASON
+        )
+
+        # الترتيب عرض فقط: لا يمسّ ترتيب self.records الأصلي، فيمكن إلغاؤه
+        self.sort_field: str | None = None
+        self.sort_desc = False
+
+        root.title("برنامج الحج — إدارة بيانات الحجاج")
+        root.geometry("1280x740")
+        root.minsize(900, 560)
+        root.configure(bg=BG)
+
+        self._build_styles()
+        self._build_header()
+        self._build_toolbar()
+        self._build_filters()
+        self._build_table()
+        self._build_status()
+
+        self._load_saved_data()
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        if self.records:
+            pass        # رسالة الاستعادة أهم من تنبيهات التهيئة
+        elif not self.tesseract_path:
+            self.set_status("تنبيه: Tesseract غير مثبّت — قراءة الصور معطّلة", warn=True)
+        elif not arabic_supported():
+            self.set_status(
+                "تنبيه: حزمة اللغة العربية غير مثبّتة — لن يُقرأ الاسم العربي من الصور",
+                warn=True,
+            )
+
+    # ------------------------------------------------------------------ بناء
+    def _build_styles(self) -> None:
+        s = ttk.Style()
+        try:
+            s.theme_use("clam")
+        except Exception:
+            pass
+        s.configure("Treeview", rowheight=27, font=("Segoe UI", 10), background="white",
+                    fieldbackground="white")
+        s.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
+                    background=ACCENT, foreground="white", padding=6)
+        s.map("Treeview.Heading", background=[("active", ACCENT_HOVER)])
+        s.configure("Act.TButton", font=("Segoe UI", 10), padding=(12, 7))
+        s.configure("Toolbar.TFrame", background=BG)
+
+    def _build_header(self) -> None:
+        bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 10, 16, 6))
+        bar.pack(fill=X)
+
+        # الشعار أقصى اليمين — بداية القراءة في الواجهة العربية
+        self._logo = logo_image(self.root, width=150)
+        if self._logo is not None:
+            ttk.Label(bar, image=self._logo, background=BG).pack(side=RIGHT, padx=(0, 14))
+
+        titles = ttk.Frame(bar, style="Toolbar.TFrame")
+        titles.pack(side=RIGHT)
+        ttk.Label(titles, text="برنامج الحج موسم", font=("Segoe UI Semibold", 17),
+                  foreground=ACCENT, background=BG).pack(side=RIGHT)
+        year_box = ttk.Combobox(
+            titles, textvariable=self.season_year, state="readonly",
+            width=6, font=("Segoe UI Semibold", 15), values=HIJRI_YEARS,
+        )
+        year_box.pack(side=RIGHT, padx=(8, 0))
+        year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
+
+        # حالة الجلسة والحماية أقصى اليسار
+        if self.session is not None:
+            info = ttk.Frame(bar, style="Toolbar.TFrame")
+            info.pack(side=LEFT)
+            ttk.Label(info, text=f"👤  {self.session.username}",
+                      font=("Segoe UI Semibold", 10), foreground=ACCENT,
+                      background=BG).pack(anchor="w")
+            ttk.Label(info, text="🔒 البيانات مشفّرة", font=("Segoe UI", 9),
+                      foreground=BRONZE, background=BG).pack(anchor="w")
+            for text, action in (
+                ("تغيير كلمة المرور", self.change_password),
+                ("مفتاح استرداد جديد", self.new_recovery_key),
+            ):
+                link = ttk.Label(info, text=text, font=("Segoe UI", 9, "underline"),
+                                 foreground=ACCENT, background=BG, cursor="hand2")
+                link.pack(anchor="w")
+                link.bind("<Button-1>", lambda _e, run=action: run())
+
+    def new_recovery_key(self) -> None:
+        """يولّد مفتاح استرداد جديداً ويعرضه — يبطل القديم."""
+        if self.session is None:
+            return
+        dialog = NewRecoveryKeyDialog(self.root, self.session.username)
+        self.root.wait_window(dialog)
+        if dialog.recovery_key:
+            RecoveryKeyDialog(self.root, dialog.recovery_key, is_new=False)
+            self.set_status("أُنشئ مفتاح استرداد جديد — المفتاح السابق لم يعد صالحاً")
+
+    def change_password(self) -> None:
+        """يغيّر كلمة مرور الجلسة الحالية. لا يمسّ ملف البيانات."""
+        if self.session is None:
+            return
+        dialog = ChangePasswordDialog(self.root, self.session.username)
+        self.root.wait_window(dialog)
+        if dialog.session is None:
+            return
+        self.session = dialog.session
+        if dialog.session.fresh_recovery_key:
+            RecoveryKeyDialog(self.root, dialog.session.fresh_recovery_key, is_new=False)
+        self.set_status("تم تغيير كلمة المرور — بياناتك كما هي")
+
+    def _on_season_change(self) -> None:
+        """يحفظ السنة الهجرية المختارة."""
+        self._settings["season_year"] = self.season_year.get()
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        self.set_status(f"موسم الحج: {self.season_year.get()}هـ")
+
+    def _report_title(self, base: str) -> str:
+        """عنوان تقرير يتضمّن موسم السنة الهجرية."""
+        year = self.season_year.get().strip()
+        return f"{base} — موسم {year}هـ" if year else base
+
+    def _build_toolbar(self) -> None:
+        bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 6, 16, 10))
+        bar.pack(fill=X)
+
+        buttons = [
+            ("➕  إضافة يدوي", self.add_manual),
+            ("📷  إضافة جوازات (صور/PDF)", self.add_images),
+            ("📁  استيراد من إكسل", self.import_from_excel),
+            ("✏️  تعديل السجل", self.edit_selected),
+            ("🗑  حذف المحدد", self.delete_selected),
+            ("📊  تصدير إكسل", self.do_export_excel),
+            ("📄  تصدير PDF", self.do_export_pdf),
+            ("✈  كشف الطيران", self.do_airline),
+            ("🏨  تسكين إكسل", self.do_rooming_excel),
+            ("🏨  تسكين PDF", self.do_rooming_pdf),
+            ("🪪  طباعة الصور", self.do_print_images),
+            ("🧹  مسح الكل", self.clear_all),
+        ]
+        # نعبّئ من اليمين لليسار ليطابق اتجاه الواجهة العربية
+        for text, cmd in buttons:
+            ttk.Button(bar, text=rtl(text), command=cmd, style="Act.TButton").pack(
+                side=RIGHT, padx=3
+            )
+
+        self.progress = ttk.Progressbar(bar, mode="determinate", length=200)
+        self.progress.pack(side=LEFT, padx=6)
+
+    # الحقول القابلة للفلترة بقائمة منسدلة (تُملأ قيمها من البيانات)
+    _FILTER_FIELDS = (
+        ("hotel", "الفندق"),
+        ("room_type", "نوع الغرفة"),
+        ("nationality_ar", "الجنسية"),
+        ("airline", "الطيران"),
+        ("sex", "الجنس"),
+        ("executive_service", "التنفيذي"),
+        ("transport", "المواصلات"),
+        ("wheelchair", "كرسي متحرك"),
+        ("notes", "ملاحظات"),
+    )
+    _ALL = "الكل"
+    # حقول يبحث فيها مربّع البحث الحر
+    _SEARCH_KEYS = (
+        "full_name_ar", "full_name_en", "passport_number", "phone",
+        "family_number", "reference_number", "room_number",
+    )
+
+    # عدد القوائم المنسدلة في الصف الأول (بجوار البحث)؛ الباقي في صف ثانٍ
+    _FILTERS_ROW1 = 3
+
+    # الأعمدة المتاحة للترتيب حسبها (المفتاح، العنوان)
+    _SORT_NONE = "— بدون ترتيب —"
+    _SORT_FIELDS = (
+        ("full_name_ar", "اسم الحاج بالعربي"),
+        ("family_number", "رقم العائلة"),
+        ("hotel", "الفندق"),
+        ("room_type", "نوع الغرفة"),
+        ("room_number", "رقم الغرفة"),
+        ("nationality_ar", "الجنسية"),
+        ("airline", "الطيران"),
+        ("birth_date", "تاريخ الميلاد"),
+        ("remaining_amount", "المبلغ المتبقي"),
+    )
+
+    def _build_filters(self) -> None:
+        outer = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 0, 16, 8))
+        outer.pack(fill=X)
+        row1 = ttk.Frame(outer, style="Toolbar.TFrame")
+        row1.pack(fill=X)
+        row2 = ttk.Frame(outer, style="Toolbar.TFrame")
+        row2.pack(fill=X, pady=(5, 0))
+
+        # الأزرار أقصى يسار الصف الأول
+        ttk.Button(row1, text=rtl("🖨  طباعة المعروض"), command=self.do_print_filtered,
+                   style="Act.TButton").pack(side=LEFT, padx=3)
+        ttk.Button(row1, text=rtl("✖  مسح الفلاتر"), command=self.clear_filters,
+                   style="Act.TButton").pack(side=LEFT, padx=3)
+
+        # ترتيب حسب: قائمة العمود + زر الاتجاه (تصاعدي/تنازلي)
+        sort_box_frame = ttk.Frame(row1, style="Toolbar.TFrame")
+        sort_box_frame.pack(side=LEFT, padx=(14, 0))
+        self.sort_dir_btn = ttk.Button(sort_box_frame, text="▲", width=3,
+                                       command=self._toggle_sort_dir, style="Act.TButton")
+        self.sort_dir_btn.pack(side=LEFT)
+        self.sort_var = StringVar(value=self._SORT_NONE)
+        sort_box = ttk.Combobox(
+            sort_box_frame, textvariable=self.sort_var, state="readonly", width=15,
+            font=("Segoe UI", 9),
+            values=[self._SORT_NONE, *(label for _k, label in self._SORT_FIELDS)],
+        )
+        sort_box.pack(side=LEFT, padx=(0, 4))
+        sort_box.bind("<<ComboboxSelected>>", lambda _e: self._apply_sort())
+        ttk.Label(sort_box_frame, text="ترتيب حسب", font=("Segoe UI", 9),
+                  background=BG, foreground=ACCENT).pack(side=LEFT, padx=(2, 0))
+
+        # مربّع البحث الحر أقصى يمين الصف الأول
+        self.filter_search = StringVar()
+        self.filter_search.trace_add("write", lambda *_a: self.refresh())
+        entry = ttk.Entry(row1, textvariable=self.filter_search, width=20,
+                          justify="right", font=("Segoe UI", 10))
+        entry.pack(side=RIGHT, padx=(0, 6))
+        ttk.Label(row1, text="🔍 بحث", font=("Segoe UI", 9),
+                  background=BG, foreground=ACCENT).pack(side=RIGHT, padx=(2, 4))
+
+        # القوائم المنسدلة موزّعة على الصفّين — من اليمين لليسار
+        self.filter_vars: dict[str, StringVar] = {}
+        self.filter_boxes: dict[str, ttk.Combobox] = {}
+        for index, (key, label) in enumerate(self._FILTER_FIELDS):
+            parent = row1 if index < self._FILTERS_ROW1 else row2
+            ttk.Label(parent, text=label, font=("Segoe UI", 9),
+                      background=BG, foreground=ACCENT).pack(side=RIGHT, padx=(2, 4))
+            var = StringVar(value=self._ALL)
+            box = ttk.Combobox(parent, textvariable=var, state="readonly",
+                               width=11, font=("Segoe UI", 9), values=[self._ALL])
+            box.pack(side=RIGHT, padx=(0, 6))
+            box.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+            self.filter_vars[key] = var
+            self.filter_boxes[key] = box
+
+    def _filter_value(self, rec: PassportData, key: str) -> str:
+        """القيمة القابلة للمقارنة في الفلتر.
+
+        فلتر نوع الغرفة يقارن بالفئة فقط (مفرد/ثنائي/ثلاثي/رباعي) دون رقم
+        الغرفة، فـ'رباعية 1' و'رباعية 9' كلاهما تحت 'رباعي'.
+        """
+        raw = str(getattr(rec, key, "") or "").strip()
+        if key == "room_type":
+            return room_category(raw)
+        return raw
+
+    def _sort_filter_values(self, key: str, values: set) -> list:
+        """يرتّب قيم القائمة: فئات الغرف بترتيب السعة، والبقية أبجدياً."""
+        if key == "room_type":
+            order = {c: i for i, c in enumerate(ROOM_CATEGORIES)}
+            return sorted(values, key=lambda v: order.get(v, 99))
+        return sorted(values)
+
+    def _populate_filters(self) -> None:
+        """يملأ قيم القوائم المنسدلة من البيانات، مع الإبقاء على الاختيار الحالي."""
+        for key, _label in self._FILTER_FIELDS:
+            values = {self._filter_value(rec, key) for rec in self.records}
+            values.discard("")
+            box = self.filter_boxes[key]
+            box["values"] = [self._ALL, *self._sort_filter_values(key, values)]
+            # إن اختفت القيمة المختارة بعد تغيّر البيانات نرجع إلى "الكل"
+            current = self.filter_vars[key].get()
+            if current != self._ALL and current not in values:
+                self.filter_vars[key].set(self._ALL)
+
+    def clear_filters(self) -> None:
+        """يعيد كل الفلاتر إلى وضع الكل ويمسح البحث."""
+        for var in self.filter_vars.values():
+            var.set(self._ALL)
+        self.filter_search.set("")
+        self.refresh()
+
+    def _row_matches(self, rec: PassportData) -> bool:
+        """هل يطابق السجل الفلاتر النشطة كلها؟"""
+        for key, _label in self._FILTER_FIELDS:
+            chosen = self.filter_vars[key].get()
+            if chosen != self._ALL and self._filter_value(rec, key) != chosen:
+                return False
+        query = self.filter_search.get().strip().lower()
+        if query:
+            haystack = " ".join(
+                str(getattr(rec, k, "") or "") for k in self._SEARCH_KEYS
+            ).lower()
+            if query not in haystack:
+                return False
+        return True
+
+    def _filter_active(self) -> bool:
+        return bool(self.filter_search.get().strip()) or any(
+            v.get() != self._ALL for v in self.filter_vars.values()
+        )
+
+    def _visible_records(self) -> list[PassportData]:
+        """السجلات المطابقة للفلتر الحالي، بترتيب العرض (يحترم الترتيب)."""
+        return [r for r in self._ordered() if self._row_matches(r)]
+
+    # ------------------------------------------------------------ الترتيب
+    def _sort_key(self, rec: PassportData, key: str):
+        """مفتاح ترتيب واعٍ بالنوع: أرقام كأرقام، والغرف بالسعة ثم الرقم."""
+        raw = (compute_remaining(rec) if key == "remaining_amount"
+               else str(getattr(rec, key, "") or "").strip())
+        empty = raw == ""       # الفارغ يأتي أخيراً دائماً
+        if key in MONEY_KEYS:
+            amount = parse_amount(raw)
+            return (empty, amount if amount is not None else 0.0, "")
+        if key == "room_type":
+            rtype = str(getattr(rec, "room_type", "") or "")
+            num = str(getattr(rec, "room_number", "") or "").strip() or room_number_in_type(rtype)
+            digits = re.match(r"(\d+)", num)
+            return (empty, room_capacity(rtype) if rtype else 99,
+                    int(digits.group(1)) if digits else 10 ** 9, num)
+        if key in ("family_number", "room_number", "reference_number"):
+            lead = re.match(r"^\s*(\d+)", raw)
+            if lead:
+                return (empty, int(lead.group(1)), raw.lower())
+        return (empty, 0, raw.lower())
+
+    def _ordered(self, records: list | None = None) -> list:
+        """السجلات بترتيب العرض الحالي — دون المساس بترتيب self.records الأصلي.
+
+        بلا عمود ترتيب يعيدها كما هي (الترتيب الأصلي)، فاختيار «بدون ترتيب»
+        يعيد الجدول كما كان.
+        """
+        records = self.records if records is None else records
+        if not self.sort_field:
+            return list(records)
+        return sorted(records, key=lambda r: self._sort_key(r, self.sort_field),
+                      reverse=self.sort_desc)
+
+    def _apply_sort(self) -> None:
+        """يضبط عمود الترتيب كعرض فقط (لا يعدّل السجلات ولا يحفظ)."""
+        label = self.sort_var.get()
+        self.sort_field = next((k for k, lbl in self._SORT_FIELDS if lbl == label), None)
+        self.refresh()
+        if self.sort_field:
+            direction = "تنازلي" if self.sort_desc else "تصاعدي"
+            self.set_status(f"العرض مرتّب حسب: {label} ({direction})")
+        else:
+            self.set_status("أُلغي الترتيب — عاد الكشف إلى ترتيبه الأصلي")
+
+    def _toggle_sort_dir(self) -> None:
+        """يعكس اتجاه الترتيب ويعيد تطبيقه."""
+        self.sort_desc = not self.sort_desc
+        self.sort_dir_btn.config(text="▼" if self.sort_desc else "▲")
+        self._apply_sort()
+
+    def _build_table(self) -> None:
+        wrap = ttk.Frame(self.root, padding=(16, 0, 16, 8))
+        wrap.pack(fill=BOTH, expand=True)
+
+        # الأعمدة معكوسة ليظهر "مسلسل" أقصى اليمين كما في الكشف الورقي
+        self.columns = tuple(reversed(FIELDS + DIAG_FIELDS))
+        cols = [f.key for f in self.columns]
+        self.tree = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="extended")
+
+        for f in self.columns:
+            self.tree.heading(f.key, text=f.label)
+            self.tree.column(f.key, width=max(f.width * 9, 70), anchor="center",
+                             stretch=False)
+
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
+        hs = ttk.Scrollbar(wrap, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vs.set, xscrollcommand=hs.set)
+
+        vs.pack(side=RIGHT, fill=Y)
+        hs.pack(side="bottom", fill=X)
+        self.tree.pack(fill=BOTH, expand=True)
+
+        self.tree.tag_configure("warn", background=WARN_BG)
+        self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
+
+        # الأعمدة أعرض من الشاشة، وTk يبدأ العرض من اليسار. في كشف عربي
+        # يجب أن يبدأ من اليمين حيث عمود "مسلسل" واسم الحاج، لا من
+        # "ملاحظات" و"الملف المصدر" في آخر الكشف.
+        self._scrolled_home = False
+        self.tree.bind("<Configure>", lambda _e: self._scroll_to_start(), add="+")
+
+    def _scroll_to_start(self) -> None:
+        """يضبط العرض الأفقي على أقصى اليمين، مرة واحدة بعد أول رسم.
+
+        التمرير لا يعمل قبل أن يرسم Tk الجدول بعرضه الحقيقي، ولا نكرّره
+        بعد نجاحه حتى لا نُلغي تمرير المستخدم كلما غيّر حجم النافذة.
+        """
+        if self._scrolled_home or not self.records:
+            return
+        if self.tree.winfo_width() <= 1:        # لم تُرسم النافذة بعد
+            return
+        self._scrolled_home = True
+        self.tree.xview_moveto(1.0)
+
+    def _build_status(self) -> None:
+        self.status = StringVar(value="جاهز — أضف صور الجوازات أو استورد ملف إكسل للبدء")
+        bar = ttk.Frame(self.root, padding=(16, 6))
+        bar.pack(fill=X)
+        self.status_label = ttk.Label(bar, textvariable=self.status,
+                                      font=("Segoe UI", 10), foreground="#444")
+        self.status_label.pack(side=RIGHT)
+        self.count_label = ttk.Label(bar, text="", font=("Segoe UI", 10), foreground=ACCENT)
+        self.count_label.pack(side=LEFT)
+        ttk.Label(bar, text="💾 الحفظ تلقائي", font=("Segoe UI", 9),
+                  foreground="#777").pack(side=LEFT, padx=12)
+
+    # ------------------------------------------------------------ حفظ واستعادة
+    def _load_saved_data(self) -> None:
+        """يستعيد الكشف المحفوظ من الجلسة السابقة."""
+        try:
+            records, note = load_records(self.data_path, self.session)
+        except Exception as exc:
+            self.set_status(f"تعذّر تحميل البيانات المحفوظة: {exc}", warn=True)
+            return
+
+        self.records = records
+        self.refresh()
+
+        if note:
+            messagebox.showwarning("ملف البيانات", note)
+            self.set_status("تم البدء بعد مشكلة في ملف البيانات", warn=True)
+        elif records:
+            self.set_status(f"تمت استعادة {len(records)} حاج من آخر جلسة")
+
+    def save_data(self) -> bool:
+        """يحفظ الكشف الحالي. يعيد True عند النجاح."""
+        try:
+            save_records(self.records, self.data_path, self.session)
+            return True
+        except Exception as exc:
+            self.set_status(f"تعذّر الحفظ: {exc}", warn=True)
+            messagebox.showerror(
+                "تعذّر الحفظ",
+                f"لم يتمكن البرنامج من حفظ البيانات:\n\n{exc}\n\n"
+                f"المسار: {self.data_path}\n\n"
+                "صدّر نسخة إكسل الآن حتى لا تفقد العمل.",
+            )
+            return False
+
+    def _on_close(self) -> None:
+        if self.save_data():
+            self.root.destroy()
+            return
+        # الحفظ فشل — لا نغلق دون تحذير المستخدم من ضياع العمل
+        if messagebox.askyesno(
+            "الخروج دون حفظ",
+            "فشل حفظ البيانات. الخروج الآن يعني فقدان التعديلات.\n\nهل تريد الخروج فعلاً؟",
+        ):
+            self.root.destroy()
+
+    # ------------------------------------------------------------------ أدوات
+    def set_status(self, text: str, *, warn: bool = False) -> None:
+        self.status.set(text)
+        self.status_label.configure(foreground="#B26A00" if warn else "#444")
+
+    def refresh(self) -> None:
+        """يعيد رسم الجدول من self.records مطبّقاً الفلاتر النشطة.
+
+        رقم الصف (iid) يبقى فهرس السجل الأصلي دائماً، فلا يختلّ التعديل ولا
+        الحذف عند إخفاء صفوف بالفلترة. والمسلسل المعروض يبقى على ترتيب
+        السجل الأصلي في الكشف الكامل.
+        """
+        self._populate_filters()
+        self.tree.delete(*self.tree.get_children())
+        # iid يبقى فهرس السجل في self.records الأصلي، فلا يختلّ التعديل والحذف
+        # مهما تغيّر ترتيب العرض أو أُخفيت صفوف بالفلترة.
+        orig_index = {id(rec): i for i, rec in enumerate(self.records)}
+        shown = 0
+        for rec in self._ordered():
+            if not self._row_matches(rec):
+                continue
+            # المسلسل يعاد ترقيمه 1..ن على الصفوف المعروضة بعد الفلترة والترتيب
+            shown += 1
+            data = row_dict(rec, shown)
+            values = [data.get(f.key, "") for f in self.columns]
+            self.tree.insert("", END, iid=str(orig_index[id(rec)]), values=values,
+                             tags=("warn",) if data.get("warnings") else ())
+
+        total = len(self.records)
+        if self._filter_active() and shown != total:
+            self.count_label.configure(text=f"المعروض: {shown} من {total}")
+        else:
+            self.count_label.configure(text=f"إجمالي الحجاج: {total}")
+
+        self._scroll_to_start()
+
+    def _selected_indices(self) -> list[int]:
+        return sorted(int(i) for i in self.tree.selection())
+
+    # ------------------------------------------------------------ إضافة يدوية
+    def add_manual(self) -> None:
+        """يفتح سجلاً فارغاً لإدخال بيانات حاج يدوياً."""
+        record = PassportData(source_file="إدخال يدوي")
+        EditDialog(
+            self.root, record, on_save=self._after_manual_add,
+            title="إضافة حاج جديد", save_text="إضافة", session=self.session,
+        )
+
+    def _after_manual_add(self, record: PassportData) -> None:
+        self.records.append(record)
+        self.refresh()
+        self.save_data()
+        # ننتقل إلى السجل الجديد ونحدّده ليراه المستخدم مباشرة
+        last = str(len(self.records) - 1)
+        self.tree.selection_set(last)
+        self.tree.see(last)
+        name = record.full_name_ar or record.full_name_en or "بدون اسم"
+        self.set_status(f"تمت إضافة: {name}")
+
+    # ------------------------------------------------------------- إضافة صور
+    def add_images(self) -> None:
+        if not self.tesseract_path:
+            self.tesseract_path = configure_tesseract()
+            if not self.tesseract_path:
+                messagebox.showerror(
+                    "Tesseract غير موجود",
+                    "برنامج Tesseract OCR غير مثبّت.\n\n"
+                    "ثبّته من:\nhttps://github.com/UB-Mannheim/tesseract/wiki\n\n"
+                    "أو عبر الأمر:\nwinget install UB-Mannheim.TesseractOCR",
+                )
+                return
+
+        paths = filedialog.askopenfilenames(
+            title="اختر صور أو ملفات PDF للجوازات", filetypes=SCAN_TYPES
+        )
+        if not paths:
+            return
+
+        self.progress.configure(maximum=len(paths), value=0)
+        self.set_status(f"جارٍ قراءة {len(paths)} ملف…")
+        self._disable_toolbar(True)
+        self._scan_state = {"failures": [], "notes": [], "added": 0}
+
+        # القراءة في خيط منفصل حتى لا تتجمّد الواجهة
+        threading.Thread(target=self._scan_worker, args=(list(paths),), daemon=True).start()
+        self.root.after(100, self._drain_results, len(paths))
+
+    def _scan_worker(self, paths: list[str]) -> None:
+        """يقرأ كل ملف (صورة أو PDF) ويرسل النتائج عبر قائمة الانتظار."""
+        for p in paths:
+            name = Path(p).name
+            try:
+                if Path(p).suffix.lower() == ".pdf":
+                    # صفحة PDF واحدة قد تحمل جوازاً، والملف قد يحمل عدة جوازات
+                    def report(page, total, _n=name):
+                        self.results.put(("progress", f"{_n}: صفحة {page}/{total}"))
+
+                    records, notes = extract_from_pdf(p, progress=report)
+                    for note in notes:
+                        self.results.put(("note", f"{name} — {note}"))
+                    self.results.put(("ok", (records, p)))
+                else:
+                    self.results.put(("ok", ([extract_passport(p)], p)))
+            except (MRZError, PDFError) as exc:
+                self.results.put(("fail", (name, str(exc))))
+            except Exception:
+                self.results.put(("fail", (name, traceback.format_exc(limit=2))))
+            self.results.put(("step", None))
+        self.results.put(("done", None))
+
+    def _attach_source_image(self, record: PassportData, source: str) -> None:
+        """يحفظ ملف المصدر (صورة الجواز أو PDF جواز واحد) كصورة جواز للحاج.
+
+        يجري على خيط الواجهة حيث تتوفّر الجلسة للتشفير. فشل الحفظ لا يمنع
+        إضافة السجل.
+        """
+        from . import images as imgmod
+        try:
+            if not record.image_id:
+                record.image_id = imgmod.new_image_id()
+            imgmod.save_image(record.image_id, imgmod.PASSPORT, source, self.session)
+        except Exception:
+            pass
+
+    def _drain_results(self, total: int) -> None:
+        """يُستدعى في خيط الواجهة لسحب النتائج من الخيط الخلفي."""
+        state = self._scan_state
+        finished = False
+
+        while True:
+            try:
+                kind, payload = self.results.get_nowait()
+            except queue.Empty:
+                break
+            if kind == "ok":
+                recs, source = payload
+                self.records.extend(recs)
+                state["added"] += len(recs)
+                # ملف واحد أنتج حاجاً واحداً -> نحفظ صورته كصورة جواز تلقائياً
+                if source and len(recs) == 1:
+                    self._attach_source_image(recs[0], source)
+            elif kind == "fail":
+                state["failures"].append(payload)
+            elif kind == "note":
+                state["notes"].append(payload)
+            elif kind == "progress":
+                self.set_status(f"جارٍ القراءة… {payload}")
+            elif kind == "step":
+                self.progress.step(1)
+            else:
+                finished = True
+
+        self.refresh()
+
+        if not finished:
+            self.root.after(100, self._drain_results, total)
+            return
+
+        self._disable_toolbar(False)
+        self.progress.configure(value=0)
+
+        failures, notes, added = state["failures"], state["notes"], state["added"]
+        if added:
+            self.save_data()
+        ok_files = total - len(failures)
+        # نحسب التحذيرات على السجلات المضافة الآن فقط، لا على الجدول كله
+        unsure = sum(1 for r in self.records[-added:] if r.warnings) if added else 0
+
+        msg = f"تمت قراءة {ok_files} من {total} ملف — أضيف {added} حاج"
+        if unsure:
+            msg += f" ({unsure} يحتاج مراجعة — مظلّل بالأصفر)"
+        self.set_status(msg, warn=bool(failures or unsure))
+
+        if failures:
+            detail = "\n\n".join(f"• {n}\n{e}" for n, e in failures[:8])
+            if len(failures) > 8:
+                detail += f"\n\n… و{len(failures) - 8} ملف آخر"
+            messagebox.showwarning("ملفات تعذّرت قراءتها", detail)
+        elif notes:
+            messagebox.showinfo("ملاحظات القراءة", "\n\n".join(notes[:12]))
+
+    def _disable_toolbar(self, busy: bool) -> None:
+        state = "disabled" if busy else "normal"
+        for child in self.root.winfo_children():
+            for w in child.winfo_children():
+                if isinstance(w, ttk.Button):
+                    w.configure(state=state)
+
+    # ----------------------------------------------------------- إكسل / PDF
+    def import_from_excel(self) -> None:
+        path = filedialog.askopenfilename(title="اختر ملف الإكسل", filetypes=EXCEL_TYPES)
+        if not path:
+            return
+        try:
+            records, notes = import_excel(path)
+        except Exception as exc:
+            messagebox.showerror("خطأ في الاستيراد", f"تعذّر قراءة الملف:\n\n{exc}")
+            return
+
+        if not records:
+            messagebox.showwarning("لا توجد بيانات", "\n\n".join(notes) or "الملف لا يحتوي بيانات.")
+            return
+
+        self.records.extend(records)
+        self.refresh()
+        self.save_data()
+        self.set_status(f"تم استيراد {len(records)} سجل من {Path(path).name}")
+        if notes:
+            messagebox.showinfo("ملاحظات الاستيراد", "\n\n".join(notes))
+
+    def _default_name(self, ext: str) -> str:
+        return f"كشف_الحجاج_{date.today().isoformat()}.{ext}"
+
+    def _filter_title(self) -> str:
+        """عنوان يصف الفلتر النشط، ليظهر في ترويسة الطباعة."""
+        parts = []
+        for key, label in self._FILTER_FIELDS:
+            value = self.filter_vars[key].get()
+            if value != self._ALL:
+                parts.append(value)
+        query = self.filter_search.get().strip()
+        if query:
+            parts.append(f"بحث: {query}")
+        base = self._report_title("كشف الحجاج")
+        return f"{base} — " + " • ".join(parts) if parts else base
+
+    def do_print_filtered(self) -> None:
+        """يطبع المعروض: المطابق للفلتر إن وُجد، وإلا الكشف كاملاً."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+
+        # فصل الغرف يطبّق فقط حين يكون فلتر «نوع الغرفة» نشطاً؛ بقية الفلاتر
+        # تطبع قائمة عادية غير مفصولة. أما فصل كامل الغرف فمن زر كشف التسكين.
+        by_room = self.filter_vars["room_type"].get() != self._ALL
+
+        scope = (f"سيُطبع {len(records)} حاجاً (المعروض حسب الفلتر)"
+                 if self._filter_active()
+                 else f"سيُطبع كامل الكشف ({len(records)} حاجاً)")
+        if by_room:
+            scope += "\nمفصولاً حسب الغرف"
+        scope += "\n\nستُفتح معاينة الكشف — اطبعها (Ctrl+P) واختر الطابعة. متابعة؟"
+        if not messagebox.askyesno("طباعة", scope):
+            return
+
+        import os
+        import tempfile
+        path = os.path.join(tempfile.gettempdir(),
+                            f"hajj_print_{date.today().isoformat()}.pdf")
+        try:
+            export_pdf(records, path, title=self._filter_title(), group_by_room=by_room)
+        except Exception as exc:
+            messagebox.showerror("خطأ في التجهيز للطباعة", str(exc))
+            return
+
+        # نفتح المعاينة في عارض PDF؛ منها يطبع المستخدم ويختار الطابعة —
+        # بلا نافذة «حفظ باسم» ولا طباعة صامتة.
+        try:
+            os.startfile(path)
+        except OSError as exc:
+            messagebox.showerror(
+                "تعذّر فتح المعاينة",
+                f"تعذّر فتح ملف الطباعة للمعاينة:\n{exc}\n\n"
+                "تأكد من وجود تطبيق لفتح ملفات PDF.",
+            )
+            return
+        self.set_status(
+            f"فُتحت معاينة الطباعة ({len(records)} حاج) — اطبعها واختر الطابعة"
+        )
+
+    def do_print_images(self) -> None:
+        """يجمع صور نوع مختار (جواز/هوية/تصريح/الكل) ويفتح معاينتها للطباعة."""
+        if not self._require_records():
+            return
+
+        from . import images as imgmod
+        choice = ImageKindDialog(self.root)
+        self.root.wait_window(choice)
+        if choice.kinds is None:            # أُلغِي
+            return
+        kinds = choice.kinds
+
+        from .pdf_io import export_passports_pdf
+        import os
+        import tempfile
+        tmpdir = tempfile.mkdtemp(prefix="hajj_img_")
+        entries: list[tuple[str, str]] = []
+        for rec in self._ordered():
+            name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+            for kind in kinds:
+                if not imgmod.has_image(rec.image_id, kind):
+                    continue
+                data = imgmod.load_image(rec.image_id, kind, self.session)
+                if not data:
+                    continue
+                # ملف PDF مرفوع -> صفحة لكل ورقة؛ الصورة -> صفحة واحدة
+                pages = imgmod.render_pages_png(data)
+                for page_no, page_bytes in enumerate(pages, start=1):
+                    img_path = os.path.join(tmpdir, f"{len(entries)}.img")
+                    with open(img_path, "wb") as fh:
+                        fh.write(page_bytes)
+                    caption = name
+                    if len(kinds) > 1:
+                        caption += f" — {imgmod.KIND_LABELS[kind]}"
+                    if len(pages) > 1:
+                        caption += f" ({page_no})"
+                    entries.append((caption, img_path))
+
+        if not entries:
+            messagebox.showinfo(
+                "لا توجد صور",
+                "لم تُرفَق صور من النوع المطلوب بعد.\n"
+                "أضف الصور من زر «تعديل السجل» ← تبويب «الصور».",
+            )
+            return
+
+        if not messagebox.askyesno(
+            "طباعة الصور",
+            f"سيُجهَّز {len(entries)} صورة في ملف واحد، وتُفتح معاينته للطباعة.\n\n"
+            "متابعة؟",
+        ):
+            return
+
+        pdf_path = os.path.join(tempfile.gettempdir(),
+                                f"hajj_images_{date.today().isoformat()}.pdf")
+        try:
+            export_passports_pdf(entries, pdf_path, title="صور الحجاج")
+        except Exception as exc:
+            messagebox.showerror("خطأ في تجهيز الصور", str(exc))
+            return
+        finally:
+            # نحذف صور فكّ التشفير المؤقتة فوراً (الـ PDF يحوي نسخها)
+            for _caption, img_path in entries:
+                try:
+                    os.remove(img_path)
+                except OSError:
+                    pass
+            try:
+                os.rmdir(tmpdir)
+            except OSError:
+                pass
+
+        try:
+            os.startfile(pdf_path)
+        except OSError as exc:
+            messagebox.showerror("تعذّر فتح المعاينة", str(exc))
+            return
+        self.set_status(f"فُتحت معاينة {len(entries)} صورة — اطبعها واختر الطابعة")
+
+    def do_airline(self) -> None:
+        """يفتح نافذة كشف الطيران: تصدير إكسل/PDF ونسخ إدخالات أماديوس."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+        AirlineDialog(self.root, records)
+
+    def do_export_excel(self) -> None:
+        if not self._require_records():
+            return
+        path = filedialog.asksaveasfilename(
+            title="حفظ ملف الإكسل", defaultextension=".xlsx",
+            initialfile=self._default_name("xlsx"), filetypes=EXCEL_TYPES,
+        )
+        if not path:
+            return
+        try:
+            export_excel(self._ordered(), path)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc))
+            return
+        self.set_status(f"تم حفظ الإكسل: {path}")
+        self._offer_open(path)
+
+    def do_export_pdf(self) -> None:
+        if not self._require_records():
+            return
+        path = filedialog.asksaveasfilename(
+            title="حفظ ملف PDF", defaultextension=".pdf",
+            initialfile=self._default_name("pdf"),
+            filetypes=(("ملفات PDF", "*.pdf"), ("كل الملفات", "*.*")),
+        )
+        if not path:
+            return
+        cards = messagebox.askyesno(
+            "بطاقات تفصيلية",
+            "هل تريد إضافة صفحة بطاقة مفصّلة لكل حاج بعد الجدول؟",
+        )
+        try:
+            export_pdf(self._ordered(), path, title=self._report_title("كشف الحجاج"),
+                       with_cards=cards)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc))
+            return
+        self.set_status(f"تم حفظ PDF: {path}")
+        self._offer_open(path)
+
+    def _confirm_rooming(self):
+        """يفحص وجود غرف ويعرض ملخّصاً. يعيد عدد الغرف أو None عند الإلغاء."""
+        if not self._require_records():
+            return None
+
+        from .rooming import group_records_by_room
+        rooms, unplaced = group_records_by_room(self.records)
+        if not rooms:
+            messagebox.showinfo(
+                "لا يمكن بناء كشف التسكين",
+                "لا يوجد حاج له نوع غرفة أو رقم غرفة.\n"
+                "أضف «نوع الغرفة» للحجاج (مثل: رباعي 2، ثلاثي 3) ثم أعد المحاولة.",
+            )
+            return None
+
+        over = sum(1 for _h, cap, _n, occ in rooms if len(occ) > cap)
+        summary = f"عدد الغرف: {len(rooms)}\n"
+        if over:
+            summary += f"⚠ غرف تجاوزت سعتها: {over}\n"
+        if unplaced:
+            summary += f"⚠ حجاج بلا نوع غرفة (لن يُدرجوا): {len(unplaced)}\n"
+        summary += "\nمتابعة؟"
+        if not messagebox.askyesno("كشف التسكين", summary):
+            return None
+        return len(rooms)
+
+    def do_rooming_pdf(self) -> None:
+        """يصدّر كشف التسكين إلى PDF — بنفس أعمدة الطباعة، مجموعاً بالغرف."""
+        rooms = self._confirm_rooming()
+        if rooms is None:
+            return
+        path = filedialog.asksaveasfilename(
+            title="حفظ كشف التسكين PDF", defaultextension=".pdf",
+            initialfile=self._default_name("pdf").replace("كشف_الحجاج", "كشف_التسكين"),
+            filetypes=(("ملفات PDF", "*.pdf"), ("كل الملفات", "*.*")),
+        )
+        if not path:
+            return
+        self._do_rooming_export(
+            lambda p: export_pdf(self.records, p,
+                                 title=self._report_title("كشف التسكين"),
+                                 group_by_room=True),
+            path, rooms,
+        )
+
+    def do_rooming_excel(self) -> None:
+        """يصدّر كشف التسكين إلى إكسل — بنفس أعمدة الطباعة، مجموعاً بالغرف."""
+        rooms = self._confirm_rooming()
+        if rooms is None:
+            return
+        path = filedialog.asksaveasfilename(
+            title="حفظ كشف التسكين إكسل", defaultextension=".xlsx",
+            initialfile=self._default_name("xlsx").replace("كشف_الحجاج", "كشف_التسكين"),
+            filetypes=EXCEL_TYPES,
+        )
+        if not path:
+            return
+        from .excel_io import export_grouped_excel
+        self._do_rooming_export(
+            lambda p: export_grouped_excel(self.records, p,
+                                           title=self._report_title("كشف التسكين")),
+            path, rooms,
+        )
+
+    def _do_rooming_export(self, export_fn, path: str, rooms: int) -> None:
+        """ينفّذ التصدير مع معالجة موحّدة للأخطاء."""
+        try:
+            export_fn(path)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc))
+            return
+        self.set_status(f"تم حفظ كشف التسكين: {rooms} غرفة")
+        self._offer_open(path)
+
+    def _require_records(self) -> bool:
+        if not self.records:
+            messagebox.showinfo("لا توجد بيانات", "أضف صور جوازات أو استورد ملف إكسل أولاً.")
+            return False
+        return True
+
+    def _offer_open(self, path: str) -> None:
+        if messagebox.askyesno("تم الحفظ", f"تم حفظ الملف بنجاح:\n{path}\n\nهل تريد فتحه الآن؟"):
+            import os
+            try:
+                os.startfile(path)
+            except Exception as exc:
+                messagebox.showwarning("تعذّر الفتح", str(exc))
+
+    # ------------------------------------------------------------ تحرير/حذف
+    def edit_selected(self) -> None:
+        idx = self._selected_indices()
+        if not idx:
+            messagebox.showinfo("لم يتم التحديد", "اختر سجلاً من الجدول أولاً.")
+            return
+        EditDialog(self.root, self.records[idx[0]], on_save=self._after_edit,
+                   session=self.session)
+
+    def _after_edit(self, rec: PassportData) -> None:
+        self.refresh()
+        self.save_data()
+        self.set_status("تم حفظ التعديلات")
+
+    def delete_selected(self) -> None:
+        idx = self._selected_indices()
+        if not idx:
+            messagebox.showinfo("لم يتم التحديد", "اختر سجلاً أو أكثر للحذف.")
+            return
+        if not messagebox.askyesno("تأكيد الحذف", f"حذف {len(idx)} سجل؟"):
+            return
+        from . import images as imgmod
+        for i in reversed(idx):
+            imgmod.delete_all(self.records[i].image_id)   # حذف صور الحاج المشفّرة
+            del self.records[i]
+        self.refresh()
+        self.save_data()
+        self.set_status(f"تم حذف {len(idx)} سجل")
+
+    def clear_all(self) -> None:
+        if not self.records:
+            return
+        if messagebox.askyesno(
+            "مسح الكل",
+            f"حذف جميع السجلات ({len(self.records)})؟\n\n"
+            "سيُحذف الكشف المحفوظ أيضاً. تبقى نسخة احتياطية بامتداد .bak.",
+        ):
+            from . import images as imgmod
+            for rec in self.records:
+                imgmod.delete_all(rec.image_id)      # حذف كل الصور المشفّرة
+            self.records.clear()
+            self.refresh()
+            self.save_data()
+            self.set_status("تم مسح جميع السجلات")
+
+
+class AirlineDialog(Toplevel):
+    """كشف الطيران: تصدير إكسل/PDF (إنجليزي LTR) ونسخ إدخالات أماديوس."""
+
+    _ALL_FLIGHTS = "كل الرحلات"
+
+    def __init__(self, parent, records: list[PassportData]) -> None:
+        super().__init__(parent)
+        self._all = records
+        self.title("كشف الطيران — Flight Manifest")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+
+        # اختيار الرحلة/الطيران + عدد الركّاب المطابق
+        top = ttk.Frame(outer)
+        top.pack(fill=X)
+        self._count_label = ttk.Label(top, font=("Segoe UI Semibold", 11),
+                                      foreground=ACCENT)
+        self._count_label.pack(side=LEFT)
+        self._flight_var = StringVar(value=self._ALL_FLIGHTS)
+        box = ttk.Combobox(top, textvariable=self._flight_var, state="readonly",
+                           width=24, font=("Segoe UI", 10),
+                           values=self._flight_combo_values())
+        box.pack(side=RIGHT)
+        box.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
+        ttk.Label(top, text="الطيران:", font=("Segoe UI", 10),
+                  foreground=ACCENT).pack(side=RIGHT, padx=(2, 5))
+
+        ttk.Label(outer, foreground="#666", font=("Segoe UI", 9), justify="right",
+                  text=rtl("الأعمدة (إنجليزي، يسار←يمين): # • Last • First • "
+                           "Passport • Expiry • DOB • Gender • Nationality • "
+                           "Class • Family • PNR")).pack(anchor="e", pady=(4, 10))
+
+        row = ttk.Frame(outer)
+        row.pack(anchor="e", pady=(0, 10))
+        ttk.Button(row, text=rtl("📊  تصدير إكسل"), style="Act.TButton",
+                   command=self._excel).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
+                   command=self._pdf).pack(side=RIGHT, padx=3)
+
+        ttk.Separator(outer, orient="horizontal").pack(fill=X, pady=8)
+        ttk.Label(outer, text="إدخالات أماديوس — انقر نقراً مزدوجاً على راكب لنسخ إدخاله:",
+                  font=("Segoe UI Semibold", 10), foreground=ACCENT).pack(anchor="e")
+
+        table_frame = ttk.Frame(outer)
+        table_frame.pack(fill=BOTH, expand=True, pady=(6, 8))
+        scroll = ttk.Scrollbar(table_frame, orient="vertical")
+        scroll.pack(side=RIGHT, fill=Y)
+        self._tree = ttk.Treeview(table_frame, columns=("name", "amadeus"),
+                                  show="headings", selectmode="browse", height=11,
+                                  yscrollcommand=scroll.set)
+        self._tree.heading("name", text="الراكب")
+        self._tree.heading("amadeus", text="إدخال أماديوس")
+        self._tree.column("name", width=150, anchor="center", stretch=False)
+        self._tree.column("amadeus", width=520, anchor="w")
+        self._tree.pack(side=LEFT, fill=BOTH, expand=True)
+        scroll.config(command=self._tree.yview)
+        self._tree.bind("<Double-1>", lambda _e: self._copy_selected())
+
+        self._entry_by_iid: dict[str, str] = {}
+        self._amadeus = ""
+        self._rebuild()          # يملأ القائمة والعدّاد حسب الرحلة المختارة
+
+        bottom = ttk.Frame(outer)
+        bottom.pack(anchor="e")
+        ttk.Button(bottom, text=rtl("📋  نسخ إدخال الراكب المحدد"), style="Act.TButton",
+                   command=self._copy_selected).pack(side=RIGHT, padx=3)
+        ttk.Button(bottom, text=rtl("📋  نسخ كل الإدخالات"), style="Act.TButton",
+                   command=self._copy_amadeus).pack(side=RIGHT, padx=3)
+        ttk.Button(bottom, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    def _flight_combo_values(self) -> list[str]:
+        """قيم قائمة الرحلات: «كل الرحلات» + الرحلات الفريدة غير الفارغة مرتّبة."""
+        flights = sorted({str(r.airline or "").strip()
+                          for r in self._all if str(r.airline or "").strip()})
+        return [self._ALL_FLIGHTS, *flights]
+
+    def _current(self) -> list[PassportData]:
+        """الركّاب المطابقون للرحلة المختارة (أو الجميع)."""
+        sel = self._flight_var.get()
+        if sel == self._ALL_FLIGHTS:
+            return list(self._all)
+        return [r for r in self._all if str(r.airline or "").strip() == sel]
+
+    @property
+    def _default(self) -> str:
+        sel = self._flight_var.get()
+        suffix = "" if sel == self._ALL_FLIGHTS else f"_{re.sub(r'[^\w -]', '', sel).strip()}"
+        return f"كشف_الطيران{suffix}_{date.today().isoformat()}"
+
+    def _rebuild(self) -> None:
+        """يعيد ملء قائمة أماديوس والعدّاد حسب الرحلة المختارة."""
+        from .airline import amadeus_entries, amadeus_entry, split_name
+        records = self._current()
+        self._tree.delete(*self._tree.get_children())
+        self._entry_by_iid = {}
+        self._amadeus = amadeus_entries(records)
+        for i, rec in enumerate(records):
+            entry = amadeus_entry(rec)
+            if not entry:
+                continue
+            last, first = split_name(rec)
+            display = rec.full_name_ar or f"{first} {last}".strip() or "—"
+            iid = str(i)
+            self._tree.insert("", END, iid=iid,
+                              values=(display, entry.replace("\n", "   |   ")))
+            self._entry_by_iid[iid] = entry
+        self._count_label.config(text=f"عدد الركّاب: {len(records)}")
+
+    def _copy_selected(self) -> None:
+        sel = self._tree.selection()
+        if not sel:
+            messagebox.showinfo("لم يتم التحديد", "اختر راكباً من القائمة أولاً.",
+                                parent=self)
+            return
+        entry = self._entry_by_iid.get(sel[0], "")
+        if entry:
+            self.clipboard_clear()
+            self.clipboard_append(entry)
+            name = self._tree.item(sel[0], "values")[0]
+            self.set_title_status(f"نُسخ إدخال: {name}")
+
+    def set_title_status(self, text: str) -> None:
+        """يعرض تأكيداً موجزاً في عنوان النافذة (بلا نافذة منبثقة لكل نسخة)."""
+        self.title(f"كشف الطيران — {text}")
+        self.after(1800, lambda: self.title("كشف الطيران — Flight Manifest"))
+
+    def _save_path(self, ext: str) -> str | None:
+        return filedialog.asksaveasfilename(
+            parent=self, title="حفظ كشف الطيران", defaultextension=f".{ext}",
+            initialfile=f"{self._default}.{ext}",
+            filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")),
+        )
+
+    def _run(self, export_fn, ext: str) -> None:
+        path = self._save_path(ext)
+        if not path:
+            return
+        try:
+            export_fn(self._current(), path)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
+                                 parent=self)
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
+            return
+        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
+            import os
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
+
+    def _excel(self) -> None:
+        from .airline import export_airline_excel
+        self._run(export_airline_excel, "xlsx")
+
+    def _pdf(self) -> None:
+        from .pdf_io import export_airline_pdf
+        self._run(export_airline_pdf, "pdf")
+
+    def _copy_amadeus(self) -> None:
+        if not self._amadeus:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(self._amadeus)
+        messagebox.showinfo("نُسخ", "نُسخت إدخالات أماديوس — الصقها في النظام.",
+                            parent=self)
+
+
+class ImageKindDialog(Toplevel):
+    """اختيار نوع الصور المراد طباعتها. يضبط self.kinds أو يبقيه None عند الإلغاء."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.kinds: list[str] | None = None
+        self.title("طباعة الصور")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .images import ID_CARD, PASSPORT, PERMIT, PHOTO
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text="اختر نوع الصور للطباعة:",
+                  font=("Segoe UI Semibold", 11), foreground=ACCENT).pack(
+            anchor="e", pady=(0, 10))
+
+        self._choice = StringVar(value="passport")
+        self._map = {
+            "passport": [PASSPORT],
+            "id": [ID_CARD],
+            "permit": [PERMIT],
+            "photo": [PHOTO],
+            "all": [PASSPORT, ID_CARD, PERMIT, PHOTO],
+        }
+        for value, label in (("passport", "صور الجوازات"), ("id", "صور الهوية"),
+                             ("permit", "التصاريح السعودية"),
+                             ("photo", "الصور الشخصية"), ("all", "كل الصور")):
+            ttk.Radiobutton(outer, text=label, value=value,
+                            variable=self._choice).pack(anchor="e", pady=2)
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(14, 0))
+        ttk.Button(btns, text="طباعة", style="Act.TButton",
+                   command=self._ok).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إلغاء", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _ok(self) -> None:
+        self.kinds = self._map[self._choice.get()]
+        self.destroy()
+
+
+class EditDialog(Toplevel):
+    """نافذة تعديل بيانات حاج واحد، موزّعة على تبويبات حسب نوع البيانات."""
+
+    # التبويبات ومحتواها. الحقول غير المذكورة تُضاف إلى "أخرى".
+    TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("بيانات الحاج", ("family_number", "reference_number", "full_name_ar",
+                          "full_name_en", "phone")),
+        ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
+                    "expiry_date")),
+        ("السفر", ("airline", "flight_number", "travel_class", "pnr",
+                   "arrival_date", "arrival_time", "departure_date",
+                   "departure_time", "transport")),
+        ("الإقامة والخدمات", ("hotel", "room_type", "room_number",
+                              "executive_service", "wheelchair", "hady")),
+        ("المالية", ("program_value", "paid_amount")),
+        ("ملاحظات", ("notes", "staff")),
+    )
+
+    def __init__(self, parent, record: PassportData, on_save, *,
+                 title: str = "تعديل بيانات الحاج",
+                 save_text: str = "حفظ", session=None) -> None:
+        super().__init__(parent)
+        self.record = record
+        self.on_save = on_save
+        self.session = session
+        self.vars: dict[str, StringVar] = {}
+        # عمليات الصور المؤجّلة حتى الحفظ: النوع -> مسار جديد أو "DELETE" أو None
+        self._pending_images: dict[str, str | None] = {}
+        self._thumb_refs: dict[str, object] = {}    # مراجع لمنع حذف الصور من الذاكرة
+
+        self.title(title)
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=14)
+        outer.pack(fill=BOTH, expand=True)
+
+        notebook = ttk.Notebook(outer)
+        notebook.pack(fill=BOTH, expand=True)
+
+        by_key = {f.key: f for f in EDITABLE}
+        placed: set[str] = set()
+
+        for tab_title, keys in self.TABS:
+            fields = [by_key[k] for k in keys if k in by_key]
+            if not fields:
+                continue
+            placed.update(f.key for f in fields)
+            notebook.add(self._make_tab(notebook, fields), text=tab_title)
+
+        leftover = [f for f in EDITABLE if f.key not in placed]
+        if leftover:
+            notebook.add(self._make_tab(notebook, leftover), text="أخرى")
+
+        notebook.add(self._build_images_tab(notebook), text="الصور")
+
+        # المتبقي محسوب تلقائياً، فنعرضه للقراءة فقط
+        self.remaining = ttk.Label(
+            outer, font=("Segoe UI Semibold", 10), foreground=ACCENT
+        )
+        self.remaining.pack(anchor="e", pady=(10, 0))
+        self._update_remaining()
+        for key in ("program_value", "paid_amount"):
+            if key in self.vars:
+                self.vars[key].trace_add("write", lambda *_a: self._update_remaining())
+
+        if record.warnings:
+            ttk.Label(
+                outer, text="⚠ " + " | ".join(record.warnings), foreground="#B26A00",
+                font=("Segoe UI", 9), wraplength=640, justify="right",
+            ).pack(anchor="e", pady=(8, 0))
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(14, 0))
+        ttk.Button(btns, text=save_text, command=self._save,
+                   style="Act.TButton").pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إلغاء", command=self.destroy,
+                   style="Act.TButton").pack(side=RIGHT)
+
+        self.bind("<Return>", lambda _e: self._save())
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    def _make_tab(self, parent, fields) -> ttk.Frame:
+        """يبني تبويباً بعمودين: العنوان يميناً وحقل الإدخال يساره."""
+        frame = ttk.Frame(parent, padding=14)
+        half = (len(fields) + 1) // 2
+
+        for i, f in enumerate(fields):
+            col = 0 if i < half else 2
+            row = i if i < half else i - half
+            var = StringVar(value=getattr(self.record, f.key, ""))
+            self.vars[f.key] = var
+
+            label = f.label
+            if f.key in MRZ_FILLED:
+                label += " *"          # نجمة: مقروء من الجواز
+            ttk.Label(frame, text=label, font=("Segoe UI", 10)).grid(
+                row=row, column=col + 1, sticky="e", padx=(16, 6), pady=5
+            )
+            entry = ttk.Entry(frame, textvariable=var, width=26, justify="center")
+            entry.grid(row=row, column=col, sticky="w", pady=5)
+            install_entry_editing(entry)      # نسخ/لصق/قص + قائمة يمين
+        return frame
+
+    _IMAGE_TYPES = (
+        ("صور وملفات PDF", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp *.pdf"),
+        ("صور", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp"),
+        ("ملفات PDF", "*.pdf"),
+        ("كل الملفات", "*.*"),
+    )
+
+    def _build_images_tab(self, parent) -> ttk.Frame:
+        """تبويب الصور: الجواز والشخصية والهوية والتصريح — تُحفظ مشفّرة (شبكة 2×2)."""
+        frame = ttk.Frame(parent, padding=12)
+        self._img_preview: dict[str, ttk.Label] = {}
+        from .images import KINDS, KIND_LABELS
+        for index, kind in enumerate(KINDS):
+            row, base = divmod(index, 2)
+            col = 1 - base                    # RTL: أول صورة أقصى اليمين
+            box = ttk.Frame(frame, padding=6)
+            box.grid(row=row, column=col, padx=10, pady=4, sticky="n")
+            ttk.Label(box, text=KIND_LABELS[kind], font=("Segoe UI Semibold", 10),
+                      foreground=ACCENT).pack()
+            preview = ttk.Label(box, relief="solid", borderwidth=1,
+                                anchor="center", width=22)
+            preview.pack(pady=4, ipadx=3, ipady=3)
+            self._img_preview[kind] = preview
+            btns = ttk.Frame(box)
+            btns.pack()
+            ttk.Button(btns, text="اختيار", style="Act.TButton",
+                       command=lambda k=kind: self._choose_image(k)).pack(side=RIGHT, padx=2)
+            ttk.Button(btns, text="حذف", style="Act.TButton",
+                       command=lambda k=kind: self._remove_image(k)).pack(side=RIGHT)
+            self._render_preview(kind)
+        return frame
+
+    def _choose_image(self, kind: str) -> None:
+        path = filedialog.askopenfilename(
+            parent=self, title="اختر صورة", filetypes=self._IMAGE_TYPES,
+        )
+        if path:
+            self._pending_images[kind] = path
+            self._render_preview(kind, source=path)
+
+    def _remove_image(self, kind: str) -> None:
+        self._pending_images[kind] = "DELETE"
+        self._render_preview(kind)
+
+    def _render_preview(self, kind: str, source: str | None = None) -> None:
+        """يعرض معاينة مصغّرة (من مسار جديد أو من المخزَّن المشفّر).
+
+        يقبل الصور وملفات PDF — يُعرض من الـ PDF أول صفحة.
+        """
+        label = self._img_preview[kind]
+        pending = self._pending_images.get(kind)
+        try:
+            from PIL import ImageTk
+            from . import images as imgmod
+
+            src = source or (pending if pending and pending != "DELETE" else None)
+            raw = None
+            if src:
+                raw = Path(src).read_bytes()
+            elif pending != "DELETE" and imgmod.has_image(self.record.image_id, kind):
+                raw = imgmod.load_image(self.record.image_id, kind, self.session)
+
+            image = imgmod.to_pil_image(raw) if raw else None
+            if image is None:
+                self._thumb_refs.pop(kind, None)
+                is_pdf = bool(raw) and imgmod.is_pdf(raw)
+                label.configure(image="", width=22,
+                                text="ملف PDF" if is_pdf else "لا توجد صورة")
+                return
+            image.thumbnail((150, 150))
+            thumb = ImageTk.PhotoImage(image)
+            self._thumb_refs[kind] = thumb        # مرجع يمنع حذفها من الذاكرة
+            label.configure(image=thumb, text="", width=0)
+        except Exception:
+            label.configure(image="", text="تعذّر عرض الملف", width=22)
+
+    def _save_images(self) -> None:
+        """ينفّذ عمليات الصور المؤجّلة عند حفظ السجل."""
+        from . import images as imgmod
+        for kind, action in self._pending_images.items():
+            if action == "DELETE":
+                imgmod.delete_image(self.record.image_id, kind)
+            elif action:                          # مسار صورة جديدة
+                if not self.record.image_id:
+                    self.record.image_id = imgmod.new_image_id()
+                imgmod.save_image(self.record.image_id, kind, action, self.session)
+
+    def _update_remaining(self) -> None:
+        total = parse_amount(self.vars.get("program_value", StringVar()).get())
+        paid = parse_amount(self.vars.get("paid_amount", StringVar()).get())
+        if total is None:
+            self.remaining.configure(text="المبلغ المتبقي: —")
+        else:
+            self.remaining.configure(
+                text=f"المبلغ المتبقي: {format_amount(total - (paid or 0))}"
+            )
+
+    def _save(self) -> None:
+        # سجل بلا اسم ولا رقم جواز لا يفيد أحداً في الكشف
+        identifying = ("full_name_ar", "full_name_en", "passport_number",
+                       "reference_number")
+        if not any(self.vars[k].get().strip() for k in identifying if k in self.vars):
+            messagebox.showwarning(
+                "بيانات ناقصة",
+                "أدخل على الأقل اسم الحاج أو رقم الجواز أو الرقم المرجعي.",
+                parent=self,
+            )
+            return
+
+        for key, var in self.vars.items():
+            value = var.get().strip()
+            # نوحّد الأوقات والمبالغ عند الحفظ ليتطابق الجدول والتصدير
+            if key in TIME_KEYS:
+                value = normalize_time(value)
+            elif key in MONEY_KEYS:
+                amount = parse_amount(value)
+                if amount is not None:
+                    value = format_amount(amount)
+            setattr(self.record, key, value)
+
+        # التعديل اليدوي يلغي التحذيرات — المستخدم راجع البيانات
+        self.record.warnings = []
+        self.record.checksum_ok = True
+        try:
+            self._save_images()
+        except Exception as exc:
+            messagebox.showerror("تعذّر حفظ الصور", str(exc), parent=self)
+            return
+        self.on_save(self.record)
+        self.destroy()
+
+
+def main() -> None:
+    # الدخول أولاً: النافذة الرئيسية لا تُبنى إلا بجلسة تحمل مفتاح فك التشفير
+    session = authenticate()
+    if session is None:
+        return
+
+    root = Tk()
+    apply_window_icon(root)
+    HajjApp(root, session)
+    root.mainloop()

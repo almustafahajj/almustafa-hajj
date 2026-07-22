@@ -1,0 +1,10 @@
+pillow
+pytesseract
+openpyxl
+reportlab
+opencv-python
+arabic-reshaper
+python-bidi
+numpy
+pymupdf
+cryptography

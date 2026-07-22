@@ -1,0 +1,202 @@
+"""حفظ كشف الحجاج على القرص واستعادته عند إعادة التشغيل.
+
+الحفظ تلقائي بعد كل تعديل، ويجري بأسلوب "الكتابة الذرّية": نكتب في ملف
+مؤقت ثم نستبدل به الأصل. هكذا لا يفسد الملف إن انقطعت الكهرباء أو أُغلق
+البرنامج أثناء الكتابة — إمّا النسخة القديمة كاملة أو الجديدة كاملة.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+from dataclasses import fields as dataclass_fields
+from datetime import datetime
+from pathlib import Path
+
+from .auth import AuthError, Session
+from .mrz import PassportData
+
+SCHEMA_VERSION = 1
+
+# بادئة تسبق المحتوى المشفّر. وجودها يميّز الملف المشفّر عن ملف قديم بنص
+# صريح، فيُفتح الاثنان دون أن يضيع كشف أُنشئ قبل تفعيل التشفير.
+_ENCRYPTED_MAGIC = b"HAJJ-ENC1\n"
+
+# أسماء الحقول المسموح تحميلها — يحمي من مفاتيح غريبة في ملف معدّل يدوياً
+_FIELD_NAMES = {f.name for f in dataclass_fields(PassportData)}
+
+
+def settings_path() -> Path:
+    """مسار ملف الإعدادات (غير مشفّر — لا يحوي بيانات حسّاسة)."""
+    return default_data_path().parent / "settings.json"
+
+
+def load_settings() -> dict:
+    """يحمّل إعدادات البرنامج (كالسنة الهجرية). يعيد قاموساً فارغاً إن تعذّر."""
+    path = settings_path()
+    if not path.is_file():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return {}
+
+
+def save_settings(settings: dict) -> None:
+    """يحفظ الإعدادات كتابةً ذرّية."""
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    with open(temp, "w", encoding="utf-8") as fh:
+        json.dump(settings, fh, ensure_ascii=False, indent=1)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(temp, path)
+
+
+def default_data_path() -> Path:
+    """مسار ملف البيانات الافتراضي: مجلد data بجوار البرنامج."""
+    return Path(__file__).resolve().parent.parent / "data" / "hajjaj.json"
+
+
+def _to_dict(record: PassportData) -> dict:
+    """يحوّل السجل إلى قاموس مع الاحتفاظ بالتحذيرات كقائمة."""
+    return {name: getattr(record, name) for name in _FIELD_NAMES}
+
+
+def _from_dict(raw: dict) -> PassportData:
+    """يبني سجلاً من قاموس، متجاهلاً المفاتيح غير المعروفة.
+
+    التسامح مع الحقول الناقصة أو الزائدة يجعل الملفات القديمة تُفتح بعد
+    تغيّر الأعمدة، بدل أن يفشل التحميل ويضيع الكشف كله.
+    """
+    record = PassportData()
+    for key, value in raw.items():
+        if key not in _FIELD_NAMES:
+            continue
+        if key == "warnings":
+            record.warnings = [str(w) for w in value] if isinstance(value, list) else []
+        elif key == "checksum_ok":
+            record.checksum_ok = bool(value)
+        else:
+            setattr(record, key, "" if value is None else str(value))
+    return record
+
+
+def save_records(
+    records: list[PassportData],
+    path: str | Path | None = None,
+    session: Session | None = None,
+) -> Path:
+    """يحفظ السجلات. يعيد مسار الملف المحفوظ.
+
+    session: جلسة الدخول. بوجودها يُشفَّر الملف، وبدونها يُكتب نصاً صريحاً
+    (يُستعمل في الاختبارات وفي الكشوف التي أُنشئت قبل تفعيل التشفير).
+    """
+    path = Path(path) if path else default_data_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "schema": SCHEMA_VERSION,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+        "count": len(records),
+        "records": [_to_dict(r) for r in records],
+    }
+    text = json.dumps(payload, ensure_ascii=False, indent=1).encode("utf-8")
+    blob = _ENCRYPTED_MAGIC + session.encrypt(text) if session else text
+
+    # نسخة احتياطية من آخر حالة سليمة قبل الاستبدال
+    if path.is_file():
+        try:
+            shutil.copy2(path, path.with_suffix(".bak"))
+        except OSError:
+            pass
+
+    temp = path.with_suffix(".tmp")
+    with open(temp, "wb") as fh:
+        fh.write(blob)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(temp, path)      # عملية ذرّية على ويندوز ولينكس
+    return path
+
+
+def is_encrypted(path: str | Path | None = None) -> bool:
+    """هل ملف البيانات مشفّر؟ يُستعمل لعرض حالة الحماية للمستخدم."""
+    path = Path(path) if path else default_data_path()
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(len(_ENCRYPTED_MAGIC)) == _ENCRYPTED_MAGIC
+    except OSError:
+        return False
+
+
+def _read_file(path: Path, session: Session | None) -> list[PassportData]:
+    with open(path, "rb") as fh:
+        blob = fh.read()
+
+    if blob.startswith(_ENCRYPTED_MAGIC):
+        if session is None:
+            raise AuthError("الملف مشفّر — يلزم تسجيل الدخول لفتحه.")
+        blob = session.decrypt(blob[len(_ENCRYPTED_MAGIC):])
+
+    payload = json.loads(blob.decode("utf-8"))
+    raw_records = payload.get("records", []) if isinstance(payload, dict) else payload
+    if not isinstance(raw_records, list):
+        raise ValueError("بنية الملف غير متوقعة")
+    return [_from_dict(r) for r in raw_records if isinstance(r, dict)]
+
+
+def load_records(
+    path: str | Path | None = None, session: Session | None = None
+) -> tuple[list[PassportData], str]:
+    """يحمّل السجلات المحفوظة.
+
+    يعيد: (السجلات، ملاحظة للمستخدم — فارغة إن سار كل شيء)
+
+    عند تلف الملف نجرّب النسخة الاحتياطية، ولا نحذف الملف التالف أبداً
+    بل نحفظه جانباً ليمكن إنقاذه يدوياً.
+    """
+    path = Path(path) if path else default_data_path()
+    if not path.is_file():
+        return [], ""
+
+    try:
+        return _read_file(path, session), ""
+    except AuthError:
+        # كلمة مرور خاطئة ليست تلفاً: الملف سليم ولا يجوز إزاحته جانباً
+        # ولا بدء كشف فارغ — نُبلّغ المُنادي ليعيد طلب كلمة المرور.
+        raise
+    except (json.JSONDecodeError, ValueError, OSError, UnicodeDecodeError) as exc:
+        problem = str(exc)
+
+    # الملف تالف — نحاول النسخة الاحتياطية
+    backup = path.with_suffix(".bak")
+    salvaged = path.with_name(
+        f"{path.stem}-تالف-{datetime.now():%Y%m%d-%H%M%S}{path.suffix}"
+    )
+    try:
+        os.replace(path, salvaged)
+    except OSError:
+        salvaged = path
+
+    if backup.is_file():
+        try:
+            records = _read_file(backup, session)
+            shutil.copy2(backup, path)
+            return records, (
+                f"ملف البيانات كان تالفاً ({problem}).\n"
+                f"تمت الاستعادة من النسخة الاحتياطية: {len(records)} سجل.\n"
+                f"الملف التالف محفوظ في: {salvaged.name}"
+            )
+        except Exception:
+            pass
+
+    return [], (
+        f"تعذّرت قراءة ملف البيانات ({problem}).\n"
+        f"تم حفظ الملف التالف باسم: {salvaged.name}\n"
+        "بدأ البرنامج بكشف فارغ."
+    )
