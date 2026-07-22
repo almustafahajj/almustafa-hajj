@@ -214,6 +214,29 @@ assert [r.family_number for r in app._visible_records()] == ["101", "102", "103"
 print("  OK: التصدير/الطباعة يحترمان الترتيب عبر _ordered")
 app.sort_var.set(app._SORT_NONE); app._apply_sort()
 
+print("\n=== فحص جاهزية الكشف (QualityDialog) ===")
+from hajj_app.gui import QualityDialog
+app.clear_filters()
+app.records = [
+    PassportData(full_name_ar="مكرر أ", passport_number="DUP1", birth_date="1980-01-01"),
+    PassportData(full_name_ar="مكرر ب", passport_number="DUP1", birth_date="1981-01-01"),
+    PassportData(full_name_ar="", passport_number="", birth_date=""),   # نقص كامل
+]
+app.refresh()
+picked = {}
+qd = QualityDialog(root, lambda: app.records, lambda i: picked.update({"i": i}))
+groups = qd._tree.get_children()
+assert groups, "لا مجموعات مشكلات ظهرت"
+leaf = qd._tree.get_children(groups[0])[0]      # أول مشكلة تحت أول مجموعة
+qd._tree.selection_set(leaf)
+qd._jump()
+assert "i" in picked, "القفز إلى السجل لم يعمل"
+qd.destroy()
+# _focus_record يحدّد السجل في الجدول الرئيسي
+app._focus_record(1)
+assert app.tree.selection() == ("1",), app.tree.selection()
+print("  OK: يعرض المشكلات مجمّعة، والقفز إلى السجل يعمل")
+
 print("\n=== بوابة أمان «مسح الكل» ===")
 # بلا جلسة: تُقبل كلمة «مسح» فقط، ويُرفض ما سواها (يمنع الضغط غير المقصود)
 assert app.session is None

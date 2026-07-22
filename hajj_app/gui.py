@@ -336,6 +336,8 @@ class HajjApp:
 
         # قائمة «التقارير ▾»: كل التصدير والطباعة
         rep_mb = self._menubutton(bar, "📤  التقارير والكشوفات  ▾", [
+            ("🩺  فحص جاهزية الكشف", self.do_quality_check),
+            None,
             ("📊  تصدير إكسل", self.do_export_excel),
             ("📄  تصدير PDF", self.do_export_pdf),
             None,
@@ -1061,7 +1063,17 @@ class HajjApp:
         self.records.extend(records)
         self.refresh()
         self.save_data()
-        self.set_status(f"تم استيراد {len(records)} سجل من {Path(path).name}")
+        self.set_status(f"تم استيراد {len(records)} سجل من {Path(path).name}", ok=True)
+
+        # تنبيه ذكي: أرقام جوازات مكرّرة بعد الدمج (خطأ شائع)
+        from .quality import duplicate_groups
+        dups = duplicate_groups(self.records)
+        if dups:
+            notes = list(notes) + [
+                f"⚠ تنبيه: {len(dups)} رقم جواز مكرّر بعد الدمج "
+                "(مثل: " + "، ".join(list(dups)[:3]) + ").\n"
+                "افتح «التقارير ← فحص جاهزية الكشف» لمراجعتها."
+            ]
         if notes:
             messagebox.showinfo("ملاحظات الاستيراد", "\n\n".join(notes))
 
@@ -1226,6 +1238,25 @@ class HajjApp:
             messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
             return
         CampsDialog(self.root, records)
+
+    def do_quality_check(self) -> None:
+        """يفتح فحص جاهزية الكشف (صلاحية الجواز، التكرار، النقص)."""
+        if not self._require_records():
+            return
+        QualityDialog(self.root, lambda: self.records, self._focus_record)
+
+    def _focus_record(self, index: int) -> None:
+        """يحدّد سجلاً في الجدول الرئيسي ويُظهره (من نافذة الفحص)."""
+        iid = str(index)
+        if self._filter_active():          # قد يكون مخفياً بالفلتر
+            self.clear_filters()
+        try:
+            self.tree.selection_set(iid)
+            self.tree.see(iid)
+            self.tree.focus(iid)
+            self.root.lift()
+        except Exception:
+            pass
 
     def do_export_excel(self) -> None:
         if not self._require_records():
@@ -1875,6 +1906,92 @@ class CampsDialog(Toplevel):
                 os.startfile(path)
             except Exception:
                 pass
+
+
+class QualityDialog(Toplevel):
+    """فحص جودة الكشف: يعرض مشكلات الجواز والتكرار والنقص، ويقفز للسجل."""
+
+    _TAGS = {
+        "صلاحية الجواز": ("pp", "#F7E7E5", DANGER),
+        "تكرار رقم الجواز": ("dup", "#FBF0DC", AMBER_FG),
+        "نقص بيانات حرجة": ("miss", "#EFEBE4", "#555555"),
+    }
+
+    def __init__(self, parent, get_records, on_select) -> None:
+        super().__init__(parent)
+        self._get_records = get_records      # دالة تُعيد السجلات الحالية
+        self._on_select = on_select          # (index) -> يحدّد السجل في الجدول
+        self.title("🩺 فحص جاهزية الكشف")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.geometry("720x520")
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 12),
+                                  foreground=ACCENT, background=BG)
+        self._summary.pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+                  background=BG,
+                  text=rtl("انقر نقراً مزدوجاً على مشكلة للانتقال إلى سجل الحاج "
+                           "في الجدول الرئيسي.")).pack(anchor="e", pady=(2, 8))
+
+        table = ttk.Frame(outer)
+        table.pack(fill=BOTH, expand=True)
+        scroll = ttk.Scrollbar(table, orient="vertical")
+        scroll.pack(side=RIGHT, fill=Y)
+        self._tree = ttk.Treeview(table, columns=("passport", "detail"),
+                                  show="tree headings", height=15,
+                                  yscrollcommand=scroll.set)
+        self._tree.heading("#0", text="الحاج / نوع المشكلة")
+        self._tree.heading("passport", text="رقم الجواز")
+        self._tree.heading("detail", text="التفصيل")
+        self._tree.column("#0", width=300, anchor="e", stretch=True)
+        self._tree.column("passport", width=130, anchor="center", stretch=False)
+        self._tree.column("detail", width=250, anchor="e", stretch=False)
+        self._tree.pack(side=LEFT, fill=BOTH, expand=True)
+        scroll.config(command=self._tree.yview)
+        for _kind, (tag, bg, fg) in self._TAGS.items():
+            self._tree.tag_configure(tag, background=bg, foreground=fg)
+        self._tree.bind("<Double-1>", lambda _e: self._jump())
+
+        row = ttk.Frame(outer)
+        row.pack(anchor="e", pady=(10, 0))
+        ttk.Button(row, text=rtl("↻  إعادة الفحص"), style="Ghost.TButton",
+                   command=self.refresh).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.refresh()
+
+    def refresh(self) -> None:
+        from .quality import check_records, summary_text
+        report = check_records(self._get_records())
+        self._tree.delete(*self._tree.get_children())
+        if report.clean:
+            self._summary.config(text=f"✓  {summary_text(report)}",
+                                 foreground=SUCCESS_FG)
+            return
+        self._summary.config(
+            text=f"⚠  {report.total} سجلاً — {summary_text(report)}",
+            foreground=DANGER)
+        for kind, items in report.by_kind().items():
+            tag = self._TAGS.get(kind, ("miss", "#EEE", "#333"))[0]
+            parent = self._tree.insert("", END, text=f"{kind}  ({len(items)})",
+                                       open=True, tags=(tag,))
+            for iss in items:
+                self._tree.insert(parent, END, text=iss.name,
+                                  values=(iss.passport or "—", iss.detail),
+                                  tags=(tag, f"idx:{iss.index}"))
+
+    def _jump(self) -> None:
+        sel = self._tree.selection()
+        if not sel:
+            return
+        for tag in self._tree.item(sel[0], "tags"):
+            if isinstance(tag, str) and tag.startswith("idx:"):
+                self._on_select(int(tag[4:]))
+                break
 
 
 class ImageKindDialog(Toplevel):
