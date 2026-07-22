@@ -811,7 +811,7 @@ def export_transport_pdf(records: list, path: str | Path,
     كبير للباصات الصغيرة، ويصغر تدريجياً كلما زاد العدد — مع الالتزام
     بالصفحة الواحدة دائماً.
     """
-    from .transport import group_by_transport
+    from .transport import executive_display, group_by_transport
 
     _register_fonts()
     path = Path(path)
@@ -825,10 +825,10 @@ def export_transport_pdf(records: list, path: str | Path,
     groups, unassigned = group_by_transport(records)
     blocks = list(groups) + ([("بلا مواصلات", unassigned)] if unassigned else [])
 
-    labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "كرسي متحرك"]
+    labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "خدمة التنفيذي", "كرسي متحرك"]
     draw_labels = list(reversed(labels))
     # الأعمدة تملأ عرض الصفحة كاملاً (المجموع = عرض المحتوى)
-    weights = list(reversed([46, 210, 96, 118, 84]))
+    weights = list(reversed([44, 196, 92, 110, 96, 82]))
     scale = doc.width / sum(weights)
     col_widths = [w * scale for w in weights]
 
@@ -860,6 +860,7 @@ def export_transport_pdf(records: list, path: str | Path,
             values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
                       ltr(str(rec.phone or "").strip() or "—"),
                       str(rec.hotel or "").strip() or "—",
+                      executive_display(rec) or "—",
                       str(rec.wheelchair or "").strip() or "—"]
             body.append([ar(v) for v in reversed(values)])
 

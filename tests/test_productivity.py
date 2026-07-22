@@ -12,7 +12,8 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 from openpyxl import load_workbook
 from hajj_app.cards import qr_payload
 from hajj_app.transport import (
-    TRANSPORT_COLUMNS, distinct_transports, export_transport_excel, group_by_transport,
+    TRANSPORT_COLUMNS, distinct_transports, executive_display,
+    export_transport_excel, group_by_transport,
 )
 from hajj_app.pdf_io import export_badges_pdf, export_transport_pdf
 from hajj_app.mrz import PassportData
@@ -49,6 +50,14 @@ assert [name for name, _ in groups] == ["باص 1", "باص 2"]       # مرتّ
 assert len(groups[0][1]) == 2 and len(unassigned) == 1
 print(f"  OK: باص 1 فيه 2، باص 2 فيه 1، وبلا مواصلات 1")
 
+print("\n=== خدمة التنفيذي: جيمس فقط ===")
+assert executive_display(rec(executive_service="جيمس")) == "جيمس"
+assert executive_display(rec(executive_service="خدمة جيمس التنفيذية")) == "خدمة جيمس التنفيذية"
+assert executive_display(rec(executive_service="أخرى")) == ""      # غير جيمس -> فارغ
+assert executive_display(rec(executive_service="")) == ""
+assert executive_display(rec()) == ""
+print("  OK: تُعرض جيمس فقط، وتُترك القيم الأخرى فارغة")
+
 print("\n=== تصدير المواصلات إكسل ===")
 xlsx = _os.path.join(_OUTDIR, "transport.xlsx")
 export_transport_excel(recs, xlsx)
@@ -56,7 +65,8 @@ wb = load_workbook(xlsx); ws = wb.active
 assert ws.sheet_view.rightToLeft is True
 assert [c.value for c in ws[2]] == list(TRANSPORT_COLUMNS)
 assert "رقم الجواز" not in TRANSPORT_COLUMNS and "الغرفة" not in TRANSPORT_COLUMNS
-assert list(TRANSPORT_COLUMNS) == ["م", "اسم الحاج", "الهاتف", "الفندق", "كرسي متحرك"]
+assert list(TRANSPORT_COLUMNS) == [
+    "م", "اسم الحاج", "الهاتف", "الفندق", "خدمة التنفيذي", "كرسي متحرك"]
 serials = [row[0].value for row in ws.iter_rows(min_row=3) if isinstance(row[0].value, int)]
 assert len(serials) == 4, serials     # كل الحجّاج مُدرجون (مع مجموعة بلا مواصلات)
 print(f"  OK: إكسل RTL بأعمدة {list(TRANSPORT_COLUMNS)}، {len(serials)} حاجاً")

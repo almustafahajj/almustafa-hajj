@@ -2223,10 +2223,11 @@ class TransportDialog(Toplevel):
         ttk.Label(top, text="الوسيلة:", font=("Segoe UI", 10),
                   foreground=ACCENT).pack(side=RIGHT, padx=(2, 5))
 
-        cols = ("phone", "hotel", "wheelchair")
+        cols = ("phone", "hotel", "executive", "wheelchair")
         self._tree = ttk.Treeview(outer, columns=cols, show="tree headings", height=13)
         self._tree.heading("#0", text="الباص / الحاج")
-        for c, lbl, w in (("phone", "الهاتف", 130), ("hotel", "الفندق", 160),
+        for c, lbl, w in (("phone", "الهاتف", 120), ("hotel", "الفندق", 150),
+                          ("executive", "خدمة التنفيذي", 100),
                           ("wheelchair", "كرسي متحرك", 90)):
             self._tree.heading(c, text=lbl)
             self._tree.column(c, width=w, anchor="center", stretch=False)
@@ -2251,7 +2252,7 @@ class TransportDialog(Toplevel):
         return [r for r in self._all if str(r.transport or "").strip() == sel]
 
     def _rebuild(self) -> None:
-        from .transport import group_by_transport
+        from .transport import executive_display, group_by_transport
         records = self._current()
         self._tree.delete(*self._tree.get_children())
         groups, unassigned = group_by_transport(records)
@@ -2263,6 +2264,7 @@ class TransportDialog(Toplevel):
                                   text=rec.full_name_ar or rec.full_name_en or "—",
                                   values=(str(rec.phone or "").strip() or "—",
                                           str(rec.hotel or "").strip() or "—",
+                                          executive_display(rec) or "—",
                                           str(rec.wheelchair or "").strip() or "—"))
         self._count.config(text=f"عدد الحجّاج: {len(records)}")
 
