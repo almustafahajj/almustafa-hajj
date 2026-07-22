@@ -357,11 +357,12 @@ def export_camp_excel(plan: CampPlan, path: str | Path,
     return path
 
 
-# ---- كشف كل خيمة على حدة (أعمدة مبسّطة: تسلسل، اسم، قطاع، خيمة، تصنيف، حملة)
+# ---- كشف كل خيمة على حدة (أعمدة مبسّطة: تسلسل، اسم، قطاع، تصنيف، حملة)
+# رقم الخيمة يظهر في عنوان الورقة/الصفحة، فلا يتكرّر عموداً.
 TENT_SHEET_COLUMNS: tuple[str, ...] = (
-    "التسلسل", "اسم الحاج", "القطاع", "خيمة رقم", "التصنيف", "اسم الحملة",
+    "التسلسل", "اسم الحاج", "القطاع", "التصنيف", "اسم الحملة",
 )
-_TENT_WIDTHS = (8, 32, 10, 10, 10, 26)
+_TENT_WIDTHS = (8, 32, 12, 12, 26)
 _INVALID_SHEET = re.compile(r"[:\\/?*\[\]]")
 
 
@@ -402,7 +403,7 @@ def export_tents_excel(plan: CampPlan, path: str | Path,
             ws.column_dimensions[get_column_letter(col)].width = width
         ws.row_dimensions[1].height = 26
         for position, occ in enumerate(tent.occupants, start=1):
-            ws.append([position, occ.name, tent.sector, tent.number,
+            ws.append([position, occ.name, tent.sector,
                        tent.classification, campaign])
             row = ws.max_row
             for col in range(1, ncols + 1):

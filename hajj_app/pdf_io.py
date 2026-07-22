@@ -640,8 +640,8 @@ def export_tents_pdf(plan, path: str | Path,
                      *, campaign: str = "", title: str = "كشف المخيمات") -> Path:
     """يصدّر **كل خيمة في صفحة مستقلة**، بالأعمدة المبسّطة فقط.
 
-    الأعمدة: التسلسل • اسم الحاج • القطاع • خيمة رقم • التصنيف • اسم الحملة.
-    مناسب لطباعة ورقة لكل خيمة وتسليمها.
+    الأعمدة: التسلسل • اسم الحاج • القطاع • التصنيف • اسم الحملة.
+    رقم الخيمة يظهر في عنوان الصفحة. مناسب لطباعة ورقة لكل خيمة وتسليمها.
     """
     _register_fonts()
     path = Path(path)
@@ -657,9 +657,9 @@ def export_tents_pdf(plan, path: str | Path,
     heading = f"{title} — مخيّم {plan.camp}" if plan.camp else title
 
     # الأعمدة معكوسة للتخطيط من اليمين لليسار: «التسلسل» أقصى اليمين
-    labels = ["التسلسل", "اسم الحاج", "القطاع", "خيمة رقم", "التصنيف", "اسم الحملة"]
+    labels = ["التسلسل", "اسم الحاج", "القطاع", "التصنيف", "اسم الحملة"]
     draw_labels = list(reversed(labels))
-    weights = list(reversed([28, 168, 54, 54, 54, 120]))
+    weights = list(reversed([30, 190, 60, 60, 130]))
     scale = doc.width / sum(weights)
     col_widths = [w * scale for w in weights]
 
@@ -682,7 +682,7 @@ def export_tents_pdf(plan, path: str | Path,
 
         table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
         for position, occ in enumerate(tent.occupants, start=1):
-            values = [ltr(position), occ.name, tent.sector, ltr(tent.number),
+            values = [ltr(position), occ.name, tent.sector,
                       tent.classification, campaign]
             table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
 

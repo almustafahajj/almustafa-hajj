@@ -185,13 +185,17 @@ assert len(wb.sheetnames) == 3, wb.sheetnames          # ورقة لكل خيم�
 ws = wb[wb.sheetnames[0]]
 assert ws.sheet_view.rightToLeft is True
 assert [c.value for c in ws[1]] == list(TENT_SHEET_COLUMNS)
-# الأعمدة الستة المطلوبة فقط، بالقيم الصحيحة
+# الأعمدة الخمسة المطلوبة فقط (بلا «خيمة رقم»)، بالقيم الصحيحة
+assert list(TENT_SHEET_COLUMNS) == [
+    "التسلسل", "اسم الحاج", "القطاع", "التصنيف", "اسم الحملة"]
 first = list(ws.iter_rows(min_row=2, max_row=2, values_only=True))[0]
+assert len(first) == 5, first
 assert first[0] == 1                                    # التسلسل داخل الخيمة
 assert first[2] == "ب"                                  # القطاع
-assert first[3] == plan.tents[0].number                 # خيمة رقم
-assert first[4] == MEN                                  # التصنيف
-assert first[5] == "المصطفى للحج والعمرة"                # اسم الحملة
+assert first[3] == MEN                                  # التصنيف
+assert first[4] == "المصطفى للحج والعمرة"                # اسم الحملة
+# رقم الخيمة في اسم الورقة لا في الأعمدة
+assert wb.sheetnames[0].startswith("خيمة "), wb.sheetnames
 print(f"  OK: {len(wb.sheetnames)} أوراق، أعمدة مبسّطة: {list(TENT_SHEET_COLUMNS)}")
 
 print("\n=== كل خيمة على حدة: PDF (صفحة لكل خيمة) ===")

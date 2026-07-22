@@ -1407,20 +1407,14 @@ class CampsDialog(Toplevel):
         self._tree.bind("<Double-1>", lambda _e: self._edit_tent())
 
         # ---- أزرار ----
-        # الكشف الكامل (كل الخيام مجموعة) + كشف كل خيمة على حدة (أعمدة مبسّطة)
+        # تصدير كل خيمة على حدة (بأعمدة مبسّطة) حسب الاختيارات أعلاه
         row = ttk.Frame(outer)
         row.pack(anchor="e", pady=(10, 0))
-        ttk.Label(row, text="الكشف الكامل:", font=("Segoe UI", 9),
+        ttk.Label(row, text="تصدير كل خيمة على حدة:", font=("Segoe UI", 9),
                   foreground="#666").pack(side=RIGHT, padx=(0, 4))
-        ttk.Button(row, text=rtl("📊  إكسل"), style="Act.TButton",
-                   command=self._excel).pack(side=RIGHT, padx=3)
-        ttk.Button(row, text=rtl("📄  PDF"), style="Act.TButton",
-                   command=self._pdf).pack(side=RIGHT, padx=3)
-        ttk.Label(row, text="كل خيمة على حدة:", font=("Segoe UI", 9),
-                  foreground="#666").pack(side=RIGHT, padx=(14, 4))
-        ttk.Button(row, text=rtl("🏕  إكسل"), style="Act.TButton",
+        ttk.Button(row, text=rtl("📊  تصدير إكسل"), style="Act.TButton",
                    command=self._tents_excel).pack(side=RIGHT, padx=3)
-        ttk.Button(row, text=rtl("🏕  PDF"), style="Act.TButton",
+        ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
                    command=self._tents_pdf).pack(side=RIGHT, padx=3)
         ttk.Button(row, text="إغلاق", style="Act.TButton",
                    command=self.destroy).pack(side=LEFT, padx=3)
@@ -1560,14 +1554,6 @@ class CampsDialog(Toplevel):
                 os.startfile(path)
             except Exception:
                 pass
-
-    def _excel(self) -> None:
-        from .camps import export_camp_excel
-        self._run(export_camp_excel, "xlsx")
-
-    def _pdf(self) -> None:
-        from .pdf_io import export_camp_pdf
-        self._run(export_camp_pdf, "pdf")
 
     def _tents_excel(self) -> None:
         """كل خيمة في ورقة إكسل مستقلة، بالأعمدة المبسّطة + اسم الحملة."""
