@@ -62,6 +62,15 @@ AMBER_FG = "#B26A00"        # كهرماني التنبيه
 DANGER = "#B23A3A"          # أحمر هادئ للحذف/المسح
 DANGER_HOVER = "#8F2C2C"
 
+# درجات فاتحة/غامقة لإبراز الأزرار ثلاثية الأبعاد (حواف مشطوفة)
+BRONZE_LIGHT = "#B4986E"    # حافة علوية مضيئة
+BRONZE_EDGE = "#4E3C25"     # حافة سفلية داكنة
+DANGER_LIGHT = "#D57B7B"
+DANGER_EDGE = "#7A2222"
+GHOST_LIGHT = "#FFFFFF"     # حافة مضيئة للزر الثانوي
+GHOST_EDGE = "#C7BBA6"
+PANEL_EDGE = "#D8CFC0"      # حافة الألواح البارزة
+
 
 def install_entry_editing(widget) -> None:
     """يفعّل النسخ/اللصق/القص/تحديد الكل بقائمة يمين ولوحة المفاتيح.
@@ -181,41 +190,65 @@ class HajjApp:
             pass
 
         s.configure("Toolbar.TFrame", background=BG)
-        s.configure("Panel.TFrame", background=BG)
+        # لوح بارز (bevel) للشريط العلوي — إحساس ثلاثي الأبعاد بالعمق
+        s.configure("Panel.TFrame", background=BG, relief="raised", borderwidth=1,
+                    lightcolor=GHOST_LIGHT, darkcolor=PANEL_EDGE, bordercolor=PANEL_EDGE)
         s.configure("Sep.TFrame", background=BRONZE)      # فاصل برونزي رفيع
 
         # الجدول: صفوف متناوبة الألوان وتمييز برونزي للصف المحدد
         self._apply_table_style()
         s.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
-                    background=ACCENT, foreground="white", padding=6, relief="flat")
-        s.map("Treeview.Heading", background=[("active", BRONZE)])
+                    background=ACCENT, foreground="white", padding=7, relief="raised",
+                    borderwidth=2, lightcolor="#3A3A3A", darkcolor="#000000",
+                    bordercolor="#000000")
+        s.map("Treeview.Heading",
+              background=[("active", BRONZE)],
+              relief=[("pressed", "sunken"), ("active", "raised")])
 
-        # أنماط الأزرار: أساسي (برونزي)، ثانوي (إطار)، خطر (أحمر)
-        s.configure("Act.TButton", font=("Segoe UI", 10), padding=(12, 7))
-        s.configure("Primary.TButton", font=("Segoe UI Semibold", 10),
-                    padding=(14, 7), foreground="white", background=BRONZE,
-                    bordercolor=BRONZE, focuscolor=BRONZE)
-        s.map("Primary.TButton",
-              background=[("active", BRONZE_DARK), ("disabled", "#C8BCA9")],
-              foreground=[("disabled", "#F0EADE")])
-        s.configure("Ghost.TButton", font=("Segoe UI", 10), padding=(12, 7),
-                    foreground=ACCENT, background=BG, bordercolor=BORDER)
-        s.map("Ghost.TButton",
-              background=[("active", "#EDE6DB")], bordercolor=[("active", BRONZE)])
-        s.configure("Danger.TButton", font=("Segoe UI", 10), padding=(12, 7),
-                    foreground="white", background=DANGER, bordercolor=DANGER)
-        s.map("Danger.TButton",
-              background=[("active", DANGER_HOVER), ("disabled", "#D9BFBF")])
+        # ---- أزرار ثلاثية الأبعاد (حواف مشطوفة + ضغطة غائرة) ----
+        def bevel(name, bg, fg, light, dark, hover, *, bold=True, pad=(15, 8)):
+            font = ("Segoe UI Semibold", 10) if bold else ("Segoe UI", 10)
+            s.configure(name, font=font, padding=pad, foreground=fg, background=bg,
+                        relief="raised", borderwidth=3, focuscolor=bg,
+                        lightcolor=light, darkcolor=dark, bordercolor=dark)
+            s.map(name,
+                  background=[("pressed", dark), ("active", hover),
+                              ("disabled", "#CFC6B6")],
+                  foreground=[("disabled", "#8C857A")],
+                  relief=[("pressed", "sunken"), ("!pressed", "raised")],
+                  # عكس الإضاءة عند الضغط ليبدو الزر مضغوطاً للداخل
+                  lightcolor=[("pressed", dark)], darkcolor=[("pressed", light)])
 
-        # القوائم المنسدلة في الشريط تبدو كأزرار أساسية
-        s.configure("Toolbar.TMenubutton", font=("Segoe UI Semibold", 10),
-                    padding=(14, 7), foreground="white", background=BRONZE,
-                    arrowcolor="white")
-        s.map("Toolbar.TMenubutton",
-              background=[("active", BRONZE_DARK), ("disabled", "#C8BCA9")])
-        s.configure("Ghost.TMenubutton", font=("Segoe UI", 10), padding=(10, 7),
-                    foreground=ACCENT, background=BG, arrowcolor=ACCENT)
-        s.map("Ghost.TMenubutton", background=[("active", "#EDE6DB")])
+        bevel("Primary.TButton", BRONZE, "white", BRONZE_LIGHT, BRONZE_EDGE, BRONZE_DARK)
+        bevel("Danger.TButton", DANGER, "white", DANGER_LIGHT, DANGER_EDGE, DANGER_HOVER)
+        bevel("Ghost.TButton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE, "#E7DECF",
+              bold=False)
+        # Act.TButton (يُستعمل في النوافذ) — بارز ثانوي
+        bevel("Act.TButton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE, "#E7DECF",
+              bold=False, pad=(12, 7))
+
+        # ---- قوائم منسدلة ثلاثية الأبعاد ----
+        def bevel_mb(name, bg, fg, light, dark, hover, arrow, *, bold=True):
+            font = ("Segoe UI Semibold", 10) if bold else ("Segoe UI", 10)
+            s.configure(name, font=font, padding=(15, 8), foreground=fg, background=bg,
+                        arrowcolor=arrow, relief="raised", borderwidth=3,
+                        lightcolor=light, darkcolor=dark, bordercolor=dark)
+            s.map(name,
+                  background=[("pressed", dark), ("active", hover),
+                              ("disabled", "#CFC6B6")],
+                  relief=[("pressed", "sunken"), ("!pressed", "raised")],
+                  lightcolor=[("pressed", dark)], darkcolor=[("pressed", light)])
+
+        bevel_mb("Toolbar.TMenubutton", BRONZE, "white", BRONZE_LIGHT, BRONZE_EDGE,
+                 BRONZE_DARK, "white")
+        bevel_mb("Ghost.TMenubutton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE,
+                 "#E7DECF", ACCENT, bold=False)
+
+        # حقول الإدخال والقوائم: أخدود غائر خفيف (يكمّل الأزرار البارزة)
+        for widget in ("TEntry", "TCombobox", "TSpinbox"):
+            s.configure(widget, relief="sunken", borderwidth=1,
+                        bordercolor=GHOST_EDGE, lightcolor=GHOST_EDGE,
+                        darkcolor=GHOST_LIGHT)
 
     def _apply_table_style(self) -> None:
         """يطبّق كثافة الصفوف وحجم الخط على الجدول (قابل للتغيير حياً)."""
@@ -328,7 +361,7 @@ class HajjApp:
         return mb
 
     def _build_toolbar(self) -> None:
-        bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 8, 16, 10))
+        bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 10, 16, 12))
         bar.pack(fill=X)
         self._menus: list = []
 
