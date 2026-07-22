@@ -2223,11 +2223,11 @@ class TransportDialog(Toplevel):
         ttk.Label(top, text="الوسيلة:", font=("Segoe UI", 10),
                   foreground=ACCENT).pack(side=RIGHT, padx=(2, 5))
 
-        cols = ("passport", "phone", "hotel", "room")
+        cols = ("phone", "hotel", "room")
         self._tree = ttk.Treeview(outer, columns=cols, show="tree headings", height=13)
         self._tree.heading("#0", text="الباص / الحاج")
-        for c, lbl, w in (("passport", "الجواز", 120), ("phone", "الهاتف", 120),
-                          ("hotel", "الفندق", 150), ("room", "الغرفة", 70)):
+        for c, lbl, w in (("phone", "الهاتف", 130), ("hotel", "الفندق", 170),
+                          ("room", "الغرفة", 80)):
             self._tree.heading(c, text=lbl)
             self._tree.column(c, width=w, anchor="center", stretch=False)
         self._tree.column("#0", width=240, anchor="e", stretch=True)
@@ -2262,8 +2262,7 @@ class TransportDialog(Toplevel):
             for rec in occ:
                 self._tree.insert(gid, END,
                                   text=rec.full_name_ar or rec.full_name_en or "—",
-                                  values=(str(rec.passport_number or "").strip() or "—",
-                                          str(rec.phone or "").strip() or "—",
+                                  values=(str(rec.phone or "").strip() or "—",
                                           str(rec.hotel or "").strip() or "—",
                                           room_of(rec) or "—"))
         self._count.config(text=f"عدد الحجّاج: {len(records)}")

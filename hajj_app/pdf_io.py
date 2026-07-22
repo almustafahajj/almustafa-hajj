@@ -828,7 +828,7 @@ def export_transport_pdf(records: list, path: str | Path,
         f"عدد الحجّاج: {ltr(len(records))}  •  التاريخ: {ltr(date.today().isoformat())}"),
         st["subtitle"]))
 
-    labels = ["م", "اسم الحاج", "رقم الجواز", "الهاتف", "الفندق", "الغرفة"]
+    labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "الغرفة"]
     draw_labels = list(reversed(labels))
     table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
     group_rows: list[int] = []
@@ -846,12 +846,11 @@ def export_transport_pdf(records: list, path: str | Path,
         for rec in occ:
             serial += 1
             values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
-                      ltr(str(rec.passport_number or "").strip()),
                       ltr(str(rec.phone or "").strip()),
                       str(rec.hotel or "").strip(), ltr(room_of(rec))]
             table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
 
-    weights = list(reversed([22, 150, 78, 78, 90, 44]))
+    weights = list(reversed([24, 170, 90, 100, 48]))
     scale = doc.width / sum(weights)
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),

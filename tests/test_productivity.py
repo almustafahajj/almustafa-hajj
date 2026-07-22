@@ -55,6 +55,8 @@ export_transport_excel(recs, xlsx)
 wb = load_workbook(xlsx); ws = wb.active
 assert ws.sheet_view.rightToLeft is True
 assert [c.value for c in ws[2]] == list(TRANSPORT_COLUMNS)
+assert "رقم الجواز" not in TRANSPORT_COLUMNS, "عمود رقم الجواز يجب ألا يظهر"
+assert list(TRANSPORT_COLUMNS) == ["م", "اسم الحاج", "الهاتف", "الفندق", "الغرفة"]
 serials = [row[0].value for row in ws.iter_rows(min_row=3) if isinstance(row[0].value, int)]
 assert len(serials) == 4, serials     # كل الحجّاج مُدرجون (مع مجموعة بلا مواصلات)
 print(f"  OK: إكسل RTL بأعمدة {list(TRANSPORT_COLUMNS)}، {len(serials)} حاجاً")
