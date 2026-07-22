@@ -214,8 +214,17 @@ assert [r.family_number for r in app._visible_records()] == ["101", "102", "103"
 print("  OK: التصدير/الطباعة يحترمان الترتيب عبر _ordered")
 app.sort_var.set(app._SORT_NONE); app._apply_sort()
 
+print("\n=== بوابة أمان «مسح الكل» ===")
+# بلا جلسة: تُقبل كلمة «مسح» فقط، ويُرفض ما سواها (يمنع الضغط غير المقصود)
+assert app.session is None
+assert app._clear_credential_ok("مسح") is True
+assert app._clear_credential_ok("مسح ") is True         # يتجاهل الفراغات
+assert app._clear_credential_ok("نعم") is False
+assert app._clear_credential_ok("") is False
+assert app._clear_credential_ok("1234") is False
+print("  OK: المسح محميّ — لا يتم إلا بكلمة التأكيد (أو كلمة مرور الحساب عند الدخول)")
+
 app._require_records()
-app.clear_all_confirmed = True
 root.update()
 root.destroy()
 print("\n*** GUI SMOKE TEST PASSED ***")

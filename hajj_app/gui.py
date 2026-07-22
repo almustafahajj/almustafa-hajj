@@ -1396,21 +1396,101 @@ class HajjApp:
         self.save_data()
         self.set_status(f"تم حذف {len(idx)} سجل")
 
+    _CLEAR_CONFIRM_WORD = "مسح"
+
+    def _clear_credential_ok(self, value: str) -> bool:
+        """يتحقق من بوابة أمان المسح: كلمة مرور الحساب، أو كلمة التأكيد.
+
+        عند وجود جلسة (حساب) نطلب **كلمة مرور الحساب نفسها** (لا رقماً سرياً
+        منفصلاً يُخزَّن ويُنسى)، فنتحقق منها عبر تسجيل دخول تجريبي. وبلا حساب
+        (كالاختبارات) نكتفي بكتابة كلمة «مسح» لمنع الضغط غير المقصود.
+        """
+        if self.session is None:
+            return value.strip() == self._CLEAR_CONFIRM_WORD
+        try:
+            from .auth import login as _login
+            _login(self.session.username, value)
+            return True
+        except Exception:
+            return False
+
+    def _confirm_destructive(self) -> bool:
+        """نافذة بوابة الأمان قبل مسح كل السجلات. تعيد True عند التأكيد."""
+        use_password = self.session is not None
+        dlg = Toplevel(self.root)
+        dlg.title("تأكيد المسح النهائي")
+        dlg.configure(bg=BG)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+        frame = ttk.Frame(dlg, padding=20)
+        frame.pack(fill=BOTH, expand=True)
+
+        ttk.Label(frame, text="⚠  مسح جميع السجلات", background=BG,
+                  font=("Segoe UI Semibold", 13), foreground=DANGER).pack(anchor="e")
+        ttk.Label(frame, background=BG, foreground=ACCENT, justify="right",
+                  font=("Segoe UI", 10), wraplength=340,
+                  text=(f"سيُحذف {len(self.records)} سجلاً وكل صورهم نهائياً "
+                        "(تبقى نسخة احتياطية .bak).")).pack(anchor="e", pady=(8, 10))
+
+        if use_password:
+            prompt = f"للتأكيد، أدخل كلمة مرور حسابك «{self.session.username}»:"
+        else:
+            prompt = f"للتأكيد، اكتب كلمة «{self._CLEAR_CONFIRM_WORD}» في الحقل:"
+        ttk.Label(frame, text=prompt, background=BG, foreground=ACCENT,
+                  font=("Segoe UI", 10), wraplength=340, justify="right").pack(anchor="e")
+
+        var = StringVar()
+        entry = ttk.Entry(frame, textvariable=var, width=30, justify="center",
+                          show="●" if use_password else "")
+        install_entry_editing(entry)
+        entry.pack(anchor="e", pady=(6, 0))
+        entry.focus_set()
+        err = ttk.Label(frame, text="", background=BG, foreground=DANGER,
+                        font=("Segoe UI", 9))
+        err.pack(anchor="e", pady=(4, 0))
+
+        state = {"ok": False, "attempts": 0}
+
+        def attempt():
+            if self._clear_credential_ok(var.get()):
+                state["ok"] = True
+                dlg.destroy()
+                return
+            state["attempts"] += 1
+            var.set("")
+            if use_password and state["attempts"] >= 3:
+                err.config(text="كلمة المرور غير صحيحة — أُلغيت العملية.")
+                dlg.after(1000, dlg.destroy)
+                return
+            err.config(text=("كلمة المرور غير صحيحة. حاول مجدداً."
+                             if use_password else
+                             f"اكتب «{self._CLEAR_CONFIRM_WORD}» بالضبط."))
+
+        btns = ttk.Frame(frame)
+        btns.pack(anchor="e", pady=(16, 0))
+        ttk.Button(btns, text=rtl("🗑  تأكيد المسح"), style="Danger.TButton",
+                   command=attempt).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إلغاء", style="Ghost.TButton",
+                   command=dlg.destroy).pack(side=RIGHT, padx=3)
+        dlg.bind("<Return>", lambda _e: attempt())
+        dlg.bind("<Escape>", lambda _e: dlg.destroy())
+        self.root.wait_window(dlg)
+        return state["ok"]
+
     def clear_all(self) -> None:
         if not self.records:
             return
-        if messagebox.askyesno(
-            "مسح الكل",
-            f"حذف جميع السجلات ({len(self.records)})؟\n\n"
-            "سيُحذف الكشف المحفوظ أيضاً. تبقى نسخة احتياطية بامتداد .bak.",
-        ):
-            from . import images as imgmod
-            for rec in self.records:
-                imgmod.delete_all(rec.image_id)      # حذف كل الصور المشفّرة
-            self.records.clear()
-            self.refresh()
-            self.save_data()
-            self.set_status("تم مسح جميع السجلات")
+        if not self._confirm_destructive():
+            self.set_status("أُلغي المسح")
+            return
+        from . import images as imgmod
+        for rec in self.records:
+            imgmod.delete_all(rec.image_id)          # حذف كل الصور المشفّرة
+        self.records.clear()
+        self.refresh()
+        self.save_data()
+        self.set_status("تم مسح جميع السجلات", ok=True)
 
 
 class AirlineDialog(Toplevel):
