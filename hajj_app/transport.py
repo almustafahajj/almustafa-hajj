@@ -8,14 +8,17 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .cards import room_of
 from .mrz import PassportData
 
 # أعمدة كشف المواصلات (من اليمين لليسار في العرض العربي)
 TRANSPORT_COLUMNS: tuple[str, ...] = (
-    "م", "اسم الحاج", "الهاتف", "الفندق", "الغرفة",
+    "م", "اسم الحاج", "الهاتف", "الفندق", "كرسي متحرك",
 )
-_WIDTHS = (5, 28, 15, 20, 8)
+_WIDTHS = (5, 28, 15, 20, 12)
+
+
+def _wheelchair(rec: PassportData) -> str:
+    return str(rec.wheelchair or "").strip()
 
 
 def distinct_transports(records: list[PassportData]) -> list[str]:
@@ -86,7 +89,7 @@ def export_transport_excel(records: list[PassportData], path: str | Path,
     def occupant(rec: PassportData, serial: int) -> None:
         ws.append([serial, rec.full_name_ar or rec.full_name_en or "—",
                    str(rec.phone or "").strip(),
-                   str(rec.hotel or "").strip(), room_of(rec)])
+                   str(rec.hotel or "").strip(), _wheelchair(rec)])
         row = ws.max_row
         for col in range(1, ncols + 1):
             cell = ws.cell(row=row, column=col)

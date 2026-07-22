@@ -55,19 +55,34 @@ export_transport_excel(recs, xlsx)
 wb = load_workbook(xlsx); ws = wb.active
 assert ws.sheet_view.rightToLeft is True
 assert [c.value for c in ws[2]] == list(TRANSPORT_COLUMNS)
-assert "رقم الجواز" not in TRANSPORT_COLUMNS, "عمود رقم الجواز يجب ألا يظهر"
-assert list(TRANSPORT_COLUMNS) == ["م", "اسم الحاج", "الهاتف", "الفندق", "الغرفة"]
+assert "رقم الجواز" not in TRANSPORT_COLUMNS and "الغرفة" not in TRANSPORT_COLUMNS
+assert list(TRANSPORT_COLUMNS) == ["م", "اسم الحاج", "الهاتف", "الفندق", "كرسي متحرك"]
 serials = [row[0].value for row in ws.iter_rows(min_row=3) if isinstance(row[0].value, int)]
 assert len(serials) == 4, serials     # كل الحجّاج مُدرجون (مع مجموعة بلا مواصلات)
 print(f"  OK: إكسل RTL بأعمدة {list(TRANSPORT_COLUMNS)}، {len(serials)} حاجاً")
 
-print("\n=== تصدير المواصلات PDF ===")
+print("\n=== تصدير المواصلات PDF (كل باص في صفحة واحدة) ===")
 pdf = _os.path.join(_OUTDIR, "transport.pdf")
 export_transport_pdf(recs, pdf)
 assert _os.path.getsize(pdf) > 3000
 with open(pdf, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
-print(f"  OK: PDF ({_os.path.getsize(pdf)} بايت)")
+import fitz
+d = fitz.open(pdf)
+# مجموعتان (باص 1، باص 2) + بلا مواصلات = 3 صفحات، كل واحدة صفحة، وطولية
+assert d.page_count == 3, d.page_count
+page = d[0]
+assert page.rect.height > page.rect.width, "الصفحة يجب أن تكون طولية"
+d.close()
+# باص كبير (60 راكباً) يبقى صفحة واحدة (بضبط الخط تلقائياً)
+big = [rec(full_name_ar=f"راكب {i}", transport="باص 7", phone=f"05{i:08d}")
+       for i in range(60)]
+big_pdf = _os.path.join(_OUTDIR, "transport_big.pdf")
+export_transport_pdf(big, big_pdf)
+d = fitz.open(big_pdf)
+assert d.page_count == 1, f"باص 7 يجب أن يكون في صفحة واحدة، لا {d.page_count}"
+d.close()
+print(f"  OK: 3 صفحات طولية، وباص 7 (60 راكباً) في صفحة واحدة")
 
 print("\n=== بطاقات الحجّاج (QR) PDF ===")
 many = [rec(full_name_ar=f"حاج {i}", passport_number=f"A{i:04d}",

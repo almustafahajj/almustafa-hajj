@@ -805,68 +805,93 @@ def export_receipt_pdf(rec, path: str | Path, *,
 
 def export_transport_pdf(records: list, path: str | Path,
                          *, title: str = "كشف المواصلات") -> Path:
-    """يصدّر كشف المواصلات إلى PDF، مجموعاً بوسيلة النقل (رأس ملوّن لكل مجموعة)."""
-    from .cards import room_of
+    """يصدّر كشف المواصلات إلى PDF **طولي**، **كل باص في صفحة واحدة** بخط كبير.
+
+    حجم الخط يُضبط تلقائياً لكل باص ليتّسع ركّابه في صفحة واحدة فقط: خطّ
+    كبير للباصات الصغيرة، ويصغر تدريجياً كلما زاد العدد — مع الالتزام
+    بالصفحة الواحدة دائماً.
+    """
     from .transport import group_by_transport
 
     _register_fonts()
     path = Path(path)
-    st = _styles()
     doc = SimpleDocTemplate(
-        str(path), pagesize=landscape(A4),
-        rightMargin=10 * mm, leftMargin=10 * mm,
+        str(path), pagesize=A4,
+        rightMargin=12 * mm, leftMargin=12 * mm,
         topMargin=12 * mm, bottomMargin=16 * mm,
         title=title, author="برنامج الحج",
     )
-    story: list = []
-    logo = _logo_flowable()
-    if logo is not None:
-        story.append(logo)
-        story.append(Spacer(1, 5))
-    story.append(Paragraph(ar(title), st["title"]))
-    story.append(Paragraph(ar(
-        f"عدد الحجّاج: {ltr(len(records))}  •  التاريخ: {ltr(date.today().isoformat())}"),
-        st["subtitle"]))
 
-    labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "الغرفة"]
-    draw_labels = list(reversed(labels))
-    table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
-    group_rows: list[int] = []
-    group_head = ParagraphStyle("tr_group", parent=st["cell"], fontName=_FONT_BOLD,
-                                textColor=colors.white, alignment=2, fontSize=8.5, leading=11)
+    from reportlab.platypus import KeepInFrame
 
     groups, unassigned = group_by_transport(records)
     blocks = list(groups) + ([("بلا مواصلات", unassigned)] if unassigned else [])
-    serial = 0
-    for name, occ in blocks:
-        row = ["" for _ in labels]
-        row[0] = Paragraph(ar(f"{name}  ({ltr(len(occ))})"), group_head)
-        group_rows.append(len(table_data))
-        table_data.append(row)
-        for rec in occ:
-            serial += 1
+
+    labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "كرسي متحرك"]
+    draw_labels = list(reversed(labels))
+    weights = list(reversed([46, 210, 96, 118, 84]))
+    scale = doc.width / sum(weights)
+    col_widths = [w * scale for w in weights]
+
+    # خط كبير أساساً؛ KeepInFrame يُصغّره تلقائياً فقط إذا لزم لالتزام الصفحة
+    head_style = ParagraphStyle("trh", fontName=_FONT_BOLD, fontSize=14,
+                                alignment=1, textColor=_HEADER_TEXT, leading=17)
+    cell_style = ParagraphStyle("trc", fontName=_FONT, fontSize=13, alignment=1,
+                                leading=16)
+    name_style = ParagraphStyle("trn", fontName=_FONT, fontSize=13, alignment=2,
+                                leading=16)
+    title_style = ParagraphStyle("trt", fontName=_FONT_BOLD, fontSize=19,
+                                 alignment=1, textColor=_INK, spaceAfter=4)
+    sub_style = ParagraphStyle("trs", fontName=_FONT, fontSize=10.5, alignment=1,
+                               textColor=colors.HexColor("#666666"), spaceAfter=8)
+
+    story: list = []
+    for index, (name, occ) in enumerate(blocks):
+        if index:
+            story.append(PageBreak())
+
+        flow: list = []
+        logo = _logo_flowable(max_width_pt=100)
+        if logo is not None:
+            flow.append(logo)
+            flow.append(Spacer(1, 4))
+        flow.append(Paragraph(ar(f"{title} — {name}"), title_style))
+        flow.append(Paragraph(ar(
+            f"عدد الركّاب: {ltr(len(occ))}  •  التاريخ: {ltr(date.today().isoformat())}"),
+            sub_style))
+
+        data = [[Paragraph(ar(lbl), head_style) for lbl in draw_labels]]
+        for serial, rec in enumerate(occ, start=1):
             values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
                       ltr(str(rec.phone or "").strip()),
-                      str(rec.hotel or "").strip(), ltr(room_of(rec))]
-            table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
+                      str(rec.hotel or "").strip(),
+                      str(rec.wheelchair or "").strip()]
+            cells = []
+            for i, v in enumerate(reversed(values)):
+                # عمود الاسم (الثاني من اليمين) بمحاذاة لليمين، والبقية وسط
+                s = name_style if i == len(values) - 2 else cell_style
+                cells.append(Paragraph(ar(v), s))
+            data.append(cells)
 
-    weights = list(reversed([24, 170, 90, 100, 48]))
-    scale = doc.width / sum(weights)
-    style = [
-        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]
-    for r in group_rows:
-        style.append(("SPAN", (0, r), (-1, r)))
-        style.append(("BACKGROUND", (0, r), (-1, r), _ROOM_HEAD))
-    table = Table(table_data, colWidths=[w * scale for w in weights], repeatRows=1)
-    table.setStyle(TableStyle(style))
-    story.append(table)
-    doc.build(story, onFirstPage=lambda c, d: _footer(c, d, title),
-              onLaterPages=lambda c, d: _footer(c, d, title))
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.5, _GRID),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ]))
+        flow.append(table)
+        # يُلزم كل باص بصفحة واحدة: يُصغّر المحتوى تلقائياً إن تجاوزها
+        story.append(KeepInFrame(doc.width, doc.height, flow, mode="shrink"))
+
+    if not blocks:
+        story.append(Paragraph(ar("لا حجّاج."), _styles()["subtitle"]))
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, title),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, title))
     return path
 
 
