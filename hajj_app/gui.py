@@ -580,20 +580,16 @@ class HajjApp:
         outer.pack(fill=X)
         row1 = ttk.Frame(outer, style="Toolbar.TFrame")
         row1.pack(fill=X)
-        row2 = ttk.Frame(outer, style="Toolbar.TFrame")
-        row2.pack(fill=X, pady=(5, 0))
 
-        # الأزرار أقصى يسار الصف الأول
+        # الأزرار أقصى يسار
         self._icon_button(row1, "طباعة المعروض", self.do_print_filtered,
                           "Ghost.TButton", ("print", TEXT)).pack(side=LEFT, padx=3)
         self._icon_button(row1, "مسح الفلاتر", self.clear_filters,
                           "Ghost.TButton", ("clear", TEXT)).pack(side=LEFT, padx=3)
-
-        # قائمتا «الأعمدة ▾» و«العرض ▾» (إظهار/إخفاء الأعمدة والكثافة والخط)
         self._build_columns_menubutton(row1).pack(side=LEFT, padx=3)
         self._build_view_menubutton(row1).pack(side=LEFT, padx=3)
 
-        # ترتيب حسب: قائمة العمود + زر الاتجاه (تصاعدي/تنازلي)
+        # ترتيب حسب: قائمة العمود + زر الاتجاه
         sort_box_frame = ttk.Frame(row1, style="Toolbar.TFrame")
         sort_box_frame.pack(side=LEFT, padx=(14, 0))
         self.sort_dir_btn = ttk.Button(sort_box_frame, text="▲", width=3,
@@ -610,7 +606,7 @@ class HajjApp:
         ttk.Label(sort_box_frame, text="ترتيب حسب", font=("Segoe UI", 9),
                   background=BG, foreground=TEXT).pack(side=LEFT, padx=(2, 0))
 
-        # مربّع البحث الحر أقصى يمين الصف الأول
+        # مربّع البحث الحر أقصى اليمين
         self.filter_search = StringVar()
         self.filter_search.trace_add("write", lambda *_a: self.refresh())
         entry = ttk.Entry(row1, textvariable=self.filter_search, width=20,
@@ -621,20 +617,81 @@ class HajjApp:
         ttk.Label(row1, text="🔍 بحث", font=("Segoe UI", 9),
                   background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 4))
 
-        # القوائم المنسدلة موزّعة على الصفّين — من اليمين لليسار
+        # زرّ واحد يفتح لوحة كل الفلاتر (تجميع الفلاتر في قائمة واحدة)
+        self._filter_btn = self._icon_button(
+            row1, "الفلاتر  ▾", self._toggle_filter_panel, "Ghost.TButton",
+            ("filter", TEXT))
+        self._filter_btn.pack(side=RIGHT, padx=(0, 12))
+
+        self._build_filter_panel()
+
+    def _build_filter_panel(self) -> None:
+        """لوحة منسدلة تجمع كل الفلاتر التسعة في مكان واحد."""
+        panel = Toplevel(self.root)
+        panel.withdraw()
+        panel.overrideredirect(True)
+        panel.configure(bg=BORDER)                 # إطار رفيع
+        self._filter_panel = panel
+        inner = ttk.Frame(panel, style="Panel.TFrame", padding=14)
+        inner.pack(padx=1, pady=1)
+        ttk.Label(inner, text="تصفية الكشف", font=("Segoe UI Semibold", 11),
+                  foreground=TEXT, background=BG).grid(row=0, column=0, columnspan=6,
+                                                       sticky="e", pady=(0, 8))
+
         self.filter_vars: dict[str, StringVar] = {}
         self.filter_boxes: dict[str, ttk.Combobox] = {}
+        cols = 3
         for index, (key, label) in enumerate(self._FILTER_FIELDS):
-            parent = row1 if index < self._FILTERS_ROW1 else row2
-            ttk.Label(parent, text=label, font=("Segoe UI", 9),
-                      background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 4))
+            r = 1 + index // cols
+            c = (index % cols) * 2
+            ttk.Label(inner, text=label, font=("Segoe UI", 9), foreground=TEXT,
+                      background=BG).grid(row=r, column=c + 1, sticky="e", padx=(10, 3),
+                                          pady=3)
             var = StringVar(value=self._ALL)
-            box = ttk.Combobox(parent, textvariable=var, state="readonly",
-                               width=11, font=("Segoe UI", 9), values=[self._ALL])
-            box.pack(side=RIGHT, padx=(0, 6))
+            box = ttk.Combobox(inner, textvariable=var, state="readonly",
+                               width=13, font=("Segoe UI", 9), values=[self._ALL])
+            box.grid(row=r, column=c, sticky="e", pady=3)
             box.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
             self.filter_vars[key] = var
             self.filter_boxes[key] = box
+
+        btns = ttk.Frame(inner, style="Panel.TFrame")
+        btns.grid(row=99, column=0, columnspan=6, sticky="e", pady=(12, 0))
+        self._icon_button(btns, "مسح الفلاتر", self.clear_filters, "Ghost.TButton",
+                          ("clear", TEXT)).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self._hide_filter_panel).pack(side=RIGHT, padx=3)
+        panel.bind("<Escape>", lambda _e: self._hide_filter_panel())
+
+    def _toggle_filter_panel(self) -> None:
+        panel = self._filter_panel
+        if panel.winfo_viewable():
+            self._hide_filter_panel()
+            return
+        panel.update_idletasks()
+        pw = panel.winfo_reqwidth()
+        b = self._filter_btn
+        x = b.winfo_rootx() + b.winfo_width() - pw     # محاذاة يمين الزرّ (RTL)
+        y = b.winfo_rooty() + b.winfo_height() + 3
+        x = max(6, x)
+        panel.geometry(f"+{int(x)}+{int(y)}")
+        panel.deiconify()
+        panel.lift()
+        panel.focus_set()
+
+    def _hide_filter_panel(self) -> None:
+        try:
+            self._filter_panel.withdraw()
+        except Exception:
+            pass
+
+    def _update_filter_button(self) -> None:
+        """يعرض عدد الفلاتر النشطة على زرّ الفلاتر."""
+        if not hasattr(self, "_filter_btn"):
+            return
+        active = sum(1 for v in self.filter_vars.values() if v.get() != self._ALL)
+        text = f"الفلاتر ({active})  ▾" if active else "الفلاتر  ▾"
+        self._filter_btn.configure(text=rtl(text))
 
     # ------------------------------------------------ مُختار الأعمدة والعرض
     # الأعمدة الأساسية التي يُبقيها زر «الأساسية فقط»
@@ -1189,6 +1246,7 @@ class HajjApp:
                 self._empty.place(relx=0.5, rely=0.42, anchor="center")
 
         self._update_heading_arrows()
+        self._update_filter_button()
         self._scroll_to_start()
 
     def _selected_indices(self) -> list[int]:
