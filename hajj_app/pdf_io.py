@@ -917,90 +917,177 @@ def export_transport_pdf(records: list, path: str | Path,
     return path
 
 
+def _draw_person_icon(c, x0, y0, w, h, *, woman: bool) -> None:
+    """يرسم رمز شخص داخل الإطار: امرأة محجّبة أو رجل (ظلّي)."""
+    from reportlab.lib import colors as _c
+    c.saveState()
+    p = c.beginPath()                          # قصّ داخل الإطار
+    p.rect(x0, y0, w, h)
+    c.clipPath(p, stroke=0, fill=0)
+    cx = x0 + w / 2
+    fill = _c.HexColor("#9B8E79")
+    face = _c.HexColor("#D9CEBC")
+    c.setFillColor(fill)
+    if woman:
+        head_r = w * 0.30
+        hy = y0 + h * 0.60
+        # عباءة/جسم يتّسع للأسفل
+        body = c.beginPath()
+        body.moveTo(cx - head_r - w * 0.05, hy)
+        body.lineTo(cx - w * 0.42, y0 + h * 0.04)
+        body.lineTo(cx + w * 0.42, y0 + h * 0.04)
+        body.lineTo(cx + head_r + w * 0.05, hy)
+        body.close()
+        c.drawPath(body, fill=1, stroke=0)
+        # حجاب حول الرأس
+        c.circle(cx, hy, head_r + w * 0.05, fill=1, stroke=0)
+        # الوجه (بيضاوي فاتح)
+        c.setFillColor(face)
+        fr = head_r * 0.78
+        c.ellipse(cx - fr * 0.82, hy - fr, cx + fr * 0.82, hy + fr, fill=1, stroke=0)
+    else:
+        head_r = w * 0.23
+        hy = y0 + h * 0.66
+        # الأكتاف (بيضاوي عريض منخفض)
+        c.ellipse(cx - w * 0.45, y0 + h * 0.05, cx + w * 0.45, y0 + h * 0.05 + h * 0.40,
+                  fill=1, stroke=0)
+        # الرأس
+        c.circle(cx, hy, head_r, fill=1, stroke=0)
+    c.restoreState()
+
+
 def export_badges_pdf(records: list, path: str | Path, *,
                       company: str = "المصطفى للحج والعمرة",
-                      title: str = "بطاقات الحجّاج") -> Path:
-    """يبني بطاقات هوية للحجّاج (10 لكل صفحة) بها رمز QR وبيانات الحاج."""
-    from reportlab.graphics.barcode import qr
-    from reportlab.graphics.shapes import Drawing
+                      session=None, preacher: str = "", admins: str = "",
+                      emergency: str = "", title: str = "بطاقات الحجّاج") -> Path:
+    """يبني بطاقة تعريف لكل حاج بقياس 5.2×8 سم — وجه وخلفية.
 
-    from .cards import qr_payload
+    الوجه: شعار الحملة + الصورة الشخصية (للرجال) أو رمز امرأة محجّبة (للنساء)
+    + الاسم (الأول والثاني والأخير) + الهاتف + الفندق.
+    الخلفية: شعار الحملة + رقم واعظ الحملة + الإداريون + رقم الطوارئ.
+    """
+    from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as _canvas
+
+    from . import images as imgmod
+    from .cards import badge_name, is_woman
 
     _register_fonts()
     path = Path(path)
-    doc = SimpleDocTemplate(
-        str(path), pagesize=A4,
-        rightMargin=12 * mm, leftMargin=12 * mm,
-        topMargin=12 * mm, bottomMargin=14 * mm,
-        title=title, author="برنامج الحج",
-    )
-    name_style = ParagraphStyle("bname", fontName=_FONT_BOLD, fontSize=11,
-                                alignment=2, textColor=_INK, leading=14)
-    small = ParagraphStyle("bsmall", fontName=_FONT, fontSize=8, alignment=2,
-                           leading=11, textColor=colors.HexColor("#333333"))
-    comp = ParagraphStyle("bcomp", fontName=_FONT, fontSize=7.5, alignment=2,
-                          textColor=_ACCENT)
+    CW, CH = 5.2 * cm, 8 * cm
+    M = 6                                      # هامش داخلي
+    c = _canvas.Canvas(str(path), pagesize=(CW, CH), pageCompression=1)
+    c.setTitle(title)
+    logo_reader = ImageReader(str(_LOGO_PATH)) if _LOGO_PATH.is_file() else None
 
-    per_row, rows_per_page = 2, 4          # 8 بطاقات/صفحة — ترقيم نظيف بلا انقسام
-    per_page = per_row * rows_per_page
-    card_w = (doc.width - 10) / per_row
-    card_h = (doc.height - 34) / rows_per_page
+    def center(text, y, font, size, color=_INK):
+        c.setFillColor(color)
+        c.setFont(font, size)
+        c.drawCentredString(CW / 2, y, ar(str(text)))
 
-    def qr_draw(text: str, size: float = 74):
-        widget = qr.QrCodeWidget(text)
-        b = widget.getBounds()
-        bw, bh = b[2] - b[0], b[3] - b[1]
-        d = Drawing(size, size, transform=[size / bw, 0, 0, size / bh, 0, 0])
-        d.add(widget)
-        return d
+    def right(text, y, font, size, color=_INK):
+        c.setFillColor(color)
+        c.setFont(font, size)
+        c.drawRightString(CW - M - 3, y, ar(str(text)))
 
-    def make_card(rec):
-        payload = qr_payload(rec)
-        name = rec.full_name_ar or rec.full_name_en or "—"
-        details = payload.split("\n")[1:]
-        cell = [Paragraph(ar(name), name_style)]
-        cell += [Paragraph(ar(d), small) for d in details]
+    def draw_logo(top_y, max_w, max_h):
+        if logo_reader is None:
+            return top_y - 2
+        iw, ih = logo_reader.getSize()
+        w = min(max_w, iw)
+        h = w * ih / iw
+        if h > max_h:
+            h = max_h
+            w = h * iw / ih
+        c.drawImage(logo_reader, CW / 2 - w / 2, top_y - h, w, h,
+                    mask="auto", preserveAspectRatio=True)
+        return top_y - h
+
+    def photo_reader(rec):
+        """صورة شخصية للرجل إن وُجدت، وإلا None (يُرسم الرمز)."""
+        if is_woman(rec) or not getattr(rec, "image_id", ""):
+            return None
+        blob = imgmod.load_image(rec.image_id, imgmod.PHOTO, session)
+        if not blob:
+            return None
+        pil = imgmod.to_pil_image(blob)
+        return ImageReader(pil) if pil is not None else None
+
+    def draw_front(rec):
+        c.setStrokeColor(_ACCENT)
+        c.setLineWidth(1)
+        c.rect(3, 3, CW - 6, CH - 6, fill=0, stroke=1)
+        y = draw_logo(CH - M, CW * 0.6, 30)
         if company:
-            cell.append(Spacer(1, 3))
-            cell.append(Paragraph(ar(company), comp))
-        card = Table([[qr_draw(payload), cell]],
-                     colWidths=[80, card_w - 86], rowHeights=[card_h - 8])
-        card.setStyle(TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.9, _ACCENT),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        return card
+            y -= 12
+            center(company, y, _FONT_BOLD, 8, _ACCENT)
+        # إطار الصورة/الرمز
+        bw, bh = 2.9 * cm, 3.3 * cm
+        bx = CW / 2 - bw / 2
+        by = y - 8 - bh
+        c.setStrokeColor(_GRID)
+        c.setLineWidth(0.8)
+        c.rect(bx, by, bw, bh, fill=0, stroke=1)
+        pr = photo_reader(rec)
+        if pr is not None:
+            c.drawImage(pr, bx + 1, by + 1, bw - 2, bh - 2,
+                        preserveAspectRatio=True, anchor="c", mask="auto")
+        else:
+            _draw_person_icon(c, bx + 1, by + 1, bw - 2, bh - 2, woman=is_woman(rec))
+        # الاسم والبيانات
+        ty = by - 16
+        center(badge_name(rec) or "—", ty, _FONT_BOLD, 11, _INK)
+        phone = str(rec.phone or "").strip()
+        if phone:
+            ty -= 15
+            center(phone, ty, _FONT, 10, colors.HexColor("#333333"))
+        hotel = str(rec.hotel or "").strip()
+        if hotel:
+            ty -= 14
+            center(hotel, ty, _FONT, 9, colors.HexColor("#333333"))
 
-    cards = [make_card(r) for r in records]
-    story: list = []
-    for start in range(0, len(cards), per_page):
-        if start:
-            story.append(PageBreak())
-        page = cards[start:start + per_page]
-        grid_rows = []
-        for i in range(0, len(page), per_row):
-            pair = page[i:i + per_row]
-            while len(pair) < per_row:
-                pair.append("")
-            grid_rows.append(list(reversed(pair)))    # RTL: أول بطاقة يميناً
-        grid = Table(grid_rows, colWidths=[card_w] * per_row,
-                     rowHeights=[card_h] * len(grid_rows))
-        grid.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
-        story.append(grid)
+    def draw_back(rec):
+        c.setStrokeColor(_ACCENT)
+        c.setLineWidth(1)
+        c.rect(3, 3, CW - 6, CH - 6, fill=0, stroke=1)
+        y = draw_logo(CH - M, CW * 0.62, 34)
+        if company:
+            y -= 13
+            center(company, y, _FONT_BOLD, 9, _ACCENT)
+        y -= 20
+        # واعظ الحملة
+        right("واعظ الحملة:", y, _FONT_BOLD, 9, _ACCENT)
+        y -= 13
+        right(preacher or "................", y, _FONT, 9)
+        y -= 20
+        # الإداريون (يُختارون لاحقاً — أسطر فارغة إن لم تُدخل)
+        right("الإداريون:", y, _FONT_BOLD, 9, _ACCENT)
+        y -= 13
+        admin_lines = [ln for ln in str(admins or "").splitlines() if ln.strip()]
+        if not admin_lines:
+            admin_lines = ["................", "................"]
+        for ln in admin_lines[:4]:
+            right(ln, y, _FONT, 9)
+            y -= 13
+        # الطوارئ في الأسفل
+        y = 24
+        c.setStrokeColor(_GRID)
+        c.setLineWidth(0.6)
+        c.line(M, y + 12, CW - M, y + 12)
+        right(f"للطوارئ: {emergency or '................'}", y, _FONT_BOLD, 9.5,
+              colors.HexColor("#B23A3A"))
 
-    if not cards:
-        story.append(Paragraph(ar("لا حجّاج."), _styles()["subtitle"]))
-    doc.build(story)
+    if not records:
+        center("لا حجّاج", CH / 2, _FONT, 12, _INK)
+        c.showPage()
+    for rec in records:
+        draw_front(rec)
+        c.showPage()
+        draw_back(rec)
+        c.showPage()
+
+    c.save()
     return path
 
 

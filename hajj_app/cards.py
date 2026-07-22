@@ -11,6 +11,21 @@ def room_of(rec: PassportData) -> str:
             or room_number_in_type(str(rec.room_type or "")))
 
 
+def badge_name(rec: PassportData) -> str:
+    """اسم البطاقة: الأول والثاني والأخير فقط (يُسقط الأوسط إن زاد عن ثلاثة)."""
+    full = (rec.full_name_ar or rec.full_name_en or "").strip()
+    parts = full.split()
+    if len(parts) <= 3:
+        return " ".join(parts)
+    return " ".join([parts[0], parts[1], parts[-1]])
+
+
+def is_woman(rec: PassportData) -> bool:
+    """هل الحاجّة أنثى؟ (لتحديد رمز المرأة المحجّبة بدل الصورة)."""
+    s = str(rec.sex or "").strip()
+    return s.startswith("أنثى") or s.startswith("انثى") or s.upper().startswith("F")
+
+
 def qr_payload(rec: PassportData) -> str:
     """نصّ رمز QR لبطاقة الحاج — أسطر مقروءة تُعرّف الحاج عند المسح."""
     name = rec.full_name_ar or rec.full_name_en or "—"

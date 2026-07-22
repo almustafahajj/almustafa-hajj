@@ -348,7 +348,7 @@ class HajjApp:
             ("🏨  تسكين PDF", self.do_rooming_pdf),
             ("⛺  خيام المخيمات", self.do_camps),
             None,
-            ("🪪  بطاقات الحجّاج (QR)", self.do_badges),
+            ("🪪  بطاقات الحجّاج", self.do_badges),
             ("🖼  طباعة الصور", self.do_print_images),
         ])
         rep_mb.pack(side=RIGHT, padx=(4, 3))
@@ -1377,31 +1377,14 @@ class HajjApp:
         TransportDialog(self.root, records)
 
     def do_badges(self) -> None:
-        """يصدّر بطاقات هوية للحجّاج (QR) — للحجّاج الظاهرين حسب الفلتر."""
+        """يفتح نافذة بطاقات الحجّاج (وجه وخلفية، 5.2×8سم) لإدخال بيانات الخلفية."""
         if not self._require_records():
             return
         records = self._visible_records()
         if not records:
             messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
             return
-        path = filedialog.asksaveasfilename(
-            title="حفظ بطاقات الحجّاج", defaultextension=".pdf",
-            initialfile=f"بطاقات_الحجاج_{date.today().isoformat()}.pdf",
-            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
-        if not path:
-            return
-        from .pdf_io import export_badges_pdf
-        try:
-            export_badges_pdf(records, path)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في البطاقات", str(exc))
-            return
-        self.set_status(f"حُفظت {len(records)} بطاقة (QR): {path}", ok=True)
-        self._offer_open(path)
+        BadgesDialog(self.root, records, self.session)
 
     def bulk_edit_selected(self) -> None:
         """تعديل جماعي: يطبّق حقولاً على كل السجلات المحدّدة."""
@@ -2421,6 +2404,100 @@ class StatsDialog(Toplevel):
             self._owe.insert("", END, text=name, values=(
                 str(rec.passport_number or "").strip() or "—",
                 str(rec.phone or "").strip() or "—", format_amount(amount)))
+
+
+class BadgesDialog(Toplevel):
+    """بطاقات الحجّاج (وجه وخلفية، 5.2×8سم): إدخال بيانات الخلفية ثم التصدير."""
+
+    _DEFAULT_CAMPAIGN = "المصطفى للحج والعمرة"
+
+    def __init__(self, parent, records, session) -> None:
+        super().__init__(parent)
+        self._records = records
+        self._session = session
+        self.title("🪪 بطاقات الحجّاج")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=f"إنشاء بطاقات لـ {len(records)} حاجاً",
+                  font=("Segoe UI Semibold", 12), foreground=ACCENT,
+                  background=BG).pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+                  background=BG, wraplength=420,
+                  text=rtl("الوجه: الشعار + الصورة الشخصية (للرجال) أو رمز امرأة "
+                           "محجّبة (للنساء) + الاسم والهاتف والفندق.\n"
+                           "الخلفية: الشعار + المعلومات أدناه.")).pack(
+            anchor="e", pady=(2, 12))
+
+        form = ttk.Frame(outer)
+        form.pack(fill=X)
+        self._company = StringVar(value=self._DEFAULT_CAMPAIGN)
+        self._preacher = StringVar(value="")
+        self._emergency = StringVar(value="")
+
+        def row(label, var):
+            fr = ttk.Frame(form)
+            fr.pack(fill=X, pady=3)
+            ttk.Label(fr, text=label, font=("Segoe UI", 10), foreground=ACCENT,
+                      background=BG, width=18, anchor="e").pack(side=RIGHT, padx=(6, 0))
+            e = ttk.Entry(fr, textvariable=var, width=30, justify="right",
+                          font=("Segoe UI", 10))
+            install_entry_editing(e)
+            e.pack(side=RIGHT, fill=X, expand=True)
+
+        row("اسم الحملة", self._company)
+        row("رقم واعظ الحملة", self._preacher)
+        row("رقم الطوارئ", self._emergency)
+
+        ttk.Label(outer, text="الإداريون (اختياري — سطر لكل إداري):",
+                  font=("Segoe UI", 10), foreground=ACCENT, background=BG).pack(
+            anchor="e", pady=(8, 2))
+        self._admins = tk.Text(outer, height=3, width=44, font=("Segoe UI", 10),
+                               wrap="word")
+        self._admins.pack(fill=X)
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(16, 0))
+        ttk.Button(btns, text=rtl("🪪  تصدير البطاقات"), style="Primary.TButton",
+                   command=self._export).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    def _export(self) -> None:
+        path = filedialog.asksaveasfilename(
+            parent=self, title="حفظ بطاقات الحجّاج", defaultextension=".pdf",
+            initialfile=f"بطاقات_الحجاج_{date.today().isoformat()}.pdf",
+            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
+        if not path:
+            return
+        from .pdf_io import export_badges_pdf
+        try:
+            export_badges_pdf(
+                self._records, path, company=self._company.get().strip(),
+                session=self._session, preacher=self._preacher.get().strip(),
+                admins=self._admins.get("1.0", "end").strip(),
+                emergency=self._emergency.get().strip())
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
+                                 parent=self)
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في البطاقات", str(exc), parent=self)
+            return
+        self.destroy()
+        if messagebox.askyesno("تم الحفظ",
+                               f"حُفظت {len(self._records)} بطاقة:\n{path}\n\nفتحها الآن؟"):
+            import os
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
 
 
 class QualityDialog(Toplevel):
