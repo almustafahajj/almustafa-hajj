@@ -47,8 +47,20 @@ _DEFAULT_SEASON = "1447"
 BG = "#F7F5F2"              # أبيض دافئ يجاور البرونزي
 ACCENT = "#111111"          # الأسود — العناوين ورؤوس الجدول
 BRONZE = "#8A6E4B"          # البرونزي — التمييز والتفاعل
+BRONZE_DARK = "#6F5738"     # برونزي أغمق لحالة المرور (hover)
 ACCENT_HOVER = BRONZE
 WARN_BG = "#FBF0DC"         # كهرماني باهت يتناغم مع البرونزي
+
+# ألوان مساندة للتحسينات البصرية
+PANEL = "#FFFFFF"           # خلفية الجدول
+ROW_ALT = "#F2ECE3"         # صفّ متناوب (بيج فاتح)
+BORDER = "#E2DACE"          # حدود ناعمة
+MUTED = "#777777"           # نص ثانوي
+SUCCESS_FG = "#2E6B45"      # أخضر النجاح
+SUCCESS_BG = "#E6F1E9"
+AMBER_FG = "#B26A00"        # كهرماني التنبيه
+DANGER = "#B23A3A"          # أحمر هادئ للحذف/المسح
+DANGER_HOVER = "#8F2C2C"
 
 
 def install_entry_editing(widget) -> None:
@@ -114,8 +126,19 @@ class HajjApp:
         self.sort_field: str | None = None
         self.sort_desc = False
 
+        # إعدادات الواجهة المحفوظة (تُستعاد بين الجلسات)
+        self._ui = dict(self._settings.get("ui", {}))
+        self._density = self._ui.get("density", "عادي")
+        if self._density not in self._DENSITY:
+            self._density = "عادي"
+        self._font_size = self._ui.get("font_size", "متوسط")
+        if self._font_size not in self._FONT_SIZES:
+            self._font_size = "متوسط"
+        self._hidden_cols: set[str] = set(self._ui.get("hidden_columns", ["source_file"]))
+
         root.title("برنامج الحج — إدارة بيانات الحجاج")
-        root.geometry("1280x740")
+        geom = self._ui.get("geometry")
+        root.geometry(geom if isinstance(geom, str) and "x" in geom else "1280x740")
         root.minsize(900, 560)
         root.configure(bg=BG)
 
@@ -125,6 +148,7 @@ class HajjApp:
         self._build_filters()
         self._build_table()
         self._build_status()
+        self._bind_shortcuts()
 
         self._load_saved_data()
         root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -139,20 +163,65 @@ class HajjApp:
                 warn=True,
             )
 
+    # كثافة الصفوف وحجم الخط (قابلة للاختيار وتُحفظ)
+    _DENSITY = {"مريح": 31, "عادي": 26, "مضغوط": 21}
+    _FONT_SIZES = {"صغير": 9, "متوسط": 10, "كبير": 12}
+
     # ------------------------------------------------------------------ بناء
     def _build_styles(self) -> None:
         s = ttk.Style()
+        self._style = s
         try:
             s.theme_use("clam")
         except Exception:
             pass
-        s.configure("Treeview", rowheight=27, font=("Segoe UI", 10), background="white",
-                    fieldbackground="white")
-        s.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
-                    background=ACCENT, foreground="white", padding=6)
-        s.map("Treeview.Heading", background=[("active", ACCENT_HOVER)])
-        s.configure("Act.TButton", font=("Segoe UI", 10), padding=(12, 7))
+
         s.configure("Toolbar.TFrame", background=BG)
+        s.configure("Panel.TFrame", background=BG)
+        s.configure("Sep.TFrame", background=BRONZE)      # فاصل برونزي رفيع
+
+        # الجدول: صفوف متناوبة الألوان وتمييز برونزي للصف المحدد
+        self._apply_table_style()
+        s.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
+                    background=ACCENT, foreground="white", padding=6, relief="flat")
+        s.map("Treeview.Heading", background=[("active", BRONZE)])
+
+        # أنماط الأزرار: أساسي (برونزي)، ثانوي (إطار)، خطر (أحمر)
+        s.configure("Act.TButton", font=("Segoe UI", 10), padding=(12, 7))
+        s.configure("Primary.TButton", font=("Segoe UI Semibold", 10),
+                    padding=(14, 7), foreground="white", background=BRONZE,
+                    bordercolor=BRONZE, focuscolor=BRONZE)
+        s.map("Primary.TButton",
+              background=[("active", BRONZE_DARK), ("disabled", "#C8BCA9")],
+              foreground=[("disabled", "#F0EADE")])
+        s.configure("Ghost.TButton", font=("Segoe UI", 10), padding=(12, 7),
+                    foreground=ACCENT, background=BG, bordercolor=BORDER)
+        s.map("Ghost.TButton",
+              background=[("active", "#EDE6DB")], bordercolor=[("active", BRONZE)])
+        s.configure("Danger.TButton", font=("Segoe UI", 10), padding=(12, 7),
+                    foreground="white", background=DANGER, bordercolor=DANGER)
+        s.map("Danger.TButton",
+              background=[("active", DANGER_HOVER), ("disabled", "#D9BFBF")])
+
+        # القوائم المنسدلة في الشريط تبدو كأزرار أساسية
+        s.configure("Toolbar.TMenubutton", font=("Segoe UI Semibold", 10),
+                    padding=(14, 7), foreground="white", background=BRONZE,
+                    arrowcolor="white")
+        s.map("Toolbar.TMenubutton",
+              background=[("active", BRONZE_DARK), ("disabled", "#C8BCA9")])
+        s.configure("Ghost.TMenubutton", font=("Segoe UI", 10), padding=(10, 7),
+                    foreground=ACCENT, background=BG, arrowcolor=ACCENT)
+        s.map("Ghost.TMenubutton", background=[("active", "#EDE6DB")])
+
+    def _apply_table_style(self) -> None:
+        """يطبّق كثافة الصفوف وحجم الخط على الجدول (قابل للتغيير حياً)."""
+        rowheight = self._DENSITY.get(self._density, 26)
+        size = self._FONT_SIZES.get(self._font_size, 10)
+        s = self._style
+        s.configure("Treeview", rowheight=rowheight, font=("Segoe UI", size),
+                    background=PANEL, fieldbackground=PANEL, borderwidth=0)
+        s.map("Treeview",
+              background=[("selected", BRONZE)], foreground=[("selected", "white")])
 
     def _build_header(self) -> None:
         bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 10, 16, 6))
@@ -192,6 +261,9 @@ class HajjApp:
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
 
+        # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
+        ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
+
     def new_recovery_key(self) -> None:
         """يولّد مفتاح استرداد جديداً ويعرضه — يبطل القديم."""
         if self.session is None:
@@ -229,33 +301,58 @@ class HajjApp:
         year = self.season_year.get().strip()
         return f"{base} — موسم {year}هـ" if year else base
 
-    def _build_toolbar(self) -> None:
-        bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 6, 16, 10))
-        bar.pack(fill=X)
+    def _menubutton(self, parent, text, items, *, style="Toolbar.TMenubutton"):
+        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)."""
+        mb = ttk.Menubutton(parent, text=rtl(text), style=style, direction="below")
+        menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
+        for entry in items:
+            if entry is None:
+                menu.add_separator()
+            else:
+                label, cmd = entry
+                menu.add_command(label=label, command=cmd)
+        mb["menu"] = menu
+        self._menus.append(menu)          # نحتفظ بمرجع لمنع جمع القمامة
+        return mb
 
-        buttons = [
-            ("➕  إضافة يدوي", self.add_manual),
-            ("📷  إضافة جوازات (صور/PDF)", self.add_images),
+    def _build_toolbar(self) -> None:
+        bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 8, 16, 10))
+        bar.pack(fill=X)
+        self._menus: list = []
+
+        # قائمة «إضافة ▾»: يدوي / جوازات / استيراد
+        add_mb = self._menubutton(bar, "➕  إضافة  ▾", [
+            ("➕  حاج يدوياً", self.add_manual),
+            ("📷  جوازات (صور / PDF)", self.add_images),
             ("📁  استيراد من إكسل", self.import_from_excel),
-            ("✏️  تعديل السجل", self.edit_selected),
-            ("🗑  حذف المحدد", self.delete_selected),
+        ])
+        add_mb.pack(side=RIGHT, padx=(0, 4))
+
+        # أزرار مباشرة: تعديل (ثانوي) وحذف (خطر)
+        ttk.Button(bar, text=rtl("✏️  تعديل"), command=self.edit_selected,
+                   style="Ghost.TButton").pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=rtl("🗑  حذف"), command=self.delete_selected,
+                   style="Danger.TButton").pack(side=RIGHT, padx=3)
+
+        # قائمة «التقارير ▾»: كل التصدير والطباعة
+        rep_mb = self._menubutton(bar, "📤  التقارير والكشوفات  ▾", [
             ("📊  تصدير إكسل", self.do_export_excel),
             ("📄  تصدير PDF", self.do_export_pdf),
-            ("✈  كشف الطيران", self.do_airline),
+            None,
+            ("✈  كشف الطيران وأماديوس", self.do_airline),
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
             ("⛺  خيام المخيمات", self.do_camps),
+            None,
             ("🪪  طباعة الصور", self.do_print_images),
-            ("🧹  مسح الكل", self.clear_all),
-        ]
-        # نعبّئ من اليمين لليسار ليطابق اتجاه الواجهة العربية
-        for text, cmd in buttons:
-            ttk.Button(bar, text=rtl(text), command=cmd, style="Act.TButton").pack(
-                side=RIGHT, padx=3
-            )
+        ])
+        rep_mb.pack(side=RIGHT, padx=(4, 3))
 
-        self.progress = ttk.Progressbar(bar, mode="determinate", length=200)
-        self.progress.pack(side=LEFT, padx=6)
+        # مسح الكل (خطر) أقصى اليسار بعد شريط التقدّم
+        ttk.Button(bar, text=rtl("🧹  مسح الكل"), command=self.clear_all,
+                   style="Danger.TButton").pack(side=LEFT, padx=(6, 0))
+        self.progress = ttk.Progressbar(bar, mode="determinate", length=180)
+        self.progress.pack(side=LEFT, padx=8)
 
     # الحقول القابلة للفلترة بقائمة منسدلة (تُملأ قيمها من البيانات)
     _FILTER_FIELDS = (
@@ -303,9 +400,13 @@ class HajjApp:
 
         # الأزرار أقصى يسار الصف الأول
         ttk.Button(row1, text=rtl("🖨  طباعة المعروض"), command=self.do_print_filtered,
-                   style="Act.TButton").pack(side=LEFT, padx=3)
+                   style="Ghost.TButton").pack(side=LEFT, padx=3)
         ttk.Button(row1, text=rtl("✖  مسح الفلاتر"), command=self.clear_filters,
-                   style="Act.TButton").pack(side=LEFT, padx=3)
+                   style="Ghost.TButton").pack(side=LEFT, padx=3)
+
+        # قائمتا «الأعمدة ▾» و«العرض ▾» (إظهار/إخفاء الأعمدة والكثافة والخط)
+        self._build_columns_menubutton(row1).pack(side=LEFT, padx=3)
+        self._build_view_menubutton(row1).pack(side=LEFT, padx=3)
 
         # ترتيب حسب: قائمة العمود + زر الاتجاه (تصاعدي/تنازلي)
         sort_box_frame = ttk.Frame(row1, style="Toolbar.TFrame")
@@ -330,6 +431,8 @@ class HajjApp:
         entry = ttk.Entry(row1, textvariable=self.filter_search, width=20,
                           justify="right", font=("Segoe UI", 10))
         entry.pack(side=RIGHT, padx=(0, 6))
+        self._search_entry = entry
+        install_entry_editing(entry)
         ttk.Label(row1, text="🔍 بحث", font=("Segoe UI", 9),
                   background=BG, foreground=ACCENT).pack(side=RIGHT, padx=(2, 4))
 
@@ -347,6 +450,144 @@ class HajjApp:
             box.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
             self.filter_vars[key] = var
             self.filter_boxes[key] = box
+
+    # ------------------------------------------------ مُختار الأعمدة والعرض
+    # الأعمدة الأساسية التي يُبقيها زر «الأساسية فقط»
+    _ESSENTIAL_COLS = (
+        "serial", "family_number", "full_name_ar", "full_name_en", "phone",
+        "hotel", "room_type", "room_number", "passport_number",
+        "nationality_ar", "sex", "airline", "remaining_amount",
+    )
+
+    def _display_columns(self) -> tuple:
+        """أعمدة الجدول بترتيب العرض (مسلسل أقصى اليمين)."""
+        return tuple(reversed(FIELDS + DIAG_FIELDS))
+
+    def _build_columns_menubutton(self, parent):
+        mb = ttk.Menubutton(parent, text=rtl("🗂 الأعمدة ▾"),
+                            style="Ghost.TMenubutton", direction="below")
+        menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
+        self._col_vars: dict[str, tk.BooleanVar] = {}
+        for f in self._display_columns():
+            var = tk.BooleanVar(value=f.key not in self._hidden_cols)
+            self._col_vars[f.key] = var
+            menu.add_checkbutton(label=f.label, variable=var,
+                                 command=self._apply_columns)
+        menu.add_separator()
+        menu.add_command(label="إظهار كل الأعمدة",
+                         command=lambda: self._preset_columns(None))
+        menu.add_command(label="الأعمدة الأساسية فقط",
+                         command=lambda: self._preset_columns(self._ESSENTIAL_COLS))
+        mb["menu"] = menu
+        self._menus.append(menu)
+        return mb
+
+    def _preset_columns(self, keep) -> None:
+        """يضبط الأعمدة الظاهرة: keep=None يُظهر الكل، وإلا يُبقي المجموعة فقط."""
+        for key, var in self._col_vars.items():
+            var.set(True if keep is None else key in keep)
+        self._apply_columns()
+
+    def _apply_columns(self) -> None:
+        """يطبّق الأعمدة الظاهرة على الجدول ويحفظها."""
+        self._hidden_cols = {k for k, v in self._col_vars.items() if not v.get()}
+        visible = [f.key for f in self.columns if f.key not in self._hidden_cols]
+        if not visible:                       # لا نُخفي كل الأعمدة
+            visible = ["serial"]
+            self._col_vars["serial"].set(True)
+            self._hidden_cols.discard("serial")
+        try:
+            self.tree["displaycolumns"] = visible
+        except Exception:
+            pass
+        self._save_ui_settings()
+
+    def _build_view_menubutton(self, parent):
+        mb = ttk.Menubutton(parent, text=rtl("⚙ العرض ▾"),
+                            style="Ghost.TMenubutton", direction="below")
+        menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
+        self._density_var = tk.StringVar(value=self._density)
+        dmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
+        for name in self._DENSITY:
+            dmenu.add_radiobutton(label=name, value=name,
+                                  variable=self._density_var,
+                                  command=self._on_density_change)
+        menu.add_cascade(label="كثافة الصفوف", menu=dmenu)
+        self._fontsize_var = tk.StringVar(value=self._font_size)
+        fmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
+        for name in self._FONT_SIZES:
+            fmenu.add_radiobutton(label=name, value=name,
+                                  variable=self._fontsize_var,
+                                  command=self._on_font_change)
+        menu.add_cascade(label="حجم الخط", menu=fmenu)
+        mb["menu"] = menu
+        self._menus += [menu, dmenu, fmenu]
+        return mb
+
+    def _on_density_change(self) -> None:
+        self._density = self._density_var.get()
+        self._apply_table_style()
+        self._save_ui_settings()
+
+    def _on_font_change(self) -> None:
+        self._font_size = self._fontsize_var.get()
+        self._apply_table_style()
+        self._save_ui_settings()
+
+    def _save_ui_settings(self) -> None:
+        """يحفظ حجم النافذة والأعمدة والكثافة والخط لتُستعاد لاحقاً."""
+        try:
+            geom = self.root.winfo_geometry()
+        except Exception:
+            geom = self._ui.get("geometry", "")
+        self._ui.update({
+            "geometry": geom,
+            "hidden_columns": sorted(self._hidden_cols),
+            "density": self._density,
+            "font_size": self._font_size,
+        })
+        self._settings["ui"] = self._ui
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+
+    # ------------------------------------------------ اختصارات لوحة المفاتيح
+    def _bind_shortcuts(self) -> None:
+        self.root.bind("<Control-f>", lambda _e: self._focus_search())
+        self.root.bind("<Control-F>", lambda _e: self._focus_search())
+        self.root.bind("<Control-n>", lambda _e: self.add_manual())
+        self.root.bind("<Control-N>", lambda _e: self.add_manual())
+        self.root.bind("<Control-p>", lambda _e: self.do_print_filtered())
+        self.root.bind("<Control-P>", lambda _e: self.do_print_filtered())
+        self.tree.bind("<Delete>", lambda _e: self.delete_selected())
+
+    def _focus_search(self) -> str:
+        try:
+            self._search_entry.focus_set()
+            self._search_entry.select_range(0, "end")
+        except Exception:
+            pass
+        return "break"
+
+    # ------------------------------------------------ قائمة يمين الفأرة
+    def _show_row_menu(self, event) -> None:
+        iid = self.tree.identify_row(event.y)
+        if not iid:
+            return
+        if iid not in self.tree.selection():
+            self.tree.selection_set(iid)
+        self._row_menu.tk_popup(event.x_root, event.y_root)
+
+    def _copy_field(self, key: str) -> None:
+        idxs = self._selected_indices()
+        if not idxs:
+            return
+        value = str(getattr(self.records[idxs[0]], key, "") or "").strip()
+        if value:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(value)
+            self.set_status(f"نُسخ: {value}", ok=True)
 
     def _filter_value(self, rec: PassportData, key: str) -> str:
         """القيمة القابلة للمقارنة في الفلتر.
@@ -459,17 +700,45 @@ class HajjApp:
         self.sort_dir_btn.config(text="▼" if self.sort_desc else "▲")
         self._apply_sort()
 
+    def _sort_by_column(self, key: str) -> None:
+        """الترتيب بالنقر على رأس العمود (يعكس الاتجاه عند تكرار العمود)."""
+        if self.sort_field == key:
+            self.sort_desc = not self.sort_desc
+        else:
+            self.sort_field = key
+            self.sort_desc = False
+        label = next((lbl for k, lbl in self._SORT_FIELDS if k == key), None)
+        self.sort_var.set(label or self._SORT_NONE)   # مزامنة القائمة إن أمكن
+        self.sort_dir_btn.config(text="▼" if self.sort_desc else "▲")
+        self.refresh()
+        col_label = self._col_labels.get(key, key)
+        direction = "تنازلي" if self.sort_desc else "تصاعدي"
+        self.set_status(f"العرض مرتّب حسب: {col_label} ({direction})")
+
+    def _update_heading_arrows(self) -> None:
+        """يُظهر سهم الاتجاه على رأس عمود الترتيب النشط فقط."""
+        if not hasattr(self, "_col_labels"):
+            return
+        for f in self.columns:
+            base = self._col_labels[f.key]
+            if self.sort_field == f.key:
+                base = f"{base}  {'▼' if self.sort_desc else '▲'}"
+            self.tree.heading(f.key, text=base)
+
     def _build_table(self) -> None:
-        wrap = ttk.Frame(self.root, padding=(16, 0, 16, 8))
+        wrap = ttk.Frame(self.root, padding=(16, 4, 16, 8))
         wrap.pack(fill=BOTH, expand=True)
 
         # الأعمدة معكوسة ليظهر "مسلسل" أقصى اليمين كما في الكشف الورقي
         self.columns = tuple(reversed(FIELDS + DIAG_FIELDS))
+        self._col_labels = {f.key: f.label for f in self.columns}
         cols = [f.key for f in self.columns]
         self.tree = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="extended")
 
         for f in self.columns:
-            self.tree.heading(f.key, text=f.label)
+            # النقر على رأس العمود يرتّب حسبه (مع سهم اتجاه)
+            self.tree.heading(f.key, text=f.label,
+                              command=lambda k=f.key: self._sort_by_column(k))
             self.tree.column(f.key, width=max(f.width * 9, 70), anchor="center",
                              stretch=False)
 
@@ -481,8 +750,25 @@ class HajjApp:
         hs.pack(side="bottom", fill=X)
         self.tree.pack(fill=BOTH, expand=True)
 
+        # تخطيط متناوب الألوان + تمييز صفوف التنبيه
+        self.tree.tag_configure("even", background=PANEL)
+        self.tree.tag_configure("odd", background=ROW_ALT)
         self.tree.tag_configure("warn", background=WARN_BG)
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
+
+        # قائمة يمين الفأرة على الصف
+        self._row_menu = tk.Menu(self.tree, tearoff=0, font=("Segoe UI", 10))
+        self._row_menu.add_command(label="✏️  تعديل السجل", command=self.edit_selected)
+        self._row_menu.add_command(label="🗑  حذف المحدد", command=self.delete_selected)
+        self._row_menu.add_separator()
+        self._row_menu.add_command(label="نسخ اسم الحاج",
+                                   command=lambda: self._copy_field("full_name_ar"))
+        self._row_menu.add_command(label="نسخ رقم الجواز",
+                                   command=lambda: self._copy_field("passport_number"))
+        self.tree.bind("<Button-3>", self._show_row_menu)
+
+        # تطبيق الأعمدة الظاهرة المحفوظة
+        self._apply_columns()
 
         # الأعمدة أعرض من الشاشة، وTk يبدأ العرض من اليسار. في كشف عربي
         # يجب أن يبدأ من اليمين حيث عمود "مسلسل" واسم الحاج، لا من
@@ -549,6 +835,7 @@ class HajjApp:
             return False
 
     def _on_close(self) -> None:
+        self._save_ui_settings()          # يحفظ حجم النافذة والأعمدة والعرض
         if self.save_data():
             self.root.destroy()
             return
@@ -560,9 +847,15 @@ class HajjApp:
             self.root.destroy()
 
     # ------------------------------------------------------------------ أدوات
-    def set_status(self, text: str, *, warn: bool = False) -> None:
-        self.status.set(text)
-        self.status_label.configure(foreground="#B26A00" if warn else "#444")
+    def set_status(self, text: str, *, warn: bool = False, ok: bool = False) -> None:
+        if warn:
+            fg, icon = AMBER_FG, "⚠"
+        elif ok:
+            fg, icon = SUCCESS_FG, "✓"
+        else:
+            fg, icon = "#444444", "•"
+        self.status.set(f"{icon}  {text}")
+        self.status_label.configure(foreground=fg)
 
     def refresh(self) -> None:
         """يعيد رسم الجدول من self.records مطبّقاً الفلاتر النشطة.
@@ -584,8 +877,10 @@ class HajjApp:
             shown += 1
             data = row_dict(rec, shown)
             values = [data.get(f.key, "") for f in self.columns]
+            # صفّ التنبيه بلونه، والبقية متناوبة الألوان
+            tag = "warn" if data.get("warnings") else ("odd" if shown % 2 else "even")
             self.tree.insert("", END, iid=str(orig_index[id(rec)]), values=values,
-                             tags=("warn",) if data.get("warnings") else ())
+                             tags=(tag,))
 
         total = len(self.records)
         if self._filter_active() and shown != total:
@@ -593,6 +888,7 @@ class HajjApp:
         else:
             self.count_label.configure(text=f"إجمالي الحجاج: {total}")
 
+        self._update_heading_arrows()
         self._scroll_to_start()
 
     def _selected_indices(self) -> list[int]:
@@ -744,7 +1040,7 @@ class HajjApp:
         state = "disabled" if busy else "normal"
         for child in self.root.winfo_children():
             for w in child.winfo_children():
-                if isinstance(w, ttk.Button):
+                if isinstance(w, (ttk.Button, ttk.Menubutton)):
                     w.configure(state=state)
 
     # ----------------------------------------------------------- إكسل / PDF

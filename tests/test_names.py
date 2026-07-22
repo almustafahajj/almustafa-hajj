@@ -88,15 +88,22 @@ from hajj_app.mrz import PassportData
 root = Tk(); root.withdraw()
 app = HajjApp(root)
 
-labels = []
+labels, menus = [], []
 def walk(w):
     for c in w.winfo_children():
-        if c.__class__.__name__ == "Button":
+        name = c.__class__.__name__
+        if name == "Button":
             labels.append(c.cget("text"))
+        elif name == "Menubutton":
+            menus.append(c.cget("text"))
         walk(c)
 walk(root)
-print("  toolbar:", labels)
-assert any("إضافة يدوي" in t for t in labels), labels
+print("  toolbar buttons:", labels)
+print("  toolbar menus:", menus)
+# الأزرار جُمّعت في قوائم: «إضافة ▾» و«التقارير ▾»، وتعديل/حذف أزرار مباشرة
+assert any("إضافة" in t for t in menus), menus
+assert any("تعديل" in t for t in labels), labels
+assert callable(app.add_manual)
 
 # empty record must be rejected
 rec = PassportData(source_file="إدخال يدوي")
