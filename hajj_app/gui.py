@@ -337,6 +337,7 @@ class HajjApp:
         # قائمة «التقارير ▾»: كل التصدير والطباعة
         rep_mb = self._menubutton(bar, "📤  التقارير والكشوفات  ▾", [
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
+            ("📊  إحصاءات وملخّص مالي", self.do_stats),
             None,
             ("📊  تصدير إكسل", self.do_export_excel),
             ("📄  تصدير PDF", self.do_export_pdf),
@@ -767,6 +768,9 @@ class HajjApp:
                                    command=lambda: self._copy_field("full_name_ar"))
         self._row_menu.add_command(label="نسخ رقم الجواز",
                                    command=lambda: self._copy_field("passport_number"))
+        self._row_menu.add_separator()
+        self._row_menu.add_command(label="🧾  إيصال دفع (PDF)",
+                                   command=self._receipt_selected)
         self.tree.bind("<Button-3>", self._show_row_menu)
 
         # تطبيق الأعمدة الظاهرة المحفوظة
@@ -1244,6 +1248,40 @@ class HajjApp:
         if not self._require_records():
             return
         QualityDialog(self.root, lambda: self.records, self._focus_record)
+
+    def do_stats(self) -> None:
+        """يفتح لوحة الإحصاءات والملخّص المالي."""
+        if not self._require_records():
+            return
+        StatsDialog(self.root, list(self.records), season=self.season_year.get())
+
+    def _receipt_selected(self) -> None:
+        """يُصدّر إيصال دفع PDF للحاج المحدّد (من قائمة يمين الفأرة)."""
+        idxs = self._selected_indices()
+        if not idxs:
+            messagebox.showinfo("لم يتم التحديد", "اختر حاجاً من الجدول أولاً.")
+            return
+        rec = self.records[idxs[0]]
+        name = rec.full_name_ar or rec.full_name_en or "حاج"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", name).strip() or "حاج"
+        path = filedialog.asksaveasfilename(
+            title="حفظ إيصال الدفع", defaultextension=".pdf",
+            initialfile=f"إيصال - {safe}.pdf",
+            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
+        if not path:
+            return
+        from .pdf_io import export_receipt_pdf
+        try:
+            export_receipt_pdf(rec, path, season=self.season_year.get())
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في الإيصال", str(exc))
+            return
+        self.set_status(f"حُفظ إيصال دفع: {name}", ok=True)
+        self._offer_open(path)
 
     def _focus_record(self, index: int) -> None:
         """يحدّد سجلاً في الجدول الرئيسي ويُظهره (من نافذة الفحص)."""
@@ -1906,6 +1944,121 @@ class CampsDialog(Toplevel):
                 os.startfile(path)
             except Exception:
                 pass
+
+
+class StatsDialog(Toplevel):
+    """لوحة إحصاءات وملخّص مالي: توزيع الحجّاج + المحصّل/المتبقّي + المتأخّرات."""
+
+    _CARD_COLORS = {
+        "المحصّل": SUCCESS_FG,
+        "المتبقّي": DANGER,
+        "نسبة التحصيل": BRONZE,
+        "عدد غير المكتمل": AMBER_FG,
+    }
+
+    def __init__(self, parent, records, season: str = "") -> None:
+        super().__init__(parent)
+        self._records = records
+        self.title("📊 إحصاءات وملخّص مالي")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.geometry("760x600")
+
+        from .stats import financial_summary, GROUPINGS
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+
+        # ---- بطاقات الملخّص المالي ----
+        fin = financial_summary(records)
+        cards = ttk.Frame(outer, style="Toolbar.TFrame")
+        cards.pack(fill=X, pady=(0, 12))
+        for label, value in fin.as_rows():
+            card = ttk.Frame(cards, style="Toolbar.TFrame", padding=(12, 6))
+            card.pack(side=RIGHT, padx=4)
+            ttk.Label(card, text=value, background=BG,
+                      font=("Segoe UI Semibold", 15),
+                      foreground=self._CARD_COLORS.get(label, ACCENT)).pack(anchor="e")
+            ttk.Label(card, text=label, background=BG, foreground=MUTED,
+                      font=("Segoe UI", 9)).pack(anchor="e")
+
+        nb = ttk.Notebook(outer)
+        nb.pack(fill=BOTH, expand=True)
+
+        # ---- تبويب التوزيع ----
+        dist_tab = ttk.Frame(nb, padding=10)
+        nb.add(dist_tab, text="التوزيع")
+        top = ttk.Frame(dist_tab)
+        top.pack(fill=X, pady=(0, 6))
+        self._group_var = StringVar(value=GROUPINGS[0][1])
+        self._group_map = {lbl: key for key, lbl in GROUPINGS}
+        box = ttk.Combobox(top, textvariable=self._group_var, state="readonly",
+                           width=16, font=("Segoe UI", 10),
+                           values=[lbl for _k, lbl in GROUPINGS])
+        box.pack(side=RIGHT)
+        box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_dist())
+        ttk.Label(top, text="التوزيع حسب:", font=("Segoe UI", 10),
+                  foreground=ACCENT).pack(side=RIGHT, padx=(4, 6))
+
+        self._dist = ttk.Treeview(dist_tab, columns=("count", "pct", "bar"),
+                                  show="tree headings", height=12)
+        self._dist.heading("#0", text="القيمة")
+        self._dist.heading("count", text="العدد")
+        self._dist.heading("pct", text="النسبة")
+        self._dist.heading("bar", text="")
+        self._dist.column("#0", width=200, anchor="e", stretch=False)
+        self._dist.column("count", width=70, anchor="center", stretch=False)
+        self._dist.column("pct", width=70, anchor="center", stretch=False)
+        self._dist.column("bar", width=260, anchor="w", stretch=True)
+        self._dist.pack(fill=BOTH, expand=True)
+
+        # ---- تبويب المتأخّرات ----
+        owe_tab = ttk.Frame(nb, padding=10)
+        nb.add(owe_tab, text="المتأخّرات")
+        self._owe_total = ttk.Label(owe_tab, font=("Segoe UI Semibold", 11),
+                                    foreground=DANGER)
+        self._owe_total.pack(anchor="e", pady=(0, 6))
+        self._owe = ttk.Treeview(owe_tab, columns=("passport", "phone", "amount"),
+                                 show="tree headings", height=12)
+        self._owe.heading("#0", text="اسم الحاج")
+        self._owe.heading("passport", text="رقم الجواز")
+        self._owe.heading("phone", text="الهاتف")
+        self._owe.heading("amount", text="المتبقّي")
+        self._owe.column("#0", width=230, anchor="e", stretch=True)
+        self._owe.column("passport", width=120, anchor="center", stretch=False)
+        self._owe.column("phone", width=120, anchor="center", stretch=False)
+        self._owe.column("amount", width=110, anchor="center", stretch=False)
+        self._owe.pack(fill=BOTH, expand=True)
+
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(anchor="e", pady=(10, 0))
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self._refresh_dist()
+        self._refresh_outstanding()
+
+    def _refresh_dist(self) -> None:
+        from .stats import distribution
+        key = self._group_map[self._group_var.get()]
+        self._dist.delete(*self._dist.get_children())
+        for b in distribution(self._records, key):
+            bar = "█" * max(1, round(b.percent / 4))     # شريط بصري مصغّر
+            self._dist.insert("", END, text=b.label,
+                              values=(b.count, f"{b.percent}%", bar))
+
+    def _refresh_outstanding(self) -> None:
+        from .stats import outstanding
+        from .fields import format_amount
+        self._owe.delete(*self._owe.get_children())
+        items = outstanding(self._records)
+        total = sum(a for _r, a in items)
+        self._owe_total.config(
+            text=f"عدد المتأخّرين: {len(items)}  •  إجمالي المتبقّي: {format_amount(total)}")
+        for rec, amount in items:
+            name = rec.full_name_ar or rec.full_name_en or "—"
+            self._owe.insert("", END, text=name, values=(
+                str(rec.passport_number or "").strip() or "—",
+                str(rec.phone or "").strip() or "—", format_amount(amount)))
 
 
 class QualityDialog(Toplevel):

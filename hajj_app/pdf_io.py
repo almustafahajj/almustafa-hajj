@@ -708,6 +708,101 @@ def export_tents_pdf(plan, path: str | Path,
     return path
 
 
+def export_receipt_pdf(rec, path: str | Path, *,
+                       company: str = "المصطفى للحج والعمرة",
+                       season: str = "") -> Path:
+    """يبني إيصال دفع لحاج واحد (صفحة A4 عمودية) بشعار الحملة."""
+    from .fields import compute_remaining, format_amount, parse_amount
+
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4,
+        rightMargin=16 * mm, leftMargin=16 * mm,
+        topMargin=16 * mm, bottomMargin=18 * mm,
+        title="إيصال دفع", author="برنامج الحج",
+    )
+    name = rec.full_name_ar or rec.full_name_en or "—"
+    total = parse_amount(rec.program_value)
+    paid = parse_amount(rec.paid_amount)
+    remaining = compute_remaining(rec)
+
+    story: list = []
+    logo = _logo_flowable(max_width_pt=150)
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    story.append(Paragraph(ar("إيصال دفع"), st["title"]))
+    sub = company + (f"  •  موسم {ltr(season)}هـ" if season else "")
+    sub += f"  •  {ltr(date.today().isoformat())}"
+    story.append(Paragraph(ar(sub), st["subtitle"]))
+
+    lbl = ParagraphStyle("rlbl", parent=st["cell"], fontName=_FONT_BOLD,
+                         textColor=_ACCENT, alignment=2, fontSize=9.5)
+    val = ParagraphStyle("rval", parent=st["cell"], alignment=2, fontSize=9.5)
+    head = ParagraphStyle("rhead", parent=st["cell"], fontName=_FONT_BOLD,
+                          textColor=colors.white, alignment=2, fontSize=9.5)
+
+    def section(title_text, rows, big_last=False):
+        data = [[Paragraph(ar(title_text), head), ""]]
+        for i, (k, v) in enumerate(rows):
+            vstyle = val
+            if big_last and i == len(rows) - 1:
+                vstyle = ParagraphStyle("rbig", parent=val, fontName=_FONT_BOLD,
+                                        textColor=_ACCENT, fontSize=11)
+            data.append([Paragraph(ar(str(v) or "—"), vstyle),
+                         Paragraph(ar(k), lbl)])
+        t = Table(data, colWidths=[doc.width * 0.6, doc.width * 0.4])
+        style = [
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("SPAN", (0, 0), (1, 0)),
+            ("BACKGROUND", (0, 0), (1, 0), _ACCENT),
+        ]
+        for r in range(1, len(data)):
+            style.append(("BACKGROUND", (1, r), (1, r), _ALT_ROW))
+        t.setStyle(TableStyle(style))
+        return t
+
+    story.append(section("بيانات الحاج", [
+        ("الاسم", name),
+        ("رقم الجواز", rec.passport_number),
+        ("الجنسية", rec.nationality_ar),
+        ("الهاتف", rec.phone),
+        ("الفندق", rec.hotel),
+        ("رقم العائلة", rec.family_number),
+    ]))
+    story.append(Spacer(1, 10))
+    story.append(section("التفاصيل المالية", [
+        ("قيمة البرنامج", format_amount(total) if total is not None else rec.program_value),
+        ("المبلغ المدفوع", format_amount(paid) if paid is not None else rec.paid_amount),
+        ("المبلغ المتبقّي", remaining or "—"),
+    ], big_last=True))
+
+    story.append(Spacer(1, 26))
+    sign = ParagraphStyle("sign", parent=st["cell"], alignment=1, fontSize=10)
+    sign_row = Table([[Paragraph(ar("توقيع المستلم"), sign),
+                       Paragraph(ar("توقيع المحاسب"), sign)]],
+                     colWidths=[doc.width / 2, doc.width / 2])
+    sign_row.setStyle(TableStyle([
+        ("LINEABOVE", (0, 0), (0, 0), 0.6, _GRID),
+        ("LINEABOVE", (1, 0), (1, 0), 0.6, _GRID),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(sign_row)
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _footer_portrait(c, d, "إيصال دفع"),
+        onLaterPages=lambda c, d: _footer_portrait(c, d, "إيصال دفع"),
+    )
+    return path
+
+
 def export_passports_pdf(
     entries: list[tuple[str, str]], path: str | Path, *, title: str = "جوازات الحجاج"
 ) -> Path:

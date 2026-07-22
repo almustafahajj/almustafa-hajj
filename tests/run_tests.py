@@ -25,6 +25,7 @@ TESTS = [
     "test_airline.py",        # كشف الطيران الإنجليزي وإدخالات أماديوس
     "test_camps.py",          # كشف تسكين المخيمات: الفصل بالجنس والعائلة والخيام
     "test_quality.py",        # فحص الجودة: تكرار الجواز، صلاحيته، ونقص البيانات
+    "test_stats.py",          # الإحصاءات والملخّص المالي وإيصال الدفع
     "test_ocr.py",            # قراءة MRZ من صورة  -> ينتج fake_passport.png
     "test_pdfin.py",          # استيراد PDF        -> ينتج passports_text.pdf
     "test_arabic.py",         # الاسم العربي: طبقة نصية + OCR + الترشيح

@@ -237,6 +237,30 @@ app._focus_record(1)
 assert app.tree.selection() == ("1",), app.tree.selection()
 print("  OK: يعرض المشكلات مجمّعة، والقفز إلى السجل يعمل")
 
+print("\n=== لوحة الإحصاءات والمالية (StatsDialog) ===")
+from hajj_app.gui import StatsDialog
+app.clear_filters()
+app.records = [
+    PassportData(full_name_ar="أ", nationality_ar="الإمارات", hotel="الصفوة",
+                 program_value="20000", paid_amount="20000"),
+    PassportData(full_name_ar="ب", nationality_ar="الإمارات", hotel="كونراد",
+                 program_value="20000", paid_amount="5000"),
+    PassportData(full_name_ar="ج", nationality_ar="مصر", hotel="كونراد",
+                 program_value="15000", paid_amount=""),
+]
+app.refresh()
+sd = StatsDialog(root, list(app.records), season="1447")
+# تبويب التوزيع يعرض الجنسية الأكثر أولاً
+dist_rows = sd._dist.get_children()
+assert dist_rows, "لا توزيع"
+assert sd._dist.item(dist_rows[0], "text") == "الإمارات", sd._dist.item(dist_rows[0], "text")
+# تبويب المتأخّرات يستبعد المكتمل (أ) ويرتّب تنازلياً (ب 15000 قبل ج 15000)
+owe_rows = sd._owe.get_children()
+assert len(owe_rows) == 2, owe_rows
+assert "المتبقّي" in sd._owe_total.cget("text")
+sd.destroy()
+print("  OK: بطاقات مالية + توزيع + كشف المتأخّرات")
+
 print("\n=== بوابة أمان «مسح الكل» ===")
 # بلا جلسة: تُقبل كلمة «مسح» فقط، ويُرفض ما سواها (يمنع الضغط غير المقصود)
 assert app.session is None
