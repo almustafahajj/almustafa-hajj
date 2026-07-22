@@ -54,6 +54,7 @@ WARN_BG = "#FBF0DC"         # كهرماني باهت يتناغم مع البر
 # ألوان مساندة للتحسينات البصرية
 PANEL = "#FFFFFF"           # خلفية الجدول
 ROW_ALT = "#F2ECE3"         # صفّ متناوب (بيج فاتح)
+HOVER_BG = "#EADFCB"        # تمييز صفّ مرور الفأرة
 BORDER = "#E2DACE"          # حدود ناعمة
 MUTED = "#777777"           # نص ثانوي
 SUCCESS_FG = "#2E6B45"      # أخضر النجاح
@@ -241,6 +242,9 @@ class HajjApp:
 
         bevel_mb("Toolbar.TMenubutton", BRONZE, "white", BRONZE_LIGHT, BRONZE_EDGE,
                  BRONZE_DARK, "white")
+        # إبراز القوائم الأساسية (إضافة/التقارير) بخطّ أكبر قليلاً
+        s.configure("Toolbar.TMenubutton", font=("Segoe UI Semibold", 11),
+                    padding=(17, 9))
         bevel_mb("Ghost.TMenubutton", "#F1ECE3", ACCENT, GHOST_LIGHT, GHOST_EDGE,
                  "#E7DECF", ACCENT, bold=False)
 
@@ -346,9 +350,29 @@ class HajjApp:
         year = self.season_year.get().strip()
         return f"{base} — موسم {year}هـ" if year else base
 
-    def _menubutton(self, parent, text, items, *, style="Toolbar.TMenubutton"):
-        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)."""
+    def _icon(self, name: str, color: str, size: int = 18):
+        """أيقونة مولّدة (PhotoImage) مخزّنة لمنع جمع القمامة."""
+        key = (name, color, size)
+        cache = getattr(self, "_icon_cache", None)
+        if cache is None:
+            cache = self._icon_cache = {}
+        if key not in cache:
+            try:
+                from PIL import ImageTk
+                from . import icons as iconlib
+                cache[key] = ImageTk.PhotoImage(iconlib.make_icon(name, color, size))
+            except Exception:
+                cache[key] = None
+        return cache[key]
+
+    def _menubutton(self, parent, text, items, *, style="Toolbar.TMenubutton",
+                    icon=None):
+        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)، بأيقونة اختيارية."""
         mb = ttk.Menubutton(parent, text=rtl(text), style=style, direction="below")
+        if icon is not None:
+            img = self._icon(*icon)
+            if img is not None:
+                mb.configure(image=img, compound="right")
         menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
         for entry in items:
             if entry is None:
@@ -360,27 +384,36 @@ class HajjApp:
         self._menus.append(menu)          # نحتفظ بمرجع لمنع جمع القمامة
         return mb
 
+    def _icon_button(self, parent, text, command, style, icon):
+        """زر بأيقونة ملوّنة (الأيقونة يميناً في التخطيط العربي)."""
+        btn = ttk.Button(parent, text=rtl(text), command=command, style=style)
+        img = self._icon(*icon)
+        if img is not None:
+            btn.configure(image=img, compound="right")
+        return btn
+
     def _build_toolbar(self) -> None:
         bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 10, 16, 12))
         bar.pack(fill=X)
         self._menus: list = []
+        WHITE, INK, RED = "#FFFFFF", ACCENT, "#FFFFFF"
 
-        # قائمة «إضافة ▾»: يدوي / جوازات / استيراد
-        add_mb = self._menubutton(bar, "➕  إضافة  ▾", [
+        # قائمة «إضافة ▾» (مبرزة) — يدوي / جوازات / استيراد
+        add_mb = self._menubutton(bar, "إضافة  ▾", [
             ("➕  حاج يدوياً", self.add_manual),
             ("📷  جوازات (صور / PDF)", self.add_images),
             ("📁  استيراد من إكسل", self.import_from_excel),
-        ])
+        ], icon=("add", WHITE))
         add_mb.pack(side=RIGHT, padx=(0, 4))
 
         # أزرار مباشرة: تعديل (ثانوي) وحذف (خطر)
-        ttk.Button(bar, text=rtl("✏️  تعديل"), command=self.edit_selected,
-                   style="Ghost.TButton").pack(side=RIGHT, padx=3)
-        ttk.Button(bar, text=rtl("🗑  حذف"), command=self.delete_selected,
-                   style="Danger.TButton").pack(side=RIGHT, padx=3)
+        self._icon_button(bar, "تعديل", self.edit_selected, "Ghost.TButton",
+                          ("edit", INK)).pack(side=RIGHT, padx=3)
+        self._icon_button(bar, "حذف", self.delete_selected, "Danger.TButton",
+                          ("trash", RED)).pack(side=RIGHT, padx=3)
 
-        # قائمة «التقارير ▾»: كل التصدير والطباعة
-        rep_mb = self._menubutton(bar, "📤  التقارير والكشوفات  ▾", [
+        # قائمة «التقارير ▾» (مبرزة)
+        rep_mb = self._menubutton(bar, "التقارير والكشوفات  ▾", [
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             None,
@@ -395,21 +428,28 @@ class HajjApp:
             None,
             ("🪪  بطاقات الحجّاج", self.do_badges),
             ("🖼  طباعة الصور", self.do_print_images),
-        ])
+        ], icon=("report", WHITE))
         rep_mb.pack(side=RIGHT, padx=(4, 3))
 
         # قائمة «الحماية ▾»: نسخ احتياطية مؤرّخة واستعادة
-        prot_mb = self._menubutton(bar, "🛡  الحماية  ▾", [
+        prot_mb = self._menubutton(bar, "الحماية  ▾", [
             ("🛡  نسخة احتياطية الآن", self.do_backup_now),
             ("↩  استعادة نسخة احتياطية", self.do_restore),
-        ], style="Ghost.TMenubutton")
+        ], style="Ghost.TMenubutton", icon=("shield", INK))
         prot_mb.pack(side=RIGHT, padx=3)
 
         # مسح الكل (خطر) أقصى اليسار بعد شريط التقدّم
-        ttk.Button(bar, text=rtl("🧹  مسح الكل"), command=self.clear_all,
-                   style="Danger.TButton").pack(side=LEFT, padx=(6, 0))
+        self._icon_button(bar, "مسح الكل", self.clear_all, "Danger.TButton",
+                          ("clear", RED)).pack(side=LEFT, padx=(6, 0))
         self.progress = ttk.Progressbar(bar, mode="determinate", length=180)
         self.progress.pack(side=LEFT, padx=8)
+
+        self._shadow_strip(self.root)     # ظلّ ناعم يفصل الشريط عمّا تحته
+
+    def _shadow_strip(self, parent) -> None:
+        """ظلّ متدرّج رفيع (ثلاثة أسطر) يوحي بعمق تحت الشريط."""
+        for col in ("#CDC4B2", "#DED6C7", "#ECE6DB"):
+            tk.Frame(parent, bg=col, height=1).pack(fill=X)
 
     # الحقول القابلة للفلترة بقائمة منسدلة (تُملأ قيمها من البيانات)
     _FILTER_FIELDS = (
@@ -456,10 +496,10 @@ class HajjApp:
         row2.pack(fill=X, pady=(5, 0))
 
         # الأزرار أقصى يسار الصف الأول
-        ttk.Button(row1, text=rtl("🖨  طباعة المعروض"), command=self.do_print_filtered,
-                   style="Ghost.TButton").pack(side=LEFT, padx=3)
-        ttk.Button(row1, text=rtl("✖  مسح الفلاتر"), command=self.clear_filters,
-                   style="Ghost.TButton").pack(side=LEFT, padx=3)
+        self._icon_button(row1, "طباعة المعروض", self.do_print_filtered,
+                          "Ghost.TButton", ("print", ACCENT)).pack(side=LEFT, padx=3)
+        self._icon_button(row1, "مسح الفلاتر", self.clear_filters,
+                          "Ghost.TButton", ("clear", ACCENT)).pack(side=LEFT, padx=3)
 
         # قائمتا «الأعمدة ▾» و«العرض ▾» (إظهار/إخفاء الأعمدة والكثافة والخط)
         self._build_columns_menubutton(row1).pack(side=LEFT, padx=3)
@@ -521,8 +561,11 @@ class HajjApp:
         return tuple(reversed(FIELDS + DIAG_FIELDS))
 
     def _build_columns_menubutton(self, parent):
-        mb = ttk.Menubutton(parent, text=rtl("🗂 الأعمدة ▾"),
+        mb = ttk.Menubutton(parent, text=rtl("الأعمدة ▾"),
                             style="Ghost.TMenubutton", direction="below")
+        _img = self._icon("columns", ACCENT)
+        if _img is not None:
+            mb.configure(image=_img, compound="right")
         menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
         self._col_vars: dict[str, tk.BooleanVar] = {}
         for f in self._display_columns():
@@ -560,8 +603,11 @@ class HajjApp:
         self._save_ui_settings()
 
     def _build_view_menubutton(self, parent):
-        mb = ttk.Menubutton(parent, text=rtl("⚙ العرض ▾"),
+        mb = ttk.Menubutton(parent, text=rtl("العرض ▾"),
                             style="Ghost.TMenubutton", direction="below")
+        _img = self._icon("gear", ACCENT)
+        if _img is not None:
+            mb.configure(image=_img, compound="right")
         menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
         self._density_var = tk.StringVar(value=self._density)
         dmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
@@ -628,6 +674,25 @@ class HajjApp:
         return "break"
 
     # ------------------------------------------------ قائمة يمين الفأرة
+    def _on_row_hover(self, event) -> None:
+        """يميّز صفّ الجدول تحت مؤشّر الفأرة (بلا طمس صفوف التنبيه أو التحديد)."""
+        iid = self.tree.identify_row(event.y)
+        if iid == self._hover_iid:
+            return
+        self._clear_hover()
+        if iid and iid not in self.tree.selection():
+            cur = self.tree.item(iid, "tags")
+            if cur and cur[0] == "warn":        # نُبقي تمييز التنبيه
+                return
+            self._hover_prev = cur
+            self.tree.item(iid, tags=("hover",))
+            self._hover_iid = iid
+
+    def _clear_hover(self) -> None:
+        if self._hover_iid and self.tree.exists(self._hover_iid):
+            self.tree.item(self._hover_iid, tags=self._hover_prev)
+        self._hover_iid = None
+
     def _show_row_menu(self, event) -> None:
         iid = self.tree.identify_row(event.y)
         if not iid:
@@ -807,11 +872,16 @@ class HajjApp:
         hs.pack(side="bottom", fill=X)
         self.tree.pack(fill=BOTH, expand=True)
 
-        # تخطيط متناوب الألوان + تمييز صفوف التنبيه
+        # تخطيط متناوب الألوان + تمييز صفوف التنبيه + تمييز صفّ مرور الفأرة
         self.tree.tag_configure("even", background=PANEL)
         self.tree.tag_configure("odd", background=ROW_ALT)
         self.tree.tag_configure("warn", background=WARN_BG)
+        self.tree.tag_configure("hover", background=HOVER_BG)
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
+        self._hover_iid = None
+        self._hover_prev: tuple = ()
+        self.tree.bind("<Motion>", self._on_row_hover)
+        self.tree.bind("<Leave>", lambda _e: self._clear_hover())
 
         # قائمة يمين الفأرة على الصف
         self._row_menu = tk.Menu(self.tree, tearoff=0, font=("Segoe UI", 10))
@@ -871,12 +941,19 @@ class HajjApp:
 
     def _build_status(self) -> None:
         self.status = StringVar(value="جاهز — أضف صور الجوازات أو استورد ملف إكسل للبدء")
-        bar = ttk.Frame(self.root, padding=(16, 6))
+        # خطّ فاصل علوي رفيع يمنح شريط الحالة عمقاً
+        tk.Frame(self.root, bg=BORDER, height=1).pack(fill=X)
+        bar = ttk.Frame(self.root, padding=(16, 7))
         bar.pack(fill=X)
+        # مؤشّر حالة ملوّن (نقطة) يمين النص
+        self._status_dot = tk.Label(bar, text="●", font=("Segoe UI", 11),
+                                    fg="#8C857A", bg=BG)
+        self._status_dot.pack(side=RIGHT, padx=(6, 0))
         self.status_label = ttk.Label(bar, textvariable=self.status,
                                       font=("Segoe UI", 10), foreground="#444")
         self.status_label.pack(side=RIGHT)
-        self.count_label = ttk.Label(bar, text="", font=("Segoe UI", 10), foreground=ACCENT)
+        self.count_label = ttk.Label(bar, text="", font=("Segoe UI Semibold", 11),
+                                     foreground=ACCENT)
         self.count_label.pack(side=LEFT)
         ttk.Label(bar, text="💾 الحفظ تلقائي", font=("Segoe UI", 9),
                   foreground="#777").pack(side=LEFT, padx=12)
@@ -942,6 +1019,8 @@ class HajjApp:
             fg, icon = "#444444", "•"
         self.status.set(f"{icon}  {text}")
         self.status_label.configure(foreground=fg)
+        if hasattr(self, "_status_dot"):
+            self._status_dot.configure(fg=fg)
 
     def toast(self, message: str, *, kind: str = "info", ms: int = 2600) -> None:
         """إشعار منبثق سريع أسفل يمين النافذة، يختفي تلقائياً."""
