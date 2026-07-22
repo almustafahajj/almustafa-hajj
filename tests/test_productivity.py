@@ -96,16 +96,16 @@ assert d.page_count == 1, f"باص 7 يجب أن يكون في صفحة واحد
 d.close()
 print(f"  OK: 3 صفحات طولية، وباص 7 (60 راكباً) في صفحة واحدة")
 
-print("\n=== بطاقات الحجّاج (وجه وخلفية، 5.2×8سم) ===")
+print("\n=== بطاقات الحجّاج (8 لكل ورقة A4 + ورقة خلفية واحدة) ===")
 from hajj_app.cards import badge_name, is_woman
 # اسم البطاقة: الأول والثاني والأخير فقط
 assert badge_name(rec(full_name_ar="عبدالله محمد راشد الشامسي")) == "عبدالله محمد الشامسي"
 assert badge_name(rec(full_name_ar="سالم أحمد")) == "سالم أحمد"
 assert is_woman(rec(sex="أنثى")) and not is_woman(rec(sex="ذكر"))
-recs = [rec(full_name_ar="عبدالله محمد الشامسي", sex="ذكر", phone="0501112233",
-            hotel="فندق دار الصفوة"),
-        rec(full_name_ar="مريم أحمد النيادي", sex="أنثى", phone="0502223344",
-            hotel="كونراد")]
+import math
+recs = [rec(full_name_ar=f"عبدالله محمد الشامسي {i}",
+            sex=("أنثى" if i % 2 else "ذكر"), phone=f"05011122{i:02d}",
+            hotel="فندق دار الصفوة") for i in range(10)]   # >8 -> صفحتا وجوه
 badges = _os.path.join(_OUTDIR, "badges.pdf")
 export_badges_pdf(recs, badges, company="المصطفى للحج والعمرة", session=None,
                   preacher="0555000000", admins="خالد المدير\nسعيد المشرف",
@@ -115,15 +115,15 @@ with open(badges, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
 import fitz
 d = fitz.open(badges)
-# وجه + خلفية لكل حاج
-assert d.page_count == 2 * len(recs), d.page_count
-# القياس 5.2×8 سم (بالنقاط: 1سم=28.346)
+# 8 وجوه لكل ورقة A4 + ورقة خلفية واحدة
+front_pages = math.ceil(len(recs) / 8)
+assert d.page_count == front_pages + 1, d.page_count      # 10 -> 2 + 1 = 3
+# الصفحات بقياس A4 (595×842 نقطة تقريباً)
 page = d[0]
-assert abs(page.rect.width - 5.2 * 28.346) < 2, page.rect.width
-assert abs(page.rect.height - 8 * 28.346) < 2, page.rect.height
+assert abs(page.rect.width - 595) < 3 and abs(page.rect.height - 842) < 3, page.rect
 d.close()
 # قائمة فارغة لا تتعطّل
 export_badges_pdf([], _os.path.join(_OUTDIR, "badges_empty.pdf"))
-print(f"  OK: {2*len(recs)} صفحة (وجه/خلفية)، قياس 5.2×8سم، والفارغة لا تتعطّل")
+print(f"  OK: {front_pages} ورقة وجوه (8/ورقة) + ورقة خلفية واحدة، A4")
 
 print("\n*** PRODUCTIVITY TESTS PASSED ***")
