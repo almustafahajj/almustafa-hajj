@@ -114,6 +114,26 @@ assert len(tents_of(plan, MEN)) == 3   # 2+2+1
 assert any("تتجاوز سعة" in n for n in plan.notes), plan.notes
 print(f"  OK: عائلة 5 في سعة 2 -> 3 خيام + تنبيه")
 
+print("\n=== اختيار الجنس (only) ===")
+recs = [rec(f"رجل {i}", "ذكر") for i in range(3)] + \
+       [rec(f"امرأة {i}", "أنثى") for i in range(2)]
+men_only = build_camp_plan(recs, CAMP_MINA, capacity=2, sector="أ", start_number=1, only=MEN)
+assert {t.classification for t in men_only.tents} == {MEN}
+assert men_only.total == 3
+# خيام الرجال وحدها تُرقّم من start_number (1) لا بعد النساء
+assert [int(t.number) for t in men_only.tents] == [1, 2]
+women_only = build_camp_plan(recs, CAMP_MINA, capacity=5, only=WOMEN)
+assert {t.classification for t in women_only.tents} == {WOMEN}
+assert women_only.total == 2
+# تصنيف غير معروف يعني الكل
+both = build_camp_plan(recs, CAMP_MINA, capacity=5, only="xyz")
+assert {t.classification for t in both.tents} == {MEN, WOMEN}
+# only=نساء يُخفي تنبيه غير المحدّد
+mix = [rec("مجهول", ""), rec("امرأة", "أنثى")]
+w = build_camp_plan(mix, CAMP_MINA, only=WOMEN)
+assert all("غير محدد" not in n for n in w.notes), w.notes
+print("  OK: رجال وحدهم/نساء وحدهن، ترقيم من البداية، والكل عند تصنيف مجهول")
+
 print("\n=== صفوف العرض ===")
 recs = [rec("أحمد", "ذكر", fam="1", hotel="الصفا", room="12", phone="0555")]
 plan = build_camp_plan(recs, CAMP_MINA, capacity=4, sector="أ")
@@ -174,8 +194,14 @@ try:
     # تغيير المعطيات يعيد البناء (يُلغي التجاوز اليدوي)
     dlg._start_var.set("5"); dlg._rebuild(force=False)
     assert dlg._plan.tents[0].number == "5"
+    # اختيار الجنس: نساء فقط
+    dlg._class_var.set(WOMEN); dlg._rebuild(force=False)
+    assert {t.classification for t in dlg._plan.tents} == {WOMEN}
+    assert dlg._plan.total == 1
+    dlg._class_var.set(dlg._ALL_CLASSES); dlg._rebuild(force=False)
+    assert dlg._plan.total == 3
     dlg.destroy(); root.destroy()
-    print("  OK: التوزيع، الفصل، وثبات التعديل اليدوي حتى تغيّر المعطيات")
+    print("  OK: التوزيع، الفصل، اختيار الجنس، وثبات التعديل اليدوي")
 except Exception as exc:
     if "no display" in str(exc).lower() or "tcl" in type(exc).__name__.lower():
         print(f"  تخطٍّ (لا واجهة رسومية): {exc}")

@@ -182,12 +182,16 @@ def build_camp_plan(
     capacity: int = _DEFAULT_CAPACITY,
     sector: str = "",
     start_number: int = 1,
+    only: str = "",
 ) -> CampPlan:
     """يبني خطة تسكين مخيّم: يوزّع الحجّاج على خيام مفصولة بالجنس.
 
     كل عنقود (عائلة/سكّان غرفة) يُقسَّم بالتصنيف فيبقى رجاله معاً ونساؤه معاً،
     ثم تُملأ الخيام بحجم السعة. الخيام تُرقّم تسلسلياً من `start_number`:
     خيام الرجال أولاً ثم النساء ثم غير المحدّدين.
+
+    `only`: إن حُدّد تصنيف (رجال/نساء/غير محدد) يقتصر الكشف عليه فقط،
+    وتُرقّم خيامه من `start_number` — لطباعة كشف الرجال أو النساء وحده.
     """
     try:
         capacity = max(1, int(capacity))
@@ -198,6 +202,8 @@ def build_camp_plan(
     except (TypeError, ValueError):
         number = 1
     sector = str(sector or "").strip()
+    only = str(only or "").strip()
+    classes = (only,) if only in _CLASS_ORDER else _CLASS_ORDER
 
     occ_by_index = {i: Occupant(i + 1, rec) for i, rec in enumerate(records)}
     clusters = _cluster_records(records)
@@ -214,7 +220,7 @@ def build_camp_plan(
 
     notes: list[str] = []
     tents: list[Tent] = []
-    for cls in _CLASS_ORDER:
+    for cls in classes:
         if not units[cls]:
             continue
         for group in _pack(units[cls], capacity, notes, cls):
@@ -224,7 +230,7 @@ def build_camp_plan(
             ))
             number += 1
 
-    if units[UNKNOWN]:
+    if UNKNOWN in classes and units[UNKNOWN]:
         count = sum(len(u) for u in units[UNKNOWN])
         notes.append(
             f"{count} حاجاً بلا جنس محدّد — أُدرجوا في خيام «غير محدد»؛ "

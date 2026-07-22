@@ -1299,9 +1299,11 @@ class CampsDialog(Toplevel):
     """كشف تسكين المخيمات (منى/عرفة): توزيع الحجّاج على الخيام وتصديرها.
 
     يفصل الرجال عن النساء، ويبقي العائلة وسكّان الغرفة معاً. المستخدم يحدّد
-    المخيّم والقطاع وعدد الأشخاص في الخيمة ورقم الخيمة الأول، ويستطيع تعديل
-    رقم/قطاع أي خيمة بالنقر المزدوج. التوزيع يُبنى عند الطلب ولا يُحفظ.
+    المخيّم والتصنيف والقطاع وعدد الأشخاص في الخيمة ورقم الخيمة الأول،
+    ويستطيع تعديل رقم/قطاع أي خيمة بالنقر المزدوج. يُبنى عند الطلب ولا يُحفظ.
     """
+
+    _ALL_CLASSES = "الكل"
 
     def __init__(self, parent, records: list[PassportData]) -> None:
         super().__init__(parent)
@@ -1313,7 +1315,7 @@ class CampsDialog(Toplevel):
         self.transient(parent)
         self.grab_set()
 
-        from .camps import CAMP_MINA, CAMPS
+        from .camps import CAMP_MINA, CAMPS, MEN, WOMEN
 
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
@@ -1322,6 +1324,7 @@ class CampsDialog(Toplevel):
         form = ttk.Frame(outer)
         form.pack(fill=X)
         self._camp_var = StringVar(value=CAMP_MINA)
+        self._class_var = StringVar(value=self._ALL_CLASSES)
         self._sector_var = StringVar(value="")
         self._cap_var = StringVar(value="40")
         self._start_var = StringVar(value="1")
@@ -1345,6 +1348,8 @@ class CampsDialog(Toplevel):
             return w
 
         field("المخيّم", self._camp_var, 12, combo=list(CAMPS))
+        field("التصنيف", self._class_var, 12,
+              combo=[self._ALL_CLASSES, MEN, WOMEN])
         field("القطاع", self._sector_var, 10)
         field("عدد الأشخاص في الخيمة", self._cap_var, 8)
         field("رقم الخيمة يبدأ من", self._start_var, 8)
@@ -1414,7 +1419,9 @@ class CampsDialog(Toplevel):
         لا يُمحى التعديل اليدوي لأرقام الخيام عند مجرّد مغادرة حقل الإدخال.
         """
         from .camps import build_camp_plan, tent_label
-        key = (self._camp_var.get(), self._sector_var.get().strip(),
+        cls = self._class_var.get()
+        only = "" if cls == self._ALL_CLASSES else cls
+        key = (self._camp_var.get(), only, self._sector_var.get().strip(),
                self._cap_var.get().strip(), self._start_var.get().strip())
         if not force and key == self._last_key:
             return
@@ -1422,7 +1429,7 @@ class CampsDialog(Toplevel):
         plan = build_camp_plan(
             self._records, self._camp_var.get(),
             capacity=self._cap_var.get(), sector=self._sector_var.get(),
-            start_number=self._start_var.get(),
+            start_number=self._start_var.get(), only=only,
         )
         self._plan = plan
         self._tree.delete(*self._tree.get_children())
@@ -1498,7 +1505,9 @@ class CampsDialog(Toplevel):
 
     def _default(self, ext: str) -> str:
         camp = self._plan.camp if self._plan else ""
-        return f"كشف_المخيمات_{camp}_{date.today().isoformat()}.{ext}"
+        cls = self._class_var.get()
+        suffix = "" if cls == self._ALL_CLASSES else f"_{cls}"
+        return f"كشف_المخيمات_{camp}{suffix}_{date.today().isoformat()}.{ext}"
 
     def _save_path(self, ext: str) -> str | None:
         return filedialog.asksaveasfilename(
