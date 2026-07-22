@@ -822,24 +822,16 @@ def export_transport_pdf(records: list, path: str | Path,
         title=title, author="برنامج الحج",
     )
 
-    from reportlab.platypus import KeepInFrame
-
     groups, unassigned = group_by_transport(records)
     blocks = list(groups) + ([("بلا مواصلات", unassigned)] if unassigned else [])
 
     labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "كرسي متحرك"]
     draw_labels = list(reversed(labels))
+    # الأعمدة تملأ عرض الصفحة كاملاً (المجموع = عرض المحتوى)
     weights = list(reversed([46, 210, 96, 118, 84]))
     scale = doc.width / sum(weights)
     col_widths = [w * scale for w in weights]
 
-    # خط كبير أساساً؛ KeepInFrame يُصغّره تلقائياً فقط إذا لزم لالتزام الصفحة
-    head_style = ParagraphStyle("trh", fontName=_FONT_BOLD, fontSize=14,
-                                alignment=1, textColor=_HEADER_TEXT, leading=17)
-    cell_style = ParagraphStyle("trc", fontName=_FONT, fontSize=13, alignment=1,
-                                leading=16)
-    name_style = ParagraphStyle("trn", fontName=_FONT, fontSize=13, alignment=2,
-                                leading=16)
     title_style = ParagraphStyle("trt", fontName=_FONT_BOLD, fontSize=19,
                                  alignment=1, textColor=_INK, spaceAfter=4)
     sub_style = ParagraphStyle("trs", fontName=_FONT, fontSize=10.5, alignment=1,
@@ -850,15 +842,37 @@ def export_transport_pdf(records: list, path: str | Path,
         if index:
             story.append(PageBreak())
 
-        flow: list = []
         logo = _logo_flowable(max_width_pt=100)
-        if logo is not None:
-            flow.append(logo)
-            flow.append(Spacer(1, 4))
-        flow.append(Paragraph(ar(f"{title} — {name}"), title_style))
-        flow.append(Paragraph(ar(
+        title_p = Paragraph(ar(f"{title} — {name}"), title_style)
+        sub_p = Paragraph(ar(
             f"عدد الركّاب: {ltr(len(occ))}  •  التاريخ: {ltr(date.today().isoformat())}"),
-            sub_style))
+            sub_style)
+
+        # نقيس ارتفاع الترويسة فعلياً، فنحسب حجم خطّ الصفوف ليتّسع الكل
+        # في صفحة واحدة **مع بقاء الأعمدة بعرض الصفحة كاملاً**.
+        header_h = (title_p.wrap(doc.width, doc.height)[1] + 4
+                    + sub_p.wrap(doc.width, doc.height)[1] + 8)
+        if logo is not None:
+            header_h += logo.wrap(doc.width, doc.height)[1] + 4
+        n_rows = len(occ) + 1
+        table_avail = doc.height - header_h - 12
+        row_h = min(38, table_avail / max(1, n_rows))
+        font_size = max(6, min(16, row_h - 3))
+        leading = font_size + 1
+        pad = max(0.5, (row_h - leading) / 2)
+
+        head_style = ParagraphStyle("trh", fontName=_FONT_BOLD, fontSize=font_size + 1,
+                                    alignment=1, textColor=_HEADER_TEXT, leading=leading + 1)
+        cell_style = ParagraphStyle("trc", fontName=_FONT, fontSize=font_size,
+                                    alignment=1, leading=leading)
+        name_style = ParagraphStyle("trn", fontName=_FONT, fontSize=font_size,
+                                    alignment=2, leading=leading)
+
+        if logo is not None:
+            story.append(logo)
+            story.append(Spacer(1, 4))
+        story.append(title_p)
+        story.append(sub_p)
 
         data = [[Paragraph(ar(lbl), head_style) for lbl in draw_labels]]
         for serial, rec in enumerate(occ, start=1):
@@ -873,18 +887,17 @@ def export_transport_pdf(records: list, path: str | Path,
                 cells.append(Paragraph(ar(v), s))
             data.append(cells)
 
-        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table = Table(data, colWidths=col_widths, rowHeights=[row_h] * n_rows,
+                      repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("GRID", (0, 0), (-1, -1), 0.5, _GRID),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), pad),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
         ]))
-        flow.append(table)
-        # يُلزم كل باص بصفحة واحدة: يُصغّر المحتوى تلقائياً إن تجاوزها
-        story.append(KeepInFrame(doc.width, doc.height, flow, mode="shrink"))
+        story.append(table)
 
     if not blocks:
         story.append(Paragraph(ar("لا حجّاج."), _styles()["subtitle"]))
