@@ -334,4 +334,17 @@ print("  OK: المسح محميّ — لا يتم إلا بكلمة التأك�
 app._require_records()
 root.update()
 root.destroy()
+
+print("\n=== الوضع المفتوح (بلا رقم سري) ===")
+root_open = Tk()
+root_open.withdraw()
+app_open = HajjApp(root_open, session=None, open_mode=True)
+assert app_open._open_mode is True
+# ملف بيانات منفصل حتى لا يُمسّ الكشف المشفّر
+assert app_open.data_path.name == "hajjaj-open.json", app_open.data_path
+assert app_open.data_path.parent == _TESTDB.parent
+root_open.update()
+root_open.destroy()
+print("  OK: الوضع المفتوح يستعمل ملفاً منفصلاً دون المساس بالمشفّر")
+
 print("\n*** GUI SMOKE TEST PASSED ***")

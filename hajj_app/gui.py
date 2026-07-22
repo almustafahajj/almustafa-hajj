@@ -106,11 +106,15 @@ def install_entry_editing(widget) -> None:
 
 
 class HajjApp:
-    def __init__(self, root: Tk, session=None) -> None:
+    def __init__(self, root: Tk, session=None, open_mode: bool = False) -> None:
         self.root = root
         self.session = session      # يحمل مفتاح التشفير؛ None في الاختبارات
+        self._open_mode = open_mode  # فتح بلا رقم سري (بلا تشفير) — ملف بيانات منفصل
         self.records: list[PassportData] = []
         self.data_path = default_data_path()
+        if open_mode:
+            # ملف منفصل حتى لا يُمسّ الكشف المشفّر ولا يُستبدل بنصّ صريح
+            self.data_path = self.data_path.with_name("hajjaj-open.json")
         self.tesseract_path = configure_tesseract()
         # قائمة انتظار لنقل نتائج الخيط الخلفي إلى واجهة Tk بأمان
         self.results: queue.Queue = queue.Queue()
@@ -260,6 +264,14 @@ class HajjApp:
                                  foreground=ACCENT, background=BG, cursor="hand2")
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
+        elif self._open_mode:
+            info = ttk.Frame(bar, style="Toolbar.TFrame")
+            info.pack(side=LEFT)
+            ttk.Label(info, text="🔓 وضع مفتوح — بلا رقم سري",
+                      font=("Segoe UI Semibold", 10), foreground=AMBER_FG,
+                      background=BG).pack(anchor="w")
+            ttk.Label(info, text="البيانات غير مشفّرة (مؤقتاً)", font=("Segoe UI", 9),
+                      foreground=MUTED, background=BG).pack(anchor="w")
 
         # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
         ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
@@ -2976,17 +2988,26 @@ def _show_splash(root):
         return None
 
 
+# ⚠ وضع مؤقّت أثناء البناء: يفتح البرنامج **بلا رقم سري** وبلا تشفير، على ملف
+# بيانات منفصل (hajjaj-open.json)، دون المساس بالكشف المشفّر ولا حساب الدخول.
+# لإعادة الدخول برقم سري لاحقاً: اجعل هذا False، فتعود بياناتك المشفّرة.
+OPEN_MODE_NO_LOGIN = True
+
+
 def main() -> None:
-    # الدخول أولاً: النافذة الرئيسية لا تُبنى إلا بجلسة تحمل مفتاح فك التشفير
-    session = authenticate()
-    if session is None:
-        return
+    if OPEN_MODE_NO_LOGIN:
+        session, open_mode = None, True        # بلا دخول، بلا تشفير (مؤقتاً)
+    else:
+        session = authenticate()               # الدخول أولاً بمفتاح فك التشفير
+        if session is None:
+            return
+        open_mode = False
 
     root = Tk()
     root.withdraw()                            # نخفيها حتى تجهز، خلف شاشة البداية
     apply_window_icon(root)
     splash = _show_splash(root)
-    HajjApp(root, session)
+    HajjApp(root, session, open_mode=open_mode)
 
     def _reveal():
         if splash is not None:
