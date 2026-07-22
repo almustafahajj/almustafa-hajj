@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -352,5 +353,65 @@ def export_camp_excel(plan: CampPlan, path: str | Path,
                 cell.border = _BORDER
 
     ws.freeze_panes = "A3"
+    wb.save(path)
+    return path
+
+
+# ---- كشف كل خيمة على حدة (أعمدة مبسّطة: تسلسل، اسم، قطاع، خيمة، تصنيف، حملة)
+TENT_SHEET_COLUMNS: tuple[str, ...] = (
+    "التسلسل", "اسم الحاج", "القطاع", "خيمة رقم", "التصنيف", "اسم الحملة",
+)
+_TENT_WIDTHS = (8, 32, 10, 10, 10, 26)
+_INVALID_SHEET = re.compile(r"[:\\/?*\[\]]")
+
+
+def _sheet_name(base: str, used: set[str], fallback: str) -> str:
+    """اسم ورقة إكسل صالح (≤31 حرفاً، بلا رموز ممنوعة، فريد)."""
+    name = _INVALID_SHEET.sub("-", str(base)).strip()[:28] or fallback
+    candidate, n = name, 2
+    while candidate in used:
+        candidate = f"{name} ({n})"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
+def export_tents_excel(plan: CampPlan, path: str | Path,
+                       *, campaign: str = "") -> Path:
+    """يصدّر كل خيمة في **ورقة مستقلة**، بالأعمدة المبسّطة فقط.
+
+    الأعمدة: التسلسل • اسم الحاج • القطاع • خيمة رقم • التصنيف • اسم الحملة.
+    """
+    path = Path(path)
+    campaign = str(campaign or "").strip()
+    ncols = len(TENT_SHEET_COLUMNS)
+    wb = Workbook()
+    wb.remove(wb.active)                     # نبدأ بلا ورقة افتراضية
+    used: set[str] = set()
+
+    for index, tent in enumerate(plan.tents, start=1):
+        ws = wb.create_sheet(_sheet_name(f"خيمة {tent.number}", used, f"خيمة {index}"))
+        ws.sheet_view.rightToLeft = True
+        ws.append(list(TENT_SHEET_COLUMNS))
+        for col, width in enumerate(_TENT_WIDTHS, start=1):
+            cell = ws.cell(row=1, column=col)
+            cell.fill = _HEADER_FILL
+            cell.font = _HEADER_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = _BORDER
+            ws.column_dimensions[get_column_letter(col)].width = width
+        ws.row_dimensions[1].height = 26
+        for position, occ in enumerate(tent.occupants, start=1):
+            ws.append([position, occ.name, tent.sector, tent.number,
+                       tent.classification, campaign])
+            row = ws.max_row
+            for col in range(1, ncols + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = _BORDER
+        ws.freeze_panes = "A2"
+
+    if not wb.sheetnames:                     # لا خيام — نترك ورقة فارغة
+        wb.create_sheet("لا خيام")
     wb.save(path)
     return path

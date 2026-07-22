@@ -185,6 +185,18 @@ def _footer(canvas, doc, title_text: str) -> None:
     canvas.restoreState()
 
 
+def _footer_portrait(canvas, doc, title_text: str) -> None:
+    """ترويسة سفلية لصفحات A4 العمودية (عرض مختلف عن العرضية)."""
+    canvas.saveState()
+    canvas.setFont(_FONT, 7.5)
+    canvas.setFillColor(colors.HexColor("#888888"))
+    w, _ = A4
+    canvas.drawCentredString(w / 2, 10 * mm, ar(f"صفحة {doc.page}"))
+    canvas.drawRightString(w - 12 * mm, 10 * mm, ar(title_text))
+    canvas.drawString(12 * mm, 10 * mm, ar(date.today().isoformat()))
+    canvas.restoreState()
+
+
 def _grouped_rooms(
     records: list[PassportData],
 ) -> list[tuple[str, int, list[PassportData]]]:
@@ -620,6 +632,78 @@ def export_camp_pdf(plan, path: str | Path,
         story,
         onFirstPage=lambda c, d: _footer(c, d, full_title),
         onLaterPages=lambda c, d: _footer(c, d, full_title),
+    )
+    return path
+
+
+def export_tents_pdf(plan, path: str | Path,
+                     *, campaign: str = "", title: str = "كشف المخيمات") -> Path:
+    """يصدّر **كل خيمة في صفحة مستقلة**، بالأعمدة المبسّطة فقط.
+
+    الأعمدة: التسلسل • اسم الحاج • القطاع • خيمة رقم • التصنيف • اسم الحملة.
+    مناسب لطباعة ورقة لكل خيمة وتسليمها.
+    """
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+    campaign = str(campaign or "").strip()
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4,
+        rightMargin=12 * mm, leftMargin=12 * mm,
+        topMargin=14 * mm, bottomMargin=16 * mm,
+        title=title, author="برنامج الحج",
+    )
+    heading = f"{title} — مخيّم {plan.camp}" if plan.camp else title
+
+    # الأعمدة معكوسة للتخطيط من اليمين لليسار: «التسلسل» أقصى اليمين
+    labels = ["التسلسل", "اسم الحاج", "القطاع", "خيمة رقم", "التصنيف", "اسم الحملة"]
+    draw_labels = list(reversed(labels))
+    weights = list(reversed([28, 168, 54, 54, 54, 120]))
+    scale = doc.width / sum(weights)
+    col_widths = [w * scale for w in weights]
+
+    story: list = []
+    for index, tent in enumerate(plan.tents):
+        if index:
+            story.append(PageBreak())
+        logo = _logo_flowable()
+        if logo is not None:
+            story.append(logo)
+            story.append(Spacer(1, 4))
+        story.append(Paragraph(ar(heading), st["title"]))
+        sub = f"خيمة رقم {ltr(tent.number)}  •  {tent.classification}"
+        if tent.sector:
+            sub += f"  •  قطاع {ltr(tent.sector)}"
+        if campaign:
+            sub += f"  •  {campaign}"
+        sub += f"  •  العدد: {ltr(tent.count)}"
+        story.append(Paragraph(ar(sub), st["subtitle"]))
+
+        table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
+        for position, occ in enumerate(tent.occupants, start=1):
+            values = [ltr(position), occ.name, tent.sector, ltr(tent.number),
+                      tent.classification, campaign]
+            table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
+
+        table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ]))
+        story.append(table)
+
+    if not plan.tents:
+        story.append(Paragraph(ar("لا توجد خيام."), st["subtitle"]))
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _footer_portrait(c, d, heading),
+        onLaterPages=lambda c, d: _footer_portrait(c, d, heading),
     )
     return path
 

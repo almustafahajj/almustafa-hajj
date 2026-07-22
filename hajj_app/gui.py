@@ -1304,6 +1304,7 @@ class CampsDialog(Toplevel):
     """
 
     _ALL_CLASSES = "الكل"
+    _DEFAULT_CAMPAIGN = "المصطفى للحج والعمرة"
 
     def __init__(self, parent, records: list[PassportData]) -> None:
         super().__init__(parent)
@@ -1328,6 +1329,7 @@ class CampsDialog(Toplevel):
         self._sector_var = StringVar(value="")
         self._cap_var = StringVar(value="40")
         self._start_var = StringVar(value="1")
+        self._campaign_var = StringVar(value=self._DEFAULT_CAMPAIGN)
 
         def field(label: str, var: StringVar, width: int, combo=None):
             cell = ttk.Frame(form)
@@ -1353,8 +1355,18 @@ class CampsDialog(Toplevel):
         field("القطاع", self._sector_var, 10)
         field("عدد الأشخاص في الخيمة", self._cap_var, 8)
         field("رقم الخيمة يبدأ من", self._start_var, 8)
-        ttk.Button(form, text=rtl("↻  تحديث التوزيع"), style="Act.TButton",
-                   command=lambda: self._rebuild(force=True)).pack(side=RIGHT, padx=(6, 0))
+
+        # اسم الحملة في صفّه (يظهر في كشف كل خيمة على حدة) — لا يعيد التوزيع
+        camp_row = ttk.Frame(outer)
+        camp_row.pack(fill=X, pady=(8, 0))
+        ttk.Label(camp_row, text="اسم الحملة:", font=("Segoe UI", 10),
+                  foreground=ACCENT).pack(side=RIGHT, padx=(4, 5))
+        camp_entry = ttk.Entry(camp_row, textvariable=self._campaign_var, width=32,
+                               justify="right", font=("Segoe UI", 10))
+        install_entry_editing(camp_entry)
+        camp_entry.pack(side=RIGHT)
+        ttk.Button(camp_row, text=rtl("↻  تحديث التوزيع"), style="Act.TButton",
+                   command=lambda: self._rebuild(force=True)).pack(side=LEFT)
 
         self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 11),
                                   foreground=ACCENT)
@@ -1395,14 +1407,23 @@ class CampsDialog(Toplevel):
         self._tree.bind("<Double-1>", lambda _e: self._edit_tent())
 
         # ---- أزرار ----
+        # الكشف الكامل (كل الخيام مجموعة) + كشف كل خيمة على حدة (أعمدة مبسّطة)
         row = ttk.Frame(outer)
         row.pack(anchor="e", pady=(10, 0))
-        ttk.Button(row, text=rtl("📊  تصدير إكسل"), style="Act.TButton",
+        ttk.Label(row, text="الكشف الكامل:", font=("Segoe UI", 9),
+                  foreground="#666").pack(side=RIGHT, padx=(0, 4))
+        ttk.Button(row, text=rtl("📊  إكسل"), style="Act.TButton",
                    command=self._excel).pack(side=RIGHT, padx=3)
-        ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
+        ttk.Button(row, text=rtl("📄  PDF"), style="Act.TButton",
                    command=self._pdf).pack(side=RIGHT, padx=3)
+        ttk.Label(row, text="كل خيمة على حدة:", font=("Segoe UI", 9),
+                  foreground="#666").pack(side=RIGHT, padx=(14, 4))
+        ttk.Button(row, text=rtl("🏕  إكسل"), style="Act.TButton",
+                   command=self._tents_excel).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("🏕  PDF"), style="Act.TButton",
+                   command=self._tents_pdf).pack(side=RIGHT, padx=3)
         ttk.Button(row, text="إغلاق", style="Act.TButton",
-                   command=self.destroy).pack(side=RIGHT, padx=3)
+                   command=self.destroy).pack(side=LEFT, padx=3)
 
         self.bind("<Escape>", lambda _e: self.destroy())
         self._last_key = None
@@ -1503,24 +1524,24 @@ class CampsDialog(Toplevel):
         for iid, tent in self._tent_by_iid.items():
             self._tree.item(iid, text=tent_label(tent))
 
-    def _default(self, ext: str) -> str:
+    def _default(self, ext: str, prefix: str = "كشف_المخيمات") -> str:
         camp = self._plan.camp if self._plan else ""
         cls = self._class_var.get()
         suffix = "" if cls == self._ALL_CLASSES else f"_{cls}"
-        return f"كشف_المخيمات_{camp}{suffix}_{date.today().isoformat()}.{ext}"
+        return f"{prefix}_{camp}{suffix}_{date.today().isoformat()}.{ext}"
 
-    def _save_path(self, ext: str) -> str | None:
+    def _save_path(self, ext: str, prefix: str = "كشف_المخيمات") -> str | None:
         return filedialog.asksaveasfilename(
             parent=self, title="حفظ كشف المخيمات", defaultextension=f".{ext}",
-            initialfile=self._default(ext),
+            initialfile=self._default(ext, prefix),
             filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")),
         )
 
-    def _run(self, export_fn, ext: str) -> None:
+    def _run(self, export_fn, ext: str, prefix: str = "كشف_المخيمات") -> None:
         if not self._plan or not self._plan.tents:
             messagebox.showinfo("لا يوجد توزيع", "لا يوجد حجّاج لتوزيعهم.", parent=self)
             return
-        path = self._save_path(ext)
+        path = self._save_path(ext, prefix)
         if not path:
             return
         try:
@@ -1547,6 +1568,20 @@ class CampsDialog(Toplevel):
     def _pdf(self) -> None:
         from .pdf_io import export_camp_pdf
         self._run(export_camp_pdf, "pdf")
+
+    def _tents_excel(self) -> None:
+        """كل خيمة في ورقة إكسل مستقلة، بالأعمدة المبسّطة + اسم الحملة."""
+        from .camps import export_tents_excel
+        campaign = self._campaign_var.get()
+        self._run(lambda plan, p: export_tents_excel(plan, p, campaign=campaign),
+                  "xlsx", prefix="خيام_المخيمات")
+
+    def _tents_pdf(self) -> None:
+        """كل خيمة في صفحة PDF مستقلة، بالأعمدة المبسّطة + اسم الحملة."""
+        from .pdf_io import export_tents_pdf
+        campaign = self._campaign_var.get()
+        self._run(lambda plan, p: export_tents_pdf(plan, p, campaign=campaign),
+                  "pdf", prefix="خيام_المخيمات")
 
 
 class ImageKindDialog(Toplevel):

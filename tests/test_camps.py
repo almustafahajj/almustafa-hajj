@@ -11,10 +11,11 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 from openpyxl import load_workbook
 from hajj_app.camps import (
-    CAMP_ARAFAT, CAMP_MINA, MEN, WOMEN, UNKNOWN, CAMP_COLUMNS,
-    build_camp_plan, camp_rows, classification, export_camp_excel, tent_label,
+    CAMP_ARAFAT, CAMP_MINA, MEN, WOMEN, UNKNOWN, CAMP_COLUMNS, TENT_SHEET_COLUMNS,
+    build_camp_plan, camp_rows, classification, export_camp_excel,
+    export_tents_excel, tent_label,
 )
-from hajj_app.pdf_io import export_camp_pdf
+from hajj_app.pdf_io import export_camp_pdf, export_tents_pdf
 from hajj_app.mrz import PassportData
 
 
@@ -170,6 +171,40 @@ assert _os.path.getsize(pdf) > 3000
 with open(pdf, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
 print(f"  OK: PDF ({_os.path.getsize(pdf)} بايت)")
+
+print("\n=== كل خيمة على حدة: إكسل (ورقة لكل خيمة) ===")
+recs = [rec(f"رجل {i}", "ذكر", fam="1") for i in range(3)] + \
+       [rec(f"امرأة {i}", "أنثى", fam="2") for i in range(2)]
+plan = build_camp_plan(recs, CAMP_MINA, capacity=2, sector="ب", start_number=1)
+# 3 رجال سعة 2 -> خيمتان، 2 نساء -> خيمة واحدة => 3 خيام
+assert len(plan.tents) == 3, len(plan.tents)
+xlsx = _os.path.join(_OUTDIR, "tents.xlsx")
+export_tents_excel(plan, xlsx, campaign="المصطفى للحج والعمرة")
+wb = load_workbook(xlsx)
+assert len(wb.sheetnames) == 3, wb.sheetnames          # ورقة لكل خيمة
+ws = wb[wb.sheetnames[0]]
+assert ws.sheet_view.rightToLeft is True
+assert [c.value for c in ws[1]] == list(TENT_SHEET_COLUMNS)
+# الأعمدة الستة المطلوبة فقط، بالقيم الصحيحة
+first = list(ws.iter_rows(min_row=2, max_row=2, values_only=True))[0]
+assert first[0] == 1                                    # التسلسل داخل الخيمة
+assert first[2] == "ب"                                  # القطاع
+assert first[3] == plan.tents[0].number                 # خيمة رقم
+assert first[4] == MEN                                  # التصنيف
+assert first[5] == "المصطفى للحج والعمرة"                # اسم الحملة
+print(f"  OK: {len(wb.sheetnames)} أوراق، أعمدة مبسّطة: {list(TENT_SHEET_COLUMNS)}")
+
+print("\n=== كل خيمة على حدة: PDF (صفحة لكل خيمة) ===")
+tents_pdf = _os.path.join(_OUTDIR, "tents.pdf")
+export_tents_pdf(plan, tents_pdf, campaign="المصطفى للحج والعمرة")
+assert _os.path.getsize(tents_pdf) > 3000
+with open(tents_pdf, "rb") as fh:
+    assert fh.read(5) == b"%PDF-"
+# خطة فارغة لا تتعطّل
+empty = build_camp_plan([], CAMP_MINA)
+export_tents_pdf(empty, _os.path.join(_OUTDIR, "tents_empty.pdf"))
+export_tents_excel(empty, _os.path.join(_OUTDIR, "tents_empty.xlsx"))
+print(f"  OK: PDF ({_os.path.getsize(tents_pdf)} بايت)، والخطة الفارغة لا تتعطّل")
 
 print("\n=== نافذة المخيمات (CampsDialog) ===")
 try:
