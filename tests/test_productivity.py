@@ -50,13 +50,13 @@ assert [name for name, _ in groups] == ["باص 1", "باص 2"]       # مرتّ
 assert len(groups[0][1]) == 2 and len(unassigned) == 1
 print(f"  OK: باص 1 فيه 2، باص 2 فيه 1، وبلا مواصلات 1")
 
-print("\n=== خدمة التنفيذي: جيمس فقط ===")
+print("\n=== خدمة التنفيذي: القيمة كما في الكشف العام ===")
 assert executive_display(rec(executive_service="جيمس")) == "جيمس"
-assert executive_display(rec(executive_service="خدمة جيمس التنفيذية")) == "خدمة جيمس التنفيذية"
-assert executive_display(rec(executive_service="أخرى")) == ""      # غير جيمس -> فارغ
+assert executive_display(rec(executive_service="نعم")) == "نعم"       # أي قيمة تُعرض كما هي
+assert executive_display(rec(executive_service=" VIP ")) == "VIP"     # تُشذّب الفراغات
 assert executive_display(rec(executive_service="")) == ""
 assert executive_display(rec()) == ""
-print("  OK: تُعرض جيمس فقط، وتُترك القيم الأخرى فارغة")
+print("  OK: تُعرض قيمة خدمة التنفيذي كما في الكشف العام")
 
 print("\n=== تصدير المواصلات إكسل ===")
 xlsx = _os.path.join(_OUTDIR, "transport.xlsx")

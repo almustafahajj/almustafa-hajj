@@ -22,9 +22,8 @@ def _wheelchair(rec: PassportData) -> str:
 
 
 def executive_display(rec: PassportData) -> str:
-    """خدمة التنفيذي — «جيمس فقط»: تُعرض القيمة إن كانت خدمة جيمس، وإلا فارغة."""
-    value = str(rec.executive_service or "").strip()
-    return value if "جيمس" in value else ""
+    """خدمة التنفيذي كما في الكشف العام — تُعرض القيمة كما هي (أو فارغة)."""
+    return str(rec.executive_service or "").strip()
 
 
 def distinct_transports(records: list[PassportData]) -> list[str]:
