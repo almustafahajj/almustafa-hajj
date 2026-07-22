@@ -105,7 +105,7 @@ assert is_woman(rec(sex="أنثى")) and not is_woman(rec(sex="ذكر"))
 import math
 recs = [rec(full_name_ar=f"عبدالله محمد الشامسي {i}",
             sex=("أنثى" if i % 2 else "ذكر"), phone=f"05011122{i:02d}",
-            hotel="فندق دار الصفوة") for i in range(10)]   # >8 -> صفحتا وجوه
+            hotel="فندق دار الصفوة") for i in range(12)]   # >10 -> صفحتا وجوه
 badges = _os.path.join(_OUTDIR, "badges.pdf")
 export_badges_pdf(recs, badges, company="المصطفى للحج والعمرة", session=None,
                   preacher="0555000000", admins="خالد المدير\nسعيد المشرف",
@@ -115,15 +115,17 @@ with open(badges, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
 import fitz
 d = fitz.open(badges)
-# 8 وجوه لكل ورقة A4 + ورقة خلفية واحدة
-front_pages = math.ceil(len(recs) / 8)
-assert d.page_count == front_pages + 1, d.page_count      # 10 -> 2 + 1 = 3
-# الصفحات بقياس A4 (595×842 نقطة تقريباً)
+# A4 عرضية: 10 بطاقات (5×2) لكل ورقة وجوه + ورقة خلفية واحدة
+PER = 10
+front_pages = math.ceil(len(recs) / PER)
+assert d.page_count == front_pages + 1, d.page_count      # 12 -> 2 + 1 = 3
+# الصفحات عرضية (842×595)
 page = d[0]
-assert abs(page.rect.width - 595) < 3 and abs(page.rect.height - 842) < 3, page.rect
+assert page.rect.width > page.rect.height, "الصفحة يجب أن تكون عرضية"
+assert abs(page.rect.width - 842) < 3 and abs(page.rect.height - 595) < 3, page.rect
 d.close()
 # قائمة فارغة لا تتعطّل
 export_badges_pdf([], _os.path.join(_OUTDIR, "badges_empty.pdf"))
-print(f"  OK: {front_pages} ورقة وجوه (8/ورقة) + ورقة خلفية واحدة، A4")
+print(f"  OK: A4 عرضية، {front_pages} ورقة وجوه (10/ورقة) + ورقة خلفية واحدة")
 
 print("\n*** PRODUCTIVITY TESTS PASSED ***")

@@ -960,8 +960,8 @@ def export_badges_pdf(records: list, path: str | Path, *,
                       company: str = "المصطفى للحج والعمرة",
                       session=None, preacher: str = "", admins: str = "",
                       emergency: str = "", title: str = "بطاقات الحجّاج") -> Path:
-    """يبني بطاقات الحجّاج — **8 وجوه لكل ورقة A4**، والخلفية في ورقة واحدة
-    فيها 8 خلفيات متطابقة (الخلفية عامّة لا تخصّ فرداً).
+    """يبني بطاقات الحجّاج بمقاس ثابت 5.2×8سم على ورق A4 **عرضي** — أكبر عدد
+    ممكن لكل ورقة (10)، والخلفية في ورقة واحدة فيها الخلفيات نفسها متطابقة.
 
     الوجه: شعار الحملة + الصورة الشخصية (للرجال) أو رمز امرأة محجّبة (للنساء)
     + الاسم (الأول والثاني والأخير) + الهاتف + الفندق.
@@ -976,26 +976,29 @@ def export_badges_pdf(records: list, path: str | Path, *,
 
     _register_fonts()
     path = Path(path)
-    PW, PH = A4
-    c = _canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
+    PW, PH = landscape(A4)
+    c = _canvas.Canvas(str(path), pagesize=landscape(A4), pageCompression=1)
     c.setTitle(title)
     logo_reader = ImageReader(str(_LOGO_PATH)) if _LOGO_PATH.is_file() else None
     gray = colors.HexColor("#333333")
 
-    # شبكة 8 بطاقات (عمودان × 4 صفوف) على A4، كل بطاقة بنسبة 5.2:8
-    COLS, ROWS, PER = 2, 4, 8
-    MX, MY, GX, GY = 18, 16, 12, 12
-    cell_w = (PW - 2 * MX - (COLS - 1) * GX) / COLS
-    cell_h = (PH - 2 * MY - (ROWS - 1) * GY) / ROWS
-    fit = min(cell_w / (5.2 * cm), cell_h / (8.0 * cm))
-    bw, bh = 5.2 * cm * fit, 8.0 * cm * fit      # قياس البطاقة الواحدة
-    s = bw / (5.2 * cm)                          # معامل تصغير الخطوط والمسافات
+    # قياس البطاقة ثابت 5.2×8سم، وأكبر عدد يتّسع في صفحة A4 **عرضية** (5×2=10)
+    bw, bh = 5.2 * cm, 8.0 * cm
+    s = 1.0
+    MX, MY, GX, GY = 20, 18, 6, 8
+    COLS = max(1, int((PW - 2 * MX + GX) / (bw + GX)))
+    ROWS = max(1, int((PH - 2 * MY + GY) / (bh + GY)))
+    PER = COLS * ROWS
+    grid_w = COLS * bw + (COLS - 1) * GX
+    grid_h = ROWS * bh + (ROWS - 1) * GY
+    off_x = (PW - grid_w) / 2
+    off_top = (PH + grid_h) / 2
 
     def cell_origin(idx):
         col, row = idx % COLS, idx // COLS
-        col_x = PW - MX - (col + 1) * cell_w - col * GX   # RTL: أول بطاقة يميناً
-        row_y = PH - MY - (row + 1) * cell_h - row * GY
-        return col_x + (cell_w - bw) / 2, row_y + (cell_h - bh) / 2
+        ox = off_x + grid_w - (col + 1) * bw - col * GX   # RTL: أول بطاقة يميناً
+        oy = off_top - (row + 1) * bh - row * GY
+        return ox, oy
 
     # الرسم داخل بطاقة بإحداثيات محلّية (0,0)..(bw,bh) بعد الإزاحة
     def center(text, y, font, size, color=_INK):
