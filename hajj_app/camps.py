@@ -143,6 +143,68 @@ class CampPlan:
         return sum(t.count for t in self.tents)
 
 
+def _classification_units(records: list[PassportData], wanted: str) -> list[list[int]]:
+    """وحدات تصنيف واحد: فهارس كل عنقود (عائلة/غرفة) من الجنس المطلوب، بالترتيب."""
+    units: list[list[int]] = []
+    for cluster in _cluster_records(records):
+        members = [i for i in cluster if classification(records[i].sex) == wanted]
+        if members:
+            units.append(members)
+    return units
+
+
+def next_tent_indices(records: list[PassportData], wanted: str,
+                      capacity: int, assigned: set[int]) -> list[int]:
+    """فهارس الدفعة التالية لخيمة واحدة تُملأ تلقائياً.
+
+    يأخذ حتى `capacity` شخصاً من التصنيف المطلوب، من غير المسكّنين سابقاً
+    (`assigned`)، مع **إبقاء العائلة وسكّان الغرفة معاً** (لا يُدخل وحدة
+    تتجاوز بها السعة). الوحدة الأكبر من السعة وحدها تُقسَّم. يعيد قائمة فارغة
+    إذا لم يبقَ أحد.
+    """
+    try:
+        capacity = max(1, int(capacity))
+    except (TypeError, ValueError):
+        capacity = 1
+    chosen: list[int] = []
+    for unit in _classification_units(records, wanted):
+        avail = [i for i in unit if i not in assigned]
+        if not avail:
+            continue
+        if not chosen and len(avail) > capacity:
+            return avail[:capacity]          # وحدة أكبر من السعة وحدها -> تُقسَّم
+        if len(chosen) + len(avail) <= capacity:
+            chosen.extend(avail)             # تدخل كاملةً
+        # وإلا نتخطّاها لتدخل خيمة لاحقة (لا نكسر العائلة)
+    return chosen
+
+
+def remaining_by_class(records: list[PassportData],
+                       assigned: set[int]) -> dict[str, int]:
+    """عدد غير المسكّنين من كل تصنيف (لعرض المتبقّي)."""
+    counts = {c: 0 for c in _CLASS_ORDER}
+    for i, rec in enumerate(records):
+        if i not in assigned:
+            counts[classification(rec.sex)] += 1
+    return counts
+
+
+def make_tent(records: list[PassportData], indices: list[int], *,
+              camp: str, sector: str, number, classification_label: str,
+              capacity: int) -> "CampPlan":
+    """يبني خطة بخيمة واحدة من فهارس محدّدة — لتصدير خيمة أُنشئت يدوياً."""
+    try:
+        capacity = max(1, int(capacity))
+    except (TypeError, ValueError):
+        capacity = max(1, len(indices))
+    occupants = [Occupant(i + 1, records[i]) for i in indices]
+    tent = Tent(camp=camp, sector=str(sector or "").strip(), number=str(number),
+                classification=classification_label, capacity=capacity,
+                occupants=occupants)
+    return CampPlan(camp=camp, sector=str(sector or "").strip(),
+                    capacity=capacity, tents=[tent], notes=[])
+
+
 def _pack(units: list[list[Occupant]], capacity: int,
           notes: list[str], cls: str) -> list[list[Occupant]]:
     """يوزّع الوحدات (عائلة/غرفة) على خيام بحجم السعة، مع بقاء كل وحدة معاً.

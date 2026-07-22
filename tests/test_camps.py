@@ -13,7 +13,8 @@ from openpyxl import load_workbook
 from hajj_app.camps import (
     CAMP_ARAFAT, CAMP_MINA, MEN, WOMEN, UNKNOWN, CAMP_COLUMNS, TENT_SHEET_COLUMNS,
     build_camp_plan, camp_rows, classification, export_camp_excel,
-    export_tents_excel, single_tent_plan, tent_filename, tent_label,
+    export_tents_excel, make_tent, next_tent_indices, remaining_by_class,
+    single_tent_plan, tent_filename, tent_label,
 )
 from hajj_app.pdf_io import export_camp_pdf, export_tents_pdf
 from hajj_app.mrz import PassportData
@@ -241,37 +242,81 @@ for nm in names:
     assert not _re.search(r'[\\/:*?"<>|]', nm), nm
 print(f"  OK: {len(plan.tents)} ملفات مستقلة، أسماء آمنة: {names}")
 
-print("\n=== نافذة المخيمات (CampsDialog) ===")
+print("\n=== إنشاء خيمة واحدة تلقائياً (next_tent_indices + التتابع) ===")
+recs = [rec(f"رجل {i}", "ذكر", fam=str(i // 2)) for i in range(5)] + \
+       [rec(f"امرأة {i}", "أنثى") for i in range(3)]
+assigned = set()
+# خيمة رجال سعة 3: تأخذ 3 رجال (العائلة معاً ما أمكن)
+idx = next_tent_indices(recs, MEN, 3, assigned)
+assert len(idx) <= 3 and all(classification(recs[i].sex) == MEN for i in idx)
+assert len(idx) == 3, idx
+assigned.update(idx)
+rem = remaining_by_class(recs, assigned)
+assert rem[MEN] == 2 and rem[WOMEN] == 3, rem
+# الخيمة التالية للرجال تأخذ المتبقّين (2)
+idx2 = next_tent_indices(recs, MEN, 3, assigned)
+assert len(idx2) == 2 and not (set(idx2) & assigned)
+assigned.update(idx2)
+assert remaining_by_class(recs, assigned)[MEN] == 0
+# نفدت الرجال -> قائمة فارغة
+assert next_tent_indices(recs, MEN, 3, assigned) == []
+# النساء مستقلات
+idxw = next_tent_indices(recs, WOMEN, 10, assigned)
+assert len(idxw) == 3 and all(classification(recs[i].sex) == WOMEN for i in idxw)
+print("  OK: تُملأ بالعدد، تتقدّم بمن تبقّى، وتفصل التصنيفات")
+
+print("\n=== العائلة لا تُكسر عند حدّ السعة ===")
+# عائلة تسع في الخيمة لكنها لا تدخل مع الحالية -> تُترك كاملة، ويملأ الفراغ مفرد
+recs = [rec("أ1", "ذكر", fam="1"), rec("أ2", "ذكر", fam="1"),   # عائلة: 2
+        rec("ب1", "ذكر", fam="2"), rec("ب2", "ذكر", fam="2"),   # عائلة: 2
+        rec("مفرد", "ذكر", fam="")]                             # مفرد: 1
+idx = next_tent_indices(recs, MEN, 3, set())
+names_taken = {recs[i].full_name_ar for i in idx}
+# عائلة أ (2) تدخل، عائلة ب (2) لا تُكسر فتُترك، والمفرد يملأ الفراغ -> 3
+assert names_taken == {"أ1", "أ2", "مفرد"}, names_taken
+assert "ب1" not in names_taken and "ب2" not in names_taken
+# عائلة أكبر من السعة وحدها تُقسَّم إجباراً (لا مفرّ)
+big = [rec(f"ع{i}", "ذكر", fam="9") for i in range(5)]
+assert len(next_tent_indices(big, MEN, 2, set())) == 2
+print("  OK: العائلة تُترك كاملة ويملؤها الأصغر، والأكبر-من-السعة تُقسَّم إجباراً")
+
+print("\n=== make_tent يبني خطة خيمة واحدة للتصدير ===")
+recs = [rec("أحمد", "ذكر", fam="1"), rec("خالد", "ذكر", fam="1")]
+plan = make_tent(recs, [0, 1], camp=CAMP_ARAFAT, sector="ج", number=45,
+                 classification_label=MEN, capacity=40)
+assert len(plan.tents) == 1
+t = plan.tents[0]
+assert t.number == "45" and t.sector == "ج" and t.classification == MEN
+assert t.camp == CAMP_ARAFAT and t.count == 2
+xlsx = _os.path.join(_OUTDIR, "one_tent.xlsx")
+export_tents_excel(plan, xlsx, campaign="المصطفى للحج والعمرة")
+assert len(load_workbook(xlsx).sheetnames) == 1
+print(f"  OK: خيمة 45 — {t.classification} — قطاع ج — {t.count} أشخاص")
+
+print("\n=== نافذة الخيام (CampsDialog: إنشاء وتصدير خيمة واحدة) ===")
 try:
     from tkinter import Tk
     from hajj_app.gui import CampsDialog
     root = Tk(); root.withdraw()
-    recs = [rec("رجل ١", "ذكر", fam="1"), rec("امرأة ١", "أنثى", fam="2"),
-            rec("رجل ٢", "ذكر", fam="1")]
+    recs = [rec(f"رجل {i}", "ذكر") for i in range(5)] + \
+           [rec("امرأة", "أنثى")]
     dlg = CampsDialog(root, recs)
-    dlg._cap_var.set("2"); dlg._sector_var.set("ب"); dlg._camp_var.set(CAMP_ARAFAT)
-    dlg._rebuild(force=True)
-    assert dlg._plan.camp == CAMP_ARAFAT and dlg._plan.capacity == 2
-    assert dlg._plan.total == 3
-    # لا اختلاط
-    for t in dlg._plan.tents:
-        assert len({classification(o.sex) for o in t.occupants}) == 1
-    # تعديل يدوي لرقم خيمة يبقى ولا يُمحى ما لم تتغيّر المعطيات
-    first = dlg._plan.tents[0]
-    first.number = "99"; dlg._refresh_labels()
-    dlg._rebuild(force=False)   # نفس المعطيات -> لا إعادة بناء
-    assert dlg._plan.tents[0].number == "99", "التعديل اليدوي مُحي بلا تغيير معطيات"
-    # تغيير المعطيات يعيد البناء (يُلغي التجاوز اليدوي)
-    dlg._start_var.set("5"); dlg._rebuild(force=False)
-    assert dlg._plan.tents[0].number == "5"
-    # اختيار الجنس: نساء فقط
-    dlg._class_var.set(WOMEN); dlg._rebuild(force=False)
-    assert {t.classification for t in dlg._plan.tents} == {WOMEN}
-    assert dlg._plan.total == 1
-    dlg._class_var.set(dlg._ALL_CLASSES); dlg._rebuild(force=False)
-    assert dlg._plan.total == 3
+    dlg._camp_var.set(CAMP_ARAFAT); dlg._sector_var.set("ب")
+    dlg._class_var.set(MEN); dlg._count_var.set("2"); dlg._number_var.set("10")
+    dlg._refresh_preview()
+    assert len(dlg._preview) == 2                       # يُملأ بعددين
+    # محاكاة «تصدير»: نثبّت المعروضين ونتقدّم
+    dlg._assigned.update(dlg._preview)
+    dlg._number_var.set(str(int(dlg._number_var.get()) + 1))
+    dlg._refresh_preview()
+    assert dlg._number_var.get() == "11"               # الرقم تقدّم
+    assert len(dlg._preview) == 2                       # الدفعة التالية
+    assert not (set(dlg._preview) & dlg._assigned)      # لا تكرار
+    # إعادة الضبط تُفرّغ المسكّنين
+    dlg._assigned = set(); dlg._refresh_preview()
+    assert len(dlg._assigned) == 0 and len(dlg._preview) == 2
     dlg.destroy(); root.destroy()
-    print("  OK: التوزيع، الفصل، اختيار الجنس، وثبات التعديل اليدوي")
+    print("  OK: تُملأ بالعدد، تتقدّم بالرقم وبمن تبقّى، وإعادة الضبط تعمل")
 except Exception as exc:
     if "no display" in str(exc).lower() or "tcl" in type(exc).__name__.lower():
         print(f"  تخطٍّ (لا واجهة رسومية): {exc}")
