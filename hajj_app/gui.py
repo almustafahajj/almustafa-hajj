@@ -514,6 +514,7 @@ class HajjApp:
         admin_items = [
             ("🛡  نسخة احتياطية الآن", self.do_backup_now),
             ("↩  استعادة نسخة احتياطية", self.do_restore),
+            ("📝  سجلّ التدقيق", self.do_audit),
         ]
         if self.session is not None:
             admin_items += [None,
@@ -1150,6 +1151,12 @@ class HajjApp:
         elif records:
             self.set_status(f"تمت استعادة {len(records)} حاج من آخر جلسة")
 
+    def _audit(self, action: str, details: str = "") -> None:
+        """يسجّل عملية في سجلّ التدقيق (من فعل ماذا ومتى)."""
+        from . import audit
+        user = self.session.username if self.session is not None else "مفتوح"
+        audit.record(action, details, user=user)
+
     def _push_undo(self, label: str) -> None:
         """يحفظ لقطة من السجلات قبل عملية مُتلِفة (تُستعاد بـ «تراجع»)."""
         import copy
@@ -1165,6 +1172,7 @@ class HajjApp:
         self.records = snapshot
         self.refresh()
         self.save_data()
+        self._audit("تراجع", label)
         self.set_status(f"تراجُع: {label} ({len(self.records)} سجلاً)", ok=True)
         self.toast(f"تراجُع عن: {label}", kind="success")
 
@@ -1302,6 +1310,7 @@ class HajjApp:
         self.tree.selection_set(last)
         self.tree.see(last)
         name = record.full_name_ar or record.full_name_en or "بدون اسم"
+        self._audit("إضافة يدوية", name)
         self.set_status(f"تمت إضافة: {name}", ok=True)
         self.toast(f"تمت إضافة: {name}", kind="success")
 
@@ -1426,6 +1435,7 @@ class HajjApp:
         failures, notes, added = state["failures"], state["notes"], state["added"]
         if added:
             self.save_data()
+            self._audit("إضافة جوازات", f"{added} حاج (قراءة MRZ)")
         ok_files = total - len(failures)
         # نحسب التحذيرات على السجلات المضافة الآن فقط، لا على الجدول كله
         unsure = sum(1 for r in self.records[-added:] if r.warnings) if added else 0
@@ -1468,6 +1478,7 @@ class HajjApp:
         self.records.extend(records)
         self.refresh()
         self.save_data()
+        self._audit("استيراد إكسل", f"{len(records)} سجل من {Path(path).name}")
         self.set_status(f"تم استيراد {len(records)} سجل من {Path(path).name}", ok=True)
 
         # تنبيه ذكي: أرقام جوازات مكرّرة بعد الدمج (خطأ شائع)
@@ -1787,6 +1798,10 @@ class HajjApp:
         """يفتح لوحة التحكم الرئيسية (مؤشّرات سريعة قابلة للنقر)."""
         DashboardDialog(self.root, self)
 
+    def do_audit(self) -> None:
+        """يفتح سجلّ التدقيق (من فعل ماذا ومتى)."""
+        AuditDialog(self.root)
+
     def do_stats(self) -> None:
         """يفتح لوحة الإحصاءات والملخّص المالي."""
         if not self._require_records():
@@ -1856,6 +1871,7 @@ class HajjApp:
         self.records = records
         self.refresh()
         self.save_data()
+        self._audit("استعادة نسخة", f"{label} ({len(records)} سجل)")
         self.set_status(f"استُعيدت نسخة {label}: {len(records)} سجلاً", ok=True)
         self.toast(f"استُعيدت نسخة {label}", kind="success")
 
@@ -1902,6 +1918,7 @@ class HajjApp:
                 parts.append(f"{len(changes)} حقلاً")
             if program:
                 parts.append(f"برنامج «{program}»")
+            self._audit("تعديل جماعي", f"{n} سجل — {' + '.join(parts)}")
             self.set_status(f"عُدّل {n} سجلاً — {' + '.join(parts)}", ok=True)
             self.toast(f"عُدّل {n} سجلاً", kind="success")
 
@@ -2292,6 +2309,8 @@ class HajjApp:
     def _after_edit(self, rec: PassportData) -> None:
         self.refresh()
         self.save_data()
+        self._audit("تعديل سجل",
+                    rec.full_name_ar or rec.full_name_en or rec.passport_number or "—")
         self.set_status("تم حفظ التعديلات")
 
     def delete_selected(self) -> None:
@@ -2308,6 +2327,7 @@ class HajjApp:
             del self.records[i]
         self.refresh()
         self.save_data()
+        self._audit("حذف سجلات", f"{len(idx)} سجل")
         self.set_status(f"تم حذف {len(idx)} سجل")
 
     _CLEAR_CONFIRM_WORD = "مسح"
@@ -2398,13 +2418,15 @@ class HajjApp:
         if not self._confirm_destructive():
             self.set_status("أُلغي المسح")
             return
-        self._push_undo(f"مسح الكل ({len(self.records)} سجل)")
+        count = len(self.records)
+        self._push_undo(f"مسح الكل ({count} سجل)")
         from . import images as imgmod
         for rec in self.records:
             imgmod.delete_all(rec.image_id)          # حذف كل الصور المشفّرة
         self.records.clear()
         self.refresh()
         self.save_data()
+        self._audit("مسح الكل", f"{count} سجل")
         self.set_status("تم مسح جميع السجلات", ok=True)
 
 
@@ -2997,6 +3019,68 @@ class TransportDialog(Toplevel):
     def _pdf(self):
         from .pdf_io import export_transport_pdf
         self._run(export_transport_pdf, "pdf")
+
+
+class AuditDialog(Toplevel):
+    """سجلّ التدقيق: يعرض العمليات (الأحدث أولاً) — من فعل ماذا ومتى."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.title("📝 سجلّ التدقيق")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.geometry("760x520")
+
+        outer = ttk.Frame(self, padding=14)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text="سجلّ العمليات (الأحدث أولاً)",
+                  font=("Segoe UI Semibold", 12), foreground=TEXT,
+                  background=BG).pack(anchor="e", pady=(0, 8))
+
+        box = ttk.Frame(outer)
+        box.pack(fill=BOTH, expand=True)
+        sb = ttk.Scrollbar(box, orient="vertical")
+        sb.pack(side=RIGHT, fill=Y)
+        self.tree = ttk.Treeview(box, columns=("user", "action", "details"),
+                                 show="tree headings", height=16,
+                                 yscrollcommand=sb.set)
+        self.tree.heading("#0", text="التاريخ والوقت")
+        self.tree.heading("user", text="المستخدم")
+        self.tree.heading("action", text="العملية")
+        self.tree.heading("details", text="التفاصيل")
+        self.tree.column("#0", width=155, anchor="center", stretch=False)
+        self.tree.column("user", width=90, anchor="center", stretch=False)
+        self.tree.column("action", width=130, anchor="e", stretch=False)
+        self.tree.column("details", width=310, anchor="e", stretch=True)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        sb.config(command=self.tree.yview)
+
+        row = ttk.Frame(outer)
+        row.pack(anchor="e", pady=(10, 0))
+        ttk.Button(row, text=rtl("↻  تحديث"), style="Ghost.TButton",
+                   command=self.refresh).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("🗑  مسح السجلّ"), style="Ghost.TButton",
+                   command=self._clear).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.refresh()
+
+    def refresh(self) -> None:
+        from . import audit
+        self.tree.delete(*self.tree.get_children())
+        for e in audit.read_entries(1000):
+            ts = str(e.get("ts", "")).replace("T", "  ")
+            self.tree.insert("", END, text=ts,
+                             values=(e.get("user", "—"), e.get("action", ""),
+                                     e.get("details", "")))
+
+    def _clear(self) -> None:
+        if messagebox.askyesno("مسح السجلّ",
+                               "مسح كل قيود سجلّ التدقيق نهائياً؟", parent=self):
+            from . import audit
+            audit.clear_log()
+            self.refresh()
 
 
 class DashboardDialog(Toplevel):
