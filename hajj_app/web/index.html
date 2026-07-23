@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>برنامج الحج — نسخة الويب</title>
+<style>
+  :root{
+    --bg:#F4F1EA; --panel:#FBF9F5; --ink:#2A2A2A; --muted:#8C857A;
+    --bronze:#8A6E4B; --bronze-d:#6f573a; --line:#E3DCCF; --head:#1A1A1A;
+    --danger:#B23A3A; --ok:#2E7D46;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI","Tahoma",sans-serif;background:var(--bg);
+       color:var(--ink)}
+  header{background:var(--panel);border-bottom:2px solid var(--bronze);
+         padding:14px 20px;display:flex;align-items:center;gap:14px}
+  header .brand{font-size:20px;font-weight:700;color:var(--bronze)}
+  header .sub{color:var(--muted);font-size:13px}
+  .wrap{max-width:1200px;margin:0 auto;padding:18px 20px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+  .toolbar .spacer{flex:1}
+  button,.btn{font-family:inherit;font-size:14px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);padding:8px 14px;border-radius:10px;
+    cursor:pointer;transition:.12s}
+  button:hover{border-color:var(--bronze)}
+  .btn-primary{background:var(--bronze);color:#fff;border-color:var(--bronze-d)}
+  .btn-primary:hover{background:var(--bronze-d)}
+  .btn-danger{color:var(--danger)}
+  input[type=search],input,select{font-family:inherit;font-size:14px;
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+  .count{color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  thead th{background:var(--head);color:#fff;font-weight:600;font-size:13px;
+    padding:10px 8px;text-align:right;white-space:nowrap}
+  tbody td{padding:9px 8px;border-top:1px solid var(--line);font-size:14px}
+  tbody tr:nth-child(even){background:#F7F3EE}
+  tbody tr:hover{background:#EFE7DA}
+  .num{font-variant-numeric:tabular-nums;text-align:center}
+  .row-act{display:flex;gap:6px;justify-content:center}
+  .row-act button{padding:4px 9px;font-size:13px;border-radius:8px}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;
+    align-items:flex-start;justify-content:center;padding:30px;overflow:auto}
+  .overlay.on{display:flex}
+  .modal{background:var(--panel);border-radius:14px;width:min(760px,100%);
+    padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+  .modal h3{margin:0 0 14px;color:var(--bronze)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field label{font-size:12px;color:var(--muted)}
+  .modal .actions{display:flex;gap:8px;justify-content:flex-start;margin-top:16px}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--head);color:#fff;
+    padding:10px 16px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none}
+  .toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🕋 برنامج الحج</div>
+  <div class="sub">نسخة الويب المحلية — البيانات على جهازك</div>
+</header>
+
+<div class="wrap">
+  <div class="toolbar">
+    <button class="btn-primary" onclick="openForm()">➕ إضافة حاج</button>
+    <button onclick="location='/api/export/excel'">📊 تصدير إكسل</button>
+    <button onclick="location='/api/export/pdf'">📄 تصدير PDF</button>
+    <div class="spacer"></div>
+    <input type="search" id="q" placeholder="🔎 بحث بالاسم/الجواز/الهاتف…"
+           oninput="render()">
+    <span class="count" id="count"></span>
+  </div>
+  <div id="tablebox"></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="mtitle">إضافة حاج</h3>
+    <div class="grid" id="formgrid"></div>
+    <div class="actions">
+      <button class="btn-primary" onclick="submitForm()">حفظ</button>
+      <button onclick="closeForm()">إلغاء</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let META = {columns:[], form:[]};
+let ROWS = [];
+let editIndex = null;
+
+async function load(){
+  const r = await fetch('/api/records');
+  const d = await r.json();
+  META = d.meta; ROWS = d.rows;
+  render();
+}
+
+function esc(s){return (s??'').toString().replace(/[&<>"]/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function render(){
+  const q = (document.getElementById('q').value||'').trim().toLowerCase();
+  const cols = META.columns;
+  let rows = ROWS.map((row,i)=>({row,i}));
+  if(q) rows = rows.filter(({row})=>
+    [row.full_name_ar,row.full_name_en,row.passport_number,row.phone]
+      .some(v=>(v||'').toString().toLowerCase().includes(q)));
+  document.getElementById('count').textContent =
+    `${rows.length} / ${ROWS.length} حاج`;
+  if(!ROWS.length){
+    document.getElementById('tablebox').innerHTML =
+      '<div class="empty">لا يوجد حجّاج بعد — اضغط «➕ إضافة حاج».</div>';
+    return;
+  }
+  let h = '<table><thead><tr>';
+  cols.forEach(c=>h+=`<th>${esc(c.label)}</th>`);
+  h += '<th>إجراءات</th></tr></thead><tbody>';
+  rows.forEach(({row,i})=>{
+    h+='<tr>';
+    cols.forEach(c=>{
+      const num = ['serial','program_value','paid_amount','remaining_amount']
+        .includes(c.key);
+      h+=`<td class="${num?'num':''}">${esc(row[c.key])}</td>`;
+    });
+    h+=`<td><div class="row-act">
+        <button onclick="openForm(${i})">تعديل</button>
+        <button class="btn-danger" onclick="del(${i})">حذف</button>
+      </div></td></tr>`;
+  });
+  h+='</tbody></table>';
+  document.getElementById('tablebox').innerHTML = h;
+}
+
+function openForm(i=null){
+  editIndex = i;
+  document.getElementById('mtitle').textContent =
+    i==null ? 'إضافة حاج' : 'تعديل بيانات الحاج';
+  const src = i==null ? {} : ROWS[i];
+  let h='';
+  META.form.forEach(f=>{
+    h+=`<div class="field"><label>${esc(f.label)}</label>
+        <input id="fld_${f.key}" value="${esc(src[f.key]||'')}"></div>`;
+  });
+  document.getElementById('formgrid').innerHTML = h;
+  document.getElementById('overlay').classList.add('on');
+}
+function closeForm(){document.getElementById('overlay').classList.remove('on');}
+
+async function submitForm(){
+  const data = {};
+  META.form.forEach(f=>{data[f.key]=document.getElementById('fld_'+f.key).value;});
+  const url = editIndex==null ? '/api/records' : '/api/records/'+editIndex;
+  const method = editIndex==null ? 'POST' : 'PUT';
+  const r = await fetch(url,{method,headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(data)});
+  if(r.ok){closeForm();toast(editIndex==null?'أُضيف الحاج':'حُفظ التعديل');load();}
+  else toast('تعذّر الحفظ');
+}
+
+async function del(i){
+  if(!confirm('حذف هذا الحاج؟')) return;
+  const r = await fetch('/api/records/'+i,{method:'DELETE'});
+  if(r.ok){toast('تم الحذف');load();} else toast('تعذّر الحذف');
+}
+
+let toastT;
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),1800);
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeForm();});
+load();
+</script>
+</body>
+</html>
