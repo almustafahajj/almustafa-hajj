@@ -1838,11 +1838,20 @@ class HajjApp:
                 "حدّد سجلين أو أكثر أولاً (استعمل Ctrl أو Shift للتحديد المتعدّد).")
             return
 
-        def apply(changes: dict) -> None:
-            n = self._apply_bulk(idxs, changes)
+        def apply(changes: dict, program: str | None = None) -> None:
+            n = len(idxs)
+            if changes:
+                self._apply_bulk(idxs, changes)
+            if program:
+                self._apply_program_bulk(idxs, program)
             self.refresh()
             self.save_data()
-            self.set_status(f"عُدّل {n} سجلاً في {len(changes)} حقلاً", ok=True)
+            parts = []
+            if changes:
+                parts.append(f"{len(changes)} حقلاً")
+            if program:
+                parts.append(f"برنامج «{program}»")
+            self.set_status(f"عُدّل {n} سجلاً — {' + '.join(parts)}", ok=True)
             self.toast(f"عُدّل {n} سجلاً", kind="success")
 
         BulkEditDialog(self.root, len(idxs), apply)
@@ -1853,6 +1862,33 @@ class HajjApp:
             rec = self.records[i]
             for key, value in changes.items():
                 setattr(rec, key, value)
+        return len(indices)
+
+    def _apply_program_bulk(self, indices: list[int], program_name: str) -> int:
+        """يطبّق برنامج الحملة على السجلات: تعبئة تلقائية + احتساب تكلفة كلٍّ.
+
+        قابل للاختبار — يعيد عدد السجلات المطبّق عليها (0 إن كان البرنامج
+        غير معرّف)."""
+        from .fields import format_amount
+        from .programs import (AUTOFILL_MAP, load_programs, program_by_name,
+                               program_cost)
+
+        prog = program_by_name(load_programs(self._settings), program_name)
+        if prog is None:
+            return 0
+        for i in indices:
+            rec = self.records[i]
+            rec.program = program_name
+            for pkey, rkey in AUTOFILL_MAP:
+                val = str(getattr(prog, pkey, "")).strip()
+                if val:
+                    setattr(rec, rkey, val)
+            total, _br = program_cost(
+                prog, room_type=rec.room_type, wheelchair=rec.wheelchair,
+                hady=rec.hady, executive_service=rec.executive_service,
+                travel_class=rec.travel_class, transport=rec.transport)
+            if total:
+                rec.program_value = format_amount(total)
         return len(indices)
 
     def _doc_number(self, rec, store_key: str, prefix: str, start: int) -> str:
@@ -2646,6 +2682,23 @@ class BulkEditDialog(Toplevel):
                            "الجميع. الحقول غير المعلّمة تبقى كما هي.")).pack(
             anchor="e", pady=(2, 10))
 
+        # تطبيق برنامج الحملة على الجميع (تعبئة تلقائية + احتساب تكلفة كلٍّ)
+        from .programs import PROGRAM_NAMES
+        prog_row = ttk.Frame(outer)
+        prog_row.pack(fill=X, pady=(0, 8))
+        self._prog_apply = tk.BooleanVar(value=False)
+        ttk.Checkbutton(prog_row, variable=self._prog_apply,
+                        text=rtl("طبّق برنامج الحملة (تعبئة + احتساب التكلفة "
+                                 "لكل حاج)")).pack(side=RIGHT, padx=(8, 0))
+        self._prog_var = StringVar()
+        prog_cb = ttk.Combobox(prog_row, textvariable=self._prog_var,
+                               state="readonly", width=14, justify="center",
+                               values=[""] + list(PROGRAM_NAMES))
+        prog_cb.pack(side=RIGHT)
+        prog_cb.bind("<<ComboboxSelected>>",
+                     lambda _e: self._prog_apply.set(True))
+        ttk.Separator(outer, orient="horizontal").pack(fill=X, pady=(0, 10))
+
         grid = ttk.Frame(outer)
         grid.pack(fill=X)
         self._vars: dict[str, tuple[tk.BooleanVar, StringVar]] = {}
@@ -2672,11 +2725,13 @@ class BulkEditDialog(Toplevel):
 
     def _apply(self) -> None:
         changes = {k: v.get() for k, (a, v) in self._vars.items() if a.get()}
-        if not changes:
-            messagebox.showinfo("لا تغييرات",
-                                "علّم «طبّق» بجانب حقل واحد على الأقل.", parent=self)
+        program = self._prog_var.get().strip() if self._prog_apply.get() else None
+        if not changes and not program:
+            messagebox.showinfo(
+                "لا تغييرات",
+                "علّم «طبّق» بجانب حقل، أو اختر برنامج الحملة.", parent=self)
             return
-        self._on_apply(changes)
+        self._on_apply(changes, program)
         self.destroy()
 
 

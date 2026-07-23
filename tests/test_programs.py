@@ -110,7 +110,24 @@ assert dlg.vars["transport"].get() == "جيمس", dlg.vars["transport"].get()
 # ثنائية 12,000 + جيمس 40,000 (المواصلات جيمس) = 52,000
 assert dlg.vars["program_value"].get() == "52,000", dlg.vars["program_value"].get()
 dlg.destroy()
-root.destroy()
 print("  OK: عُبّئ الفندق/المواصلات وحُسبت القيمة")
+
+print("\n=== تطبيق البرنامج على دفعة (تعديل جماعي) ===")
+# البرنامج الأول محفوظ: كونراد + جيمس + ثنائية 12,000
+app.records = [
+    PassportData(full_name_ar="أ", room_type="ثنائية"),
+    PassportData(full_name_ar="ب", room_type="ثنائية", wheelchair="نعم"),
+]
+n = app._apply_program_bulk([0, 1], PROGRAM_NAMES[0])
+assert n == 2
+for r in app.records:
+    assert r.program == PROGRAM_NAMES[0] and r.hotel == "كونراد مكة"
+    assert r.transport == "جيمس"
+# ثنائية 12,000 + جيمس 40,000 = 52,000 ؛ والثاني + كرسي 1,000 = 53,000
+assert app.records[0].program_value == "52,000", app.records[0].program_value
+assert app.records[1].program_value == "53,000", app.records[1].program_value
+assert app._apply_program_bulk([0], "غير معرّف") == 0
+root.destroy()
+print("  OK: طُبِّق على حاجَّين بتكلفة كلٍّ على حِدة")
 
 print("\n*** PROGRAMS TESTS PASSED ***")
