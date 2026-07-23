@@ -104,8 +104,12 @@ print("\n=== GUI LIFECYCLE ===")
 shutil.rmtree(DB.parent); DB.parent.mkdir(parents=True)
 from tkinter import Tk
 import hajj_app.gui as guimod
+import hajj_app.storage as _stmod
 from hajj_app.gui import HajjApp
 
+# اعزل ملفَّي البيانات والإعدادات عن ملفات المستخدم الحقيقية قبل البناء
+guimod.default_data_path = lambda: DB
+_stmod.default_data_path = lambda: DB
 root = Tk(); root.withdraw()
 app = HajjApp(root)
 app.data_path = DB                      # redirect off the real user file
