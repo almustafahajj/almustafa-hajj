@@ -38,6 +38,7 @@ GROUPINGS: tuple[tuple[str, str], ...] = (
     ("hotel", "الفندق"),
     ("airline", "الطيران"),
     ("room_type", "نوع الغرفة"),
+    ("program", "برنامج الحملة"),
 )
 
 
@@ -111,3 +112,18 @@ def outstanding(records: list[PassportData]) -> list[tuple[PassportData, float]]
     items = [(r, a) for r, a in items if a > 0.005]
     items.sort(key=lambda t: -t[1])
     return items
+
+
+def financials_by_program(records: list[PassportData]
+                          ) -> list[tuple[str, Financials]]:
+    """ملخّص مالي لكل برنامج حملة، مرتّباً بالاسم، ثم «بلا برنامج» أخيراً."""
+    groups: dict[str, list[PassportData]] = {}
+    for rec in records:
+        key = str(rec.program or "").strip() or "بلا برنامج"
+        groups.setdefault(key, []).append(rec)
+
+    def sort_key(name: str):
+        return (name == "بلا برنامج", name)
+
+    return [(name, financial_summary(groups[name]))
+            for name in sorted(groups, key=sort_key)]

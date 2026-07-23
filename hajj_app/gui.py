@@ -2911,6 +2911,26 @@ class StatsDialog(Toplevel):
         self._owe.column("amount", width=110, anchor="center", stretch=False)
         self._owe.pack(fill=BOTH, expand=True)
 
+        # ---- تبويب المالية حسب البرنامج ----
+        prog_tab = ttk.Frame(nb, padding=10)
+        nb.add(prog_tab, text="المالية حسب البرنامج")
+        self._prog = ttk.Treeview(
+            prog_tab, columns=("count", "total", "paid", "remaining", "pct"),
+            show="tree headings", height=12)
+        self._prog.heading("#0", text="البرنامج")
+        self._prog.heading("count", text="الحجّاج")
+        self._prog.heading("total", text="الإجمالي")
+        self._prog.heading("paid", text="المحصّل")
+        self._prog.heading("remaining", text="المتبقّي")
+        self._prog.heading("pct", text="التحصيل")
+        self._prog.column("#0", width=150, anchor="e", stretch=True)
+        for c, w in (("count", 70), ("total", 110), ("paid", 110),
+                     ("remaining", 110), ("pct", 80)):
+            self._prog.column(c, width=w, anchor="center", stretch=False)
+        self._prog.tag_configure("paidrow", foreground=SUCCESS_FG)
+        self._prog.tag_configure("duerow", foreground=DANGER)
+        self._prog.pack(fill=BOTH, expand=True)
+
         row = ttk.Frame(outer)
         row.pack(anchor="e", pady=(10, 0))
         ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
@@ -2921,6 +2941,20 @@ class StatsDialog(Toplevel):
 
         self._refresh_dist()
         self._refresh_outstanding()
+        self._refresh_programs()
+
+    def _refresh_programs(self) -> None:
+        from .fields import format_amount
+        from .stats import financials_by_program
+        self._prog.delete(*self._prog.get_children())
+        for name, fin in financials_by_program(self._records):
+            tag = "paidrow" if fin.remaining <= 0.005 else "duerow"
+            self._prog.insert(
+                "", END, text=name, tags=(tag,),
+                values=(f"{fin.count:,}", format_amount(fin.total) or "0",
+                        format_amount(fin.paid) or "0",
+                        format_amount(fin.remaining) or "0",
+                        f"{fin.collected_percent}%"))
 
     def _export_pdf(self) -> None:
         path = filedialog.asksaveasfilename(

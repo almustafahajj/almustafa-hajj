@@ -60,6 +60,23 @@ assert remaining_amount(recs[1]) == 15000.0
 assert remaining_amount(recs[0]) == 0.0
 print(f"  OK: {len(owe)} متأخّراً، الأكبر {amounts[0]:,.0f}")
 
+print("\n=== المالية حسب البرنامج ===")
+from hajj_app.stats import financials_by_program
+precs = [
+    rec(program="البرنامج الأول", program_value="20000", paid_amount="20000"),
+    rec(program="البرنامج الأول", program_value="20000", paid_amount="5000"),
+    rec(program="البرنامج الثاني", program_value="18000", paid_amount="18000"),
+    rec(program="", program_value="10000", paid_amount="0"),
+]
+bp = dict(financials_by_program(precs))
+assert bp["البرنامج الأول"].count == 2 and bp["البرنامج الأول"].total == 40000
+assert bp["البرنامج الأول"].remaining == 15000
+assert bp["البرنامج الثاني"].remaining == 0
+assert "بلا برنامج" in bp and bp["بلا برنامج"].total == 10000
+# «بلا برنامج» أخيراً في الترتيب
+assert [n for n, _f in financials_by_program(precs)][-1] == "بلا برنامج"
+print(f"  OK: {len(bp)} برامج، الأول متبقٍّ {bp['البرنامج الأول'].remaining:,.0f}")
+
 print("\n=== كشف فارغ لا يتعطّل ===")
 empty = financial_summary([])
 assert empty.count == 0 and empty.total == 0 and empty.collected_percent == 0.0
