@@ -50,21 +50,29 @@ def travel_date(rec: PassportData) -> date | None:
     return parse_date(rec.departure_date) or parse_date(rec.arrival_date)
 
 
+def program_travel_date(rec: PassportData,
+                        program_dates: dict | None) -> date | None:
+    """تاريخ سفر البرنامج المختار للحاج (من خريطة الاسم→التاريخ)، أو None."""
+    if not program_dates:
+        return None
+    return program_dates.get(str(rec.program or "").strip())
+
+
 def passport_issue(rec: PassportData, today: date,
-                   travel_ref: date | None = None) -> str | None:
+                   program_dates: dict | None = None) -> str | None:
     """مشكلة صلاحية الجواز إن وُجدت، وإلا None.
 
     منتهٍ إذا كان تاريخ الانتهاء قبل اليوم، أو «أقل من 6 أشهر» إذا كان
     قبل مرور 6 أشهر من **تاريخ السفر**. تاريخ السفر يُؤخذ من سجل الحاج
-    (المغادرة/الوصول) وإلا من ``travel_ref`` (تاريخ سفر الموسم العام)،
-    ولا يُرجَع لتاريخ اليوم إلا عند غياب الاثنين معاً.
+    (المغادرة/الوصول) وإلا من **تاريخ سفر برنامج الحملة المختار للحاج**
+    (``program_dates``)، ولا يُرجَع لتاريخ اليوم إلا عند غياب الاثنين معاً.
     """
     exp = parse_date(rec.expiry_date)
     if exp is None:
         return None                       # لا تاريخ — يُعالَج ضمن النواقص
     if exp < today:
         return "الجواز منتهٍ"
-    ref = travel_date(rec) or travel_ref or today
+    ref = travel_date(rec) or program_travel_date(rec, program_dates) or today
     if exp < add_months(ref, MIN_PASSPORT_MONTHS):
         return f"صلاحيته أقل من {MIN_PASSPORT_MONTHS} أشهر من تاريخ السفر"
     return None
@@ -127,11 +135,11 @@ class QualityReport:
 
 
 def check_records(records: list[PassportData], today: date | None = None,
-                  travel_ref: date | None = None) -> QualityReport:
+                  program_dates: dict | None = None) -> QualityReport:
     """يفحص الكشف كاملاً ويعيد تقريراً بكل المشكلات.
 
-    ``travel_ref`` تاريخ سفر الموسم العام يُستخدم مرجعاً لقاعدة الـ6 أشهر
-    لمن لا تاريخ سفر مفرد في سجلّه.
+    ``program_dates`` خريطة {اسم البرنامج: تاريخ سفره} تُستخدم مرجعاً لقاعدة
+    الـ6 أشهر حسب برنامج كل حاج، لمن لا تاريخ سفر مفرد في سجلّه.
     """
     today = today or date.today()
     dups = duplicate_groups(records)
@@ -142,7 +150,7 @@ def check_records(records: list[PassportData], today: date | None = None,
         name = rec.full_name_ar or rec.full_name_en or "—"
         pp = str(rec.passport_number or "").strip().upper()
         # الجواز أولاً (الأخطر)
-        pi = passport_issue(rec, today, travel_ref)
+        pi = passport_issue(rec, today, program_dates)
         if pi:
             issues.append(Issue(i, name, pp, KIND_PASSPORT, pi))
         if i in dup_of:
