@@ -2589,6 +2589,7 @@ class StatsDialog(Toplevel):
     def __init__(self, parent, records, season: str = "") -> None:
         super().__init__(parent)
         self._records = records
+        self._season = season
         self.title("📊 إحصاءات وملخّص مالي")
         self.configure(bg=BG)
         self.transient(parent)
@@ -2660,12 +2661,42 @@ class StatsDialog(Toplevel):
         self._owe.column("amount", width=110, anchor="center", stretch=False)
         self._owe.pack(fill=BOTH, expand=True)
 
-        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
-                   command=self.destroy).pack(anchor="e", pady=(10, 0))
+        row = ttk.Frame(outer)
+        row.pack(anchor="e", pady=(10, 0))
+        ttk.Button(row, text=rtl("📄  تصدير PDF"), style="Act.TButton",
+                   command=self._export_pdf).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
         self.bind("<Escape>", lambda _e: self.destroy())
 
         self._refresh_dist()
         self._refresh_outstanding()
+
+    def _export_pdf(self) -> None:
+        path = filedialog.asksaveasfilename(
+            parent=self, title="حفظ الإحصاءات والملخّص المالي",
+            defaultextension=".pdf",
+            initialfile=f"إحصاءات_ومالية_{date.today().isoformat()}.pdf",
+            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
+        if not path:
+            return
+        from .pdf_io import export_stats_pdf
+        try:
+            export_stats_pdf(self._records, path, season=self._season)
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
+                                 parent=self)
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
+            return
+        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
+            import os
+            try:
+                os.startfile(path)
+            except Exception:
+                pass
 
     def _refresh_dist(self) -> None:
         from .stats import distribution

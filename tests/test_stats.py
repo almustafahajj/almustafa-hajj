@@ -80,4 +80,25 @@ with open(pdf, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
 print(f"  OK: إيصال PDF ({_os.path.getsize(pdf)} بايت)")
 
+print("\n=== تصدير الإحصاءات والملخّص المالي PDF ===")
+from hajj_app.pdf_io import export_stats_pdf
+statrecs = [
+    rec(full_name_ar="أ", nationality_ar="الإمارات", sex="ذكر", hotel="الصفوة",
+        airline="الاتحاد", room_type="رباعية 2", program_value="20000",
+        paid_amount="20000", phone="0501"),
+    rec(full_name_ar="ب", nationality_ar="مصر", sex="أنثى", hotel="كونراد",
+        airline="الاتحاد", room_type="ثلاثية 1", program_value="18000",
+        paid_amount="6000", phone="0502"),
+    rec(full_name_ar="ج", nationality_ar="الإمارات", sex="ذكر", hotel="الصفوة",
+        program_value="15000", paid_amount="", phone="0503"),
+]
+spdf = _os.path.join(_OUTDIR, "stats.pdf")
+export_stats_pdf(statrecs, spdf, season="1447")
+assert _os.path.getsize(spdf) > 3000
+with open(spdf, "rb") as fh:
+    assert fh.read(5) == b"%PDF-"
+# كشف فارغ لا يتعطّل
+export_stats_pdf([], _os.path.join(_OUTDIR, "stats_empty.pdf"))
+print(f"  OK: PDF ({_os.path.getsize(spdf)} بايت)، والفارغ لا يتعطّل")
+
 print("\n*** STATS TESTS PASSED ***")

@@ -708,6 +708,109 @@ def export_tents_pdf(plan, path: str | Path,
     return path
 
 
+def export_stats_pdf(records: list, path: str | Path, *,
+                     title: str = "الإحصاءات والملخّص المالي",
+                     season: str = "") -> Path:
+    """يصدّر لوحة الإحصاءات والملخّص المالي إلى PDF (A4 عمودي)."""
+    from .fields import format_amount
+    from .stats import GROUPINGS, distribution, financial_summary, outstanding
+
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4,
+        rightMargin=14 * mm, leftMargin=14 * mm,
+        topMargin=12 * mm, bottomMargin=16 * mm,
+        title=title, author="برنامج الحج",
+    )
+    head = ParagraphStyle("sh", fontName=_FONT_BOLD, fontSize=9, alignment=1,
+                          textColor=_HEADER_TEXT, leading=12)
+    cell = ParagraphStyle("sc", fontName=_FONT, fontSize=9, alignment=2, leading=12)
+    cellc = ParagraphStyle("scc", parent=cell, alignment=1)
+    sect = ParagraphStyle("ss", fontName=_FONT_BOLD, fontSize=12, alignment=2,
+                          textColor=_ACCENT, spaceBefore=10, spaceAfter=5)
+
+    story: list = []
+    logo = _logo_flowable(max_width_pt=120)
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    full_title = f"{title} — موسم {ltr(season)}هـ" if season else title
+    story.append(Paragraph(ar(full_title), st["title"]))
+    story.append(Paragraph(ar(
+        f"عدد الحجّاج: {ltr(len(records))}  •  التاريخ: {ltr(date.today().isoformat())}"),
+        st["subtitle"]))
+
+    def table(header, rows, weights, aligns=None):
+        data = [[Paragraph(ar(h), head) for h in reversed(header)]]
+        for row in rows:
+            cells = []
+            for i, v in enumerate(reversed(list(row))):
+                cells.append(Paragraph(ar(str(v)), cellc))
+            data.append(cells)
+        w = list(reversed(weights))
+        scale = doc.width / sum(w)
+        t = Table(data, colWidths=[x * scale for x in w], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ]))
+        return t
+
+    # ---- الملخّص المالي ----
+    fin = financial_summary(records)
+    story.append(Paragraph(ar("الملخّص المالي"), sect))
+    lblst = ParagraphStyle("fl", parent=cell, fontName=_FONT_BOLD, textColor=_ACCENT)
+    valst = ParagraphStyle("fv", parent=cell, alignment=1)
+    colors_by = {"المحصّل": colors.HexColor("#2E6B45"),
+                 "المتبقّي": colors.HexColor("#B23A3A")}
+    fdata = []
+    for label, value in fin.as_rows():
+        vs = ParagraphStyle("fx", parent=valst, textColor=colors_by.get(label, _INK),
+                            fontName=_FONT_BOLD if label in colors_by else _FONT)
+        fdata.append([Paragraph(ar(value), vs), Paragraph(ar(label), lblst)])
+    ft = Table(fdata, colWidths=[doc.width * 0.55, doc.width * 0.45])
+    ft.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
+    ]))
+    story.append(ft)
+
+    # ---- التوزيع ----
+    for key, label in GROUPINGS:
+        buckets = distribution(records, key)
+        if not buckets:
+            continue
+        story.append(Paragraph(ar(f"التوزيع حسب: {label}"), sect))
+        rows = [[b.label, ltr(b.count), f"{b.percent}%"] for b in buckets]
+        story.append(table(["القيمة", "العدد", "النسبة"], rows, [200, 70, 70]))
+
+    # ---- المتأخّرات ----
+    owe = outstanding(records)
+    total = sum(a for _r, a in owe)
+    story.append(Paragraph(
+        ar(f"المتأخّرات  ({ltr(len(owe))}، الإجمالي: {ltr(format_amount(total))})"), sect))
+    if owe:
+        rows = [[r.full_name_ar or r.full_name_en or "—",
+                 ltr(str(r.phone or "").strip() or "—"), ltr(format_amount(a))]
+                for r, a in owe]
+        story.append(table(["اسم الحاج", "الهاتف", "المتبقّي"], rows, [200, 90, 80]))
+    else:
+        story.append(Paragraph(ar("لا متأخّرات — كل المبالغ محصّلة ✓"), st["subtitle"]))
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, title),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, title))
+    return path
+
+
 def export_receipt_pdf(rec, path: str | Path, *,
                        company: str = "المصطفى للحج والعمرة",
                        season: str = "") -> Path:
