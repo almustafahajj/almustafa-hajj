@@ -519,10 +519,17 @@ class HajjApp:
         ], icon=("report", WHITE))
         rep_mb.pack(side=RIGHT, padx=(4, 3))
 
-        # 💰 المالية: الإحصاءات والملخّص المالي
+        # 💰 المالية: الإحصاءات والملخّص المالي والمستندات المالية
         fin_mb = self._menubutton(bar, "المالية  ▾", [
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
+            None,
+            ("🧾  سند قبض (معاينة)", self._receipt_selected),
+            ("🧾  فاتورة ضريبية (معاينة)",
+             lambda: self._invoice_selected(electronic=False)),
+            ("💳  فاتورة إلكترونية QR (معاينة)",
+             lambda: self._invoice_selected(electronic=True)),
+            ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
         ], style="Ghost.TMenubutton", icon=("chart", INK))
         fin_mb.pack(side=RIGHT, padx=3)
 
@@ -1067,6 +1074,14 @@ class HajjApp:
         self._row_menu.add_separator()
         self._row_menu.add_command(label="🧾  سند قبض (معاينة)",
                                    command=self._receipt_selected)
+        self._row_menu.add_command(
+            label="🧾  فاتورة ضريبية (معاينة)",
+            command=lambda: self._invoice_selected(electronic=False))
+        self._row_menu.add_command(
+            label="💳  فاتورة إلكترونية QR (معاينة)",
+            command=lambda: self._invoice_selected(electronic=True))
+        self._row_menu.add_command(label="📜  عقد خدمات حج (معاينة)",
+                                   command=self._contract_selected)
         self.tree.bind("<Button-3>", self._show_row_menu)
 
         # حالة فارغة أنيقة تظهر حين لا بيانات (تُخفى عند وجود سجلات)
@@ -1730,32 +1745,76 @@ class HajjApp:
                 setattr(rec, key, value)
         return len(indices)
 
-    def _receipt_number(self, rec) -> str:
-        """رقم سند ثابت لكل حاج، يُرقَّم تسلسلياً من عدّاد محفوظ (يبدأ 0119)."""
+    def _doc_number(self, rec, store_key: str, prefix: str, start: int) -> str:
+        """رقم مستند ثابت لكل حاج، يُرقَّم تسلسلياً من عدّاد محفوظ.
+
+        نفس الحاج يعطي نفس الرقم عند إعادة المعاينة (يُخزَّن مفتاحه بالجواز)."""
         key = (str(rec.passport_number or "").strip().upper()
                or (rec.full_name_ar or rec.full_name_en or "").strip())
-        issued = self._settings.setdefault("receipts", {})
-        if key and key in issued:
-            return f"{int(issued[key]):04d}"
-        nxt = int(self._settings.get("receipt_next", 119))
-        if key:
-            issued[key] = nxt
-        self._settings["receipt_next"] = nxt + 1
+        store = self._settings.setdefault(store_key, {})
+        if key and key in store:
+            n = int(store[key])
+        else:
+            n = int(self._settings.get(store_key + "_next", start))
+            if key:
+                store[key] = n
+            self._settings[store_key + "_next"] = n + 1
+            try:
+                save_settings(self._settings)
+            except Exception:
+                pass
+        return f"{prefix}{n:04d}"
+
+    def _receipt_number(self, rec) -> str:
+        """رقم سند القبض (عدّاد محفوظ يبدأ 0119)."""
+        return self._doc_number(rec, "receipts", "", 119)
+
+    def _company_info(self) -> dict:
+        """بيانات الشركة المحفوظة (الاسم/الرقم الضريبي/الهاتف/العنوان)."""
+        from .pdf_io import company_info
+        return company_info(self._settings.get("company"))
+
+    def _save_company(self, data: dict) -> None:
+        """يحفظ بيانات الشركة ليُعاد استخدامها في الفواتير والعقود لاحقاً."""
+        self._settings["company"] = dict(data)
         try:
             save_settings(self._settings)
         except Exception:
             pass
-        return f"{nxt:04d}"
 
     def _receipt_selected(self) -> None:
         """يفتح نافذة سند القبض للحاج المحدّد — **معاينة فقط** بلا حفظ مباشر."""
+        rec = self._selected_record()
+        if rec is not None:
+            ReceiptDialog(self.root, rec, number=self._receipt_number(rec),
+                          season=self.season_year.get())
+
+    def _selected_record(self):
+        """يعيد السجل المحدّد أو None (مع تنبيه) — لأوامر المستندات الفردية."""
         idxs = self._selected_indices()
         if not idxs:
             messagebox.showinfo("لم يتم التحديد", "اختر حاجاً من الجدول أولاً.")
+            return None
+        return self.records[idxs[0]]
+
+    def _invoice_selected(self, *, electronic: bool = False) -> None:
+        """يفتح نافذة الفاتورة (الضريبية أو الإلكترونية) — معاينة فقط."""
+        rec = self._selected_record()
+        if rec is None:
             return
-        rec = self.records[idxs[0]]
-        ReceiptDialog(self.root, rec, number=self._receipt_number(rec),
-                      season=self.season_year.get())
+        prefix = "EINV-" if electronic else "INV-"
+        num = self._doc_number(rec, "invoices", prefix, 119)
+        InvoiceDialog(self.root, rec, self, number=num,
+                      season=self.season_year.get(), electronic=electronic)
+
+    def _contract_selected(self) -> None:
+        """يفتح نافذة عقد الخدمات للحاج المحدّد — معاينة فقط."""
+        rec = self._selected_record()
+        if rec is None:
+            return
+        num = self._doc_number(rec, "contracts", "CON-", 119)
+        ContractDialog(self.root, rec, self, number=num,
+                       season=self.season_year.get())
 
     def _focus_record(self, index: int) -> None:
         """يحدّد سجلاً في الجدول الرئيسي ويُظهره (من نافذة الفحص)."""
@@ -3167,6 +3226,216 @@ class ReceiptDialog(Toplevel):
             return
         try:
             os.startfile(str(path))            # يفتح في العارض الافتراضي للمعاينة
+        except Exception as exc:
+            messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
+
+
+class InvoiceDialog(Toplevel):
+    """فاتورة ضريبية / فاتورة إلكترونية (QR) — تعبئة ثم **معاينة فقط** بلا حفظ.
+
+    بيانات الشركة (الرقم الضريبي/الهاتف/العنوان) تُحفظ لإعادة استخدامها لاحقاً.
+    """
+
+    def __init__(self, parent, rec, app, *, number: str = "INV-0001",
+                 season: str = "", electronic: bool = False) -> None:
+        super().__init__(parent)
+        self.rec = rec
+        self.app = app
+        self.season = season
+        self.electronic = electronic
+        kind = "فاتورة إلكترونية" if electronic else "فاتورة ضريبية"
+        self.title(kind + " — معاينة")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .pdf_io import build_invoice_item
+        co = app._company_info()
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        outer.columnconfigure(0, weight=1)
+        name = rec.full_name_ar or rec.full_name_en or "—"
+        icon = "💳" if electronic else "🧾"
+        ttk.Label(outer, text=f"{icon}  {kind} — {name}",
+                  font=("Segoe UI Semibold", 12), foreground=TEXT).grid(
+            row=0, column=0, columnspan=2, sticky="e", pady=(0, 12))
+
+        self.v_number = StringVar(value=str(number))
+        self.v_date = StringVar(value=date.today().isoformat())
+        self.v_trn = StringVar(value=co["trn"])
+        self.v_phone = StringVar(value=co["phone"])
+        self.v_addr = StringVar(value=co["address"])
+        self.v_notes = StringVar(value="")
+
+        self._r = 1
+
+        def field(label, var, width=42):
+            ttk.Label(outer, text=label, foreground=TEXT).grid(
+                row=self._r, column=1, sticky="e", padx=(10, 0), pady=4)
+            ttk.Entry(outer, textvariable=var, width=width, justify="right").grid(
+                row=self._r, column=0, sticky="ew", pady=4)
+            self._r += 1
+
+        field("رقم الفاتورة:", self.v_number)
+        field("التاريخ:", self.v_date)
+        field("الرقم الضريبي للشركة (TRN):", self.v_trn)
+        field("هاتف الشركة:", self.v_phone)
+        field("عنوان الشركة:", self.v_addr)
+
+        ttk.Label(outer, text="وصف البند:", foreground=TEXT).grid(
+            row=self._r, column=1, sticky="ne", padx=(10, 0), pady=(8, 4))
+        self.txt = tk.Text(outer, width=52, height=3, wrap="word",
+                           font=("Segoe UI", 10))
+        self.txt.grid(row=self._r, column=0, sticky="ew", pady=(8, 4))
+        self.txt.insert("1.0", build_invoice_item(rec, season=season))
+        self._r += 1
+        field("ملاحظات:", self.v_notes)
+
+        ttk.Label(outer, foreground=MUTED,
+                  text="معاينة فقط — يفتح في العارض؛ احفظ أو اطبع من هناك.").grid(
+            row=self._r, column=0, columnspan=2, sticky="e", pady=(4, 10))
+        self._r += 1
+        btns = ttk.Frame(outer)
+        btns.grid(row=self._r, column=0, columnspan=2, sticky="e")
+        ttk.Button(btns, text="👁  معاينة", style="Act.TButton",
+                   command=self._preview).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _company(self) -> dict:
+        co = dict(self.app._company_info())
+        co["trn"] = self.v_trn.get().strip()
+        co["phone"] = self.v_phone.get().strip()
+        co["address"] = self.v_addr.get().strip()
+        self.app._save_company(co)
+        return co
+
+    def _preview(self) -> None:
+        import os
+        import tempfile
+        from .pdf_io import export_invoice_pdf
+
+        co = self._company()
+        num = self.v_number.get().strip() or "INV-0001"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", num) or "INV"
+        tag = "einvoice" if self.electronic else "invoice"
+        path = Path(tempfile.gettempdir()) / f"{tag}_{safe}.pdf"
+        try:
+            export_invoice_pdf(
+                self.rec, path, company=co, number=num,
+                date_str=self.v_date.get().strip(), electronic=self.electronic,
+                season=self.season, item_desc=self.txt.get("1.0", "end").strip(),
+                notes=self.v_notes.get().strip(),
+            )
+        except Exception as exc:
+            messagebox.showerror("خطأ في الفاتورة", str(exc), parent=self)
+            return
+        try:
+            os.startfile(str(path))
+        except Exception as exc:
+            messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
+
+
+class ContractDialog(Toplevel):
+    """عقد خدمات حج — تعبئة وبنود قابلة للتحرير ثم **معاينة فقط** بلا حفظ."""
+
+    def __init__(self, parent, rec, app, *, number: str = "CON-0001",
+                 season: str = "") -> None:
+        super().__init__(parent)
+        self.rec = rec
+        self.app = app
+        self.season = season
+        self.title("عقد خدمات حج — معاينة")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .pdf_io import build_contract_body
+        co = app._company_info()
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        outer.columnconfigure(0, weight=1)
+        name = rec.full_name_ar or rec.full_name_en or "—"
+        ttk.Label(outer, text=f"📜  عقد خدمات حج — {name}",
+                  font=("Segoe UI Semibold", 12), foreground=TEXT).grid(
+            row=0, column=0, columnspan=2, sticky="e", pady=(0, 12))
+
+        self.v_number = StringVar(value=str(number))
+        self.v_date = StringVar(value=date.today().isoformat())
+        self.v_trn = StringVar(value=co["trn"])
+        self.v_phone = StringVar(value=co["phone"])
+        self._r = 1
+
+        def field(label, var):
+            ttk.Label(outer, text=label, foreground=TEXT).grid(
+                row=self._r, column=1, sticky="e", padx=(10, 0), pady=4)
+            ttk.Entry(outer, textvariable=var, width=42, justify="right").grid(
+                row=self._r, column=0, sticky="ew", pady=4)
+            self._r += 1
+
+        field("رقم العقد:", self.v_number)
+        field("التاريخ:", self.v_date)
+        field("الرقم الضريبي للشركة (TRN):", self.v_trn)
+        field("هاتف الشركة:", self.v_phone)
+
+        ttk.Label(outer, text="بنود العقد:", foreground=TEXT).grid(
+            row=self._r, column=1, sticky="ne", padx=(10, 0), pady=(8, 4))
+        self.txt = tk.Text(outer, width=66, height=15, wrap="word",
+                           font=("Segoe UI", 10))
+        self.txt.grid(row=self._r, column=0, sticky="ew", pady=(8, 4))
+        self.txt.insert("1.0", build_contract_body(rec, company=co, season=season))
+        self._r += 1
+
+        ttk.Label(outer, foreground=MUTED,
+                  text="معاينة فقط — يفتح في العارض؛ احفظ أو اطبع من هناك.").grid(
+            row=self._r, column=0, columnspan=2, sticky="e", pady=(4, 10))
+        self._r += 1
+        btns = ttk.Frame(outer)
+        btns.grid(row=self._r, column=0, columnspan=2, sticky="e")
+        ttk.Button(btns, text="👁  معاينة", style="Act.TButton",
+                   command=self._preview).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 6
+        self.geometry(f"+{x}+{y}")
+
+    def _preview(self) -> None:
+        import os
+        import tempfile
+        from .pdf_io import export_contract_pdf
+
+        co = dict(self.app._company_info())
+        co["trn"] = self.v_trn.get().strip()
+        co["phone"] = self.v_phone.get().strip()
+        self.app._save_company(co)
+        num = self.v_number.get().strip() or "CON-0001"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", num) or "CON"
+        path = Path(tempfile.gettempdir()) / f"contract_{safe}.pdf"
+        try:
+            export_contract_pdf(
+                self.rec, path, company=co, number=num,
+                date_str=self.v_date.get().strip(), season=self.season,
+                body=self.txt.get("1.0", "end").strip(),
+            )
+        except Exception as exc:
+            messagebox.showerror("خطأ في العقد", str(exc), parent=self)
+            return
+        try:
+            os.startfile(str(path))
         except Exception as exc:
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 

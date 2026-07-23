@@ -119,4 +119,49 @@ with open(spdf, "rb") as fh:
 export_stats_pdf([], _os.path.join(_OUTDIR, "stats_empty.pdf"))
 print(f"  OK: PDF ({_os.path.getsize(spdf)} بايت)، والفارغ لا يتعطّل")
 
+print("\n=== ضريبة القيمة المضافة (شامل/إضافة/بدون) ===")
+from hajj_app.fields import vat_breakdown, zatca_qr_payload
+net, vat, total = vat_breakdown(460000, mode="inclusive")
+assert round(net, 2) == 438095.24 and round(vat, 2) == 21904.76, (net, vat)
+assert round(total, 2) == 460000.0, total
+net, vat, total = vat_breakdown(460000, mode="exclusive")
+assert net == 460000.0 and round(vat, 2) == 23000.0 and total == 483000.0
+net, vat, total = vat_breakdown(460000, mode="none")
+assert net == 460000.0 and vat == 0.0 and total == 460000.0
+print(f"  OK: شامل → صافي {round(438095.24,2)} + ضريبة {round(21904.76,2)}")
+
+print("\n=== حمولة QR للفاتورة الإلكترونية (TLV/Base64) ===")
+import base64 as _b64
+payload = zatca_qr_payload("المصطفى للحج والعمرة", "100123456700003",
+                           "2026-05-01T10:00:00", 460000, 21904.76)
+raw = _b64.b64decode(payload)
+assert raw[0] == 1, raw[:2]              # الوسم الأول: اسم البائع
+assert b"100123456700003" in raw and b"460000.00" in raw and b"21904.76" in raw
+print(f"  OK: حمولة QR بطول {len(payload)} حرفاً")
+
+print("\n=== فاتورة ضريبية / إلكترونية / عقد PDF ===")
+from hajj_app.pdf_io import (export_invoice_pdf, export_contract_pdf,
+                             build_invoice_item, build_contract_body, company_info)
+co = {"trn": "100123456700003", "phone": "+97125550000", "address": "أبوظبي"}
+inv = rec(full_name_ar="عبدالله الشامسي", passport_number="A1234567",
+          nationality_ar="الإمارات", phone="0501112233", hotel="كونراد مكة",
+          room_type="ثنائية", program_value="460000", paid_amount="300000")
+assert "كونراد" in build_invoice_item(inv, season="1447")
+body = build_contract_body(inv, company=company_info(co), season="1447")
+assert "البند الأول" in body and "غير مستردّة" in body, body
+p1 = _os.path.join(_OUTDIR, "invoice.pdf")
+p2 = _os.path.join(_OUTDIR, "einvoice.pdf")
+p3 = _os.path.join(_OUTDIR, "contract.pdf")
+export_invoice_pdf(inv, p1, company=co, number="INV-0119", season="1447")
+export_invoice_pdf(inv, p2, company=co, number="EINV-0119", season="1447",
+                   electronic=True)
+export_contract_pdf(inv, p3, company=co, number="CON-0119", season="1447")
+for p in (p1, p2, p3):
+    assert _os.path.getsize(p) > 3000
+    with open(p, "rb") as fh:
+        assert fh.read(5) == b"%PDF-"
+# القيم الافتراضية للشركة تُكمَّل
+assert company_info()["name_ar"] == "المصطفى للحج والعمرة"
+print(f"  OK: فاتورة {_os.path.getsize(p1)}، إلكترونية {_os.path.getsize(p2)}، عقد {_os.path.getsize(p3)}")
+
 print("\n*** STATS TESTS PASSED ***")

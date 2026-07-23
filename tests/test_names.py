@@ -106,6 +106,8 @@ assert any("الكشوفات" in t for t in menus), menus
 assert any("المالية" in t for t in menus), menus
 assert callable(app.add_manual) and callable(app.edit_selected)
 assert callable(app.do_stats_pdf)
+assert callable(app._invoice_selected) and callable(app._contract_selected)
+assert callable(app._receipt_selected) and callable(app._company_info)
 
 # empty record must be rejected
 rec = PassportData(source_file="إدخال يدوي")

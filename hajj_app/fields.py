@@ -158,6 +158,50 @@ def num_to_words_en(value) -> str:
     return ("minus " + words) if neg else words
 
 
+VAT_RATE = 0.05                 # ضريبة القيمة المضافة في الإمارات
+
+
+def vat_breakdown(total, *, rate: float = VAT_RATE, mode: str = "inclusive"):
+    """يفكّك مبلغاً إلى (صافي، ضريبة، إجمالي شامل).
+
+    - ``inclusive``: المبلغ شامل الضريبة → الصافي = المبلغ ÷ (1+المعدل).
+    - ``exclusive``: المبلغ صافٍ → الضريبة تُضاف فوقه.
+    - ``none``: بلا ضريبة.
+    """
+    try:
+        amt = float(total or 0.0)
+    except (TypeError, ValueError):
+        amt = 0.0
+    if mode == "none" or not rate:
+        return (amt, 0.0, amt)
+    if mode == "exclusive":
+        vat = amt * rate
+        return (amt, vat, amt + vat)
+    net = amt / (1.0 + rate)          # inclusive (الافتراضي)
+    return (net, amt - net, amt)
+
+
+def _tlv(tag: int, value: str) -> bytes:
+    b = str(value).encode("utf-8")
+    return bytes([tag, len(b)]) + b
+
+
+def zatca_qr_payload(seller: str, vat_no: str, timestamp: str,
+                     total, vat) -> str:
+    """حمولة رمز QR لفاتورة إلكترونية مبسّطة (ترميز TLV ثم Base64).
+
+    الحقول الخمسة القياسية: اسم البائع، الرقم الضريبي، الطابع الزمني،
+    الإجمالي شامل الضريبة، مبلغ الضريبة.
+    """
+    import base64
+    payload = (
+        _tlv(1, seller) + _tlv(2, vat_no) + _tlv(3, timestamp)
+        + _tlv(4, f"{float(total or 0.0):.2f}")
+        + _tlv(5, f"{float(vat or 0.0):.2f}")
+    )
+    return base64.b64encode(payload).decode("ascii")
+
+
 def normalize_time(text) -> str:
     """يوحّد الوقت إلى صيغة HH:MM.
 

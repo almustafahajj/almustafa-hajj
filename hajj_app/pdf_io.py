@@ -1042,6 +1042,396 @@ def export_receipt_pdf(rec, path: str | Path, *,
     return path
 
 
+# ======================================================================
+#  الفواتير والعقود (فاتورة ضريبية / فاتورة إلكترونية / عقد خدمات)
+# ======================================================================
+
+_COMPANY_DEFAULTS = {
+    "name_ar": "المصطفى للحج والعمرة",
+    "name_en": "Al Mustafa Hajj & Umrah",
+    "trn": "", "address": "", "phone": "",
+}
+
+
+def company_info(company=None) -> dict:
+    """يكمّل بيانات الشركة بالقيم الافتراضية للحقول الناقصة."""
+    d = dict(_COMPANY_DEFAULTS)
+    if company:
+        d.update({k: v for k, v in company.items() if v})
+    return d
+
+
+def build_invoice_item(rec, *, season: str = "") -> str:
+    """وصف بند الفاتورة الافتراضي، يُبنى من بيانات الحاج."""
+    desc = "برنامج الحج" + (f" موسم {season}هـ" if season else "")
+    extra = []
+    if rec.hotel:
+        h = f"الإقامة في {rec.hotel}"
+        if rec.room_type:
+            h += f" - غرفة {rec.room_type}"
+        extra.append(h)
+    if extra:
+        desc += " (" + "، ".join(extra) + ")"
+    return desc
+
+
+def _qr_flowable(data: str, size: float = 92):
+    """رمز QR كعنصر قابل للإدراج (Drawing)، أو None إن تعذّر."""
+    try:
+        from reportlab.graphics.barcode import qr
+        from reportlab.graphics.shapes import Drawing
+    except Exception:
+        return None
+    widget = qr.QrCodeWidget(data)
+    b = widget.getBounds()
+    w, h = b[2] - b[0], b[3] - b[1]
+    d = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
+    d.add(widget)
+    return d
+
+
+def export_invoice_pdf(rec, path: str | Path, *, company=None,
+                       number: str = "INV-0001", date_str: str = "",
+                       electronic: bool = False, vat_mode: str = "inclusive",
+                       season: str = "", item_desc: str = "",
+                       notes: str = "") -> Path:
+    """يبني **فاتورة ضريبية** (أو **فاتورة إلكترونية** برمز QR عند
+    ``electronic=True``) لحاج واحد على صفحة A4 عمودية، ثنائية اللغة."""
+    from datetime import datetime
+
+    from .fields import parse_amount, vat_breakdown, zatca_qr_payload
+
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+    co = company_info(company)
+
+    gross = parse_amount(rec.program_value)
+    if gross is None:
+        gross = parse_amount(rec.paid_amount)
+    gross = float(gross or 0.0)
+    net, vat, total = vat_breakdown(gross, mode=vat_mode)
+    paid = parse_amount(rec.paid_amount) or 0.0
+    remaining = max(0.0, total - paid)
+
+    if not date_str:
+        date_str = date.today().isoformat()
+    if not item_desc:
+        item_desc = build_invoice_item(rec, season=season)
+
+    title_ar = "فاتورة إلكترونية" if electronic else "فاتورة ضريبية"
+    title_en = "E-Invoice" if electronic else "Tax Invoice"
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4,
+        rightMargin=15 * mm, leftMargin=15 * mm,
+        topMargin=13 * mm, bottomMargin=18 * mm,
+        title=title_ar, author="برنامج الحج",
+    )
+
+    def money(v):
+        return f"{v:,.2f}"
+
+    lbl = ParagraphStyle("ilbl", parent=st["cell"], fontName=_FONT_BOLD,
+                         textColor=_ACCENT, alignment=2, fontSize=9)
+    val = ParagraphStyle("ival", parent=st["cell"], alignment=2, fontSize=9)
+    comp = ParagraphStyle("comp", parent=st["subtitle"], fontSize=9,
+                          leading=13, spaceAfter=1)
+
+    story: list = []
+    logo = _logo_flowable(max_width_pt=120)
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 3))
+    story.append(Paragraph(ar(co["name_ar"]), ParagraphStyle(
+        "cn", parent=st["title"], fontSize=14, spaceAfter=1)))
+    idbits = []
+    if co["trn"]:
+        idbits.append(ar("الرقم الضريبي (TRN): ") + co["trn"])
+    if co["phone"]:
+        idbits.append(ar("هاتف: ") + co["phone"])
+    if idbits:
+        story.append(Paragraph("  •  ".join(idbits), comp))
+    if co["address"]:
+        story.append(Paragraph(ar(co["address"]), comp))
+    story.append(Spacer(1, 7))
+
+    # شريط العنوان (بخلفية برونزية)
+    tbar = Table([[Paragraph(
+        ar(title_ar) + "   /   " + title_en,
+        ParagraphStyle("tbar", parent=st["cell"], fontName=_FONT_BOLD,
+                       textColor=colors.white, alignment=1, fontSize=14))]],
+        colWidths=[doc.width])
+    tbar.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    story.append(tbar)
+    story.append(Spacer(1, 8))
+
+    # بيانات الفاتورة | بيانات الحاج (عمودان)
+    def kv(pairs):
+        rows = [[Paragraph(ar(str(v) or "—"), val), Paragraph(ar(k), lbl)]
+                for k, v in pairs]
+        t = Table(rows, colWidths=[doc.width * 0.30, doc.width * 0.20])
+        t.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
+        ]))
+        return t
+
+    meta = kv([("رقم الفاتورة", number), ("التاريخ", date_str)])
+    billto = kv([("المستفيد", rec.full_name_ar or rec.full_name_en or "—"),
+                 ("الهاتف", rec.phone or ""),
+                 ("رقم الجواز", rec.passport_number or ""),
+                 ("الجنسية", rec.nationality_ar)])
+    hdr = Table([[billto, meta]],
+                colWidths=[doc.width * 0.5, doc.width * 0.5])
+    hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                             ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(hdr)
+    story.append(Spacer(1, 10))
+
+    # جدول البنود
+    head = ParagraphStyle("ihd", parent=st["cell"], fontName=_FONT_BOLD,
+                          textColor=colors.white, alignment=1, fontSize=9)
+    cell = ParagraphStyle("icl", parent=st["cell"], alignment=1, fontSize=9,
+                          leading=12)
+    rcell = ParagraphStyle("ircl", parent=cell, alignment=2)
+    items = [[Paragraph(ar("المبلغ (د.إ)"), head), Paragraph(ar("سعر الوحدة"), head),
+              Paragraph(ar("الكمية"), head), Paragraph(ar("البيان"), head),
+              Paragraph("#", head)]]
+    items.append([Paragraph(money(net), cell), Paragraph(money(net), cell),
+                  Paragraph("1", cell), Paragraph(ar(item_desc), rcell),
+                  Paragraph("1", cell)])
+    it = Table(items, colWidths=[doc.width * 0.17, doc.width * 0.17,
+                                 doc.width * 0.10, doc.width * 0.50,
+                                 doc.width * 0.06])
+    it.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, _GRID),
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(it)
+    story.append(Spacer(1, 10))
+
+    # الإجماليات (يمين) بجانب رمز QR (يسار، للفاتورة الإلكترونية)
+    tot_rows = [
+        ("المجموع الفرعي (غير شامل الضريبة)", money(net)),
+        ("ضريبة القيمة المضافة 5%", money(vat)),
+        ("الإجمالي شامل الضريبة", money(total)),
+        ("المدفوع", money(paid)),
+        ("المتبقّي", money(remaining)),
+    ]
+    trows = []
+    for i, (k, v) in enumerate(tot_rows):
+        big = (i == 2)
+        vs = ParagraphStyle("tv", parent=val, alignment=0,
+                            fontName=_FONT_BOLD if big else _FONT,
+                            fontSize=11 if big else 9.5)
+        ks = ParagraphStyle("tk", parent=lbl, fontSize=10 if big else 9,
+                            textColor=colors.white if big else _ACCENT)
+        trows.append([Paragraph(v, vs), Paragraph(ar(k), ks)])
+    tot = Table(trows, colWidths=[doc.width * 0.18, doc.width * 0.34])
+    tstyle = [
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("BACKGROUND", (0, 2), (-1, 2), _ACCENT),
+        ("TEXTCOLOR", (0, 2), (0, 2), colors.white),
+    ]
+    tot.setStyle(TableStyle(tstyle))
+
+    qr_cell = ""
+    if electronic:
+        payload = zatca_qr_payload(
+            co["name_ar"], co["trn"] or "-",
+            datetime.now().replace(microsecond=0).isoformat(),
+            total, vat)
+        d = _qr_flowable(payload, size=96)
+        if d is not None:
+            qr_cell = [d, Spacer(1, 3),
+                       Paragraph(ar("امسح للتحقّق"), ParagraphStyle(
+                           "qc", parent=st["cell"], alignment=1, fontSize=8,
+                           textColor=colors.HexColor("#777777")))]
+    band = Table([[qr_cell, tot]],
+                 colWidths=[doc.width * 0.48, doc.width * 0.52])
+    band.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                              ("ALIGN", (0, 0), (0, 0), "LEFT")]))
+    story.append(band)
+
+    story.append(Spacer(1, 12))
+    note_txt = notes or "هذه فاتورة ضريبية معتمدة. جميع المبالغ بالدرهم الإماراتي (AED)."
+    story.append(Paragraph(ar(note_txt), ParagraphStyle(
+        "note", parent=st["cell"], alignment=2, fontSize=8.5,
+        textColor=colors.HexColor("#666666"))))
+
+    story.append(Spacer(1, 22))
+    sign = ParagraphStyle("sg", parent=st["cell"], alignment=1, fontSize=9.5)
+    srow = Table([[Paragraph(ar("توقيع المستلم"), sign),
+                   Paragraph(ar("المحاسب / الختم"), sign)]],
+                 colWidths=[doc.width / 2, doc.width / 2])
+    srow.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.6, _GRID),
+                              ("LINEABOVE", (1, 0), (1, 0), 0.6, _GRID),
+                              ("TOPPADDING", (0, 0), (-1, -1), 8)]))
+    story.append(srow)
+
+    ttl = title_ar
+    doc.build(story,
+              onFirstPage=lambda c, dd: _footer_portrait(c, dd, ttl),
+              onLaterPages=lambda c, dd: _footer_portrait(c, dd, ttl))
+    return path
+
+
+def build_contract_body(rec, *, company=None, season: str = "",
+                        vat_mode: str = "inclusive") -> str:
+    """نصّ بنود العقد الافتراضي (قابل للتحرير في النافذة)، مبنيّ من بيانات الحاج.
+
+    كل بند فقرة تبدأ بسطر عنوان ثم سطر المحتوى، والفقرات يفصلها سطر فارغ.
+    """
+    from .fields import format_amount, parse_amount, vat_breakdown
+
+    gross = parse_amount(rec.program_value) or parse_amount(rec.paid_amount) or 0.0
+    net, vat, total = vat_breakdown(gross, mode=vat_mode)
+    paid = parse_amount(rec.paid_amount) or 0.0
+    remaining = max(0.0, total - paid)
+    prog = "برنامج الحج" + (f" موسم {season}هـ" if season else "")
+    hotel = rec.hotel or "—"
+    room = f" في غرفة {rec.room_type}" if rec.room_type else ""
+
+    clauses = [
+        ("البند الأول: موضوع العقد",
+         f"يقدّم الطرف الأول للطرف الثاني {prog}، ويشمل الإقامة في {hotel}{room} "
+         "والإعاشة والتنقّلات الداخلية وتذاكر الطيران والهدي وفق البرنامج المعتمد."),
+        ("البند الثاني: قيمة العقد",
+         f"القيمة الإجمالية {format_amount(total)} درهماً شاملةً ضريبة القيمة "
+         f"المضافة ({format_amount(vat)} درهماً). المدفوع {format_amount(paid)} "
+         f"درهماً، والمتبقّي {format_amount(remaining)} درهماً."),
+        ("البند الثالث: الدفعات",
+         "جميع الدفعات المسدّدة غير مستردّة وتُستخدَم في تأكيد الحجوزات والخدمات."),
+        ("البند الرابع: التزامات الطرف الثاني",
+         "يلتزم الطرف الثاني بصحّة بياناته، وبالمواعيد والتعليمات المنظّمة للرحلة، "
+         "وبالأنظمة المعمول بها في المملكة العربية السعودية."),
+        ("البند الخامس: القوة القاهرة",
+         "لا يُسأل أيّ طرف عن الإخلال الناتج عن ظروف قاهرة خارجة عن الإرادة."),
+        ("البند السادس: القانون والاختصاص",
+         "يخضع هذا العقد لأنظمة دولة الإمارات العربية المتحدة، وتختصّ محاكمها "
+         "المختصّة بالفصل في أيّ نزاع ينشأ عنه."),
+    ]
+    return "\n\n".join(f"{t}\n{b}" for t, b in clauses)
+
+
+def export_contract_pdf(rec, path: str | Path, *, company=None,
+                        number: str = "CON-0001", date_str: str = "",
+                        season: str = "", body: str = "",
+                        vat_mode: str = "inclusive") -> Path:
+    """يبني **عقد خدمات حج** بين الشركة (الطرف الأول) والحاج (الطرف الثاني)
+    على صفحة A4 عمودية، مع بنود قابلة للتحرير وتوقيعَي الطرفين."""
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+    co = company_info(company)
+    if not date_str:
+        date_str = date.today().isoformat()
+    if not body:
+        body = build_contract_body(rec, company=co, season=season,
+                                   vat_mode=vat_mode)
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4,
+        rightMargin=17 * mm, leftMargin=17 * mm,
+        topMargin=13 * mm, bottomMargin=18 * mm,
+        title="عقد خدمات حج", author="برنامج الحج",
+    )
+
+    comp = ParagraphStyle("ccomp", parent=st["subtitle"], fontSize=9,
+                          leading=13, spaceAfter=1)
+    lbl = ParagraphStyle("clbl", parent=st["cell"], fontName=_FONT_BOLD,
+                         textColor=_ACCENT, alignment=2, fontSize=9)
+    val = ParagraphStyle("cval", parent=st["cell"], alignment=2, fontSize=9)
+    ptitle = ParagraphStyle("pt", parent=st["cell"], fontName=_FONT_BOLD,
+                            textColor=_ACCENT, alignment=2, fontSize=10.5,
+                            spaceBefore=8, spaceAfter=2, leading=15)
+    pbody = ParagraphStyle("pb", parent=st["cell"], alignment=2, fontSize=9.5,
+                           leading=15, spaceAfter=3)
+
+    story: list = []
+    logo = _logo_flowable(max_width_pt=115)
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 3))
+    story.append(Paragraph(ar(co["name_ar"]), ParagraphStyle(
+        "ccn", parent=st["title"], fontSize=13, spaceAfter=1)))
+    story.append(Paragraph(ar("عقد خدمات حج") + "  /  Hajj Services Agreement",
+                           ParagraphStyle("ct", parent=st["title"], fontSize=15,
+                                          spaceBefore=4, spaceAfter=6)))
+    meta = Table([[Paragraph(date_str, val), Paragraph(ar("التاريخ"), lbl),
+                   Paragraph(number, val), Paragraph(ar("رقم العقد"), lbl)]],
+                 colWidths=[doc.width * 0.25, doc.width * 0.15,
+                            doc.width * 0.35, doc.width * 0.25])
+    meta.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+                              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                              ("TOPPADDING", (0, 0), (-1, -1), 4),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                              ("BACKGROUND", (1, 0), (1, 0), _ALT_ROW),
+                              ("BACKGROUND", (3, 0), (3, 0), _ALT_ROW)]))
+    story.append(meta)
+    story.append(Spacer(1, 8))
+
+    # الطرفان
+    p1 = (f"الطرف الأول (المزوّد): {co['name_ar']}"
+          + (f" — الرقم الضريبي {co['trn']}" if co["trn"] else "")
+          + (f" — هاتف {co['phone']}" if co["phone"] else "") + ".")
+    who = rec.full_name_ar or rec.full_name_en or "—"
+    p2 = (f"الطرف الثاني (المستفيد): {who}"
+          + (f" — جواز رقم {rec.passport_number}" if rec.passport_number else "")
+          + (f" — هاتف {rec.phone}" if rec.phone else "") + ".")
+    story.append(Paragraph(ar(p1), pbody))
+    story.append(Paragraph(ar(p2), pbody))
+    story.append(Paragraph(ar("تمهيد: رغبةً من الطرف الثاني في أداء فريضة الحج، "
+                              "اتّفق الطرفان — وهما بكامل الأهلية — على ما يلي:"),
+                           pbody))
+    story.append(Spacer(1, 4))
+
+    for para in body.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        lines = para.split("\n", 1)
+        story.append(Paragraph(ar(lines[0]), ptitle))
+        if len(lines) > 1 and lines[1].strip():
+            story.append(Paragraph(ar(lines[1].strip()), pbody))
+
+    story.append(Spacer(1, 24))
+    sign = ParagraphStyle("csg", parent=st["cell"], fontName=_FONT_BOLD,
+                          alignment=1, fontSize=10)
+    subsign = ParagraphStyle("css", parent=st["cell"], alignment=1, fontSize=8.5,
+                             textColor=colors.HexColor("#777777"))
+    srow = Table([[Paragraph(ar("الطرف الثاني (المستفيد)"), sign),
+                   Paragraph(ar("الطرف الأول (المزوّد)"), sign)],
+                 [Paragraph(ar("التوقيع: ____________"), subsign),
+                  Paragraph(ar("التوقيع والختم: ____________"), subsign)]],
+                 colWidths=[doc.width / 2, doc.width / 2])
+    srow.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.6, _GRID),
+                              ("LINEABOVE", (1, 0), (1, 0), 0.6, _GRID),
+                              ("TOPPADDING", (0, 0), (-1, 0), 8),
+                              ("TOPPADDING", (0, 1), (-1, 1), 14)]))
+    story.append(srow)
+
+    doc.build(story,
+              onFirstPage=lambda c, dd: _footer_portrait(c, dd, "عقد خدمات حج"),
+              onLaterPages=lambda c, dd: _footer_portrait(c, dd, "عقد خدمات حج"))
+    return path
+
+
 def export_transport_pdf(records: list, path: str | Path,
                          *, title: str = "كشف المواصلات") -> Path:
     """يصدّر كشف المواصلات إلى PDF **طولي**، **كل باص في صفحة واحدة** بخط كبير.
