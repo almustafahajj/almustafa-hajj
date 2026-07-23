@@ -1211,7 +1211,7 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     # الإجماليات — عند «بدون استخراج» يُعرض السعر كاملاً شاملاً الضريبة بلا تقسيم
     if vat_mode == "none":
         tot_rows = [
-            ("الإجمالي (شامل الضريبة)", money(total)),
+            ("الإجمالي", money(total)),
             ("المدفوع", money(paid)),
             ("المتبقّي", money(remaining)),
         ]
@@ -1310,9 +1310,9 @@ def build_contract_body(rec, *, company=None, season: str = "",
     prog = "برنامج الحج" + (f" موسم {season}هـ" if season else "")
     hotel = rec.hotel or "—"
     room = f" في غرفة {rec.room_type}" if rec.room_type else ""
-    # عند «بدون استخراج» يُذكر أنّ القيمة شاملة الضريبة دون تفصيل المبلغ
-    vat_part = (f" شاملةً ضريبة القيمة المضافة ({format_amount(vat)} درهماً)"
-                if vat > 0 else " شاملةً ضريبة القيمة المضافة")
+    # عند استخراج الضريبة فقط يُذكر مبلغها؛ وإلا تُعرَض القيمة كاملةً بلا عبارة
+    vat_part = (f" (منها ضريبة القيمة المضافة {format_amount(vat)} درهماً)"
+                if vat > 0 else "")
 
     clauses = [
         ("البند الأول: موضوع العقد",
