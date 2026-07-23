@@ -136,6 +136,22 @@ with open(spdf, "rb") as fh:
 export_stats_pdf([], _os.path.join(_OUTDIR, "stats_empty.pdf"))
 print(f"  OK: PDF ({_os.path.getsize(spdf)} بايت)، والفارغ لا يتعطّل")
 
+print("\n=== دمج مستندات (توليد جماعي) ===")
+import fitz
+from hajj_app.pdf_io import merge_pdfs, export_receipt_pdf
+mparts = []
+for i in range(3):
+    mp = _os.path.join(_OUTDIR, f"m{i}.pdf")
+    export_receipt_pdf(rec(full_name_ar=f"ح{i}", program_value="20000",
+                           paid_amount="5000"), mp, number=f"{119+i:04d}")
+    mparts.append(mp)
+merged = _os.path.join(_OUTDIR, "merged.pdf")
+merge_pdfs(mparts, merged)
+_d = fitz.open(merged); assert _d.page_count == 3, _d.page_count; _d.close()
+# ملف مفقود يُتجاهَل بلا تعطّل
+merge_pdfs([mparts[0], "لا_يوجد.pdf"], _os.path.join(_OUTDIR, "merged2.pdf"))
+print("  OK: 3 سندات في ملف واحد، والمفقود يُتجاهَل")
+
 print("\n=== ضريبة القيمة المضافة (شامل/إضافة/بدون) ===")
 from hajj_app.fields import vat_breakdown
 net, vat, total = vat_breakdown(460000, mode="inclusive")

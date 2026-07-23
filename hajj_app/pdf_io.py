@@ -1053,6 +1053,27 @@ _COMPANY_DEFAULTS = {
 }
 
 
+def merge_pdfs(paths, out_path: str | Path) -> Path:
+    """يدمج عدّة ملفات PDF في ملف واحد بالترتيب. يتجاهل المتعذّر منها."""
+    import fitz
+
+    out_path = Path(out_path)
+    merged = fitz.open()
+    try:
+        for p in paths:
+            if not p or not Path(p).is_file():
+                continue
+            try:
+                with fitz.open(str(p)) as src:
+                    merged.insert_pdf(src)
+            except Exception:
+                continue
+        merged.save(str(out_path))
+    finally:
+        merged.close()
+    return out_path
+
+
 def company_info(company=None) -> dict:
     """يكمّل بيانات الشركة بالقيم الافتراضية للحقول الناقصة."""
     d = dict(_COMPANY_DEFAULTS)

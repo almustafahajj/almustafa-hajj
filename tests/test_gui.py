@@ -253,6 +253,17 @@ assert app.records[0].hotel == "الصفوة" and app.records[0].airline == "ا�
 assert app.records[2].hotel == "الصفوة"
 assert app.records[1].hotel == "", "السجل غير المحدّد تغيّر خطأً"
 print("  OK: التعديل الجماعي يطبّق الحقول على المحدّدين فقط")
+
+# ---- التراجع (Undo) ----
+app._push_undo("لقطة")
+before = [r.hotel for r in app.records]
+app._apply_bulk([1], {"hotel": "كونراد"})
+assert app.records[1].hotel == "كونراد"
+app.undo()                                   # يستعيد اللقطة
+assert [r.hotel for r in app.records] == before, "التراجع لم يستعد الحالة"
+app._undo_stack.clear()
+app.undo()                                   # لا شيء للتراجع — لا يتعطّل
+print("  OK: التراجع يستعيد الحالة، والفارغ آمن")
 # كشف المواصلات: يعرض المجموعات
 td = TransportDialog(root, list(app.records))
 tgroups = td._tree.get_children()

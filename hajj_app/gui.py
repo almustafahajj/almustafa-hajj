@@ -163,6 +163,9 @@ class HajjApp:
         self.sort_field: str | None = None
         self.sort_desc = False
 
+        # مكدّس التراجع: لقطات السجلات قبل العمليات المُتلِفة (حذف/مسح/تعديل جماعي)
+        self._undo_stack: list[tuple[str, list]] = []
+
         # إعدادات الواجهة المحفوظة (تُستعاد بين الجلسات)
         self._ui = dict(self._settings.get("ui", {}))
         self._density = self._ui.get("density", "عادي")
@@ -501,6 +504,7 @@ class HajjApp:
             ("✏️  تعديل السجل", self.edit_selected),
             ("✏️  تعديل جماعي للمحدّدين", self.bulk_edit_selected),
             ("🗑  حذف المحدد", self.delete_selected),
+            ("↩  تراجع  (Ctrl+Z)", self.undo),
             None,
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
             None,
@@ -538,6 +542,8 @@ class HajjApp:
             ("💳  فاتورة إلكترونية PEPPOL (معاينة)",
              lambda: self._invoice_selected(electronic=True)),
             ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
+            None,
+            ("🧾  توليد جماعي للمستندات (للمعروضين)", self.do_bulk_docs),
         ], style="Ghost.TMenubutton", icon=("chart", INK))
         fin_mb.pack(side=RIGHT, padx=3)
 
@@ -848,6 +854,8 @@ class HajjApp:
         self.root.bind("<Control-N>", lambda _e: self.add_manual())
         self.root.bind("<Control-p>", lambda _e: self.do_print_filtered())
         self.root.bind("<Control-P>", lambda _e: self.do_print_filtered())
+        self.root.bind("<Control-z>", lambda _e: self.undo())
+        self.root.bind("<Control-Z>", lambda _e: self.undo())
         self.tree.bind("<Delete>", lambda _e: self.delete_selected())
 
     def _focus_search(self) -> str:
@@ -1090,6 +1098,9 @@ class HajjApp:
             command=lambda: self._invoice_selected(electronic=True))
         self._row_menu.add_command(label="📜  عقد خدمات حج (معاينة)",
                                    command=self._contract_selected)
+        self._row_menu.add_separator()
+        self._row_menu.add_command(label="📦  حزمة مستندات الحاج (معاينة)",
+                                   command=self.do_pilgrim_packet)
         self.tree.bind("<Button-3>", self._show_row_menu)
 
         # حالة فارغة أنيقة تظهر حين لا بيانات (تُخفى عند وجود سجلات)
@@ -1168,6 +1179,24 @@ class HajjApp:
             self.set_status("تم البدء بعد مشكلة في ملف البيانات", warn=True)
         elif records:
             self.set_status(f"تمت استعادة {len(records)} حاج من آخر جلسة")
+
+    def _push_undo(self, label: str) -> None:
+        """يحفظ لقطة من السجلات قبل عملية مُتلِفة (تُستعاد بـ «تراجع»)."""
+        import copy
+        self._undo_stack.append((label, copy.deepcopy(self.records)))
+        del self._undo_stack[:-20]        # نحتفظ بآخر 20 عملية فقط
+
+    def undo(self) -> None:
+        """يتراجع عن آخر عملية مُتلِفة (حذف/مسح/تعديل جماعي)."""
+        if not self._undo_stack:
+            self.set_status("لا يوجد ما يُتراجع عنه", warn=True)
+            return
+        label, snapshot = self._undo_stack.pop()
+        self.records = snapshot
+        self.refresh()
+        self.save_data()
+        self.set_status(f"تراجُع: {label} ({len(self.records)} سجلاً)", ok=True)
+        self.toast(f"تراجُع عن: {label}", kind="success")
 
     def save_data(self) -> bool:
         """يحفظ الكشف الحالي. يعيد True عند النجاح."""
@@ -1713,6 +1742,77 @@ class HajjApp:
         QualityDialog(self.root, lambda: self.records, self._focus_record,
                       programs=self._programs_by_name)
 
+    _BULK_DOC_LABEL = {"receipt": "سند قبض", "invoice": "فاتورة ضريبية",
+                       "einvoice": "فاتورة إلكترونية", "contract": "عقد"}
+
+    def do_bulk_docs(self) -> None:
+        """توليد جماعي لمستند (سند/فاتورة/عقد) لكل المعروضين في ملف واحد."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+        dlg = BulkDocsDialog(self.root, len(records))
+        self.root.wait_window(dlg)
+        if dlg.kind is None:
+            return
+
+        import os
+        import tempfile
+        from .pdf_io import (export_contract_pdf, export_invoice_pdf,
+                             export_receipt_pdf, merge_pdfs)
+        company = self._company_info()
+        season = self.season_year.get()
+        tmpdir = tempfile.mkdtemp(prefix="hajj_docs_")
+        out = os.path.join(tempfile.gettempdir(),
+                           f"مستندات_{dlg.kind}_{date.today().isoformat()}.pdf")
+        parts: list[str] = []
+        try:
+            for i, rec in enumerate(records):
+                p = os.path.join(tmpdir, f"{i}.pdf")
+                try:
+                    if dlg.kind == "receipt":
+                        export_receipt_pdf(
+                            rec, p, season=season,
+                            number=self._doc_number(rec, "receipts", "", 119))
+                    elif dlg.kind == "contract":
+                        export_contract_pdf(
+                            rec, p, company=company, season=season,
+                            number=self._doc_number(rec, "contracts", "CON-", 119))
+                    else:
+                        electronic = dlg.kind == "einvoice"
+                        prefix = "EINV-" if electronic else "INV-"
+                        export_invoice_pdf(
+                            rec, p, company=company, season=season,
+                            electronic=electronic,
+                            number=self._doc_number(rec, "invoices", prefix, 119))
+                    parts.append(p)
+                except Exception:
+                    continue
+            if not parts:
+                messagebox.showerror("تعذّر التوليد", "لم يُنشأ أيّ مستند.")
+                return
+            merge_pdfs(parts, out)
+        finally:
+            for p in parts:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+            try:
+                os.rmdir(tmpdir)
+            except OSError:
+                pass
+        try:
+            os.startfile(out)
+        except OSError as exc:
+            messagebox.showerror("تعذّر فتح المعاينة", str(exc))
+            return
+        self.set_status(
+            f"تولّدت {len(parts)} {self._BULK_DOC_LABEL[dlg.kind]} في ملف واحد",
+            ok=True)
+
     def do_stats(self) -> None:
         """يفتح لوحة الإحصاءات والملخّص المالي."""
         if not self._require_records():
@@ -1815,6 +1915,7 @@ class HajjApp:
             return
 
         def apply(changes: dict, program: str | None = None) -> None:
+            self._push_undo(f"تعديل جماعي ({len(idxs)} سجل)")
             n = len(idxs)
             if changes:
                 self._apply_bulk(idxs, changes)
@@ -1955,6 +2056,82 @@ class HajjApp:
         num = self._doc_number(rec, "contracts", "CON-", 119)
         ContractDialog(self.root, rec, self, number=num,
                        season=self.season_year.get())
+
+    def do_pilgrim_packet(self) -> None:
+        """حزمة مستندات حاج واحد: الجواز + البطاقة + سند القبض + العقد في ملف."""
+        rec = self._selected_record()
+        if rec is None:
+            return
+
+        import os
+        import tempfile
+        from . import images as imgmod
+        from .pdf_io import (export_badges_pdf, export_contract_pdf,
+                             export_passports_pdf, export_receipt_pdf, merge_pdfs)
+        company = self._company_info()
+        season = self.season_year.get()
+        tmpdir = tempfile.mkdtemp(prefix="hajj_packet_")
+        name = rec.full_name_ar or rec.full_name_en or "حاج"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", name).strip() or "حاج"
+        out = os.path.join(tempfile.gettempdir(), f"حزمة - {safe}.pdf")
+        parts: list[str] = []
+        imgfiles: list[str] = []
+        try:
+            # ١) صورة الجواز إن وُجدت
+            try:
+                if imgmod.has_image(rec.image_id, imgmod.PASSPORT):
+                    data = imgmod.load_image(rec.image_id, imgmod.PASSPORT,
+                                             self.session)
+                    if data:
+                        entries = []
+                        for k, pb in enumerate(imgmod.render_pages_png(data), 1):
+                            ip = os.path.join(tmpdir, f"pp{k}.img")
+                            with open(ip, "wb") as fh:
+                                fh.write(pb)
+                            imgfiles.append(ip)
+                            entries.append((name, ip))
+                        pp = os.path.join(tmpdir, "passport.pdf")
+                        export_passports_pdf(entries, pp, title="الجواز")
+                        parts.append(pp)
+            except Exception:
+                pass
+            # ٢) البطاقة
+            try:
+                bp = os.path.join(tmpdir, "badge.pdf")
+                export_badges_pdf([rec], bp, company=company["name_ar"],
+                                  session=self.session)
+                parts.append(bp)
+            except Exception:
+                pass
+            # ٣) سند القبض  ٤) العقد
+            rp = os.path.join(tmpdir, "receipt.pdf")
+            export_receipt_pdf(rec, rp, season=season,
+                               number=self._doc_number(rec, "receipts", "", 119))
+            parts.append(rp)
+            cp = os.path.join(tmpdir, "contract.pdf")
+            export_contract_pdf(rec, cp, company=company, season=season,
+                                number=self._doc_number(rec, "contracts", "CON-", 119))
+            parts.append(cp)
+            merge_pdfs(parts, out)
+        except Exception as exc:
+            messagebox.showerror("تعذّرت الحزمة", str(exc))
+            return
+        finally:
+            for p in imgfiles + parts:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+            try:
+                os.rmdir(tmpdir)
+            except OSError:
+                pass
+        try:
+            os.startfile(out)
+        except OSError as exc:
+            messagebox.showerror("تعذّر فتح المعاينة", str(exc))
+            return
+        self.set_status(f"فُتحت حزمة مستندات: {name}", ok=True)
 
     def _focus_record(self, index: int) -> None:
         """يحدّد سجلاً في الجدول الرئيسي ويُظهره (من نافذة الفحص)."""
@@ -2130,6 +2307,7 @@ class HajjApp:
             return
         if not messagebox.askyesno("تأكيد الحذف", f"حذف {len(idx)} سجل؟"):
             return
+        self._push_undo(f"حذف {len(idx)} سجل")
         from . import images as imgmod
         for i in reversed(idx):
             imgmod.delete_all(self.records[i].image_id)   # حذف صور الحاج المشفّرة
@@ -2226,6 +2404,7 @@ class HajjApp:
         if not self._confirm_destructive():
             self.set_status("أُلغي المسح")
             return
+        self._push_undo(f"مسح الكل ({len(self.records)} سجل)")
         from . import images as imgmod
         for rec in self.records:
             imgmod.delete_all(rec.image_id)          # حذف كل الصور المشفّرة
@@ -3493,6 +3672,52 @@ class ProgramsDialog(Toplevel):
         self._dump_form_to(self._current)
         self.app._save_programs(self.programs)
         self.app.set_status("حُفظت برامج الحملة", ok=True)
+        self.destroy()
+
+
+class BulkDocsDialog(Toplevel):
+    """اختيار نوع المستند للتوليد الجماعي. يضبط self.kind أو None عند الإلغاء."""
+
+    def __init__(self, parent, count: int) -> None:
+        super().__init__(parent)
+        self.kind: str | None = None
+        self.title("توليد جماعي للمستندات")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=f"سيُنشأ مستند لكل حاج من {count} المعروضين،",
+                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(anchor="e")
+        ttk.Label(outer, text="مجموعةً في ملف PDF واحد للطباعة.",
+                  foreground=MUTED, font=("Segoe UI", 9)).pack(anchor="e",
+                                                               pady=(0, 10))
+
+        self._choice = StringVar(value="receipt")
+        for value, label in (("receipt", "🧾  سندات القبض"),
+                             ("invoice", "🧾  فواتير ضريبية"),
+                             ("einvoice", "💳  فواتير إلكترونية (PEPPOL)"),
+                             ("contract", "📜  عقود خدمات الحج")):
+            ttk.Radiobutton(outer, text=label, value=value,
+                            variable=self._choice).pack(anchor="e", pady=2)
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(14, 0))
+        ttk.Button(btns, text="توليد ومعاينة", style="Act.TButton",
+                   command=self._ok).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إلغاء", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _ok(self) -> None:
+        self.kind = self._choice.get()
         self.destroy()
 
 
