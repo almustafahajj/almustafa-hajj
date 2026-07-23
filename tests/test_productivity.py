@@ -128,4 +128,29 @@ d.close()
 export_badges_pdf([], _os.path.join(_OUTDIR, "badges_empty.pdf"))
 print(f"  OK: A4 عرضية، {front_pages} ورقة وجوه (10/ورقة) + ورقة خلفية واحدة")
 
+print("\n=== الاستيكرات (حقائب/غرف/أظرف) ===")
+from hajj_app.pdf_io import (export_stickers_pdf, STICKER_KINDS, STICKER_LABELS,
+                             _sticker_items)
+srecs = [rec(full_name_ar=f"حاج رقم {i}", passport_number=f"A100000{i}",
+             phone=f"05011122{i:02d}", hotel="كونراد مكة",
+             room_number=str(101 + i // 2), room_type="ثنائية",
+             flight_number="SV553", transport="7") for i in range(6)]
+# الحقائب والأظرف: استيكر لكل حاج؛ الغرف: استيكر لكل غرفة
+assert len(_sticker_items(srecs, "bag", "الحملة")) == 6
+assert len(_sticker_items(srecs, "envelope", "الحملة")) == 6
+rooms = _sticker_items(srecs, "room", "الحملة")
+assert len(rooms) == 3, len(rooms)          # 6 حجّاج في 3 غرف (2 لكل غرفة)
+assert rooms[0]["big"].startswith("غرفة") and len(rooms[0]["lines"]) == 2
+for k in STICKER_KINDS:
+    p = _os.path.join(_OUTDIR, f"stickers_{k}.pdf")
+    export_stickers_pdf(srecs, p, kind=k, company="المصطفى للحج والعمرة")
+    assert _os.path.getsize(p) > 3000
+    with open(p, "rb") as fh:
+        assert fh.read(5) == b"%PDF-"
+# نوع غير معروف يتراجع، والقائمة الفارغة لا تتعطّل
+export_stickers_pdf(srecs, _os.path.join(_OUTDIR, "stickers_x.pdf"), kind="زبد")
+export_stickers_pdf([], _os.path.join(_OUTDIR, "stickers_empty.pdf"), kind="room")
+assert set(STICKER_LABELS) == set(STICKER_KINDS)
+print("  OK: 3 أنواع استيكرات، الغرف مجمّعة، والفارغ آمن")
+
 print("\n*** PRODUCTIVITY TESTS PASSED ***")

@@ -515,6 +515,7 @@ class HajjApp:
             ("⛺  خيام المخيمات", self.do_camps),
             None,
             ("🪪  بطاقات الحجّاج", self.do_badges),
+            ("🏷  طباعة الاستيكرات (حقائب/غرف/أظرف)", self.do_stickers),
             ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
         ], icon=("report", WHITE))
         rep_mb.pack(side=RIGHT, padx=(4, 3))
@@ -1628,6 +1629,39 @@ class HajjApp:
             messagebox.showerror("تعذّر فتح المعاينة", str(exc))
             return
         self.set_status(f"فُتحت معاينة {len(entries)} صورة — اطبعها واختر الطابعة")
+
+    def do_stickers(self) -> None:
+        """يطبع استيكرات (للحقائب/الغرف/الأظرف) للمعروض — معاينة في العارض."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        if not records:
+            messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
+            return
+        dlg = StickersDialog(self.root)
+        self.root.wait_window(dlg)
+        if dlg.kind is None:                # أُلغِي
+            return
+
+        import os
+        import tempfile
+        from .pdf_io import STICKER_LABELS, export_stickers_pdf
+        path = os.path.join(tempfile.gettempdir(),
+                            f"stickers_{dlg.kind}_{date.today().isoformat()}.pdf")
+        try:
+            export_stickers_pdf(records, path, kind=dlg.kind,
+                                company=self._company_info()["name_ar"],
+                                season=self.season_year.get())
+        except Exception as exc:
+            messagebox.showerror("خطأ في الاستيكرات", str(exc))
+            return
+        try:
+            os.startfile(path)
+        except OSError as exc:
+            messagebox.showerror("تعذّر فتح المعاينة", str(exc))
+            return
+        self.set_status(f"فُتحت معاينة {STICKER_LABELS[dlg.kind]} — اطبعها "
+                        "واختر الطابعة")
 
     def do_airline(self) -> None:
         """يفتح نافذة كشف الطيران: تصدير إكسل/PDF ونسخ إدخالات أماديوس."""
@@ -3211,6 +3245,53 @@ class ImageKindDialog(Toplevel):
         else:
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
+        self.destroy()
+
+
+class StickersDialog(Toplevel):
+    """اختيار نوع الاستيكرات (حقائب/غرف/أظرف). يضبط self.kind أو None عند الإلغاء."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.kind: str | None = None
+        self.title("طباعة الاستيكرات")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text="اختر نوع الاستيكرات:",
+                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
+            anchor="e", pady=(0, 10))
+
+        self._choice = StringVar(value="bag")
+        for value, label in (("bag", "🧳  استيكرات الحقائب"),
+                             ("room", "🚪  استيكرات الغرف"),
+                             ("envelope", "✉  استيكرات الأظرف")):
+            ttk.Radiobutton(outer, text=label, value=value,
+                            variable=self._choice).pack(anchor="e", pady=2)
+
+        ttk.Label(outer, foreground=MUTED,
+                  text="تُطبع للمعروض حالياً؛ استخدم الفلاتر لتحديد الحجّاج.").pack(
+            anchor="e", pady=(8, 8))
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(6, 0))
+        ttk.Button(btns, text="معاينة وطباعة", style="Act.TButton",
+                   command=self._ok).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إلغاء", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _ok(self) -> None:
+        self.kind = self._choice.get()
         self.destroy()
 
 

@@ -1439,6 +1439,183 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
     return path
 
 
+# ======================================================================
+#  الاستيكرات (للحقائب / للغرف / للأظرف)
+# ======================================================================
+
+STICKER_KINDS = ("bag", "room", "envelope")
+STICKER_LABELS = {
+    "bag": "استيكرات الحقائب",
+    "room": "استيكرات الغرف",
+    "envelope": "استيكرات الأظرف",
+}
+_STICKER_GRID = {"bag": (2, 4), "room": (2, 4), "envelope": (2, 5)}
+
+
+def _sticker_items(records, kind: str, company: str) -> list[dict]:
+    """يبني بطاقات الاستيكرات لكل نوع: حاج للحقائب/الأظرف، وغرفة للغرف."""
+    items: list[dict] = []
+    if kind == "room":
+        groups, _unassigned = group_records_by_room(records)
+        for hotel, _cap, number, recs in groups:
+            names = [r.full_name_ar or r.full_name_en or "—" for r in recs]
+            items.append({
+                "header": company,
+                "big": f"غرفة {number}",
+                "big2": hotel or "",
+                "lines": names,
+                "footer": f"عدد النزلاء: {len(recs)}",
+            })
+    elif kind == "envelope":
+        for rec in records:
+            lines = []
+            if rec.passport_number:
+                lines.append(f"جواز: {rec.passport_number}")
+            if rec.phone:
+                lines.append(f"هاتف: {rec.phone}")
+            if rec.hotel:
+                lines.append(rec.hotel)
+            items.append({
+                "header": company,
+                "big": rec.full_name_ar or rec.full_name_en or "—",
+                "lines": lines,
+                "footer": "المحتويات: الجواز • التذكرة • التصريح",
+            })
+    else:  # bag
+        for rec in records:
+            lines = []
+            if rec.phone:
+                lines.append(f"هاتف: {rec.phone}")
+            loc = rec.hotel or ""
+            if rec.room_number:
+                loc += (f" - غرفة {rec.room_number}" if loc
+                        else f"غرفة {rec.room_number}")
+            if loc:
+                lines.append(loc)
+            trip = []
+            if rec.flight_number:
+                trip.append(f"رحلة {rec.flight_number}")
+            if rec.transport:
+                trip.append(f"باص {rec.transport}")
+            if trip:
+                lines.append(" • ".join(trip))
+            items.append({
+                "header": company,
+                "big": rec.full_name_ar or rec.full_name_en or "—",
+                "lines": lines,
+                "footer": None,
+            })
+    return items
+
+
+def export_stickers_pdf(records: list, path: str | Path, *, kind: str = "bag",
+                        company: str = "المصطفى للحج والعمرة",
+                        season: str = "", title: str | None = None) -> Path:
+    """يبني **استيكرات** على ورق A4 عمودي في شبكة، لكلٍّ إطار وشريط علوي
+    بالحملة: **للحقائب** و**للأظرف** استيكر لكل حاج، و**للغرف** استيكر لكل
+    غرفة بأسماء نزلائها."""
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as _canvas
+
+    _register_fonts()
+    path = Path(path)
+    if kind not in STICKER_KINDS:
+        kind = "bag"
+    items = _sticker_items(records, kind, company)
+    title = title or STICKER_LABELS[kind]
+
+    PW, PH = A4
+    c = _canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
+    c.setTitle(title)
+    logo_reader = ImageReader(str(_LOGO_PATH)) if _LOGO_PATH.is_file() else None
+    gray = colors.HexColor("#555555")
+
+    COLS, ROWS = _STICKER_GRID[kind]
+    PER = COLS * ROWS
+    MX, MY, GX, GY = 26, 30, 12, 12
+    cw = (PW - 2 * MX - (COLS - 1) * GX) / COLS
+    ch = (PH - 2 * MY - (ROWS - 1) * GY) / ROWS
+
+    def cell_origin(idx):
+        col, row = idx % COLS, idx // COLS
+        ox = PW - MX - (col + 1) * cw - col * GX      # RTL: أوّل استيكر يميناً
+        oy = PH - MY - (row + 1) * ch - row * GY
+        return ox, oy
+
+    def fit(text, font, base, maxw, floor=7.0):
+        size = base
+        while size > floor and pdfmetrics.stringWidth(ar(text), font, size) > maxw:
+            size -= 0.5
+        return size
+
+    def draw_cell(ox, oy, item):
+        c.setLineWidth(1.1); c.setStrokeColor(_ACCENT)
+        c.rect(ox, oy, cw, ch, stroke=1, fill=0)
+        # شريط علوي بالحملة + شعار صغير
+        band_h = 22
+        c.setFillColor(_ACCENT)
+        c.rect(ox, oy + ch - band_h, cw, band_h, stroke=0, fill=1)
+        c.setFillColor(colors.white)
+        c.setFont(_FONT_BOLD, fit(item["header"], _FONT_BOLD, 9.5, cw - 42, 6))
+        c.drawCentredString(ox + cw / 2, oy + ch - band_h + 7, ar(item["header"]))
+        if logo_reader is not None:
+            iw, ih = logo_reader.getSize()
+            lh = band_h - 6
+            lw = lh * iw / ih
+            c.drawImage(logo_reader, ox + 4, oy + ch - band_h + 3, lw, lh,
+                        mask="auto", preserveAspectRatio=True)
+
+        y = oy + ch - band_h - 8
+        size = fit(item["big"], _FONT_BOLD, 15, cw - 16, 9)
+        c.setFillColor(_INK); c.setFont(_FONT_BOLD, size)
+        y -= size
+        c.drawCentredString(ox + cw / 2, y, ar(item["big"]))
+        if item.get("big2"):
+            y -= 14
+            c.setFillColor(gray)
+            c.setFont(_FONT, fit(item["big2"], _FONT, 10.5, cw - 16))
+            c.drawCentredString(ox + cw / 2, y, ar(item["big2"]))
+        y -= 10
+
+        floor_y = oy + (16 if item.get("footer") else 8)
+        line_h = 13
+        avail = max(0, int((y - floor_y) / line_h))
+        shown = item["lines"][:avail]
+        extra = len(item["lines"]) - len(shown)
+        if extra > 0 and shown:          # اترك سطراً للإشارة إلى الباقي
+            shown = shown[:-1]
+            extra = len(item["lines"]) - len(shown)
+        c.setFillColor(_INK)
+        for ln in shown:
+            y -= line_h
+            c.setFont(_FONT, fit(ln, _FONT, 9.5, cw - 16))
+            c.drawRightString(ox + cw - 8, y, ar(ln))
+        if extra > 0:
+            y -= line_h
+            c.setFillColor(gray); c.setFont(_FONT, 8.5)
+            c.drawRightString(ox + cw - 8, y, ar(f"+ {extra} آخرين"))
+
+        if item.get("footer"):
+            c.setFillColor(gray)
+            c.setFont(_FONT, fit(item["footer"], _FONT, 8.2, cw - 12, 6))
+            c.drawCentredString(ox + cw / 2, oy + 7, ar(item["footer"]))
+
+    if not items:
+        c.setFont(_FONT, 13); c.setFillColor(_INK)
+        c.drawCentredString(PW / 2, PH / 2, ar("لا توجد بيانات للاستيكرات"))
+        c.showPage(); c.save()
+        return path
+
+    for i, item in enumerate(items):
+        if i > 0 and i % PER == 0:
+            c.showPage()
+        ox, oy = cell_origin(i % PER)
+        draw_cell(ox, oy, item)
+    c.showPage()
+    c.save()
+    return path
+
+
 def export_transport_pdf(records: list, path: str | Path,
                          *, title: str = "كشف المواصلات") -> Path:
     """يصدّر كشف المواصلات إلى PDF **طولي**، **كل باص في صفحة واحدة** بخط كبير.
