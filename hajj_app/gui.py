@@ -138,6 +138,35 @@ def install_entry_editing(widget) -> None:
     widget.bind("<Control-KeyPress>", ctrl)
 
 
+def open_preview(parent, export_fn, base_name: str, ext: str):
+    """يولّد الملف مؤقّتاً ويفتحه للمعاينة في العارض الافتراضي.
+
+    نمطٌ موحّد لكل أوامر التصدير/الطباعة: بلا نافذة «حفظ باسم»؛ يفتح الملف
+    في عارضه (PDF أو إكسل) ومنه يطبع المستخدم أو يحفظ نسخةً. يعيد المسار أو
+    None عند الفشل/التعذّر.
+    """
+    import os
+    import tempfile
+    safe = re.sub(r'[\\/:*?"<>|]+', "-", str(base_name)).strip() or "ملف"
+    path = os.path.join(tempfile.gettempdir(), f"{safe}.{ext}")
+    try:
+        export_fn(path)
+    except PermissionError:
+        messagebox.showerror("الملف مفتوح",
+                             "الملف مفتوح في العارض. أغلقه ثم أعد المحاولة.",
+                             parent=parent)
+        return None
+    except Exception as exc:
+        messagebox.showerror("خطأ في التجهيز", str(exc), parent=parent)
+        return None
+    try:
+        os.startfile(path)
+    except OSError as exc:
+        messagebox.showerror("تعذّر فتح المعاينة", str(exc), parent=parent)
+        return None
+    return path
+
+
 class HajjApp:
     def __init__(self, root: Tk, session=None, open_mode: bool = False) -> None:
         self.root = root
@@ -1818,27 +1847,14 @@ class HajjApp:
         StatsDialog(self.root, list(self.records), season=self.season_year.get())
 
     def do_stats_pdf(self) -> None:
-        """يصدّر تقرير الإحصاءات والملخّص المالي إلى PDF مباشرةً."""
+        """يفتح معاينة تقرير الإحصاءات والملخّص المالي (PDF)."""
         if not self._require_records():
             return
-        path = filedialog.asksaveasfilename(
-            title="حفظ الإحصاءات والملخّص المالي", defaultextension=".pdf",
-            initialfile=f"إحصاءات_ومالية_{date.today().isoformat()}.pdf",
-            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
-        if not path:
-            return
         from .pdf_io import export_stats_pdf
-        try:
-            export_stats_pdf(list(self.records), path, season=self.season_year.get())
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc))
-            return
-        self.set_status("تم تصدير الإحصاءات والملخّص المالي PDF", ok=True)
-        self._offer_open(path)
+        self._preview_export(
+            lambda p: export_stats_pdf(list(self.records), p,
+                                       season=self.season_year.get()),
+            f"إحصاءات_ومالية_{date.today().isoformat()}", "pdf")
 
     def do_backup_now(self) -> None:
         """يُنشئ نسخة احتياطية مؤرّخة (لقطة) للكشف الحالي."""
@@ -2166,53 +2182,30 @@ class HajjApp:
         except Exception:
             pass
 
+    def _preview_export(self, export_fn, base_name: str, ext: str) -> None:
+        """يفتح معاينة الملف في العارض (تطبع أو تحفظ منه)، ويحدّث الحالة."""
+        if open_preview(self.root, export_fn, base_name, ext):
+            self.set_status("فُتحت المعاينة — اطبع أو احفظ نسخةً من العارض",
+                            ok=True)
+
     def do_export_excel(self) -> None:
         if not self._require_records():
             return
-        path = filedialog.asksaveasfilename(
-            title="حفظ ملف الإكسل", defaultextension=".xlsx",
-            initialfile=self._default_name("xlsx"), filetypes=EXCEL_TYPES,
-        )
-        if not path:
-            return
-        try:
-            export_excel(self._ordered(), path)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc))
-            return
-        self.set_status(f"تم حفظ الإكسل: {path}")
-        self._offer_open(path)
+        self._preview_export(lambda p: export_excel(self._ordered(), p),
+                             self._default_name("xlsx").rsplit(".", 1)[0], "xlsx")
 
     def do_export_pdf(self) -> None:
         if not self._require_records():
-            return
-        path = filedialog.asksaveasfilename(
-            title="حفظ ملف PDF", defaultextension=".pdf",
-            initialfile=self._default_name("pdf"),
-            filetypes=(("ملفات PDF", "*.pdf"), ("كل الملفات", "*.*")),
-        )
-        if not path:
             return
         cards = messagebox.askyesno(
             "بطاقات تفصيلية",
             "هل تريد إضافة صفحة بطاقة مفصّلة لكل حاج بعد الجدول؟",
         )
-        try:
-            export_pdf(self._ordered(), path, title=self._report_title("كشف الحجاج"),
-                       with_cards=cards)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc))
-            return
-        self.set_status(f"تم حفظ PDF: {path}")
-        self._offer_open(path)
+        self._preview_export(
+            lambda p: export_pdf(self._ordered(), p,
+                                 title=self._report_title("كشف الحجاج"),
+                                 with_cards=cards),
+            self._default_name("pdf").rsplit(".", 1)[0], "pdf")
 
     def _rooming_scope(self):
         """يفتح نافذة اختيار الفندق ونوع الغرفة، ويعيد السجلات المطابقة أو None."""
@@ -2266,74 +2259,34 @@ class HajjApp:
         return f"{base} — {scope}" if scope else base
 
     def do_rooming_pdf(self) -> None:
-        """يصدّر كشف التسكين إلى PDF — بعد اختيار الفندق ونوع الغرفة."""
+        """يفتح معاينة كشف التسكين (PDF) — بعد اختيار الفندق ونوع الغرفة."""
         records = self._rooming_scope()
         if records is None:
             return
-        rooms = self._confirm_rooming(records)
-        if rooms is None:
+        if self._confirm_rooming(records) is None:
             return
-        path = filedialog.asksaveasfilename(
-            title="حفظ كشف التسكين PDF", defaultextension=".pdf",
-            initialfile=self._default_name("pdf").replace("كشف_الحجاج", "كشف_التسكين"),
-            filetypes=(("ملفات PDF", "*.pdf"), ("كل الملفات", "*.*")),
-        )
-        if not path:
-            return
-        self._do_rooming_export(
+        self._preview_export(
             lambda p: export_pdf(records, p, title=self._rooming_title(),
                                  group_by_room=True),
-            path, rooms,
-        )
+            "كشف_التسكين", "pdf")
 
     def do_rooming_excel(self) -> None:
-        """يصدّر كشف التسكين إلى إكسل — بعد اختيار الفندق ونوع الغرفة."""
+        """يفتح معاينة كشف التسكين (إكسل) — بعد اختيار الفندق ونوع الغرفة."""
         records = self._rooming_scope()
         if records is None:
             return
-        rooms = self._confirm_rooming(records)
-        if rooms is None:
-            return
-        path = filedialog.asksaveasfilename(
-            title="حفظ كشف التسكين إكسل", defaultextension=".xlsx",
-            initialfile=self._default_name("xlsx").replace("كشف_الحجاج", "كشف_التسكين"),
-            filetypes=EXCEL_TYPES,
-        )
-        if not path:
+        if self._confirm_rooming(records) is None:
             return
         from .excel_io import export_grouped_excel
-        self._do_rooming_export(
+        self._preview_export(
             lambda p: export_grouped_excel(records, p, title=self._rooming_title()),
-            path, rooms,
-        )
-
-    def _do_rooming_export(self, export_fn, path: str, rooms: int) -> None:
-        """ينفّذ التصدير مع معالجة موحّدة للأخطاء."""
-        try:
-            export_fn(path)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc))
-            return
-        self.set_status(f"تم حفظ كشف التسكين: {rooms} غرفة")
-        self._offer_open(path)
+            "كشف_التسكين", "xlsx")
 
     def _require_records(self) -> bool:
         if not self.records:
             messagebox.showinfo("لا توجد بيانات", "أضف صور جوازات أو استورد ملف إكسل أولاً.")
             return False
         return True
-
-    def _offer_open(self, path: str) -> None:
-        if messagebox.askyesno("تم الحفظ", f"تم حفظ الملف بنجاح:\n{path}\n\nهل تريد فتحه الآن؟"):
-            import os
-            try:
-                os.startfile(path)
-            except Exception as exc:
-                messagebox.showwarning("تعذّر الفتح", str(exc))
 
     # ------------------------------------------------------------ تحرير/حذف
     def edit_selected(self) -> None:
@@ -2601,33 +2554,10 @@ class AirlineDialog(Toplevel):
         self.title(f"كشف الطيران — {text}")
         self.after(1800, lambda: self.title("كشف الطيران — Flight Manifest"))
 
-    def _save_path(self, ext: str) -> str | None:
-        return filedialog.asksaveasfilename(
-            parent=self, title="حفظ كشف الطيران", defaultextension=f".{ext}",
-            initialfile=f"{self._default}.{ext}",
-            filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")),
-        )
-
     def _run(self, export_fn, ext: str) -> None:
-        path = self._save_path(ext)
-        if not path:
-            return
-        try:
-            export_fn(self._current(), path)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
-                                 parent=self)
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
-            return
-        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
-            import os
-            try:
-                os.startfile(path)
-            except Exception:
-                pass
+        if open_preview(self, lambda p: export_fn(self._current(), p),
+                        self._default, ext):
+            self.set_title_status("فُتحت المعاينة")
 
     def _excel(self) -> None:
         from .airline import export_airline_excel
@@ -2802,37 +2732,21 @@ class CampsDialog(Toplevel):
             return
         from .camps import make_tent
         from .pdf_io import export_tents_pdf
-        from .camps import export_tents_excel
 
         number = str(self._number_var.get()).strip() or "1"
         cls = self._class_var.get()
         sector = self._sector_var.get().strip()
         base = f"خيمة {number} - {cls}" + (f" - قطاع {sector}" if sector else "")
-        import re as _re
-        base = _re.sub(r'[\\/:*?"<>|]+', "-", base).strip() or f"خيمة {number}"
-        path = filedialog.asksaveasfilename(
-            parent=self, title="حفظ ملف الخيمة", initialfile=base,
-            defaultextension=".pdf",
-            filetypes=(("ملف PDF", "*.pdf"), ("ملف إكسل", "*.xlsx"),
-                       ("كل الملفات", "*.*")))
-        if not path:
-            return
 
         plan = make_tent(
             self._records, self._preview, camp=self._camp_var.get(),
             sector=sector, number=number, classification_label=cls,
             capacity=self._count_var.get())
-        exporter = (export_tents_excel if path.lower().endswith(".xlsx")
-                    else export_tents_pdf)
-        try:
-            exporter(plan, path, campaign=self._campaign_var.get())
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
-                                 parent=self)
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
+        path = open_preview(
+            self, lambda p: export_tents_pdf(plan, p,
+                                             campaign=self._campaign_var.get()),
+            base, "pdf")
+        if path is None:
             return
 
         # تثبيت ركّاب هذه الخيمة والانتقال للتالية
@@ -2840,16 +2754,6 @@ class CampsDialog(Toplevel):
         if str(number).isdigit():
             self._number_var.set(str(int(number) + 1))
         self._refresh_preview()
-        opened = messagebox.askyesno(
-            "تم إنشاء الخيمة",
-            f"حُفظت «خيمة {number}» ({len(plan.tents[0].occupants)} شخصاً):\n{path}"
-            "\n\nفتحها الآن؟", parent=self)
-        if opened:
-            import os
-            try:
-                os.startfile(path)
-            except Exception:
-                pass
 
 
 class BulkEditDialog(Toplevel):
@@ -3020,36 +2924,13 @@ class TransportDialog(Toplevel):
                                           str(rec.wheelchair or "").strip() or "—"))
         self._count.config(text=f"عدد الحجّاج: {len(records)}")
 
-    def _default(self, ext):
-        return f"كشف_المواصلات_{date.today().isoformat()}.{ext}"
-
     def _run(self, export_fn, ext):
         records = self._current()
         if not records:
             messagebox.showinfo("لا نتائج", "لا يوجد حجّاج.", parent=self)
             return
-        path = filedialog.asksaveasfilename(
-            parent=self, title="حفظ كشف المواصلات", defaultextension=f".{ext}",
-            initialfile=self._default(ext),
-            filetypes=((f"ملفات {ext.upper()}", f"*.{ext}"), ("كل الملفات", "*.*")))
-        if not path:
-            return
-        try:
-            export_fn(records, path)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
-                                 parent=self)
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
-            return
-        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
-            import os
-            try:
-                os.startfile(path)
-            except Exception:
-                pass
+        open_preview(self, lambda p: export_fn(records, p),
+                     f"كشف_المواصلات_{date.today().isoformat()}", ext)
 
     def _excel(self):
         from .transport import export_transport_excel
@@ -3372,30 +3253,10 @@ class StatsDialog(Toplevel):
                         f"{fin.collected_percent}%"))
 
     def _export_pdf(self) -> None:
-        path = filedialog.asksaveasfilename(
-            parent=self, title="حفظ الإحصاءات والملخّص المالي",
-            defaultextension=".pdf",
-            initialfile=f"إحصاءات_ومالية_{date.today().isoformat()}.pdf",
-            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
-        if not path:
-            return
         from .pdf_io import export_stats_pdf
-        try:
-            export_stats_pdf(self._records, path, season=self._season)
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
-                                 parent=self)
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في التصدير", str(exc), parent=self)
-            return
-        if messagebox.askyesno("تم الحفظ", f"حُفظ:\n{path}\n\nفتحه الآن؟", parent=self):
-            import os
-            try:
-                os.startfile(path)
-            except Exception:
-                pass
+        open_preview(self,
+                     lambda p: export_stats_pdf(self._records, p, season=self._season),
+                     f"إحصاءات_ومالية_{date.today().isoformat()}", "pdf")
 
     def _refresh_dist(self) -> None:
         from .stats import distribution
@@ -3484,35 +3345,17 @@ class BadgesDialog(Toplevel):
         self.bind("<Escape>", lambda _e: self.destroy())
 
     def _export(self) -> None:
-        path = filedialog.asksaveasfilename(
-            parent=self, title="حفظ بطاقات الحجّاج", defaultextension=".pdf",
-            initialfile=f"بطاقات_الحجاج_{date.today().isoformat()}.pdf",
-            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
-        if not path:
-            return
         from .pdf_io import export_badges_pdf
-        try:
-            export_badges_pdf(
-                self._records, path, company=self._company.get().strip(),
+        path = open_preview(
+            self,
+            lambda p: export_badges_pdf(
+                self._records, p, company=self._company.get().strip(),
                 session=self._session, preacher=self._preacher.get().strip(),
                 admins=self._admins.get("1.0", "end").strip(),
-                emergency=self._emergency.get().strip())
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.",
-                                 parent=self)
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في البطاقات", str(exc), parent=self)
-            return
-        self.destroy()
-        if messagebox.askyesno("تم الحفظ",
-                               f"حُفظت {len(self._records)} بطاقة:\n{path}\n\nفتحها الآن؟"):
-            import os
-            try:
-                os.startfile(path)
-            except Exception:
-                pass
+                emergency=self._emergency.get().strip()),
+            f"بطاقات_الحجاج_{date.today().isoformat()}", "pdf")
+        if path is not None:
+            self.destroy()
 
 
 class QualityDialog(Toplevel):
