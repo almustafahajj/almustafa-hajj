@@ -584,11 +584,10 @@ class HajjApp:
         row1 = ttk.Frame(outer, style="Toolbar.TFrame")
         row1.pack(fill=X)
 
-        # الأزرار أقصى يسار (الترتيب و«مسح الفلاتر» انتقلا إلى لوحة الفلاتر)
+        # الأزرار أقصى يسار («الأعمدة» و«العرض» انتقلا إلى لوحة التحكم؛
+        # و«الترتيب» و«مسح الفلاتر» إلى لوحة الفلاتر)
         self._icon_button(row1, "طباعة المعروض", self.do_print_filtered,
                           "Ghost.TButton", ("print", TEXT)).pack(side=LEFT, padx=3)
-        self._build_columns_menubutton(row1).pack(side=LEFT, padx=3)
-        self._build_view_menubutton(row1).pack(side=LEFT, padx=3)
 
         # مربّع البحث الحر أقصى اليمين
         self.filter_search = StringVar()
@@ -708,6 +707,15 @@ class HajjApp:
         """أعمدة الجدول بترتيب العرض (مسلسل أقصى اليمين)."""
         return tuple(reversed(FIELDS + DIAG_FIELDS))
 
+    def _ensure_col_vars(self) -> None:
+        """يهيّئ متغيّرات إظهار الأعمدة مرّة واحدة (تُشارَك بين نقاط الاستدعاء)."""
+        if getattr(self, "_col_vars", None):
+            return
+        self._col_vars: dict[str, tk.BooleanVar] = {
+            f.key: tk.BooleanVar(value=f.key not in self._hidden_cols)
+            for f in self._display_columns()
+        }
+
     def _build_columns_menubutton(self, parent):
         mb = ttk.Menubutton(parent, text=rtl("الأعمدة ▾"),
                             style="Ghost.TMenubutton", direction="below")
@@ -715,11 +723,9 @@ class HajjApp:
         if _img is not None:
             mb.configure(image=_img, compound="right")
         menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
-        self._col_vars: dict[str, tk.BooleanVar] = {}
+        self._ensure_col_vars()
         for f in self._display_columns():
-            var = tk.BooleanVar(value=f.key not in self._hidden_cols)
-            self._col_vars[f.key] = var
-            menu.add_checkbutton(label=f.label, variable=var,
+            menu.add_checkbutton(label=f.label, variable=self._col_vars[f.key],
                                  command=self._apply_columns)
         menu.add_separator()
         menu.add_command(label="إظهار كل الأعمدة",
@@ -738,6 +744,7 @@ class HajjApp:
 
     def _apply_columns(self) -> None:
         """يطبّق الأعمدة الظاهرة على الجدول ويحفظها."""
+        self._ensure_col_vars()
         self._hidden_cols = {k for k, v in self._col_vars.items() if not v.get()}
         visible = [f.key for f in self.columns if f.key not in self._hidden_cols]
         if not visible:                       # لا نُخفي كل الأعمدة
@@ -3177,8 +3184,16 @@ class DashboardDialog(Toplevel):
                               f"{pf.collected_percent}%"))
         tv.pack(fill=X)
 
+        # إعدادات العرض: «الأعمدة» و«العرض» (منقولة من شريط الفلاتر)
+        view_row = ttk.Frame(self._outer)
+        view_row.pack(anchor="e", pady=(14, 0))
+        ttk.Label(view_row, text="إعدادات العرض:", background=BG, foreground=MUTED,
+                  font=("Segoe UI", 9)).pack(side=RIGHT, padx=(4, 8))
+        self.app._build_columns_menubutton(view_row).pack(side=RIGHT, padx=3)
+        self.app._build_view_menubutton(view_row).pack(side=RIGHT, padx=3)
+
         row = ttk.Frame(self._outer)
-        row.pack(anchor="e", pady=(14, 0))
+        row.pack(anchor="e", pady=(8, 0))
         ttk.Button(row, text=rtl("📊  الإحصاءات"), style="Act.TButton",
                    command=lambda: (self.destroy(), self.app.do_stats())
                    ).pack(side=RIGHT, padx=3)
