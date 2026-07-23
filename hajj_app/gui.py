@@ -456,6 +456,7 @@ class HajjApp:
             ("🗑  حذف المحدد", self.delete_selected),
             ("↩  تراجع  (Ctrl+Z)", self.undo),
             None,
+            ("📱  رسالة واتساب للمحدّدين", self.do_whatsapp),
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
             None,
             ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
@@ -1954,6 +1955,26 @@ class HajjApp:
             save_settings(self._settings)
         except Exception:
             pass
+
+    def _whatsapp_cc(self) -> str:
+        """رمز الدولة الافتراضي لأرقام واتساب (يبدأ الرقم بـ 0)."""
+        return str(self._settings.get("whatsapp_cc", "971")).strip() or "971"
+
+    def _save_whatsapp_cc(self, cc: str) -> None:
+        self._settings["whatsapp_cc"] = str(cc).strip() or "971"
+        try:
+            save_settings(self._settings)
+        except Exception:
+            pass
+
+    def do_whatsapp(self) -> None:
+        """يفتح نافذة رسالة واتساب جماعية للحجّاج المحدّدين (عبر روابط wa.me)."""
+        idxs = self._selected_indices()
+        if not idxs:
+            messagebox.showinfo("لم يتم التحديد",
+                                "اختر حاجاً أو أكثر من الجدول أولاً.")
+            return
+        WhatsAppDialog(self.root, [self.records[i] for i in idxs], self)
 
     def _load_programs(self):
         """يحمّل برامج الحملة الثلاثة من الإعدادات."""
@@ -3623,6 +3644,144 @@ class ProgramsDialog(Toplevel):
         self.app._save_programs(self.programs)
         self.app.set_status("حُفظت برامج الحملة", ok=True)
         self.destroy()
+
+
+class WhatsAppDialog(Toplevel):
+    """رسالة واتساب جماعية عبر روابط wa.me — يفتح لكلّ حاجٍّ محادثة مملوءة.
+
+    لا يُرسل تلقائياً (يضغط المستخدم «إرسال» في واتساب)، فلا يخالف الشروط.
+    """
+
+    def __init__(self, parent, records, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.records = records
+        self.title("📱 رسالة واتساب جماعية")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .whatsapp import DEFAULT_TEMPLATE, PLACEHOLDERS
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=f"إرسال إلى {len(records)} حاجاً محدَّداً",
+                  font=("Segoe UI Semibold", 12), foreground=TEXT).pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9),
+                  text="يفتح لكلٍّ محادثة واتساب برسالة جاهزة — تضغط «إرسال» "
+                       "بنفسك.").pack(anchor="e", pady=(0, 8))
+
+        top = ttk.Frame(outer)
+        top.pack(fill=X, pady=(0, 6))
+        self.v_cc = StringVar(value=app._whatsapp_cc())
+        ttk.Label(top, text="رمز الدولة (للأرقام التي تبدأ بـ 0):",
+                  foreground=TEXT).pack(side=RIGHT, padx=(6, 0))
+        cc = ttk.Entry(top, textvariable=self.v_cc, width=8, justify="center")
+        cc.pack(side=RIGHT)
+        cc.bind("<KeyRelease>", lambda _e: self._rebuild())
+
+        ttk.Label(outer, text="الرسالة:", foreground=TEXT).pack(anchor="e")
+        self.txt = tk.Text(outer, width=62, height=5, wrap="word",
+                           font=("Segoe UI", 10))
+        self.txt.pack(fill=X)
+        self.txt.insert("1.0", DEFAULT_TEMPLATE)
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9),
+                  text="عناصر نائبة تُستبدَل لكل حاج: " + "  ".join(PLACEHOLDERS)
+                  ).pack(anchor="e", pady=(2, 8))
+
+        box = ttk.Frame(outer)
+        box.pack(fill=BOTH, expand=True)
+        sb = ttk.Scrollbar(box, orient="vertical")
+        sb.pack(side=RIGHT, fill=Y)
+        self.tree = ttk.Treeview(box, columns=("phone", "status"),
+                                 show="tree headings", height=8,
+                                 yscrollcommand=sb.set)
+        self.tree.heading("#0", text="الحاج")
+        self.tree.heading("phone", text="الرقم الدولي")
+        self.tree.heading("status", text="الحالة")
+        self.tree.column("#0", width=250, anchor="e")
+        self.tree.column("phone", width=150, anchor="center")
+        self.tree.column("status", width=90, anchor="center")
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        sb.config(command=self.tree.yview)
+        self.tree.tag_configure("bad", foreground=DANGER)
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e", pady=(10, 0))
+        self.btn_next = ttk.Button(btns, text="↪ فتح التالي",
+                                   style="Primary.TButton", command=self._open_next)
+        self.btn_next.pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="فتح الكل", style="Act.TButton",
+                   command=self._open_all).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self._pos = 0
+        self._order: list = []
+        self._rebuild()
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 6
+        self.geometry(f"+{x}+{y}")
+
+    def _rebuild(self) -> None:
+        from .whatsapp import to_intl
+        self.tree.delete(*self.tree.get_children())
+        self._pos = 0
+        self._order = []
+        cc = self.v_cc.get()
+        for rec in self.records:
+            name = rec.full_name_ar or rec.full_name_en or "—"
+            num = to_intl(rec.phone, cc)
+            if num:
+                self.tree.insert("", END, text=name, values=("+" + num, "جاهز"))
+                self._order.append(rec)
+            else:
+                self.tree.insert("", END, text=name,
+                                 values=(str(rec.phone or "—"), "بلا رقم صالح"),
+                                 tags=("bad",))
+        self._update_next()
+
+    def _update_next(self) -> None:
+        n = len(self._order)
+        if not n:
+            self.btn_next.configure(text="لا أرقام صالحة", state="disabled")
+        elif self._pos >= n:
+            self.btn_next.configure(text="اكتمل ✓", state="disabled")
+        else:
+            self.btn_next.configure(text=f"↪ فتح التالي ({self._pos + 1}/{n})",
+                                    state="normal")
+
+    def _open(self, rec) -> None:
+        import webbrowser
+        from .whatsapp import render_message, wa_link
+        msg = render_message(self.txt.get("1.0", "end").strip(), rec)
+        url = wa_link(rec.phone, msg, self.v_cc.get())
+        if url:
+            webbrowser.open(url)
+
+    def _open_next(self) -> None:
+        self.app._save_whatsapp_cc(self.v_cc.get())
+        if self._pos < len(self._order):
+            self._open(self._order[self._pos])
+            self._pos += 1
+            self._update_next()
+
+    def _open_all(self) -> None:
+        n = len(self._order)
+        if not n:
+            return
+        if n > 8 and not messagebox.askyesno(
+                "فتح الكل", f"سيُفتح {n} محادثة تِباعاً. متابعة؟", parent=self):
+            return
+        self.app._save_whatsapp_cc(self.v_cc.get())
+        for i, rec in enumerate(self._order):
+            self.after(i * 400, lambda r=rec: self._open(r))   # فجوة بين الفتحات
+        self._pos = n
+        self._update_next()
 
 
 class BulkDocsDialog(Toplevel):
