@@ -19,8 +19,10 @@ MIN_PASSPORT_MONTHS = 6
 # أنواع المشكلات (تُستعمل عناوينَ تجميع في التقرير)
 KIND_DUPLICATE = "تكرار رقم الجواز"
 KIND_PASSPORT = "صلاحية الجواز"
+KIND_NAME = "تكرار الاسم"
+KIND_PROGRAM = "تطابق البرنامج"
 KIND_MISSING = "نقص بيانات حرجة"
-KIND_ORDER = (KIND_PASSPORT, KIND_DUPLICATE, KIND_MISSING)
+KIND_ORDER = (KIND_PASSPORT, KIND_DUPLICATE, KIND_NAME, KIND_PROGRAM, KIND_MISSING)
 
 
 def parse_date(text) -> date | None:
@@ -88,6 +90,33 @@ def duplicate_groups(records: list[PassportData]) -> dict[str, list[int]]:
     return {pp: idxs for pp, idxs in seen.items() if len(idxs) > 1}
 
 
+def _norm_name(text) -> str:
+    """يوحّد الاسم للمقارنة: يزيل الفراغات الزائدة ويوحّد الحالة."""
+    return " ".join(str(text or "").split()).lower()
+
+
+def name_duplicate_groups(records: list[PassportData]) -> dict[str, list[int]]:
+    """يجمع فهارس السجلات المتطابقة **بالاسم** (عربي أو إنجليزي).
+
+    يُستبعَد ما كان تكراراً لرقم جواز واحد (يُغطّى في تكرار الجواز)، فيبقى
+    الاسم المكرّر بجوازات مختلفة أو ناقصة — وهو ما يستحقّ المراجعة.
+    """
+    by_name: dict[str, list[int]] = {}
+    for i, rec in enumerate(records):
+        key = _norm_name(rec.full_name_ar) or _norm_name(rec.full_name_en)
+        if key:
+            by_name.setdefault(key, []).append(i)
+    out: dict[str, list[int]] = {}
+    for key, idxs in by_name.items():
+        if len(idxs) < 2:
+            continue
+        pps = [str(records[i].passport_number or "").strip().upper() for i in idxs]
+        if len(set(pps)) == 1 and pps[0]:      # كلهم نفس الجواز = تكرار جواز فقط
+            continue
+        out[key] = idxs
+    return out
+
+
 def missing_critical(rec: PassportData) -> list[str]:
     """الحقول الحرجة الناقصة (اسم/جواز/ميلاد)."""
     miss: list[str] = []
@@ -134,16 +163,49 @@ class QualityReport:
         return {k: len(v) for k, v in self.by_kind().items()}
 
 
+_ROOM_COST_KEY = {1: "cost_single", 2: "cost_double",
+                  3: "cost_triple", 4: "cost_quad"}
+
+
+def program_issue(rec: PassportData, programs: dict | None) -> str | None:
+    """مشكلة تطابق البرنامج: برنامج غير معرّف، أو غرفة غير مسعّرة فيه."""
+    if not programs:
+        return None
+    name = str(rec.program or "").strip()
+    if not name:
+        return None
+    prog = programs.get(name)
+    if prog is None:
+        return "البرنامج المختار غير معرّف"
+    rt = str(rec.room_type or "").strip()
+    if not rt:
+        return None
+    from .fields import parse_amount
+    from .rooming import room_capacity
+    key = _ROOM_COST_KEY.get(room_capacity(rt))
+    if key and not (parse_amount(getattr(prog, key, "")) or 0):
+        return f"نوع الغرفة ({rt}) غير مسعّر في {name}"
+    return None
+
+
 def check_records(records: list[PassportData], today: date | None = None,
-                  program_dates: dict | None = None) -> QualityReport:
+                  programs: dict | None = None) -> QualityReport:
     """يفحص الكشف كاملاً ويعيد تقريراً بكل المشكلات.
 
-    ``program_dates`` خريطة {اسم البرنامج: تاريخ سفره} تُستخدم مرجعاً لقاعدة
-    الـ6 أشهر حسب برنامج كل حاج، لمن لا تاريخ سفر مفرد في سجلّه.
+    ``programs`` خريطة {اسم البرنامج: البرنامج} تُستخدم لمرجع تاريخ السفر
+    (قاعدة الـ6 أشهر) ولتدقيق تطابق البرنامج (تسعير الغرفة).
     """
     today = today or date.today()
+    program_dates: dict = {}
+    for pname, prog in (programs or {}).items():
+        d = parse_date(getattr(prog, "travel_date", ""))
+        if d:
+            program_dates[pname] = d
+
     dups = duplicate_groups(records)
     dup_of = {i: pp for pp, idxs in dups.items() for i in idxs}
+    name_dups = name_duplicate_groups(records)
+    name_of = {i: key for key, idxs in name_dups.items() for i in idxs}
 
     issues: list[Issue] = []
     for i, rec in enumerate(records):
@@ -156,6 +218,12 @@ def check_records(records: list[PassportData], today: date | None = None,
         if i in dup_of:
             issues.append(Issue(i, name, pp, KIND_DUPLICATE,
                                 f"رقم الجواز مكرّر ({len(dups[dup_of[i]])} مرات)"))
+        if i in name_of:
+            issues.append(Issue(i, name, pp, KIND_NAME,
+                                f"الاسم مكرّر ({len(name_dups[name_of[i]])} مرات)"))
+        prg = program_issue(rec, programs)
+        if prg:
+            issues.append(Issue(i, name, pp, KIND_PROGRAM, prg))
         for label in missing_critical(rec):
             issues.append(Issue(i, name, pp, KIND_MISSING, label))
     return QualityReport(issues=issues, total=len(records))

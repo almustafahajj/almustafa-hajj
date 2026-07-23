@@ -112,6 +112,22 @@ assert dlg.vars["program_value"].get() == "52,000", dlg.vars["program_value"].ge
 dlg.destroy()
 print("  OK: عُبّئ الفندق/المواصلات وحُسبت القيمة")
 
+print("\n=== احتساب القيمة تلقائياً عند الحفظ ===")
+saved = {}
+rec2 = PassportData(full_name_ar="حاج ب", room_type="ثنائية")
+d2 = EditDialog(root, rec2, on_save=lambda r: saved.update(r=r))
+d2.vars["program"].set(PROGRAM_NAMES[0]); d2.vars["room_type"].set("ثنائية")
+d2._save()                                        # لا ضغط على «تطبيق»
+# يحسب من حقول السجل الفعلية فقط: ثنائية 12,000 (بلا خدمات مُدخلة)
+assert saved["r"].program_value == "12,000", saved["r"].program_value
+# لا يدهس قيمة مُدخلة يدوياً
+rec3 = PassportData(full_name_ar="حاج ج", room_type="ثنائية", program_value="99,000")
+d3 = EditDialog(root, rec3, on_save=lambda r: saved.update(r3=r))
+d3.vars["program"].set(PROGRAM_NAMES[0])
+d3._save()
+assert saved["r3"].program_value == "99,000", saved["r3"].program_value
+print("  OK: تُحسب عند الحفظ ولا تدهس القيمة اليدوية")
+
 print("\n=== تطبيق البرنامج على دفعة (تعديل جماعي) ===")
 # البرنامج الأول محفوظ: كونراد + جيمس + ثنائية 12,000
 app.records = [

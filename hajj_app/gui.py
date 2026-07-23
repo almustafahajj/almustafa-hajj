@@ -433,16 +433,10 @@ class HajjApp:
             pass
         self.set_status(f"موسم الحج: {self.season_year.get()}هـ")
 
-    def _program_travel_dates(self) -> dict:
-        """خريطة {اسم البرنامج: تاريخ سفره} — مرجع فحص صلاحية الجواز لكل حاج."""
+    def _programs_by_name(self) -> dict:
+        """خريطة {اسم البرنامج: البرنامج} — لمرجع تاريخ السفر وتدقيق التطابق."""
         from .programs import PROGRAM_NAMES, load_programs
-        from .quality import parse_date
-        out: dict = {}
-        for name, prog in zip(PROGRAM_NAMES, load_programs(self._settings)):
-            d = parse_date(prog.travel_date)
-            if d:
-                out[name] = d
-        return out
+        return dict(zip(PROGRAM_NAMES, load_programs(self._settings)))
 
     def _report_title(self, base: str) -> str:
         """عنوان تقرير يتضمّن موسم السنة الهجرية."""
@@ -1717,7 +1711,7 @@ class HajjApp:
         if not self._require_records():
             return
         QualityDialog(self.root, lambda: self.records, self._focus_record,
-                      program_dates=self._program_travel_dates)
+                      programs=self._programs_by_name)
 
     def do_stats(self) -> None:
         """يفتح لوحة الإحصاءات والملخّص المالي."""
@@ -3078,14 +3072,16 @@ class QualityDialog(Toplevel):
     _TAGS = {
         "صلاحية الجواز": ("pp", "#F7E7E5", DANGER),
         "تكرار رقم الجواز": ("dup", "#FBF0DC", AMBER_FG),
+        "تكرار الاسم": ("namedup", "#FBF0DC", AMBER_FG),
+        "تطابق البرنامج": ("prog", "#E8EEF6", "#2C5AA0"),
         "نقص بيانات حرجة": ("miss", "#EFEBE4", "#555555"),
     }
 
-    def __init__(self, parent, get_records, on_select, program_dates=None) -> None:
+    def __init__(self, parent, get_records, on_select, programs=None) -> None:
         super().__init__(parent)
         self._get_records = get_records      # دالة تُعيد السجلات الحالية
         self._on_select = on_select          # (index) -> يحدّد السجل في الجدول
-        self._program_dates = program_dates  # دالة تُعيد خريطة تواريخ البرامج
+        self._programs = programs            # دالة تُعيد خريطة {اسم: برنامج}
         self.title("🩺 فحص جاهزية الكشف")
         self.configure(bg=BG)
         self.transient(parent)
@@ -3131,8 +3127,8 @@ class QualityDialog(Toplevel):
 
     def refresh(self) -> None:
         from .quality import check_records, summary_text
-        pdates = self._program_dates() if callable(self._program_dates) else None
-        report = check_records(self._get_records(), program_dates=pdates)
+        progs = self._programs() if callable(self._programs) else None
+        report = check_records(self._get_records(), programs=progs)
         self._tree.delete(*self._tree.get_children())
         if report.clean:
             self._summary.config(text=f"✓  {summary_text(report)}",
@@ -4145,6 +4141,24 @@ class EditDialog(Toplevel):
                 if amount is not None:
                     value = format_amount(amount)
             setattr(self.record, key, value)
+
+        # احتساب قيمة البرنامج تلقائياً إن اختير برنامج ولم تُدخَل قيمة يدوياً
+        if (str(self.record.program or "").strip()
+                and not str(self.record.program_value or "").strip()):
+            from .fields import format_amount as _fmt
+            from .programs import load_programs, program_by_name, program_cost
+            from .storage import load_settings as _ls
+            prog = program_by_name(load_programs(_ls()),
+                                   self.record.program.strip())
+            if prog is not None:
+                total, _br = program_cost(
+                    prog, room_type=self.record.room_type,
+                    wheelchair=self.record.wheelchair, hady=self.record.hady,
+                    executive_service=self.record.executive_service,
+                    travel_class=self.record.travel_class,
+                    transport=self.record.transport)
+                if total:
+                    self.record.program_value = _fmt(total)
 
         # التعديل اليدوي يلغي التحذيرات — المستخدم راجع البيانات
         self.record.warnings = []

@@ -62,13 +62,47 @@ assert program_travel_date(rec(program=""), PDATES) is None
 r_own = rec(expiry_date="2027-06-01", program="البرنامج الأول",
             departure_date="2027-05-01")   # +6 = 2027-11-01 > الانتهاء -> ناقص
 assert passport_issue(r_own, TODAY, PDATES) is not None
-# يُستخدم في الفحص الكامل أيضاً
+# يُستخدم في الفحص الكامل أيضاً (عبر خريطة البرامج)
+from hajj_app.programs import Program
+PROGS = {"البرنامج الأول": Program(travel_date="2026-08-01")}
 rep = check_records([rec(expiry_date="2026-12-15", full_name_ar="أ",
                          passport_number="X1", birth_date="1990-01-01",
                          program="البرنامج الأول")],
-                    today=TODAY, program_dates=PDATES)
+                    today=TODAY, programs=PROGS)
 assert any("تاريخ السفر" in i.detail for i in rep.issues), rep.issues
 print("  OK: مرجع سفر البرنامج يُستخدم لكل حاج")
+
+print("\n=== تكرار الاسم (بجوازات مختلفة) ===")
+from hajj_app.quality import name_duplicate_groups, program_issue, KIND_NAME, KIND_PROGRAM
+recs = [rec(full_name_ar="محمد علي", passport_number="A1"),
+        rec(full_name_ar="محمد  علي ", passport_number="A2"),   # نفس الاسم، جواز آخر
+        rec(full_name_ar="سالم", passport_number="B1"),
+        rec(full_name_ar="خالد", passport_number="C1"),
+        rec(full_name_ar="خالد", passport_number="C1")]        # نفس الجواز = تكرار جواز فقط
+nd = name_duplicate_groups(recs)
+assert set(nd) == {"محمد علي"}, nd          # خالد مستبعَد (نفس الجواز)
+rep = check_records(recs, today=TODAY)
+namedups = [i for i in rep.issues if i.kind == KIND_NAME]
+assert len(namedups) == 2, namedups
+print("  OK: الاسم المكرّر بجوازات مختلفة يُرصَد، والمطابق للجواز لا")
+
+print("\n=== تدقيق تطابق البرنامج ===")
+prog = Program(cost_double="15000")          # الثنائية مسعّرة، الثلاثية لا
+progs = {"البرنامج الأول": prog}
+# غرفة ثنائية مسعّرة -> لا مشكلة
+assert program_issue(rec(program="البرنامج الأول", room_type="ثنائية"), progs) is None
+# غرفة ثلاثية غير مسعّرة -> مشكلة
+iss = program_issue(rec(program="البرنامج الأول", room_type="ثلاثية"), progs)
+assert iss and "غير مسعّر" in iss, iss
+# برنامج غير معرّف
+assert "غير معرّف" in program_issue(rec(program="البرنامج الرابع"), progs)
+# بلا برنامج -> لا مشكلة
+assert program_issue(rec(program=""), progs) is None
+rep = check_records([rec(program="البرنامج الأول", room_type="ثلاثية",
+                         full_name_ar="ع", passport_number="Z1",
+                         birth_date="1990-01-01")], today=TODAY, programs=progs)
+assert any(i.kind == KIND_PROGRAM for i in rep.issues), rep.issues
+print("  OK: الغرفة غير المسعّرة والبرنامج غير المعرّف يُرصَدان")
 
 print("\n=== كشف تكرار رقم الجواز ===")
 recs = [rec(passport_number="A1", full_name_ar="أ"),
