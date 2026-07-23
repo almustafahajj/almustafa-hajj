@@ -659,6 +659,7 @@ class HajjApp:
 
         btns = ttk.Frame(inner, style="Panel.TFrame")
         btns.grid(row=99, column=0, columnspan=6, sticky="e", pady=(12, 0))
+        self._build_columns_menubutton(btns).pack(side=RIGHT, padx=3)
         self._icon_button(btns, "مسح الفلاتر", self.clear_filters, "Ghost.TButton",
                           ("clear", TEXT)).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
@@ -3184,12 +3185,11 @@ class DashboardDialog(Toplevel):
                               f"{pf.collected_percent}%"))
         tv.pack(fill=X)
 
-        # إعدادات العرض: «الأعمدة» و«العرض» (منقولة من شريط الفلاتر)
+        # إعدادات العرض («الأعمدة» في لوحة الفلاتر)
         view_row = ttk.Frame(self._outer)
         view_row.pack(anchor="e", pady=(14, 0))
         ttk.Label(view_row, text="إعدادات العرض:", background=BG, foreground=MUTED,
                   font=("Segoe UI", 9)).pack(side=RIGHT, padx=(4, 8))
-        self.app._build_columns_menubutton(view_row).pack(side=RIGHT, padx=3)
         self.app._build_view_menubutton(view_row).pack(side=RIGHT, padx=3)
 
         row = ttk.Frame(self._outer)
