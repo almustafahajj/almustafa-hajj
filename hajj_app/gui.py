@@ -527,6 +527,8 @@ class HajjApp:
             ("🗑  حذف المحدد", self.delete_selected),
             None,
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
+            None,
+            ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
             ("🧹  مسح الكل", self.clear_all),
         ], icon=("id", WHITE))
         pilgrims_mb.pack(side=RIGHT, padx=(0, 4))
@@ -1889,6 +1891,24 @@ class HajjApp:
             save_settings(self._settings)
         except Exception:
             pass
+
+    def _load_programs(self):
+        """يحمّل برامج الحملة الثلاثة من الإعدادات."""
+        from .programs import load_programs
+        return load_programs(self._settings)
+
+    def _save_programs(self, progs) -> None:
+        """يحفظ برامج الحملة الثلاثة في الإعدادات."""
+        from .programs import programs_to_dicts
+        self._settings["programs"] = programs_to_dicts(progs)
+        try:
+            save_settings(self._settings)
+        except Exception:
+            pass
+
+    def do_programs(self) -> None:
+        """يفتح نافذة إعداد برامج الحملة (الأول/الثاني/الثالث)."""
+        ProgramsDialog(self.root, self)
 
     def _receipt_selected(self) -> None:
         """يفتح نافذة سند القبض للحاج المحدّد — **معاينة فقط** بلا حفظ مباشر."""
@@ -3293,6 +3313,119 @@ class ImageKindDialog(Toplevel):
         else:
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
+        self.destroy()
+
+
+class ProgramsDialog(Toplevel):
+    """إعداد برامج الحملة الثلاثة — لكلٍّ بيانات رحلته وتكاليفه وخدماته.
+
+    يُختار البرنامج من الأعلى (الأول/الثاني/الثالث)، وتُعرَض حقوله للتحرير،
+    وتُحفَظ الثلاثة معاً في الإعدادات.
+    """
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("🗂 برامج الحملة")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .programs import FIELD_GROUPS, PROGRAM_NAMES, TRANSPORT_OPTIONS
+        self._groups = FIELD_GROUPS
+        self.programs = app._load_programs()
+        self._current = 0
+        self._vars: dict[str, StringVar] = {}
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+
+        # اختيار البرنامج
+        top = ttk.Frame(outer)
+        top.pack(fill=X, pady=(0, 10))
+        ttk.Label(top, text="البرنامج:", font=("Segoe UI Semibold", 11),
+                  foreground=TEXT).pack(side=RIGHT, padx=(0, 8))
+        self._sel = StringVar(value="0")
+        for idx, name in enumerate(PROGRAM_NAMES):
+            ttk.Radiobutton(top, text=name, value=str(idx), variable=self._sel,
+                            command=self._switch).pack(side=RIGHT, padx=4)
+
+        # الحقول مجمّعة
+        body = ttk.Frame(outer)
+        body.pack(fill=BOTH, expand=True)
+        body.columnconfigure(0, weight=1)
+        r = 0
+        for gtitle, gfields in self._groups:
+            ttk.Label(body, text=gtitle, font=("Segoe UI Semibold", 11),
+                      foreground=BRONZE, background=BG).grid(
+                row=r, column=0, columnspan=2, sticky="e", pady=(10, 3))
+            r += 1
+            for key, label, kind in gfields:
+                ttk.Label(body, text=label, foreground=TEXT).grid(
+                    row=r, column=1, sticky="e", padx=(10, 0), pady=3)
+                var = StringVar()
+                self._vars[key] = var
+                if kind == "transport":
+                    ttk.Combobox(body, textvariable=var, state="readonly",
+                                 values=list(TRANSPORT_OPTIONS), width=18,
+                                 justify="right").grid(row=r, column=0,
+                                                       sticky="ew", pady=3)
+                else:
+                    just = "center" if kind == "money" else "right"
+                    ttk.Entry(body, textvariable=var, width=26,
+                              justify=just).grid(row=r, column=0, sticky="ew",
+                                                 pady=3)
+                r += 1
+
+        hint = ttk.Label(outer, foreground=MUTED,
+                         text="القيم تُحفَظ للموسم وتُستخدم مرجعاً للتكاليف "
+                              "والخدمات.")
+        hint.pack(anchor="e", pady=(10, 8))
+
+        btns = ttk.Frame(outer)
+        btns.pack(anchor="e")
+        ttk.Button(btns, text="حفظ", style="Act.TButton",
+                   command=self._save).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self._load_into_form(0)
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 8
+        self.geometry(f"+{x}+{y}")
+
+    def _load_into_form(self, idx: int) -> None:
+        prog = self.programs[idx]
+        for key, var in self._vars.items():
+            var.set(str(getattr(prog, key, "")))
+
+    def _dump_form_to(self, idx: int) -> None:
+        from .fields import format_amount, parse_amount
+        prog = self.programs[idx]
+        money_keys = {k for _t, fs in self._groups for k, _l, kind in fs
+                      if kind == "money"}
+        for key, var in self._vars.items():
+            val = var.get().strip()
+            if key in money_keys and val:
+                amt = parse_amount(val)
+                if amt is not None:
+                    val = format_amount(amt)
+            setattr(prog, key, val)
+
+    def _switch(self) -> None:
+        new = int(self._sel.get())
+        if new != self._current:
+            self._dump_form_to(self._current)
+            self._current = new
+            self._load_into_form(new)
+
+    def _save(self) -> None:
+        self._dump_form_to(self._current)
+        self.app._save_programs(self.programs)
+        self.app.set_status("حُفظت برامج الحملة", ok=True)
         self.destroy()
 
 
