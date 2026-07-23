@@ -297,6 +297,26 @@ assert "إجمالي الحجّاج" in _lbls and "تنبيهات الجودة" 
 assert any(str(len(app.records)) == t for t in _lbls), "عدد الحجّاج غير معروض"
 dash.destroy()
 print("  OK: لوحة التحكم تعرض المؤشّرات")
+
+# ---- نطاق كشف التسكين: اختيار الفندق ونوع الغرفة ----
+from hajj_app.gui import RoomingScopeDialog
+from hajj_app.rooming import room_category
+app.records = [
+    PassportData(full_name_ar="أ", hotel="كونراد", room_type="رباعية 1"),
+    PassportData(full_name_ar="ب", hotel="كونراد", room_type="ثنائية 1"),
+    PassportData(full_name_ar="ج", hotel="الصفوة", room_type="رباعية 1"),
+]
+rsd = RoomingScopeDialog(root, app.records)
+rsd.v_hotel.set("كونراد"); rsd.v_cat.set("رباعي"); rsd._ok()
+assert rsd.result == ("كونراد", "رباعي"), rsd.result
+_h, _c = rsd.result
+_sel = [r for r in app.records if str(r.hotel or "").strip() == _h
+        and room_category(r.room_type) == _c]
+assert len(_sel) == 1 and _sel[0].full_name_ar == "أ", _sel
+# «الكل» يعيد (None, None)
+rsd2 = RoomingScopeDialog(root, app.records); rsd2._ok()
+assert rsd2.result == (None, None)
+print("  OK: نطاق التسكين يفلتر بالفندق ونوع الغرفة")
 print("  OK: كشف المواصلات يجمع بالباص ويصفّي بالاختيار")
 
 print("\n=== لوحة الإحصاءات والمالية (StatsDialog) ===")

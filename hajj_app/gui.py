@@ -2214,17 +2214,37 @@ class HajjApp:
         self.set_status(f"تم حفظ PDF: {path}")
         self._offer_open(path)
 
-    def _confirm_rooming(self):
-        """يفحص وجود غرف ويعرض ملخّصاً. يعيد عدد الغرف أو None عند الإلغاء."""
+    def _rooming_scope(self):
+        """يفتح نافذة اختيار الفندق ونوع الغرفة، ويعيد السجلات المطابقة أو None."""
         if not self._require_records():
             return None
+        dlg = RoomingScopeDialog(self.root, self.records)
+        self.root.wait_window(dlg)
+        if dlg.result is None:
+            return None
+        from .rooming import room_category
+        hotel, cat = dlg.result
+        recs = list(self.records)
+        if hotel is not None:
+            recs = [r for r in recs if str(r.hotel or "").strip() == hotel]
+        if cat is not None:
+            recs = [r for r in recs if room_category(r.room_type) == cat]
+        if not recs:
+            messagebox.showinfo(
+                "لا نتائج", "لا يوجد حاج ضمن الفندق/نوع الغرفة المختار.")
+            return None
+        self._rooming_label = " — ".join(
+            p for p in (hotel, (cat + "ة" if cat else None)) if p)
+        return recs
 
+    def _confirm_rooming(self, records):
+        """يفحص وجود غرف ويعرض ملخّصاً. يعيد عدد الغرف أو None عند الإلغاء."""
         from .rooming import group_records_by_room
-        rooms, unplaced = group_records_by_room(self.records)
+        rooms, unplaced = group_records_by_room(records)
         if not rooms:
             messagebox.showinfo(
                 "لا يمكن بناء كشف التسكين",
-                "لا يوجد حاج له نوع غرفة أو رقم غرفة.\n"
+                "لا يوجد حاج له نوع غرفة أو رقم غرفة ضمن الاختيار.\n"
                 "أضف «نوع الغرفة» للحجاج (مثل: رباعي 2، ثلاثي 3) ثم أعد المحاولة.",
             )
             return None
@@ -2240,9 +2260,17 @@ class HajjApp:
             return None
         return len(rooms)
 
+    def _rooming_title(self) -> str:
+        base = self._report_title("كشف التسكين")
+        scope = getattr(self, "_rooming_label", "")
+        return f"{base} — {scope}" if scope else base
+
     def do_rooming_pdf(self) -> None:
-        """يصدّر كشف التسكين إلى PDF — بنفس أعمدة الطباعة، مجموعاً بالغرف."""
-        rooms = self._confirm_rooming()
+        """يصدّر كشف التسكين إلى PDF — بعد اختيار الفندق ونوع الغرفة."""
+        records = self._rooming_scope()
+        if records is None:
+            return
+        rooms = self._confirm_rooming(records)
         if rooms is None:
             return
         path = filedialog.asksaveasfilename(
@@ -2253,15 +2281,17 @@ class HajjApp:
         if not path:
             return
         self._do_rooming_export(
-            lambda p: export_pdf(self.records, p,
-                                 title=self._report_title("كشف التسكين"),
+            lambda p: export_pdf(records, p, title=self._rooming_title(),
                                  group_by_room=True),
             path, rooms,
         )
 
     def do_rooming_excel(self) -> None:
-        """يصدّر كشف التسكين إلى إكسل — بنفس أعمدة الطباعة، مجموعاً بالغرف."""
-        rooms = self._confirm_rooming()
+        """يصدّر كشف التسكين إلى إكسل — بعد اختيار الفندق ونوع الغرفة."""
+        records = self._rooming_scope()
+        if records is None:
+            return
+        rooms = self._confirm_rooming(records)
         if rooms is None:
             return
         path = filedialog.asksaveasfilename(
@@ -2273,8 +2303,7 @@ class HajjApp:
             return
         from .excel_io import export_grouped_excel
         self._do_rooming_export(
-            lambda p: export_grouped_excel(self.records, p,
-                                           title=self._report_title("كشف التسكين")),
+            lambda p: export_grouped_excel(records, p, title=self._rooming_title()),
             path, rooms,
         )
 
@@ -4063,6 +4092,76 @@ class BulkDocsDialog(Toplevel):
 
     def _ok(self) -> None:
         self.kind = self._choice.get()
+        self.destroy()
+
+
+class RoomingScopeDialog(Toplevel):
+    """اختيار الفندق ونوع الغرفة قبل عرض/طباعة كشف التسكين.
+
+    يضبط ``self.result`` = (الفندق أو None، فئة الغرفة أو None)، أو يبقيه
+    None عند الإلغاء.
+    """
+
+    _ALL = "الكل"
+
+    def __init__(self, parent, records) -> None:
+        super().__init__(parent)
+        self.result = None
+        self.title("نطاق كشف التسكين")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .rooming import ROOM_CATEGORIES, room_category
+        hotels = sorted({str(r.hotel or "").strip() for r in records
+                         if str(r.hotel or "").strip()})
+        cats = [c for c in ROOM_CATEGORIES
+                if any(room_category(r.room_type) == c for r in records)]
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text="اختر نطاق كشف التسكين:",
+                  font=("Segoe UI Semibold", 11), foreground=TEXT,
+                  background=BG).grid(row=0, column=0, columnspan=2, sticky="e",
+                                      pady=(0, 12))
+
+        self.v_hotel = StringVar(value=self._ALL)
+        self.v_cat = StringVar(value=self._ALL)
+        ttk.Label(outer, text="الفندق:", foreground=TEXT, background=BG).grid(
+            row=1, column=1, sticky="e", padx=(10, 0), pady=5)
+        ttk.Combobox(outer, textvariable=self.v_hotel, state="readonly",
+                     width=24, values=[self._ALL, *hotels]).grid(
+            row=1, column=0, sticky="ew", pady=5)
+        ttk.Label(outer, text="نوع الغرفة:", foreground=TEXT, background=BG).grid(
+            row=2, column=1, sticky="e", padx=(10, 0), pady=5)
+        ttk.Combobox(outer, textvariable=self.v_cat, state="readonly",
+                     width=24, values=[self._ALL, *cats]).grid(
+            row=2, column=0, sticky="ew", pady=5)
+
+        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9),
+                  text="«الكل» يشمل جميع الفنادق/الأنواع.").grid(
+            row=3, column=0, columnspan=2, sticky="e", pady=(6, 12))
+
+        btns = ttk.Frame(outer)
+        btns.grid(row=4, column=0, columnspan=2, sticky="e")
+        ttk.Button(btns, text="عرض / طباعة", style="Act.TButton",
+                   command=self._ok).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إلغاء", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.bind("<Return>", lambda _e: self._ok())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _ok(self) -> None:
+        h = self.v_hotel.get()
+        c = self.v_cat.get()
+        self.result = (None if h == self._ALL else h,
+                       None if c == self._ALL else c)
         self.destroy()
 
 
