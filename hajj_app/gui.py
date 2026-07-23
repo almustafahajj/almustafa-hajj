@@ -543,6 +543,7 @@ class HajjApp:
 
     # الحقول القابلة للفلترة بقائمة منسدلة (تُملأ قيمها من البيانات)
     _FILTER_FIELDS = (
+        ("group", "المجموعة"),
         ("hotel", "الفندق"),
         ("room_type", "نوع الغرفة"),
         ("nationality_ar", "الجنسية"),
@@ -2818,6 +2819,7 @@ class BulkEditDialog(Toplevel):
     """تعديل جماعي: يضبط حقولاً مختارة لكل السجلات المحدّدة دفعةً واحدة."""
 
     _FIELDS = (
+        ("group", "المجموعة"),
         ("hotel", "الفندق"),
         ("room_type", "نوع الغرفة"),
         ("airline", "الطيران"),
@@ -4445,7 +4447,7 @@ class EditDialog(Toplevel):
     # التبويبات ومحتواها. الحقول غير المذكورة تُضاف إلى "أخرى".
     TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("بيانات الحاج", ("family_number", "reference_number", "full_name_ar",
-                          "full_name_en", "phone", "program")),
+                          "full_name_en", "phone", "program", "group")),
         ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
                     "expiry_date")),
         ("السفر", ("airline", "flight_number", "travel_class", "pnr",

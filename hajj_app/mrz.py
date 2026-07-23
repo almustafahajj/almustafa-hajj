@@ -68,8 +68,9 @@ class PassportData:
     full_name_ar: str = ""
     phone: str = ""
 
-    # ---- برنامج الحملة ----
+    # ---- برنامج الحملة والمجموعة ----
     program: str = ""
+    group: str = ""
 
     # ---- الإقامة والخدمات ----
     hotel: str = ""

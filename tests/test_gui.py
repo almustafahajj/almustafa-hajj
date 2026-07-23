@@ -60,7 +60,7 @@ print("count label:", app.count_label.cget("text"))
 # exercise the edit dialog end-to-end
 saved = {}
 dlg = EditDialog(root, app.records[1], on_save=lambda r: saved.update({"r": r}))
-assert len(dlg.vars) == 30, f"editable fields in dialog: {len(dlg.vars)}"
+assert len(dlg.vars) == 31, f"editable fields in dialog: {len(dlg.vars)}"
 dlg.vars["full_name_ar"].set("فاطمة خان")
 dlg.vars["birth_date"].set("1992-03-15")
 dlg.vars["arrival_time"].set("2:30 PM")          # must normalize on save
@@ -253,6 +253,15 @@ assert app.records[0].hotel == "الصفوة" and app.records[0].airline == "ا�
 assert app.records[2].hotel == "الصفوة"
 assert app.records[1].hotel == "", "السجل غير المحدّد تغيّر خطأً"
 print("  OK: التعديل الجماعي يطبّق الحقول على المحدّدين فقط")
+
+# ---- المجموعات: تجميع جماعي + توزيع ----
+app._apply_bulk([0, 1], {"group": "مجموعة أ"})
+assert app.records[0].group == "مجموعة أ" and app.records[1].group == "مجموعة أ"
+assert app.records[2].group == ""
+from hajj_app.stats import distribution
+gd = {b.label: b.count for b in distribution(app.records, "group")}
+assert gd.get("مجموعة أ") == 2, gd
+print("  OK: التجميع في مجموعة + التوزيع حسب المجموعة")
 
 # ---- التراجع (Undo) ----
 app._push_undo("لقطة")

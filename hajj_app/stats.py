@@ -39,6 +39,7 @@ GROUPINGS: tuple[tuple[str, str], ...] = (
     ("airline", "الطيران"),
     ("room_type", "نوع الغرفة"),
     ("program", "برنامج الحملة"),
+    ("group", "المجموعة"),
 )
 
 
