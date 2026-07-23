@@ -114,6 +114,11 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
         d.line([cx, m, cx, P - m], fill=c, width=max(2, lw - 1))
     elif name == "plane":                 # طائرة
         d.polygon([(m, cy), (P - m, P * 0.4), (P - m, P * 0.6)], outline=c, width=lw)
+    elif name == "chart":                 # أعمدة بيانية (المالية/الإحصاء)
+        d.line([m, P - m, P - m, P - m], fill=c, width=lw)
+        for xx, hh in ((0.28, 0.50), (0.5, 0.34), (0.72, 0.20)):
+            d.rectangle([P * xx - P * 0.06, P * hh, P * xx + P * 0.06, P - m],
+                        outline=c, width=lw)
     elif name == "id":                    # بطاقة
         _rr(d, [m, P * 0.28, P - m, P * 0.72], P * 0.06, outline=c, width=lw)
         d.ellipse([P * 0.2, P * 0.4, P * 0.36, P * 0.56], outline=c, width=lw)

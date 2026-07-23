@@ -486,27 +486,27 @@ class HajjApp:
         self._menus: list = []
         WHITE, INK, RED = "#FFFFFF", TEXT, "#FFFFFF"
 
-        # قائمة «إضافة ▾» (مبرزة) — يدوي / جوازات / استيراد
-        add_mb = self._menubutton(bar, "إضافة  ▾", [
-            ("➕  حاج يدوياً", self.add_manual),
-            ("📷  جوازات (صور / PDF)", self.add_images),
+        # ---- قوائم مصنّفة (تقسيم البرنامج إلى قوائم) ----
+        # 👥 الحجّاج: الإدخال والتعديل والحذف وفحص الجاهزية
+        pilgrims_mb = self._menubutton(bar, "الحجّاج  ▾", [
+            ("➕  إضافة حاج يدوياً", self.add_manual),
+            ("📷  إضافة جوازات (صور / PDF)", self.add_images),
             ("📁  استيراد من إكسل", self.import_from_excel),
-        ], icon=("add", WHITE))
-        add_mb.pack(side=RIGHT, padx=(0, 4))
-
-        # أزرار مباشرة: تعديل (ثانوي) وحذف (خطر)
-        self._icon_button(bar, "تعديل", self.edit_selected, "Ghost.TButton",
-                          ("edit", INK)).pack(side=RIGHT, padx=3)
-        self._icon_button(bar, "حذف", self.delete_selected, "Danger.TButton",
-                          ("trash", RED)).pack(side=RIGHT, padx=3)
-
-        # قائمة «التقارير ▾» (مبرزة)
-        rep_mb = self._menubutton(bar, "التقارير والكشوفات  ▾", [
-            ("🩺  فحص جاهزية الكشف", self.do_quality_check),
-            ("📊  إحصاءات وملخّص مالي", self.do_stats),
             None,
+            ("✏️  تعديل السجل", self.edit_selected),
+            ("✏️  تعديل جماعي للمحدّدين", self.bulk_edit_selected),
+            ("🗑  حذف المحدد", self.delete_selected),
+            None,
+            ("🩺  فحص جاهزية الكشف", self.do_quality_check),
+            ("🧹  مسح الكل", self.clear_all),
+        ], icon=("id", WHITE))
+        pilgrims_mb.pack(side=RIGHT, padx=(0, 4))
+
+        # 📋 الكشوفات والتقارير: التصدير والكشوفات والطباعة
+        rep_mb = self._menubutton(bar, "الكشوفات والتقارير  ▾", [
             ("📊  تصدير إكسل", self.do_export_excel),
             ("📄  تصدير PDF", self.do_export_pdf),
+            ("🖨  طباعة المعروض", self.do_print_filtered),
             None,
             ("✈  كشف الطيران وأماديوس", self.do_airline),
             ("🚌  كشف المواصلات", self.do_transport),
@@ -519,16 +519,26 @@ class HajjApp:
         ], icon=("report", WHITE))
         rep_mb.pack(side=RIGHT, padx=(4, 3))
 
-        # قائمة «الحماية ▾»: نسخ احتياطية مؤرّخة واستعادة
-        prot_mb = self._menubutton(bar, "الحماية  ▾", [
+        # 💰 المالية: الإحصاءات والملخّص المالي
+        fin_mb = self._menubutton(bar, "المالية  ▾", [
+            ("📊  إحصاءات وملخّص مالي", self.do_stats),
+            ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
+        ], style="Ghost.TMenubutton", icon=("chart", INK))
+        fin_mb.pack(side=RIGHT, padx=3)
+
+        # 🛡 الحماية والنظام: النسخ الاحتياطية والحساب
+        prot_items = [
             ("🛡  نسخة احتياطية الآن", self.do_backup_now),
             ("↩  استعادة نسخة احتياطية", self.do_restore),
-        ], style="Ghost.TMenubutton", icon=("shield", INK))
+        ]
+        if self.session is not None:
+            prot_items += [None,
+                           ("🔑  تغيير كلمة المرور", self.change_password),
+                           ("🗝  مفتاح استرداد جديد", self.new_recovery_key)]
+        prot_mb = self._menubutton(bar, "الحماية  ▾", prot_items,
+                                   style="Ghost.TMenubutton", icon=("shield", INK))
         prot_mb.pack(side=RIGHT, padx=3)
 
-        # مسح الكل (خطر) أقصى اليسار بعد شريط التقدّم
-        self._icon_button(bar, "مسح الكل", self.clear_all, "Danger.TButton",
-                          ("clear", RED)).pack(side=LEFT, padx=(6, 0))
         self.progress = ttk.Progressbar(bar, mode="determinate", length=180)
         self.progress.pack(side=LEFT, padx=8)
 
@@ -1607,6 +1617,29 @@ class HajjApp:
         if not self._require_records():
             return
         StatsDialog(self.root, list(self.records), season=self.season_year.get())
+
+    def do_stats_pdf(self) -> None:
+        """يصدّر تقرير الإحصاءات والملخّص المالي إلى PDF مباشرةً."""
+        if not self._require_records():
+            return
+        path = filedialog.asksaveasfilename(
+            title="حفظ الإحصاءات والملخّص المالي", defaultextension=".pdf",
+            initialfile=f"إحصاءات_ومالية_{date.today().isoformat()}.pdf",
+            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
+        if not path:
+            return
+        from .pdf_io import export_stats_pdf
+        try:
+            export_stats_pdf(list(self.records), path, season=self.season_year.get())
+        except PermissionError:
+            messagebox.showerror("الملف مفتوح",
+                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
+            return
+        except Exception as exc:
+            messagebox.showerror("خطأ في التصدير", str(exc))
+            return
+        self.set_status("تم تصدير الإحصاءات والملخّص المالي PDF", ok=True)
+        self._offer_open(path)
 
     def do_backup_now(self) -> None:
         """يُنشئ نسخة احتياطية مؤرّخة (لقطة) للكشف الحالي."""
