@@ -1065,7 +1065,7 @@ class HajjApp:
         self._row_menu.add_command(label="نسخ رقم الجواز",
                                    command=lambda: self._copy_field("passport_number"))
         self._row_menu.add_separator()
-        self._row_menu.add_command(label="🧾  إيصال دفع (PDF)",
+        self._row_menu.add_command(label="🧾  سند قبض (معاينة)",
                                    command=self._receipt_selected)
         self.tree.bind("<Button-3>", self._show_row_menu)
 
@@ -1730,33 +1730,32 @@ class HajjApp:
                 setattr(rec, key, value)
         return len(indices)
 
+    def _receipt_number(self, rec) -> str:
+        """رقم سند ثابت لكل حاج، يُرقَّم تسلسلياً من عدّاد محفوظ (يبدأ 0119)."""
+        key = (str(rec.passport_number or "").strip().upper()
+               or (rec.full_name_ar or rec.full_name_en or "").strip())
+        issued = self._settings.setdefault("receipts", {})
+        if key and key in issued:
+            return f"{int(issued[key]):04d}"
+        nxt = int(self._settings.get("receipt_next", 119))
+        if key:
+            issued[key] = nxt
+        self._settings["receipt_next"] = nxt + 1
+        try:
+            save_settings(self._settings)
+        except Exception:
+            pass
+        return f"{nxt:04d}"
+
     def _receipt_selected(self) -> None:
-        """يُصدّر إيصال دفع PDF للحاج المحدّد (من قائمة يمين الفأرة)."""
+        """يفتح نافذة سند القبض للحاج المحدّد — **معاينة فقط** بلا حفظ مباشر."""
         idxs = self._selected_indices()
         if not idxs:
             messagebox.showinfo("لم يتم التحديد", "اختر حاجاً من الجدول أولاً.")
             return
         rec = self.records[idxs[0]]
-        name = rec.full_name_ar or rec.full_name_en or "حاج"
-        safe = re.sub(r'[\\/:*?"<>|]+', "-", name).strip() or "حاج"
-        path = filedialog.asksaveasfilename(
-            title="حفظ إيصال الدفع", defaultextension=".pdf",
-            initialfile=f"إيصال - {safe}.pdf",
-            filetypes=(("ملف PDF", "*.pdf"), ("كل الملفات", "*.*")))
-        if not path:
-            return
-        from .pdf_io import export_receipt_pdf
-        try:
-            export_receipt_pdf(rec, path, season=self.season_year.get())
-        except PermissionError:
-            messagebox.showerror("الملف مفتوح",
-                                 "الملف مفتوح في برنامج آخر. أغلقه ثم أعد المحاولة.")
-            return
-        except Exception as exc:
-            messagebox.showerror("خطأ في الإيصال", str(exc))
-            return
-        self.set_status(f"حُفظ إيصال دفع: {name}", ok=True)
-        self._offer_open(path)
+        ReceiptDialog(self.root, rec, number=self._receipt_number(rec),
+                      season=self.season_year.get())
 
     def _focus_record(self, index: int) -> None:
         """يحدّد سجلاً في الجدول الرئيسي ويُظهره (من نافذة الفحص)."""
@@ -3058,6 +3057,118 @@ class ImageKindDialog(Toplevel):
     def _ok(self) -> None:
         self.kinds = self._map[self._choice.get()]
         self.destroy()
+
+
+class ReceiptDialog(Toplevel):
+    """سند قبض (Receipt Voucher) — تعبئة الحقول ثم **معاينة فقط** بلا حفظ مباشر.
+
+    تُبنى الحقول تلقائياً من بيانات الحاج (الاسم/المبلغ/البيان)، ويمكن تعديلها،
+    ثم يُفتح ملف PDF مؤقّت في العارض الافتراضي؛ للمستخدم أن يطبع أو يحفظ من هناك.
+    """
+
+    def __init__(self, parent, rec, *, number: str = "0001",
+                 season: str = "") -> None:
+        super().__init__(parent)
+        self.rec = rec
+        self.season = season
+        self.title("سند قبض — معاينة")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        from .fields import num_to_words_en, parse_amount
+        from .pdf_io import build_receipt_description
+
+        amount = parse_amount(rec.paid_amount)
+        if amount is None:
+            amount = parse_amount(rec.program_value) or 0.0
+
+        outer = ttk.Frame(self, padding=18)
+        outer.pack(fill=BOTH, expand=True)
+        outer.columnconfigure(0, weight=1)
+        name = rec.full_name_ar or rec.full_name_en or "—"
+        ttk.Label(outer, text=f"🧾  سند قبض — {name}",
+                  font=("Segoe UI Semibold", 12), foreground=TEXT).grid(
+            row=0, column=0, columnspan=2, sticky="e", pady=(0, 12))
+
+        self.v_number = StringVar(value=str(number))
+        self.v_date = StringVar(value=date.today().strftime("%B %d, %Y"))
+        self.v_amount = StringVar(value=f"{amount:,.2f}")
+        self.v_words = StringVar(value=num_to_words_en(amount))
+        self.v_bank = StringVar(value="Bank Transfer")
+
+        def row(r, label, var, width=36):
+            ttk.Label(outer, text=label, foreground=TEXT).grid(
+                row=r, column=1, sticky="e", padx=(10, 0), pady=4)
+            e = ttk.Entry(outer, textvariable=var, width=width, justify="right")
+            e.grid(row=r, column=0, sticky="ew", pady=4)
+            return e
+
+        row(1, "رقم السند:", self.v_number)
+        row(2, "التاريخ:", self.v_date)
+        amount_entry = row(3, "المبلغ (AED):", self.v_amount)
+        row(4, "المبلغ كتابةً (إنجليزي):", self.v_words)
+        row(5, "طريقة الدفع / البنك:", self.v_bank)
+
+        # «المبلغ كتابةً» يتحدّث تلقائياً عند تغيير المبلغ (ويبقى قابلاً للتعديل)
+        def _sync_words(_e=None):
+            a = parse_amount(self.v_amount.get())
+            if a is not None:
+                self.v_words.set(num_to_words_en(a))
+        amount_entry.bind("<FocusOut>", _sync_words)
+        amount_entry.bind("<Return>", _sync_words)
+
+        ttk.Label(outer, text="البيان «وذلك عن»:", foreground=TEXT).grid(
+            row=6, column=1, sticky="ne", padx=(10, 0), pady=(8, 4))
+        self.txt = tk.Text(outer, width=54, height=4, wrap="word",
+                           font=("Segoe UI", 10))
+        self.txt.grid(row=6, column=0, sticky="ew", pady=(8, 4))
+        self.txt.insert("1.0", build_receipt_description(
+            rec, season=season, amount=amount))
+
+        ttk.Label(outer, foreground=MUTED,
+                  text="معاينة فقط — يفتح في العارض؛ احفظ أو اطبع من هناك.").grid(
+            row=7, column=0, columnspan=2, sticky="e", pady=(4, 10))
+
+        btns = ttk.Frame(outer)
+        btns.grid(row=8, column=0, columnspan=2, sticky="e")
+        ttk.Button(btns, text="👁  معاينة", style="Act.TButton",
+                   command=self._preview).pack(side=RIGHT, padx=4)
+        ttk.Button(btns, text="إغلاق", style="Act.TButton",
+                   command=self.destroy).pack(side=RIGHT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _preview(self) -> None:
+        import os
+        import tempfile
+        from .fields import parse_amount
+        from .pdf_io import export_receipt_pdf
+
+        amount = parse_amount(self.v_amount.get()) or 0.0
+        number = self.v_number.get().strip() or "0001"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", number) or "0001"
+        path = Path(tempfile.gettempdir()) / f"receipt_{safe}.pdf"
+        try:
+            export_receipt_pdf(
+                self.rec, path, season=self.season, number=number,
+                date_str=self.v_date.get().strip(), amount=amount,
+                amount_words=self.v_words.get().strip(),
+                description=self.txt.get("1.0", "end").strip(),
+                bank=self.v_bank.get().strip() or "Bank Transfer",
+            )
+        except Exception as exc:
+            messagebox.showerror("خطأ في السند", str(exc), parent=self)
+            return
+        try:
+            os.startfile(str(path))            # يفتح في العارض الافتراضي للمعاينة
+        except Exception as exc:
+            messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 
 
 class EditDialog(Toplevel):

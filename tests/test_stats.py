@@ -66,19 +66,37 @@ assert empty.count == 0 and empty.total == 0 and empty.collected_percent == 0.0
 assert distribution([], "hotel") == [] and outstanding([]) == []
 print("  OK: الكشف الفارغ آمن")
 
-print("\n=== إيصال دفع PDF ===")
-from hajj_app.pdf_io import export_receipt_pdf
+print("\n=== المبلغ كتابةً (إنجليزي) ===")
+from hajj_app.fields import num_to_words_en
+assert num_to_words_en(460000) == "four hundred sixty thousand", num_to_words_en(460000)
+assert num_to_words_en(0) == "zero"
+assert num_to_words_en(12000) == "twelve thousand", num_to_words_en(12000)
+assert num_to_words_en(1001) == "one thousand one", num_to_words_en(1001)
+assert num_to_words_en("") == ""
+print(f"  OK: 460000 -> {num_to_words_en(460000)}")
+
+print("\n=== سند قبض PDF (Receipt Voucher) ===")
+from hajj_app.pdf_io import export_receipt_pdf, build_receipt_description
 _OUTDIR = _os.path.join(_HERE, "_out")
 _os.makedirs(_OUTDIR, exist_ok=True)
 r = rec(full_name_ar="عبدالله الشامسي", passport_number="A1234567",
-        nationality_ar="الإمارات", phone="0501112233", hotel="الصفوة",
-        family_number="101", program_value="20000", paid_amount="12000")
+        nationality_ar="الإمارات", phone="0501112233", hotel="كونراد مكة",
+        room_type="ثنائية", family_number="101",
+        program_value="460000", paid_amount="460000")
+# البيان الافتراضي يُبنى من بيانات الحاج
+desc = build_receipt_description(r, season="1447", amount=460000)
+assert "كونراد" in desc and "غير مستردة" in desc, desc
 pdf = _os.path.join(_OUTDIR, "receipt.pdf")
-export_receipt_pdf(r, pdf, season="1447")
+export_receipt_pdf(r, pdf, season="1447", number="0119")
 assert _os.path.getsize(pdf) > 3000
 with open(pdf, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
-print(f"  OK: إيصال PDF ({_os.path.getsize(pdf)} بايت)")
+# تجاوز الحقول يدوياً (كما تفعل نافذة المعاينة)
+export_receipt_pdf(r, _os.path.join(_OUTDIR, "receipt2.pdf"), number="0120",
+                   date_str="May 1, 2026", amount=460000,
+                   amount_words="four hundred sixty thousand",
+                   description="وذلك عن: برنامج الحج", bank="Bank Transfer")
+print(f"  OK: سند PDF ({_os.path.getsize(pdf)} بايت)")
 
 print("\n=== تصدير الإحصاءات والملخّص المالي PDF ===")
 from hajj_app.pdf_io import export_stats_pdf

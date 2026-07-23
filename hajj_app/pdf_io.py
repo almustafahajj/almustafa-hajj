@@ -811,98 +811,234 @@ def export_stats_pdf(records: list, path: str | Path, *,
     return path
 
 
+def build_receipt_description(rec, *, season: str = "", amount: float = 0.0) -> str:
+    """نصّ افتراضي لخانة «وذلك عن» في الإيصال، يُبنى من بيانات الحاج."""
+    from .fields import format_amount
+    head = "وذلك عن: برنامج الحج"
+    if season:
+        head += f" موسم {season}هـ"
+    parts = [head]
+    if rec.hotel:
+        hp = f"الإقامة في {rec.hotel}"
+        if rec.room_type:
+            hp += f" في غرفة {rec.room_type}"
+        parts.append(hp)
+    if amount:
+        parts.append(f"والبالغ قيمته: {format_amount(amount)}")
+    parts.append("وتم دفع المبلغ، والدفعات غير مستردة لاستخدامها في دفع الحجوزات.")
+    return "، ".join(parts)
+
+
 def export_receipt_pdf(rec, path: str | Path, *,
                        company: str = "المصطفى للحج والعمرة",
-                       season: str = "") -> Path:
-    """يبني إيصال دفع لحاج واحد (صفحة A4 عمودية) بشعار الحملة."""
-    from .fields import compute_remaining, format_amount, parse_amount
+                       company_en: str = "Al Mustafa Hajj & Umrah",
+                       season: str = "", number: str = "",
+                       date_str: str = "", amount=None,
+                       amount_words: str = "", description: str = "",
+                       bank: str = "Bank Transfer") -> Path:
+    """يبني **سند قبض (Receipt Voucher)** ثنائي اللغة لحاج واحد على صفحة A4
+    عرضية، بنفس تخطيط النموذج الرسمي: ترويسة بالشعار، رقم السند، المستلَم منه،
+    التاريخ، المبلغ رقماً وكتابةً، بيان «وذلك عن»، الإجمالي، والتواقيع."""
+    from reportlab.pdfgen import canvas as _canvas
+    from .fields import num_to_words_en, parse_amount
 
     _register_fonts()
     path = Path(path)
-    st = _styles()
 
-    doc = SimpleDocTemplate(
-        str(path), pagesize=A4,
-        rightMargin=16 * mm, leftMargin=16 * mm,
-        topMargin=16 * mm, bottomMargin=18 * mm,
-        title="إيصال دفع", author="برنامج الحج",
-    )
     name = rec.full_name_ar or rec.full_name_en or "—"
-    total = parse_amount(rec.program_value)
-    paid = parse_amount(rec.paid_amount)
-    remaining = compute_remaining(rec)
+    if amount is None:
+        amount = parse_amount(rec.paid_amount)
+        if amount is None:
+            amount = parse_amount(rec.program_value)
+    amount = float(amount or 0.0)
+    if not amount_words:
+        amount_words = num_to_words_en(amount)
+    number = str(number or "0001")
+    if not date_str:
+        date_str = date.today().strftime("%B %d, %Y")
+    if not description:
+        description = build_receipt_description(rec, season=season, amount=amount)
+    amount_disp = f"AED {amount:,.2f}"
+    total_disp = f"{amount:,.2f}"
 
-    story: list = []
-    logo = _logo_flowable(max_width_pt=150)
-    if logo is not None:
-        story.append(logo)
-        story.append(Spacer(1, 4))
-    story.append(Paragraph(ar("إيصال دفع"), st["title"]))
-    sub = company + (f"  •  موسم {ltr(season)}هـ" if season else "")
-    sub += f"  •  {ltr(date.today().isoformat())}"
-    story.append(Paragraph(ar(sub), st["subtitle"]))
+    W, H = landscape(A4)
+    c = _canvas.Canvas(str(path), pagesize=landscape(A4), pageCompression=1)
+    c.setTitle("سند قبض")
+    c.setAuthor("برنامج الحج")
 
-    lbl = ParagraphStyle("rlbl", parent=st["cell"], fontName=_FONT_BOLD,
-                         textColor=_ACCENT, alignment=2, fontSize=9.5)
-    val = ParagraphStyle("rval", parent=st["cell"], alignment=2, fontSize=9.5)
-    head = ParagraphStyle("rhead", parent=st["cell"], fontName=_FONT_BOLD,
-                          textColor=colors.white, alignment=2, fontSize=9.5)
+    AF, AFB = _FONT, _FONT_BOLD
+    EF, EFB = "Helvetica", "Helvetica-Bold"
+    ink = _INK
 
-    def section(title_text, rows, big_last=False):
-        data = [[Paragraph(ar(title_text), head), ""]]
-        for i, (k, v) in enumerate(rows):
-            vstyle = val
-            if big_last and i == len(rows) - 1:
-                vstyle = ParagraphStyle("rbig", parent=val, fontName=_FONT_BOLD,
-                                        textColor=_ACCENT, fontSize=11)
-            data.append([Paragraph(ar(str(v) or "—"), vstyle),
-                         Paragraph(ar(k), lbl)])
-        t = Table(data, colWidths=[doc.width * 0.6, doc.width * 0.4])
-        style = [
-            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("SPAN", (0, 0), (1, 0)),
-            ("BACKGROUND", (0, 0), (1, 0), _ACCENT),
-        ]
-        for r in range(1, len(data)):
-            style.append(("BACKGROUND", (1, r), (1, r), _ALT_ROW))
-        t.setStyle(TableStyle(style))
-        return t
+    mx, my = 24, 26
+    x0, x1 = mx, W - mx
+    yt = H - my
+    bw = x1 - x0
 
-    story.append(section("بيانات الحاج", [
-        ("الاسم", name),
-        ("رقم الجواز", rec.passport_number),
-        ("الجنسية", rec.nationality_ar),
-        ("الهاتف", rec.phone),
-        ("الفندق", rec.hotel),
-        ("رقم العائلة", rec.family_number),
-    ]))
-    story.append(Spacer(1, 10))
-    story.append(section("التفاصيل المالية", [
-        ("قيمة البرنامج", format_amount(total) if total is not None else rec.program_value),
-        ("المبلغ المدفوع", format_amount(paid) if paid is not None else rec.paid_amount),
-        ("المبلغ المتبقّي", remaining or "—"),
-    ], big_last=True))
+    def hline(yv):
+        c.setLineWidth(0.9); c.setStrokeColor(ink); c.line(x0, yv, x1, yv)
 
-    story.append(Spacer(1, 26))
-    sign = ParagraphStyle("sign", parent=st["cell"], alignment=1, fontSize=10)
-    sign_row = Table([[Paragraph(ar("توقيع المستلم"), sign),
-                       Paragraph(ar("توقيع المحاسب"), sign)]],
-                     colWidths=[doc.width / 2, doc.width / 2])
-    sign_row.setStyle(TableStyle([
-        ("LINEABOVE", (0, 0), (0, 0), 0.6, _GRID),
-        ("LINEABOVE", (1, 0), (1, 0), 0.6, _GRID),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-    ]))
-    story.append(sign_row)
+    def vline(xv, ya, yc):
+        c.setLineWidth(0.9); c.setStrokeColor(ink); c.line(xv, ya, xv, yc)
 
-    doc.build(
-        story,
-        onFirstPage=lambda c, d: _footer_portrait(c, d, "إيصال دفع"),
-        onLaterPages=lambda c, d: _footer_portrait(c, d, "إيصال دفع"),
-    )
+    # ارتفاعات الأقسام؛ الفراغ الأوسط يتمدّد ليملأ الصفحة تماماً
+    h_head, h_title, h_rf, h_sum = 82, 46, 40, 40
+    h_desc, h_total, h_chq, h_sig = 104, 30, 26, 66
+    fixed = h_head + h_title + h_rf + h_sum + h_desc + h_total + h_chq + h_sig
+    yb = my
+    h_gap = (yt - yb) - fixed
+
+    # الإطار الخارجي
+    c.setLineWidth(1.2); c.setStrokeColor(ink)
+    c.rect(x0, yb, bw, yt - yb, stroke=1, fill=0)
+
+    logo_reader = None
+    if _LOGO_PATH.is_file():
+        try:
+            logo_reader = ImageReader(str(_LOGO_PATH))
+        except Exception:
+            logo_reader = None
+
+    # ----- الترويسة: الشعار | اسم الشركة بالإنجليزية -----
+    y = yt
+    yb_head = y - h_head
+    logo_cell = 152
+    if logo_reader is not None:
+        iw, ih = logo_reader.getSize()
+        lh = h_head - 20
+        lw = lh * iw / ih
+        if lw > logo_cell - 16:
+            lw = logo_cell - 16; lh = lw * ih / iw
+        c.drawImage(logo_reader, x0 + (logo_cell - lw) / 2,
+                    yb_head + (h_head - lh) / 2, lw, lh,
+                    preserveAspectRatio=True, mask="auto")
+    vline(x0 + logo_cell, yb_head, y)
+    c.setFillColor(ink); c.setFont(EFB, 27)
+    c.drawCentredString((x0 + logo_cell + x1) / 2, yb_head + h_head / 2 - 9,
+                        company_en)
+    hline(yb_head)
+
+    # ----- سطر العنوان: Receipt Voucher | No. -----
+    y = yb_head
+    yb_title = y - h_title
+    no_div = x1 - bw * 0.24
+    vline(no_div, yb_title, y)
+    c.setFont(EFB, 20)
+    c.drawCentredString((x0 + no_div) / 2, yb_title + h_title / 2 - 7,
+                        "Receipt Voucher")
+    c.setFont(EFB, 17)
+    c.drawCentredString((no_div + x1) / 2, yb_title + h_title / 2 - 6,
+                        f"No. {number}")
+    hline(yb_title)
+
+    # ----- الفراغ الأوسط -----
+    y = yb_title
+    yb_gap = y - h_gap
+    hline(yb_gap)
+
+    # حقل «تسمية: قيمة» فوق خطّ سفلي
+    def field_line(lx, rx, label_en, value, *, value_ar, baseline):
+        c.setFillColor(ink); c.setFont(EFB, 11)
+        c.drawString(lx, baseline, label_en)
+        us = lx + pdfmetrics.stringWidth(label_en, EFB, 11) + 8
+        c.setLineWidth(0.8); c.setStrokeColor(ink)
+        c.line(us, baseline - 3, rx, baseline - 3)
+        if value:
+            if value_ar:
+                c.setFont(AFB, 12)
+                c.drawCentredString((us + rx) / 2, baseline + 1, ar(value))
+            else:
+                c.setFont(EF, 11)
+                c.drawString(us + 6, baseline + 1, str(value))
+
+    xmid = x0 + bw * 0.60
+
+    # ----- Received From / Date -----
+    y = yb_gap
+    yb_rf = y - h_rf
+    base = yb_rf + 13
+    field_line(x0 + 10, xmid - 14, "Received From:", name, value_ar=True, baseline=base)
+    field_line(xmid + 12, x1 - 12, "Date:", date_str, value_ar=False, baseline=base)
+    hline(yb_rf)
+
+    # ----- THE SUM OF DHS / AMOUNT -----
+    y = yb_rf
+    yb_sum = y - h_sum
+    base = yb_sum + 13
+    field_line(x0 + 10, xmid - 14, "THE SUM OF DHS:", amount_words,
+               value_ar=False, baseline=base)
+    field_line(xmid + 12, x1 - 12, "AMOUNT:", amount_disp,
+               value_ar=False, baseline=base)
+    hline(yb_sum)
+
+    # ----- البيان «وذلك عن» -----
+    y = yb_sum
+    yb_desc = y - h_desc
+
+    def wrap_ar(text, font, size, maxw):
+        lines, cur = [], ""
+        for w in str(text).split():
+            trial = (cur + " " + w).strip()
+            if not cur or pdfmetrics.stringWidth(ar(trial), font, size) <= maxw:
+                cur = trial
+            else:
+                lines.append(cur); cur = w
+        if cur:
+            lines.append(cur)
+        return lines
+
+    c.setFillColor(ink); c.setFont(AF, 11)
+    ytxt = y - 22
+    for ln in wrap_ar(description, AF, 11, bw - 24):
+        c.drawRightString(x1 - 12, ytxt, ar(ln))
+        ytxt -= 15.5
+    hline(yb_desc)
+
+    # ----- Total -----
+    y = yb_desc
+    yb_total = y - h_total
+    vline(no_div, yb_total, y)
+    c.setFillColor(ink); c.setFont(EFB, 12)
+    c.drawRightString(no_div - 12, yb_total + h_total / 2 - 5, "Total :")
+    c.setFont(EFB, 13)
+    c.drawCentredString((no_div + x1) / 2, yb_total + h_total / 2 - 5, total_disp)
+    hline(yb_total)
+
+    # ----- Chq No / Chq Date / Bank -----
+    y = yb_total
+    yb_chq = y - h_chq
+    segs = [("Chq No", 0.13, EFB), ("-", 0.09, EF), ("Chq Date :", 0.15, EFB),
+            ("-", 0.09, EF), (f"Bank: {bank}", 0.54, EFB)]
+    cx = x0
+    cb = yb_chq + h_chq / 2 - 4
+    for i, (txt, frac, fnt) in enumerate(segs):
+        if i > 0:
+            vline(cx, yb_chq, y)
+        c.setFillColor(ink); c.setFont(fnt, 10)
+        c.drawString(cx + 6, cb, txt)
+        cx += bw * frac
+    hline(yb_chq)
+
+    # ----- التواقيع -----
+    y = yb_chq
+    xmid2 = (x0 + x1) / 2
+    vline(xmid2, yb, y)
+    c.setFillColor(ink); c.setFont(EFB, 11)
+    c.drawString(x0 + 14, y - 22, "Accountant:")
+    c.drawString(x0 + 14, yb + 12, "Signature :")
+    if logo_reader is not None:
+        iw, ih = logo_reader.getSize()
+        sh = 34; sw = sh * iw / ih
+        c.drawImage(logo_reader, x0 + 130, yb + 15, sw, sh,
+                    preserveAspectRatio=True, mask="auto")
+    c.drawString(xmid2 + 14, y - 22, "Receiver Name :")
+    c.setLineWidth(0.8); c.setStrokeColor(ink)
+    c.line(xmid2 + 120, y - 24, x1 - 14, y - 24)
+    c.drawString(xmid2 + 14, yb + 12, "Signature :")
+    c.line(xmid2 + 84, yb + 10, x1 - 14, yb + 10)
+
+    c.showPage()
+    c.save()
     return path
 
 

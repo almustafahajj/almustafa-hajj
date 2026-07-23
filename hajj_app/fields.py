@@ -109,6 +109,55 @@ def format_amount(value: float | None) -> str:
     return f"{value:,.2f}"
 
 
+_ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight",
+         "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+         "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+         "eighty", "ninety"]
+_SCALES = ["", "thousand", "million", "billion", "trillion"]
+
+
+def num_to_words_en(value) -> str:
+    """يحوّل مبلغاً إلى كلمات إنجليزية (لخانة «المبلغ كتابةً» في الإيصال).
+
+    مثال: 460000 → "four hundred sixty thousand".
+    """
+    try:
+        n = int(round(float(value)))
+    except (TypeError, ValueError):
+        return ""
+    if n == 0:
+        return "zero"
+    neg = n < 0
+    n = abs(n)
+
+    def _under_thousand(x: int) -> str:
+        parts = []
+        if x >= 100:
+            parts.append(_ONES[x // 100] + " hundred")
+            x %= 100
+        if x >= 20:
+            parts.append(_TENS[x // 10])
+            if x % 10:
+                parts.append(_ONES[x % 10])
+        elif x > 0:
+            parts.append(_ONES[x])
+        return " ".join(parts)
+
+    chunks, i = [], 0
+    while n > 0:
+        c = n % 1000
+        if c:
+            chunk = _under_thousand(c)
+            if _SCALES[i]:
+                chunk += " " + _SCALES[i]
+            chunks.append(chunk)
+        n //= 1000
+        i += 1
+    words = " ".join(reversed(chunks))
+    return ("minus " + words) if neg else words
+
+
 def normalize_time(text) -> str:
     """يوحّد الوقت إلى صيغة HH:MM.
 
