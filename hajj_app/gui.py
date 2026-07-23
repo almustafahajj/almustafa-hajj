@@ -3102,13 +3102,19 @@ class DashboardDialog(Toplevel):
         self.title("🏠 لوحة التحكم")
         self.configure(bg=BG)
         self.transient(parent)
-        self.geometry("780x560")
         self.resizable(False, False)
 
         self._outer = ttk.Frame(self, padding=18)
         self._outer.pack(fill=BOTH, expand=True)
         self.refresh()
         self.bind("<Escape>", lambda _e: self.destroy())
+
+        # الحجم يتبع المحتوى (يتجنّب قصّ الأزرار) ثم توسيط النافذة
+        self.update_idletasks()
+        self.minsize(760, self.winfo_reqheight())
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = max(20, (self.winfo_screenheight() - self.winfo_height()) // 6)
+        self.geometry(f"+{x}+{y}")
 
     def _card(self, parent, value, label, color, on_click=None):
         card = ttk.Frame(parent, style="Toolbar.TFrame", padding=(16, 12))
