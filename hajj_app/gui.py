@@ -442,14 +442,19 @@ class HajjApp:
         bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 10, 16, 12))
         bar.pack(fill=X)
         self._menus: list = []
-        WHITE, INK, RED = "#FFFFFF", TEXT, "#FFFFFF"
+        # ---- القوائم الرئيسية السبع (مستوحاة من نظام إدارة الحجّ) ----
+        BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
+        GRAY, GREEN = "#6B6459", "#2E7D46"
 
-        # ---- قوائم مصنّفة (تقسيم البرنامج إلى قوائم) ----
-        # 👥 الحجّاج: الإدخال والتعديل والحذف وفحص الجاهزية
-        pilgrims_mb = self._menubutton(bar, "الحجّاج  ▾", [
+        # 📋 البرامج
+        programs_mb = self._menubutton(bar, "البرامج  ▾", [
+            ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
+        ], style="Ghost.TMenubutton", icon=("columns", BRONZE))
+        programs_mb.pack(side=RIGHT, padx=3)
+
+        # 🪪 الحجوزات (سجلّات الحجّاج)
+        book_mb = self._menubutton(bar, "الحجوزات  ▾", [
             ("➕  إضافة حاج يدوياً", self.add_manual),
-            ("📷  إضافة جوازات (صور / PDF)", self.add_images),
-            ("📁  استيراد من إكسل", self.import_from_excel),
             None,
             ("✏️  تعديل السجل", self.edit_selected),
             ("✏️  تعديل جماعي للمحدّدين", self.bulk_edit_selected),
@@ -458,32 +463,20 @@ class HajjApp:
             None,
             ("📱  رسالة واتساب للمحدّدين", self.do_whatsapp),
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
-            None,
-            ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
             ("🧹  مسح الكل", self.clear_all),
-        ], icon=("id", WHITE))
-        pilgrims_mb.pack(side=RIGHT, padx=(0, 4))
+        ], style="Ghost.TMenubutton", icon=("id", BLUE))
+        book_mb.pack(side=RIGHT, padx=3)
 
-        # 📋 الكشوفات والتقارير: التصدير والكشوفات والطباعة
-        rep_mb = self._menubutton(bar, "الكشوفات والتقارير  ▾", [
-            ("📊  تصدير إكسل", self.do_export_excel),
-            ("📄  تصدير PDF", self.do_export_pdf),
-            ("🖨  طباعة المعروض", self.do_print_filtered),
-            None,
-            ("✈  كشف الطيران وأماديوس", self.do_airline),
-            ("🚌  كشف المواصلات", self.do_transport),
+        # 🏨 إدارة التسكين
+        housing_mb = self._menubutton(bar, "إدارة التسكين  ▾", [
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
             ("⛺  خيام المخيمات", self.do_camps),
-            None,
-            ("🪪  بطاقات الحجّاج", self.do_badges),
-            ("🏷  طباعة الاستيكرات (حقائب/غرف/أظرف)", self.do_stickers),
-            ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
-        ], icon=("report", WHITE))
-        rep_mb.pack(side=RIGHT, padx=(4, 3))
+        ], style="Ghost.TMenubutton", icon=("tent", ORANGE))
+        housing_mb.pack(side=RIGHT, padx=3)
 
-        # 💰 المالية: الإحصاءات والملخّص المالي والمستندات المالية
-        fin_mb = self._menubutton(bar, "المالية  ▾", [
+        # 💰 المالية والمحاسبة
+        fin_mb = self._menubutton(bar, "المالية والمحاسبة  ▾", [
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
             None,
@@ -495,21 +488,43 @@ class HajjApp:
             ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
             None,
             ("🧾  توليد جماعي للمستندات (للمعروضين)", self.do_bulk_docs),
-        ], style="Ghost.TMenubutton", icon=("chart", INK))
+        ], style="Ghost.TMenubutton", icon=("chart", GOLD))
         fin_mb.pack(side=RIGHT, padx=3)
 
-        # 🛡 الحماية والنظام: النسخ الاحتياطية والحساب
-        prot_items = [
+        # 📊 التقارير
+        rep_mb = self._menubutton(bar, "التقارير  ▾", [
+            ("📊  تصدير إكسل", self.do_export_excel),
+            ("📄  تصدير PDF", self.do_export_pdf),
+            ("🖨  طباعة المعروض", self.do_print_filtered),
+            None,
+            ("✈  كشف الطيران وأماديوس", self.do_airline),
+            ("🚌  كشف المواصلات", self.do_transport),
+            None,
+            ("🪪  بطاقات الحجّاج", self.do_badges),
+            ("🏷  طباعة الاستيكرات (حقائب/غرف/أظرف)", self.do_stickers),
+            ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
+        ], style="Ghost.TMenubutton", icon=("report", BLUE))
+        rep_mb.pack(side=RIGHT, padx=3)
+
+        # ⚙ لوحة الإدارة (النسخ الاحتياطية والحساب)
+        admin_items = [
             ("🛡  نسخة احتياطية الآن", self.do_backup_now),
             ("↩  استعادة نسخة احتياطية", self.do_restore),
         ]
         if self.session is not None:
-            prot_items += [None,
-                           ("🔑  تغيير كلمة المرور", self.change_password),
-                           ("🗝  مفتاح استرداد جديد", self.new_recovery_key)]
-        prot_mb = self._menubutton(bar, "الحماية  ▾", prot_items,
-                                   style="Ghost.TMenubutton", icon=("shield", INK))
-        prot_mb.pack(side=RIGHT, padx=3)
+            admin_items += [None,
+                            ("🔑  تغيير كلمة المرور", self.change_password),
+                            ("🗝  مفتاح استرداد جديد", self.new_recovery_key)]
+        admin_mb = self._menubutton(bar, "لوحة الإدارة  ▾", admin_items,
+                                    style="Ghost.TMenubutton", icon=("gear", GRAY))
+        admin_mb.pack(side=RIGHT, padx=3)
+
+        # 📥 استيراد البيانات
+        import_mb = self._menubutton(bar, "استيراد البيانات  ▾", [
+            ("📁  استيراد من إكسل", self.import_from_excel),
+            ("📷  إضافة جوازات (صور / PDF)", self.add_images),
+        ], style="Ghost.TMenubutton", icon=("add", GREEN))
+        import_mb.pack(side=RIGHT, padx=3)
 
         # شريط التقدّم يُنشأ مخفيّاً ويظهر فقط أثناء العمليات الطويلة
         self.progress = ttk.Progressbar(bar, mode="determinate", length=180)

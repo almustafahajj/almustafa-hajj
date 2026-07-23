@@ -101,10 +101,10 @@ def walk(w):
 walk(root)
 print("  toolbar buttons:", labels)
 print("  toolbar menus:", menus)
-# البرنامج مقسّم إلى قوائم مصنّفة: الحجّاج / الكشوفات / المالية / الحماية
-assert any("الحجّاج" in t for t in menus), menus
-assert any("الكشوفات" in t for t in menus), menus
-assert any("المالية" in t for t in menus), menus
+# القوائم الرئيسية السبع (مستوحاة من نظام إدارة الحجّ)
+for name in ("البرامج", "الحجوزات", "إدارة التسكين", "المالية والمحاسبة",
+             "التقارير", "لوحة الإدارة", "استيراد البيانات"):
+    assert any(name in t for t in menus), (name, menus)
 assert callable(app.add_manual) and callable(app.edit_selected)
 assert callable(app.do_stats_pdf)
 assert callable(app._invoice_selected) and callable(app._contract_selected)
