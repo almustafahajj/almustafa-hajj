@@ -547,8 +547,8 @@ class HajjApp:
                                    style="Ghost.TMenubutton", icon=("shield", INK))
         prot_mb.pack(side=RIGHT, padx=3)
 
+        # شريط التقدّم يُنشأ مخفيّاً ويظهر فقط أثناء العمليات الطويلة
         self.progress = ttk.Progressbar(bar, mode="determinate", length=180)
-        self.progress.pack(side=LEFT, padx=8)
 
         self._shadow_strip(self.root)     # ظلّ ناعم يفصل الشريط عمّا تحته
 
@@ -1318,7 +1318,7 @@ class HajjApp:
         if not paths:
             return
 
-        self.progress.configure(maximum=len(paths), value=0)
+        self._progress_show(len(paths))
         self.set_status(f"جارٍ قراءة {len(paths)} ملف…")
         self._disable_toolbar(True)
         self._scan_state = {"failures": [], "notes": [], "added": 0}
@@ -1326,6 +1326,18 @@ class HajjApp:
         # القراءة في خيط منفصل حتى لا تتجمّد الواجهة
         threading.Thread(target=self._scan_worker, args=(list(paths),), daemon=True).start()
         self.root.after(100, self._drain_results, len(paths))
+
+    def _progress_show(self, maximum: int) -> None:
+        """يُظهر شريط التقدّم (يميناً بعد شريط الحالة) ويهيّئه لعملية جديدة."""
+        self.progress.configure(maximum=max(1, maximum), value=0)
+        if not self.progress.winfo_manager():        # ليس مُدرَجاً بعد
+            self.progress.pack(side=LEFT, padx=8)
+        self.progress.update_idletasks()
+
+    def _progress_hide(self) -> None:
+        """يُخفي شريط التقدّم عند انتهاء العملية."""
+        self.progress.configure(value=0)
+        self.progress.pack_forget()
 
     def _scan_worker(self, paths: list[str]) -> None:
         """يقرأ كل ملف (صورة أو PDF) ويرسل النتائج عبر قائمة الانتظار."""
@@ -1399,7 +1411,7 @@ class HajjApp:
             return
 
         self._disable_toolbar(False)
-        self.progress.configure(value=0)
+        self._progress_hide()
 
         failures, notes, added = state["failures"], state["notes"], state["added"]
         if added:
