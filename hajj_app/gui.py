@@ -515,7 +515,7 @@ class HajjApp:
             ("⛺  خيام المخيمات", self.do_camps),
             None,
             ("🪪  بطاقات الحجّاج", self.do_badges),
-            ("🖼  طباعة الصور", self.do_print_images),
+            ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
         ], icon=("report", WHITE))
         rep_mb.pack(side=RIGHT, padx=(4, 3))
 
@@ -1528,18 +1528,43 @@ class HajjApp:
             return
 
         from . import images as imgmod
-        choice = ImageKindDialog(self.root)
+        from .transport import distinct_transports
+        records = self._ordered()
+        transports = distinct_transports(records)
+        executives = sorted({str(r.executive_service or "").strip()
+                             for r in records
+                             if str(r.executive_service or "").strip()})
+        choice = ImageKindDialog(self.root, transports=transports,
+                                 executives=executives)
         self.root.wait_window(choice)
         if choice.kinds is None:            # أُلغِي
             return
         kinds = choice.kinds
+
+        # نطاق الطباعة: كل المعروض / باص محدّد / خدمة تنفيذي (الجيمس) محدّدة
+        scope_kind, scope_val = choice.scope
+        if scope_kind == "transport":
+            selected = [r for r in records
+                        if str(r.transport or "").strip() == scope_val]
+            scope_label = f"باص {scope_val}"
+        elif scope_kind == "executive":
+            selected = [r for r in records
+                        if str(r.executive_service or "").strip() == scope_val]
+            scope_label = f"خدمة {scope_val}"
+        else:
+            selected = records
+            scope_label = ""
+        if not selected:
+            messagebox.showinfo("لا نتائج",
+                                f"لا يوجد حاج ضمن «{scope_label}».")
+            return
 
         from .pdf_io import export_passports_pdf
         import os
         import tempfile
         tmpdir = tempfile.mkdtemp(prefix="hajj_img_")
         entries: list[tuple[str, str]] = []
-        for rec in self._ordered():
+        for rec in selected:
             name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
             for kind in kinds:
                 if not imgmod.has_image(rec.image_id, kind):
@@ -1568,17 +1593,20 @@ class HajjApp:
             )
             return
 
+        scope_note = f" ({scope_label})" if scope_label else ""
         if not messagebox.askyesno(
             "طباعة الصور",
-            f"سيُجهَّز {len(entries)} صورة في ملف واحد، وتُفتح معاينته للطباعة.\n\n"
-            "متابعة؟",
+            f"سيُجهَّز {len(entries)} صورة{scope_note} في ملف واحد، وتُفتح "
+            "معاينته للطباعة.\n\nمتابعة؟",
         ):
             return
 
+        tag = re.sub(r'[\\/:*?"<>|]+', "-", scope_label).strip() or "الكل"
+        title = "صور الحجاج" + (f" — {scope_label}" if scope_label else "")
         pdf_path = os.path.join(tempfile.gettempdir(),
-                                f"hajj_images_{date.today().isoformat()}.pdf")
+                                f"hajj_images_{tag}_{date.today().isoformat()}.pdf")
         try:
-            export_passports_pdf(entries, pdf_path, title="صور الحجاج")
+            export_passports_pdf(entries, pdf_path, title=title)
         except Exception as exc:
             messagebox.showerror("خطأ في تجهيز الصور", str(exc))
             return
@@ -3068,37 +3096,87 @@ class RestoreDialog(Toplevel):
 
 
 class ImageKindDialog(Toplevel):
-    """اختيار نوع الصور المراد طباعتها. يضبط self.kinds أو يبقيه None عند الإلغاء."""
+    """اختيار نوع الصور ونطاق الطباعة (كل المعروض / باص / خدمة تنفيذي).
 
-    def __init__(self, parent) -> None:
+    يضبط ``self.kinds`` (قائمة الأنواع) و``self.scope`` = (نوع النطاق، القيمة)،
+    أو يبقي ``kinds`` = None عند الإلغاء.
+    """
+
+    def __init__(self, parent, *, transports=None, executives=None) -> None:
         super().__init__(parent)
         self.kinds: list[str] | None = None
-        self.title("طباعة الصور")
+        self.scope: tuple[str, str | None] = ("all", None)
+        self.title("طباعة الجوازات والتصاريح")
         self.configure(bg=BG)
         self.transient(parent)
         self.grab_set()
         self.resizable(False, False)
 
         from .images import ID_CARD, PASSPORT, PERMIT, PHOTO
+        transports = transports or []
+        executives = executives or []
+
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
-        ttk.Label(outer, text="اختر نوع الصور للطباعة:",
-                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
-            anchor="e", pady=(0, 10))
 
-        self._choice = StringVar(value="passport")
+        # ---- نوع الصور ----
+        ttk.Label(outer, text="نوع الصور للطباعة:",
+                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
+            anchor="e", pady=(0, 8))
+        self._choice = StringVar(value="pass_permit")
         self._map = {
+            "pass_permit": [PASSPORT, PERMIT],
             "passport": [PASSPORT],
-            "id": [ID_CARD],
             "permit": [PERMIT],
+            "id": [ID_CARD],
             "photo": [PHOTO],
             "all": [PASSPORT, ID_CARD, PERMIT, PHOTO],
         }
-        for value, label in (("passport", "صور الجوازات"), ("id", "صور الهوية"),
+        for value, label in (("pass_permit", "الجوازات والتصاريح"),
+                             ("passport", "صور الجوازات"),
                              ("permit", "التصاريح السعودية"),
-                             ("photo", "الصور الشخصية"), ("all", "كل الصور")):
+                             ("id", "صور الهوية"),
+                             ("photo", "الصور الشخصية"),
+                             ("all", "كل الصور")):
             ttk.Radiobutton(outer, text=label, value=value,
-                            variable=self._choice).pack(anchor="e", pady=2)
+                            variable=self._choice).pack(anchor="e", pady=1)
+
+        ttk.Separator(outer, orient="horizontal").pack(fill=X, pady=10)
+
+        # ---- نطاق الطباعة ----
+        ttk.Label(outer, text="نطاق الطباعة:",
+                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
+            anchor="e", pady=(0, 8))
+        self._scope = StringVar(value="all")
+        ttk.Radiobutton(outer, text="كل المعروض", value="all",
+                        variable=self._scope).pack(anchor="e", pady=1)
+
+        # صفّ الباص: زرّ اختيار + قائمة القيم
+        bus_row = ttk.Frame(outer)
+        bus_row.pack(fill=X, pady=1)
+        self._bus = ttk.Combobox(bus_row, values=transports, state="readonly",
+                                 width=16, justify="right")
+        self._bus.pack(side=LEFT, padx=(0, 8))
+        ttk.Radiobutton(bus_row, text="حسب رقم الباص", value="transport",
+                        variable=self._scope).pack(side=RIGHT)
+        self._bus.bind("<<ComboboxSelected>>",
+                       lambda _e: self._scope.set("transport"))
+
+        # صفّ الجيمس (خدمة التنفيذي)
+        exec_row = ttk.Frame(outer)
+        exec_row.pack(fill=X, pady=1)
+        self._exec = ttk.Combobox(exec_row, values=executives, state="readonly",
+                                  width=16, justify="right")
+        self._exec.pack(side=LEFT, padx=(0, 8))
+        ttk.Radiobutton(exec_row, text="حسب الجيمس (خدمة التنفيذي)",
+                        value="executive", variable=self._scope).pack(side=RIGHT)
+        self._exec.bind("<<ComboboxSelected>>",
+                        lambda _e: self._scope.set("executive"))
+
+        if not transports:
+            self._bus.configure(state="disabled")
+        if not executives:
+            self._exec.configure(state="disabled")
 
         btns = ttk.Frame(outer)
         btns.pack(anchor="e", pady=(14, 0))
@@ -3114,6 +3192,24 @@ class ImageKindDialog(Toplevel):
         self.geometry(f"+{x}+{y}")
 
     def _ok(self) -> None:
+        scope = self._scope.get()
+        if scope == "transport":
+            val = self._bus.get().strip()
+            if not val:
+                messagebox.showwarning("اختر الباص",
+                                       "اختر رقم الباص من القائمة.", parent=self)
+                return
+            self.scope = ("transport", val)
+        elif scope == "executive":
+            val = self._exec.get().strip()
+            if not val:
+                messagebox.showwarning("اختر الخدمة",
+                                       "اختر خدمة التنفيذي من القائمة.",
+                                       parent=self)
+                return
+            self.scope = ("executive", val)
+        else:
+            self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
         self.destroy()
 

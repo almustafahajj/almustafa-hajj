@@ -109,4 +109,41 @@ assert doc.page_count == 3, doc.page_count
 doc.close()
 print(f"  OK: PDF فيه 3 صفحات، جواز لكل حاج")
 
+print("\n=== نطاق الطباعة: باص / جيمس (ImageKindDialog) ===")
+from tkinter import Tk
+from hajj_app.gui import ImageKindDialog
+from hajj_app.images import PASSPORT, PERMIT
+from hajj_app.transport import distinct_transports
+from hajj_app.mrz import PassportData
+recs = [PassportData(transport="7", executive_service="جيمس"),
+        PassportData(transport="5", executive_service=""),
+        PassportData(transport="7", executive_service="جيمس")]
+assert distinct_transports(recs) == ["5", "7"], distinct_transports(recs)
+_root = Tk(); _root.withdraw()
+# اختيار باص 7 مع «الجوازات والتصاريح» (الافتراضي)
+d = ImageKindDialog(_root, transports=["5", "7"], executives=["جيمس"])
+d._scope.set("transport"); d._bus.set("7"); d._ok()
+assert d.scope == ("transport", "7"), d.scope
+assert d.kinds == [PASSPORT, PERMIT], d.kinds
+sel = [r for r in recs if str(r.transport or "").strip() == d.scope[1]]
+assert len(sel) == 2, len(sel)         # حاجّا الباص 7
+# اختيار الجيمس
+d2 = ImageKindDialog(_root, transports=["5", "7"], executives=["جيمس"])
+d2._scope.set("executive"); d2._exec.set("جيمس"); d2._ok()
+assert d2.scope == ("executive", "جيمس"), d2.scope
+sel2 = [r for r in recs if str(r.executive_service or "").strip() == "جيمس"]
+assert len(sel2) == 2, len(sel2)
+# بلا اختيار باص يُرفض
+d3 = ImageKindDialog(_root, transports=["5"], executives=[])
+d3._scope.set("transport")
+import tkinter.messagebox as _mb
+_orig = _mb.showwarning; _blocked = []
+_mb.showwarning = lambda *a, **k: _blocked.append(a)
+d3._ok()
+_mb.showwarning = _orig
+assert _blocked and d3.kinds is None, "الباص بلا قيمة يجب أن يُرفض"
+d3.destroy()
+_root.destroy()
+print("  OK: باص 7 -> جواز+تصريح لحاجَّين؛ والجيمس يفلتر؛ والفارغ يُرفض")
+
 print("\n*** IMAGE TESTS PASSED ***")
