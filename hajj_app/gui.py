@@ -584,30 +584,11 @@ class HajjApp:
         row1 = ttk.Frame(outer, style="Toolbar.TFrame")
         row1.pack(fill=X)
 
-        # الأزرار أقصى يسار
+        # الأزرار أقصى يسار (الترتيب و«مسح الفلاتر» انتقلا إلى لوحة الفلاتر)
         self._icon_button(row1, "طباعة المعروض", self.do_print_filtered,
                           "Ghost.TButton", ("print", TEXT)).pack(side=LEFT, padx=3)
-        self._icon_button(row1, "مسح الفلاتر", self.clear_filters,
-                          "Ghost.TButton", ("clear", TEXT)).pack(side=LEFT, padx=3)
         self._build_columns_menubutton(row1).pack(side=LEFT, padx=3)
         self._build_view_menubutton(row1).pack(side=LEFT, padx=3)
-
-        # ترتيب حسب: قائمة العمود + زر الاتجاه
-        sort_box_frame = ttk.Frame(row1, style="Toolbar.TFrame")
-        sort_box_frame.pack(side=LEFT, padx=(14, 0))
-        self.sort_dir_btn = ttk.Button(sort_box_frame, text="▲", width=3,
-                                       command=self._toggle_sort_dir, style="Act.TButton")
-        self.sort_dir_btn.pack(side=LEFT)
-        self.sort_var = StringVar(value=self._SORT_NONE)
-        sort_box = ttk.Combobox(
-            sort_box_frame, textvariable=self.sort_var, state="readonly", width=15,
-            font=("Segoe UI", 9),
-            values=[self._SORT_NONE, *(label for _k, label in self._SORT_FIELDS)],
-        )
-        sort_box.pack(side=LEFT, padx=(0, 4))
-        sort_box.bind("<<ComboboxSelected>>", lambda _e: self._apply_sort())
-        ttk.Label(sort_box_frame, text="ترتيب حسب", font=("Segoe UI", 9),
-                  background=BG, foreground=TEXT).pack(side=LEFT, padx=(2, 0))
 
         # مربّع البحث الحر أقصى اليمين
         self.filter_search = StringVar()
@@ -657,6 +638,25 @@ class HajjApp:
             box.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
             self.filter_vars[key] = var
             self.filter_boxes[key] = box
+
+        # «ترتيب حسب» داخل اللوحة تحت الفلاتر
+        ttk.Separator(inner, orient="horizontal").grid(
+            row=97, column=0, columnspan=6, sticky="ew", pady=(12, 0))
+        sort_row = ttk.Frame(inner, style="Panel.TFrame")
+        sort_row.grid(row=98, column=0, columnspan=6, sticky="e", pady=(8, 0))
+        ttk.Label(sort_row, text="ترتيب حسب", font=("Segoe UI", 9),
+                  background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 6))
+        self.sort_var = StringVar(value=self._SORT_NONE)
+        sort_box = ttk.Combobox(
+            sort_row, textvariable=self.sort_var, state="readonly", width=16,
+            font=("Segoe UI", 9),
+            values=[self._SORT_NONE, *(label for _k, label in self._SORT_FIELDS)])
+        sort_box.pack(side=RIGHT, padx=(0, 4))
+        sort_box.bind("<<ComboboxSelected>>", lambda _e: self._apply_sort())
+        self.sort_dir_btn = ttk.Button(sort_row, text="▲", width=3,
+                                       command=self._toggle_sort_dir,
+                                       style="Act.TButton")
+        self.sort_dir_btn.pack(side=RIGHT)
 
         btns = ttk.Frame(inner, style="Panel.TFrame")
         btns.grid(row=99, column=0, columnspan=6, sticky="e", pady=(12, 0))
