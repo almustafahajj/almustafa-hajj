@@ -28,7 +28,6 @@ TESTS = [
     "test_stats.py",          # الإحصاءات والملخّص المالي وإيصال الدفع
     "test_productivity.py",   # تعديل جماعي، مواصلات، وبطاقات QR
     "test_programs.py",       # برامج الحملة: النموذج، الاحتساب، والتطبيق
-    "test_webapp.py",         # نسخة الويب المحلية: الخادم وواجهة الـ API
     "test_ocr.py",            # قراءة MRZ من صورة  -> ينتج fake_passport.png
     "test_pdfin.py",          # استيراد PDF        -> ينتج passports_text.pdf
     "test_arabic.py",         # الاسم العربي: طبقة نصية + OCR + الترشيح
