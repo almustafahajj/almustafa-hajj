@@ -527,7 +527,7 @@ class HajjApp:
             ("🧾  سند قبض (معاينة)", self._receipt_selected),
             ("🧾  فاتورة ضريبية (معاينة)",
              lambda: self._invoice_selected(electronic=False)),
-            ("💳  فاتورة إلكترونية QR (معاينة)",
+            ("💳  فاتورة إلكترونية PEPPOL (معاينة)",
              lambda: self._invoice_selected(electronic=True)),
             ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
         ], style="Ghost.TMenubutton", icon=("chart", INK))
@@ -1078,7 +1078,7 @@ class HajjApp:
             label="🧾  فاتورة ضريبية (معاينة)",
             command=lambda: self._invoice_selected(electronic=False))
         self._row_menu.add_command(
-            label="💳  فاتورة إلكترونية QR (معاينة)",
+            label="💳  فاتورة إلكترونية PEPPOL (معاينة)",
             command=lambda: self._invoice_selected(electronic=True))
         self._row_menu.add_command(label="📜  عقد خدمات حج (معاينة)",
                                    command=self._contract_selected)
@@ -3301,6 +3301,9 @@ class InvoiceDialog(Toplevel):
         btns.grid(row=self._r, column=0, columnspan=2, sticky="e")
         ttk.Button(btns, text="👁  معاينة", style="Act.TButton",
                    command=self._preview).pack(side=RIGHT, padx=4)
+        if electronic:
+            ttk.Button(btns, text="📄  ملف XML (PEPPOL)", style="Act.TButton",
+                       command=self._export_xml).pack(side=RIGHT, padx=4)
         ttk.Button(btns, text="إغلاق", style="Act.TButton",
                    command=self.destroy).pack(side=RIGHT)
         self.bind("<Escape>", lambda _e: self.destroy())
@@ -3337,6 +3340,30 @@ class InvoiceDialog(Toplevel):
             )
         except Exception as exc:
             messagebox.showerror("خطأ في الفاتورة", str(exc), parent=self)
+            return
+        try:
+            os.startfile(str(path))
+        except Exception as exc:
+            messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
+
+    def _export_xml(self) -> None:
+        """يبني ملف الفاتورة الإلكترونية الرسمي (UBL 2.1 / PINT AE) ويفتحه."""
+        import os
+        import tempfile
+        from .einvoice import export_invoice_xml
+
+        co = self._company()
+        num = self.v_number.get().strip() or "INV-0001"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", num) or "INV"
+        path = Path(tempfile.gettempdir()) / f"einvoice_{safe}.xml"
+        try:
+            export_invoice_xml(
+                self.rec, path, company=co, number=num,
+                date_str=self.v_date.get().strip(),
+                item_desc=self.txt.get("1.0", "end").strip(),
+            )
+        except Exception as exc:
+            messagebox.showerror("خطأ في ملف XML", str(exc), parent=self)
             return
         try:
             os.startfile(str(path))

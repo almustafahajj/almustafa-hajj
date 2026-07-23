@@ -120,7 +120,7 @@ export_stats_pdf([], _os.path.join(_OUTDIR, "stats_empty.pdf"))
 print(f"  OK: PDF ({_os.path.getsize(spdf)} بايت)، والفارغ لا يتعطّل")
 
 print("\n=== ضريبة القيمة المضافة (شامل/إضافة/بدون) ===")
-from hajj_app.fields import vat_breakdown, zatca_qr_payload
+from hajj_app.fields import vat_breakdown
 net, vat, total = vat_breakdown(460000, mode="inclusive")
 assert round(net, 2) == 438095.24 and round(vat, 2) == 21904.76, (net, vat)
 assert round(total, 2) == 460000.0, total
@@ -129,15 +129,6 @@ assert net == 460000.0 and round(vat, 2) == 23000.0 and total == 483000.0
 net, vat, total = vat_breakdown(460000, mode="none")
 assert net == 460000.0 and vat == 0.0 and total == 460000.0
 print(f"  OK: شامل → صافي {round(438095.24,2)} + ضريبة {round(21904.76,2)}")
-
-print("\n=== حمولة QR للفاتورة الإلكترونية (TLV/Base64) ===")
-import base64 as _b64
-payload = zatca_qr_payload("المصطفى للحج والعمرة", "100123456700003",
-                           "2026-05-01T10:00:00", 460000, 21904.76)
-raw = _b64.b64decode(payload)
-assert raw[0] == 1, raw[:2]              # الوسم الأول: اسم البائع
-assert b"100123456700003" in raw and b"460000.00" in raw and b"21904.76" in raw
-print(f"  OK: حمولة QR بطول {len(payload)} حرفاً")
 
 print("\n=== فاتورة ضريبية / إلكترونية / عقد PDF ===")
 from hajj_app.pdf_io import (export_invoice_pdf, export_contract_pdf,
@@ -163,5 +154,24 @@ for p in (p1, p2, p3):
 # القيم الافتراضية للشركة تُكمَّل
 assert company_info()["name_ar"] == "المصطفى للحج والعمرة"
 print(f"  OK: فاتورة {_os.path.getsize(p1)}، إلكترونية {_os.path.getsize(p2)}، عقد {_os.path.getsize(p3)}")
+
+print("\n=== الفاتورة الإلكترونية PEPPOL (UBL 2.1 / PINT AE) ===")
+import xml.etree.ElementTree as ET
+from hajj_app.einvoice import (build_ubl_invoice, export_invoice_xml,
+                               PINT_AE_CUSTOMIZATION)
+xml = build_ubl_invoice(inv, company=co, number="EINV-0119", date_str="2026-05-01")
+root = ET.fromstring(xml)                        # XML صالح (يُحلَّل بلا خطأ)
+assert root.tag.endswith("}Invoice"), root.tag
+assert PINT_AE_CUSTOMIZATION in xml
+assert "<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>" in xml
+for s in ("100123456700003", "438095.24", "21904.76", "460000.00",
+          "2026-05-01", 'currencyID="AED"'):
+    assert s in xml, s
+# التاريخ غير الصالح يتراجع إلى صيغة ISO
+assert "IssueDate>" in build_ubl_invoice(inv, company=co, date_str="بلا تاريخ")
+px = _os.path.join(_OUTDIR, "einvoice.xml")
+export_invoice_xml(inv, px, company=co, number="EINV-0119")
+assert _os.path.getsize(px) > 800
+print(f"  OK: ملف XML صالح ({_os.path.getsize(px)} بايت) بتخصيص PINT AE")
 
 print("\n*** STATS TESTS PASSED ***")

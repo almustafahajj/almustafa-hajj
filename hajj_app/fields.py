@@ -181,27 +181,6 @@ def vat_breakdown(total, *, rate: float = VAT_RATE, mode: str = "inclusive"):
     return (net, amt - net, amt)
 
 
-def _tlv(tag: int, value: str) -> bytes:
-    b = str(value).encode("utf-8")
-    return bytes([tag, len(b)]) + b
-
-
-def zatca_qr_payload(seller: str, vat_no: str, timestamp: str,
-                     total, vat) -> str:
-    """حمولة رمز QR لفاتورة إلكترونية مبسّطة (ترميز TLV ثم Base64).
-
-    الحقول الخمسة القياسية: اسم البائع، الرقم الضريبي، الطابع الزمني،
-    الإجمالي شامل الضريبة، مبلغ الضريبة.
-    """
-    import base64
-    payload = (
-        _tlv(1, seller) + _tlv(2, vat_no) + _tlv(3, timestamp)
-        + _tlv(4, f"{float(total or 0.0):.2f}")
-        + _tlv(5, f"{float(vat or 0.0):.2f}")
-    )
-    return base64.b64encode(payload).decode("ascii")
-
-
 def normalize_time(text) -> str:
     """يوحّد الوقت إلى صيغة HH:MM.
 

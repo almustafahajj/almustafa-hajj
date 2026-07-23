@@ -1075,31 +1075,17 @@ def build_invoice_item(rec, *, season: str = "") -> str:
     return desc
 
 
-def _qr_flowable(data: str, size: float = 92):
-    """رمز QR كعنصر قابل للإدراج (Drawing)، أو None إن تعذّر."""
-    try:
-        from reportlab.graphics.barcode import qr
-        from reportlab.graphics.shapes import Drawing
-    except Exception:
-        return None
-    widget = qr.QrCodeWidget(data)
-    b = widget.getBounds()
-    w, h = b[2] - b[0], b[3] - b[1]
-    d = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
-    d.add(widget)
-    return d
-
-
 def export_invoice_pdf(rec, path: str | Path, *, company=None,
                        number: str = "INV-0001", date_str: str = "",
                        electronic: bool = False, vat_mode: str = "inclusive",
                        season: str = "", item_desc: str = "",
                        notes: str = "") -> Path:
-    """يبني **فاتورة ضريبية** (أو **فاتورة إلكترونية** برمز QR عند
-    ``electronic=True``) لحاج واحد على صفحة A4 عمودية، ثنائية اللغة."""
-    from datetime import datetime
+    """يبني **فاتورة ضريبية** (أو **فاتورة إلكترونية** بصيغة PEPPOL عند
+    ``electronic=True``) لحاج واحد على صفحة A4 عمودية، ثنائية اللغة.
 
-    from .fields import parse_amount, vat_breakdown, zatca_qr_payload
+    الفاتورة الإلكترونية هنا هي التمثيل البشري المرافق لملف الـ XML الرسمي
+    (UBL 2.1 / PINT AE) الذي يُبنى عبر :mod:`hajj_app.einvoice`."""
+    from .fields import parse_amount, vat_breakdown
 
     _register_fonts()
     path = Path(path)
@@ -1120,7 +1106,7 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
         item_desc = build_invoice_item(rec, season=season)
 
     title_ar = "فاتورة إلكترونية" if electronic else "فاتورة ضريبية"
-    title_en = "E-Invoice" if electronic else "Tax Invoice"
+    title_en = "E-Invoice (PEPPOL)" if electronic else "Tax Invoice"
 
     doc = SimpleDocTemplate(
         str(path), pagesize=A4,
@@ -1250,26 +1236,35 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     ]
     tot.setStyle(TableStyle(tstyle))
 
-    qr_cell = ""
+    side_cell = ""
     if electronic:
-        payload = zatca_qr_payload(
-            co["name_ar"], co["trn"] or "-",
-            datetime.now().replace(microsecond=0).isoformat(),
-            total, vat)
-        d = _qr_flowable(payload, size=96)
-        if d is not None:
-            qr_cell = [d, Spacer(1, 3),
-                       Paragraph(ar("امسح للتحقّق"), ParagraphStyle(
-                           "qc", parent=st["cell"], alignment=1, fontSize=8,
-                           textColor=colors.HexColor("#777777")))]
-    band = Table([[qr_cell, tot]],
+        from .einvoice import PINT_AE_CUSTOMIZATION
+        info = ParagraphStyle("pep", parent=st["cell"], alignment=2,
+                              fontSize=8.3, leading=12,
+                              textColor=colors.HexColor("#555555"))
+        side_cell = [
+            Paragraph(ar("فاتورة إلكترونية بصيغة PEPPOL (PINT AE)"),
+                      ParagraphStyle("peph", parent=info, fontName=_FONT_BOLD,
+                                     textColor=_ACCENT, fontSize=9.5)),
+            Spacer(1, 4),
+            Paragraph(ar("معرّف التخصيص:"), info),
+            Paragraph(PINT_AE_CUSTOMIZATION, ParagraphStyle(
+                "pepid", parent=info, alignment=0, fontSize=7.8)),
+            Spacer(1, 4),
+            Paragraph(ar("الملف الرسمي المُرسَل عبر شبكة PEPPOL هو ملف "
+                         "XML (UBL 2.1) المرافق لهذه الصفحة."), info),
+        ]
+    band = Table([[side_cell, tot]],
                  colWidths=[doc.width * 0.48, doc.width * 0.52])
     band.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
-                              ("ALIGN", (0, 0), (0, 0), "LEFT")]))
+                              ("ALIGN", (0, 0), (0, 0), "RIGHT")]))
     story.append(band)
 
     story.append(Spacer(1, 12))
-    note_txt = notes or "هذه فاتورة ضريبية معتمدة. جميع المبالغ بالدرهم الإماراتي (AED)."
+    default_note = ("هذه فاتورة إلكترونية بصيغة PEPPOL (PINT AE). جميع المبالغ "
+                    "بالدرهم الإماراتي (AED)." if electronic else
+                    "هذه فاتورة ضريبية معتمدة. جميع المبالغ بالدرهم الإماراتي (AED).")
+    note_txt = notes or default_note
     story.append(Paragraph(ar(note_txt), ParagraphStyle(
         "note", parent=st["cell"], alignment=2, fontSize=8.5,
         textColor=colors.HexColor("#666666"))))
