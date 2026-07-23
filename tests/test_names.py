@@ -76,13 +76,14 @@ print("  OK: single-name passport ->", solo.full_name_en)
 print("\n=== MANUAL ADD ===")
 from tkinter import Tk
 from hajj_app.gui import HajjApp, EditDialog
-# --- isolate tests from the user's real data file ---
-import hajj_app.gui as _g, pathlib as _pl
+# --- isolate tests from the user's real data + settings files ---
+import hajj_app.gui as _g, hajj_app.storage as _st, pathlib as _pl
 _TESTDB = _pl.Path(_OUTDIR) / "testdata" / "hajjaj.json"
 _TESTDB.parent.mkdir(parents=True, exist_ok=True)
 for _p in (_TESTDB, _TESTDB.with_suffix('.bak')):
     _p.unlink(missing_ok=True)
 _g.default_data_path = lambda: _TESTDB
+_st.default_data_path = lambda: _TESTDB     # يعزل settings.json الحقيقي أيضاً
 from hajj_app.mrz import PassportData
 
 root = Tk(); root.withdraw()
