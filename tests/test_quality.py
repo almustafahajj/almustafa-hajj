@@ -45,6 +45,23 @@ assert passport_issue(rec(expiry_date=""), TODAY) is None
 assert travel_date(rec(arrival_date="2026-08-01", departure_date="2026-08-20")) == date(2026, 8, 20)
 print("  OK: منتهٍ، أقل من 6 أشهر، سليم، وبلا تاريخ")
 
+print("\n=== المرجع: تاريخ سفر الموسم لا تاريخ اليوم ===")
+# حاج بلا تاريخ سفر مفرد، وجوازه ينتهي 2026-12-01
+no_travel = rec(expiry_date="2026-12-01")
+# من اليوم (2026-07-01): 6 أشهر = 2027-01-01 > 2026-12-01 -> يُفلَّم كناقص الصلاحية
+assert passport_issue(no_travel, TODAY) is not None
+# لكن لو حسبناه من تاريخ سفر الموسم 2026-07-15: 6 أشهر = 2027-01-15 -> ما زال ناقصاً
+assert passport_issue(no_travel, TODAY, date(2026, 7, 15)) is not None
+# جواز ينتهي 2027-06-01: من الموسم 2026-08-01 (+6 = 2027-02-01) سليم
+long_pp = rec(expiry_date="2027-06-01")
+assert passport_issue(long_pp, TODAY, date(2026, 8, 1)) is None
+# مرجع الموسم يُستخدم للفحص الكامل أيضاً
+rep = check_records([rec(expiry_date="2026-12-15", full_name_ar="أ",
+                         passport_number="X1", birth_date="1990-01-01")],
+                    today=TODAY, travel_ref=date(2026, 8, 1))
+assert any("تاريخ السفر" in i.detail for i in rep.issues), rep.issues
+print("  OK: مرجع سفر الموسم يُستخدم بدل تاريخ اليوم")
+
 print("\n=== كشف تكرار رقم الجواز ===")
 recs = [rec(passport_number="A1", full_name_ar="أ"),
         rec(passport_number="a1", full_name_ar="ب"),   # نفس الجواز بأحرف صغيرة

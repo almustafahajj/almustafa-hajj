@@ -50,20 +50,23 @@ def travel_date(rec: PassportData) -> date | None:
     return parse_date(rec.departure_date) or parse_date(rec.arrival_date)
 
 
-def passport_issue(rec: PassportData, today: date) -> str | None:
+def passport_issue(rec: PassportData, today: date,
+                   travel_ref: date | None = None) -> str | None:
     """مشكلة صلاحية الجواز إن وُجدت، وإلا None.
 
     منتهٍ إذا كان تاريخ الانتهاء قبل اليوم، أو «أقل من 6 أشهر» إذا كان
-    قبل مرور 6 أشهر من تاريخ السفر (أو من اليوم إن غاب تاريخ السفر).
+    قبل مرور 6 أشهر من **تاريخ السفر**. تاريخ السفر يُؤخذ من سجل الحاج
+    (المغادرة/الوصول) وإلا من ``travel_ref`` (تاريخ سفر الموسم العام)،
+    ولا يُرجَع لتاريخ اليوم إلا عند غياب الاثنين معاً.
     """
     exp = parse_date(rec.expiry_date)
     if exp is None:
         return None                       # لا تاريخ — يُعالَج ضمن النواقص
     if exp < today:
         return "الجواز منتهٍ"
-    ref = travel_date(rec) or today
+    ref = travel_date(rec) or travel_ref or today
     if exp < add_months(ref, MIN_PASSPORT_MONTHS):
-        return f"صلاحيته أقل من {MIN_PASSPORT_MONTHS} أشهر من السفر"
+        return f"صلاحيته أقل من {MIN_PASSPORT_MONTHS} أشهر من تاريخ السفر"
     return None
 
 
@@ -123,8 +126,13 @@ class QualityReport:
         return {k: len(v) for k, v in self.by_kind().items()}
 
 
-def check_records(records: list[PassportData], today: date | None = None) -> QualityReport:
-    """يفحص الكشف كاملاً ويعيد تقريراً بكل المشكلات."""
+def check_records(records: list[PassportData], today: date | None = None,
+                  travel_ref: date | None = None) -> QualityReport:
+    """يفحص الكشف كاملاً ويعيد تقريراً بكل المشكلات.
+
+    ``travel_ref`` تاريخ سفر الموسم العام يُستخدم مرجعاً لقاعدة الـ6 أشهر
+    لمن لا تاريخ سفر مفرد في سجلّه.
+    """
     today = today or date.today()
     dups = duplicate_groups(records)
     dup_of = {i: pp for pp, idxs in dups.items() for i in idxs}
@@ -134,7 +142,7 @@ def check_records(records: list[PassportData], today: date | None = None) -> Qua
         name = rec.full_name_ar or rec.full_name_en or "—"
         pp = str(rec.passport_number or "").strip().upper()
         # الجواز أولاً (الأخطر)
-        pi = passport_issue(rec, today)
+        pi = passport_issue(rec, today, travel_ref)
         if pi:
             issues.append(Issue(i, name, pp, KIND_PASSPORT, pi))
         if i in dup_of:

@@ -158,6 +158,10 @@ class HajjApp:
         self.season_year = StringVar(
             value=saved_year if saved_year in HIJRI_YEARS else _DEFAULT_SEASON
         )
+        # تاريخ سفر الموسم — مرجع قاعدة صلاحية الجواز (6 أشهر من السفر)
+        self.travel_date_ref = StringVar(
+            value=str(self._settings.get("travel_date", "")).strip())
+        self.travel_date_ref.trace_add("write", lambda *_a: self._save_travel_date())
 
         # الترتيب عرض فقط: لا يمسّ ترتيب self.records الأصلي، فيمكن إلغاؤه
         self.sort_field: str | None = None
@@ -372,6 +376,18 @@ class HajjApp:
         year_box.pack(side=RIGHT, padx=(8, 0))
         year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
 
+        # تاريخ سفر الموسم — مرجع فحص صلاحية الجواز (6 أشهر من السفر)
+        travel = ttk.Frame(bar, style="Toolbar.TFrame")
+        travel.pack(side=RIGHT, padx=(18, 0))
+        ttk.Label(travel, text="تاريخ السفر", font=("Segoe UI", 9),
+                  foreground=MUTED, background=BG).pack(anchor="e")
+        tv = ttk.Entry(travel, textvariable=self.travel_date_ref, width=12,
+                       justify="center", font=("Segoe UI", 10))
+        tv.pack(anchor="e")
+        _tip = "لفحص صلاحية الجواز (6 أشهر من السفر). الصيغة: YYYY-MM-DD"
+        for _w in (tv,):
+            _w.bind("<FocusIn>", lambda _e: self.set_status(_tip))
+
         # حالة الجلسة والحماية أقصى اليسار
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
@@ -432,6 +448,19 @@ class HajjApp:
         except OSError:
             pass
         self.set_status(f"موسم الحج: {self.season_year.get()}هـ")
+
+    def _save_travel_date(self) -> None:
+        """يحفظ تاريخ سفر الموسم (مرجع فحص صلاحية الجواز)."""
+        self._settings["travel_date"] = self.travel_date_ref.get().strip()
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+
+    def _travel_ref(self):
+        """يحوّل تاريخ سفر الموسم إلى date أو None (للفحص)."""
+        from .quality import parse_date
+        return parse_date(self.travel_date_ref.get())
 
     def _report_title(self, base: str) -> str:
         """عنوان تقرير يتضمّن موسم السنة الهجرية."""
@@ -1703,7 +1732,8 @@ class HajjApp:
         """يفتح فحص جاهزية الكشف (صلاحية الجواز، التكرار، النقص)."""
         if not self._require_records():
             return
-        QualityDialog(self.root, lambda: self.records, self._focus_record)
+        QualityDialog(self.root, lambda: self.records, self._focus_record,
+                      travel_ref=self._travel_ref)
 
     def do_stats(self) -> None:
         """يفتح لوحة الإحصاءات والملخّص المالي."""
@@ -2994,10 +3024,11 @@ class QualityDialog(Toplevel):
         "نقص بيانات حرجة": ("miss", "#EFEBE4", "#555555"),
     }
 
-    def __init__(self, parent, get_records, on_select) -> None:
+    def __init__(self, parent, get_records, on_select, travel_ref=None) -> None:
         super().__init__(parent)
         self._get_records = get_records      # دالة تُعيد السجلات الحالية
         self._on_select = on_select          # (index) -> يحدّد السجل في الجدول
+        self._travel_ref = travel_ref        # دالة تُعيد تاريخ سفر الموسم أو None
         self.title("🩺 فحص جاهزية الكشف")
         self.configure(bg=BG)
         self.transient(parent)
@@ -3043,7 +3074,8 @@ class QualityDialog(Toplevel):
 
     def refresh(self) -> None:
         from .quality import check_records, summary_text
-        report = check_records(self._get_records())
+        travel_ref = self._travel_ref() if callable(self._travel_ref) else None
+        report = check_records(self._get_records(), travel_ref=travel_ref)
         self._tree.delete(*self._tree.get_children())
         if report.clean:
             self._summary.config(text=f"✓  {summary_text(report)}",
