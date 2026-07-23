@@ -272,6 +272,22 @@ assert any("باص 1" in t for t in labels) and any("بلا مواصلات" in t
 td._var.set("باص 1"); td._rebuild()
 assert len(td._current()) == 1
 td.destroy()
+
+# ---- لوحة التحكم (Dashboard) ----
+from hajj_app.gui import DashboardDialog
+dash = DashboardDialog(root, app)
+dash.update()
+_lbls = []
+def _walk(w):
+    for c in w.winfo_children():
+        if c.__class__.__name__ == "Label":
+            _lbls.append(c.cget("text"))
+        _walk(c)
+_walk(dash)
+assert "إجمالي الحجّاج" in _lbls and "تنبيهات الجودة" in _lbls, _lbls
+assert any(str(len(app.records)) == t for t in _lbls), "عدد الحجّاج غير معروض"
+dash.destroy()
+print("  OK: لوحة التحكم تعرض المؤشّرات")
 print("  OK: كشف المواصلات يجمع بالباص ويصفّي بالاختيار")
 
 print("\n=== لوحة الإحصاءات والمالية (StatsDialog) ===")

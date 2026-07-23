@@ -351,6 +351,10 @@ class HajjApp:
             ttk.Label(info, text="البيانات غير مشفّرة (مؤقتاً)", font=("Segoe UI", 9),
                       foreground=MUTED, background=BG).pack(anchor="w")
 
+        # زرّ لوحة التحكم — بارز في وسط الترويسة
+        ttk.Button(bar, text=rtl("🏠  لوحة التحكم"), style="Primary.TButton",
+                   command=self.do_dashboard).pack(side=LEFT, padx=16)
+
         # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
         ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
 
@@ -1779,6 +1783,10 @@ class HajjApp:
             f"تولّدت {len(parts)} {self._BULK_DOC_LABEL[dlg.kind]} في ملف واحد",
             ok=True)
 
+    def do_dashboard(self) -> None:
+        """يفتح لوحة التحكم الرئيسية (مؤشّرات سريعة قابلة للنقر)."""
+        DashboardDialog(self.root, self)
+
     def do_stats(self) -> None:
         """يفتح لوحة الإحصاءات والملخّص المالي."""
         if not self._require_records():
@@ -2989,6 +2997,112 @@ class TransportDialog(Toplevel):
     def _pdf(self):
         from .pdf_io import export_transport_pdf
         self._run(export_transport_pdf, "pdf")
+
+
+class DashboardDialog(Toplevel):
+    """لوحة التحكم الرئيسية: مؤشّرات سريعة (KPIs) قابلة للنقر تفتح التفاصيل."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("🏠 لوحة التحكم")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.geometry("780x560")
+        self.resizable(False, False)
+
+        self._outer = ttk.Frame(self, padding=18)
+        self._outer.pack(fill=BOTH, expand=True)
+        self.refresh()
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+    def _card(self, parent, value, label, color, on_click=None):
+        card = ttk.Frame(parent, style="Toolbar.TFrame", padding=(16, 12))
+        big = ttk.Label(card, text=str(value), background=BG,
+                        font=("Segoe UI Semibold", 20), foreground=color)
+        big.pack(anchor="e")
+        sub = ttk.Label(card, text=label, background=BG, foreground=MUTED,
+                        font=("Segoe UI", 10))
+        sub.pack(anchor="e")
+        if on_click is not None:
+            for w in (card, big, sub):
+                w.configure(cursor="hand2")
+                w.bind("<Button-1>", lambda _e: on_click())
+        return card
+
+    def refresh(self) -> None:
+        from .fields import format_amount
+        from .stats import (financial_summary, financials_by_program,
+                            outstanding)
+        from .quality import check_records
+
+        for w in self._outer.winfo_children():
+            w.destroy()
+        recs = list(self.app.records)
+        fin = financial_summary(recs)
+        owe = outstanding(recs)
+        report = check_records(recs, programs=self.app._programs_by_name())
+        issues = len(report.issues)
+
+        name = self.app.season_year.get().strip()
+        ttk.Label(self._outer, text=f"لوحة التحكم — موسم {name}هـ" if name
+                  else "لوحة التحكم", font=("Segoe UI Semibold", 14),
+                  foreground=TEXT, background=BG).pack(anchor="e", pady=(0, 12))
+
+        # بطاقات المؤشّرات (شبكة 3 أعمدة)
+        grid = ttk.Frame(self._outer)
+        grid.pack(fill=X)
+        for c in range(3):
+            grid.columnconfigure(c, weight=1, uniform="kpi")
+        cards = [
+            (fin.count, "إجمالي الحجّاج", BRONZE, None),
+            (format_amount(fin.paid) or "0", "المحصّل", SUCCESS_FG,
+             self.app.do_stats),
+            (format_amount(fin.remaining) or "0", "المتبقّي", DANGER,
+             self.app.do_stats),
+            (f"{fin.collected_percent}%", "نسبة التحصيل", BRONZE,
+             self.app.do_stats),
+            (len(owe), "عدد المتأخّرات", AMBER_FG, self.app.do_stats),
+            (issues, "تنبيهات الجودة", ("#2C5AA0" if issues == 0 else DANGER),
+             self.app.do_quality_check),
+        ]
+        for i, (val, lbl, col, act) in enumerate(cards):
+            self._card(grid, val, lbl, col,
+                       (lambda a=act: (self.destroy(), a())) if act else None
+                       ).grid(row=i // 3, column=i % 3, sticky="nsew",
+                              padx=6, pady=6)
+
+        # المالية حسب البرنامج
+        ttk.Label(self._outer, text="المالية حسب البرنامج",
+                  font=("Segoe UI Semibold", 11), foreground=BRONZE,
+                  background=BG).pack(anchor="e", pady=(14, 4))
+        tv = ttk.Treeview(self._outer, columns=("count", "paid", "remaining", "pct"),
+                          show="tree headings", height=5)
+        tv.heading("#0", text="البرنامج")
+        for c, t, w in (("count", "الحجّاج", 80), ("paid", "المحصّل", 120),
+                        ("remaining", "المتبقّي", 120), ("pct", "التحصيل", 90)):
+            tv.heading(c, text=t)
+            tv.column(c, width=w, anchor="center", stretch=False)
+        tv.column("#0", width=160, anchor="e", stretch=True)
+        for pname, pf in financials_by_program(recs):
+            tv.insert("", END, text=pname,
+                      values=(f"{pf.count:,}", format_amount(pf.paid) or "0",
+                              format_amount(pf.remaining) or "0",
+                              f"{pf.collected_percent}%"))
+        tv.pack(fill=X)
+
+        row = ttk.Frame(self._outer)
+        row.pack(anchor="e", pady=(14, 0))
+        ttk.Button(row, text=rtl("📊  الإحصاءات"), style="Act.TButton",
+                   command=lambda: (self.destroy(), self.app.do_stats())
+                   ).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("🩺  فحص الجودة"), style="Act.TButton",
+                   command=lambda: (self.destroy(), self.app.do_quality_check())
+                   ).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text=rtl("↻  تحديث"), style="Ghost.TButton",
+                   command=self.refresh).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=3)
 
 
 class StatsDialog(Toplevel):
