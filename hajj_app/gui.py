@@ -3831,7 +3831,7 @@ class EditDialog(Toplevel):
     # التبويبات ومحتواها. الحقول غير المذكورة تُضاف إلى "أخرى".
     TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("بيانات الحاج", ("family_number", "reference_number", "full_name_ar",
-                          "full_name_en", "phone")),
+                          "full_name_en", "phone", "program")),
         ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
                     "expiry_date")),
         ("السفر", ("airline", "flight_number", "travel_class", "pnr",
@@ -3926,10 +3926,68 @@ class EditDialog(Toplevel):
             ttk.Label(frame, text=label, font=("Segoe UI", 10)).grid(
                 row=row, column=col + 1, sticky="e", padx=(16, 6), pady=5
             )
+            if f.key == "program":
+                # قائمة اختيار البرنامج + زرّ تطبيق (تعبئة تلقائية واحتساب)
+                from .programs import PROGRAM_NAMES
+                cell = ttk.Frame(frame)
+                cell.grid(row=row, column=col, sticky="w", pady=5)
+                ttk.Combobox(cell, textvariable=var, state="readonly", width=14,
+                             justify="center",
+                             values=[""] + list(PROGRAM_NAMES)).pack(side=LEFT)
+                ttk.Button(cell, text="تطبيق", style="Ghost.TButton", width=7,
+                           command=self._apply_program).pack(side=LEFT, padx=(4, 0))
+                continue
             entry = ttk.Entry(frame, textvariable=var, width=26, justify="center")
             entry.grid(row=row, column=col, sticky="w", pady=5)
             install_entry_editing(entry)      # نسخ/لصق/قص + قائمة يمين
         return frame
+
+    def _apply_program(self) -> None:
+        """يعبّئ حقول الرحلة من البرنامج المختار ويحسب قيمة البرنامج."""
+        from .fields import format_amount
+        from .programs import (AUTOFILL_MAP, load_programs, program_by_name,
+                               program_cost)
+        from .storage import load_settings
+
+        name = self.vars.get("program", StringVar()).get().strip()
+        if not name:
+            messagebox.showinfo("اختر البرنامج",
+                                "اختر برنامج الحملة من القائمة أولاً.", parent=self)
+            return
+        prog = program_by_name(load_programs(load_settings()), name)
+        if prog is None:
+            messagebox.showwarning("غير معرّف",
+                                   "هذا البرنامج غير معرّف. عرّفه من «برامج "
+                                   "الحملة» أولاً.", parent=self)
+            return
+
+        filled = []
+        for pkey, rkey in AUTOFILL_MAP:
+            val = str(getattr(prog, pkey, "")).strip()
+            if val and rkey in self.vars:
+                self.vars[rkey].set(val)
+                filled.append(rkey)
+
+        total, breakdown = program_cost(
+            prog,
+            room_type=self.vars.get("room_type", StringVar()).get(),
+            wheelchair=self.vars.get("wheelchair", StringVar()).get(),
+            hady=self.vars.get("hady", StringVar()).get(),
+            executive_service=self.vars.get("executive_service", StringVar()).get(),
+            travel_class=self.vars.get("travel_class", StringVar()).get(),
+            transport=self.vars.get("transport", StringVar()).get(),
+        )
+        if total and "program_value" in self.vars:
+            self.vars["program_value"].set(format_amount(total))
+
+        lines = "\n".join(f"• {lbl}: {format_amount(amt)}" for lbl, amt in breakdown)
+        summary = f"طُبِّق «{name}».\n"
+        if filled:
+            summary += "عُبّئت: الفندق/الطيران/التواريخ/المواصلات حسب توفّرها.\n"
+        summary += (f"\nالتكلفة المحسوبة: {format_amount(total)}\n{lines}"
+                    if breakdown else
+                    "\nلم تُحسَب تكلفة (حدّد نوع الغرفة/الخدمات ثم أعد التطبيق).")
+        messagebox.showinfo("تطبيق البرنامج", summary, parent=self)
 
     _IMAGE_TYPES = (
         ("صور وملفات PDF", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp *.pdf"),

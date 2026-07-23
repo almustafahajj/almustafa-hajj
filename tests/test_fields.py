@@ -19,7 +19,7 @@ from hajj_app.pdf_io import export_pdf
 OUT = _OUTDIR
 
 EXPECTED = ["مسلسل","رقم العائلة","الرقم المرجعي","اسم الحاج بالعربي","اسم الحاج بالانجليزي",
-    "الهاتف المتحرك","الفندق","نوع الغرفة","رقم الغرفة","الجنس","الجنسية","تاريخ الميلاد","رقم الجواز",
+    "الهاتف المتحرك","برنامج الحملة","الفندق","نوع الغرفة","رقم الغرفة","الجنس","الجنسية","تاريخ الميلاد","رقم الجواز",
     "تاريخ انتهاء الجواز","الطيران","رقم الرحلة","درجة السفر","PNR الحجز","تاريخ الوصول",
     "وقت الوصول","تاريخ المغادرة","وقت المغادرة","المواصلات","خدمة التنفيذي","كرسي متحرك",
     "الهدي","قيمة البرنامج","المبلغ المدفوع","المبلغ المتبقي","ملاحظات","الموظف المسؤول"]
@@ -29,9 +29,9 @@ print("=== COLUMN ORDER (right to left) ===")
 for i, lbl in enumerate(actual, 1):
     print(f"  {i:2}. {lbl}")
 assert actual == EXPECTED, f"\nexpected: {EXPECTED}\nactual:   {actual}"
-assert len(FIELDS) == 31, len(FIELDS)
+assert len(FIELDS) == 32, len(FIELDS)
 assert actual.count("الهدي") == 1, "duplicate not removed"
-print("OK: 31 columns, exact order, duplicate removed\n")
+print("OK: 32 columns, exact order, duplicate removed\n")
 
 # ---------- amounts ----------
 print("=== AMOUNTS ===")

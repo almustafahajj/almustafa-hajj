@@ -60,7 +60,7 @@ print("count label:", app.count_label.cget("text"))
 # exercise the edit dialog end-to-end
 saved = {}
 dlg = EditDialog(root, app.records[1], on_save=lambda r: saved.update({"r": r}))
-assert len(dlg.vars) == 29, f"editable fields in dialog: {len(dlg.vars)}"
+assert len(dlg.vars) == 30, f"editable fields in dialog: {len(dlg.vars)}"
 dlg.vars["full_name_ar"].set("فاطمة خان")
 dlg.vars["birth_date"].set("1992-03-15")
 dlg.vars["arrival_time"].set("2:30 PM")          # must normalize on save

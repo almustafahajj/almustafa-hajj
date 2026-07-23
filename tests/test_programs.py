@@ -41,6 +41,28 @@ assert load_programs({})[0].svc_wheelchair_escort == "5000"
 assert load_programs({"programs": "bad"})[0].transport == "باص"
 print("  OK: roundtrip + إكمال الناقص")
 
+print("\n=== احتساب التكلفة من البرنامج ===")
+from hajj_app.programs import Program, program_cost, program_by_name, AUTOFILL_MAP
+p = Program(cost_single="20000", cost_double="15000", cost_triple="12000",
+            cost_quad="10000")
+total, br = program_cost(p, room_type="ثنائية", wheelchair="نعم", hady="نعم",
+                         executive_service="جيمس", travel_class="رجال أعمال")
+assert total == 15000 + 1000 + 1000 + 40000 + 7000, (total, br)
+labels = [lbl for lbl, _a in br]
+assert "غرفة ثنائية" in labels and "جيمس" in labels and "تذكرة رجال أعمال" in labels
+# كرسي متحرك مع مرافق (سعر مختلف)
+t2, _ = program_cost(p, room_type="رباعية", wheelchair="مع مرافق")
+assert t2 == 10000 + 5000, t2
+# غرفة فارغة لا تُحسب رغم أن السعة الافتراضية 4
+assert program_cost(p, room_type="")[0] == 0
+assert program_cost(p, room_type="مفردة")[0] == 20000
+# program_by_name + خريطة التعبئة
+progs2 = default_programs()
+assert program_by_name(progs2, PROGRAM_NAMES[2]) is progs2[2]
+assert program_by_name(progs2, "س") is None
+assert dict(AUTOFILL_MAP)["carrier"] == "airline"
+print(f"  OK: تكلفة {total:,.0f} من الغرفة والخدمات")
+
 print("\n=== النافذة: تبديل البرنامج والحفظ (معزول) ===")
 # عزل الإعدادات وقاعدة البيانات عن ملفات المستخدم الحقيقية
 import hajj_app.storage as _st
@@ -72,7 +94,23 @@ assert loaded[0].transport == "جيمس"
 assert loaded[1].hotel == "فندق الصفوة"
 assert loaded[0].svc_jeems == "40,000"          # طُبِّعت أسعار الخدمات بالفواصل
 assert _SET.is_file()                           # حُفظ على القرص المعزول
-root.destroy()
 print("  OK: تبديل + حفظ + إعادة تحميل معزول")
+
+print("\n=== نافذة التعديل: تطبيق البرنامج (تعبئة + احتساب) ===")
+import tkinter.messagebox as _mb
+_mb.showinfo = lambda *a, **k: None              # لا تعليق على النوافذ
+from hajj_app.gui import EditDialog
+from hajj_app.mrz import PassportData
+rec = PassportData(full_name_ar="حاج", room_type="ثنائية")
+dlg = EditDialog(root, rec, on_save=lambda r: None)
+dlg.vars["program"].set(PROGRAM_NAMES[0])         # البرنامج الأول (كونراد + جيمس)
+dlg._apply_program()
+assert dlg.vars["hotel"].get() == "كونراد مكة", dlg.vars["hotel"].get()
+assert dlg.vars["transport"].get() == "جيمس", dlg.vars["transport"].get()
+# ثنائية 12,000 + جيمس 40,000 (المواصلات جيمس) = 52,000
+assert dlg.vars["program_value"].get() == "52,000", dlg.vars["program_value"].get()
+dlg.destroy()
+root.destroy()
+print("  OK: عُبّئ الفندق/المواصلات وحُسبت القيمة")
 
 print("\n*** PROGRAMS TESTS PASSED ***")

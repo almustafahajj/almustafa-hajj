@@ -85,3 +85,88 @@ def load_programs(settings: dict) -> list[Program]:
 def programs_to_dicts(progs) -> list[dict]:
     """يحوّل البرامج إلى قوائم قواميس للحفظ في الإعدادات (JSON)."""
     return [asdict(p) for p in progs]
+
+
+def program_by_name(progs, name: str):
+    """يعيد البرنامج بالاسم (البرنامج الأول/الثاني/الثالث) أو None."""
+    name = str(name or "").strip()
+    for idx, pname in enumerate(PROGRAM_NAMES):
+        if name == pname and idx < len(progs):
+            return progs[idx]
+    return None
+
+
+# خريطة التعبئة التلقائية: حقل البرنامج -> حقل سجل الحاج
+AUTOFILL_MAP = (
+    ("hotel", "hotel"),
+    ("carrier", "airline"),
+    ("travel_date", "arrival_date"),
+    ("return_date", "departure_date"),
+    ("transport", "transport"),
+)
+
+
+def _service_on(value) -> bool:
+    """هل الخدمة مفعّلة؟ (قيمة غير فارغة وليست نفياً)."""
+    s = str(value or "").strip().lower()
+    return bool(s) and s not in (
+        "لا", "بدون", "0", "0.0", "-", "none", "no", "false", "لا يوجد")
+
+
+def program_cost(prog, *, room_type: str = "", wheelchair: str = "",
+                 hady: str = "", executive_service: str = "",
+                 travel_class: str = "", transport: str = ""):
+    """يحسب تكلفة الحاج من البرنامج: سعر الغرفة (حسب نوعها) + الخدمات المفعّلة.
+
+    يعيد (الإجمالي، [(الوصف، المبلغ)]). الخدمات تُستنتج من حقول السجل:
+    كرسي متحرك (مع/بلا مرافق)، الهدي، جيمس (خدمة التنفيذي/المواصلات)،
+    وتذكرة رجال الأعمال (درجة السفر).
+    """
+    from .fields import parse_amount
+    from .rooming import room_capacity
+
+    lines: list[tuple[str, float]] = []
+
+    def price(key: str) -> float:
+        return parse_amount(getattr(prog, key, "")) or 0.0
+
+    if str(room_type or "").strip():
+        cap = room_capacity(room_type)
+        room = {1: ("cost_single", "غرفة مفردة"),
+                2: ("cost_double", "غرفة ثنائية"),
+                3: ("cost_triple", "غرفة ثلاثية"),
+                4: ("cost_quad", "غرفة رباعية")}.get(cap)
+        if room:
+            amt = price(room[0])
+            if amt:
+                lines.append((room[1], amt))
+
+    wl = str(wheelchair or "").strip()
+    if _service_on(wl):
+        if "مرافق" in wl:
+            amt = price("svc_wheelchair_escort")
+            if amt:
+                lines.append(("كرسي متحرك مع مرافق", amt))
+        else:
+            amt = price("svc_wheelchair")
+            if amt:
+                lines.append(("كرسي متحرك", amt))
+
+    if _service_on(hady):
+        amt = price("svc_hady")
+        if amt:
+            lines.append(("الهدي", amt))
+
+    if "جيمس" in f"{executive_service} {transport}":
+        amt = price("svc_jeems")
+        if amt:
+            lines.append(("جيمس", amt))
+
+    tc = str(travel_class or "").lower()
+    if any(w in tc for w in ("business", "أعمال", "رجال", "j", "c")):
+        amt = price("svc_business_ticket")
+        if amt:
+            lines.append(("تذكرة رجال أعمال", amt))
+
+    total = sum(a for _l, a in lines)
+    return total, lines

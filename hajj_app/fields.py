@@ -26,6 +26,7 @@ FIELDS: tuple[Field, ...] = (
     Field("full_name_ar",      "اسم الحاج بالعربي",      28, True,  True),
     Field("full_name_en",      "اسم الحاج بالانجليزي",   30, True,  True),
     Field("phone",             "الهاتف المتحرك",         15, True,  False),
+    Field("program",           "برنامج الحملة",          14, True,  False),
     Field("hotel",             "الفندق",                 18, True,  True),
     Field("room_type",         "نوع الغرفة",             11, True,  True),
     Field("room_number",       "رقم الغرفة",             10, True,  True),
@@ -321,6 +322,8 @@ _alias("departure_date", "departure", "departure date", "المغادره",
 _alias("departure_time", "departure time", "وقت السفر", "ساعة المغادرة")
 _alias("transport", "transportation", "bus", "النقل", "المواصلات", "الباص",
        "سيارة خاصة", "سياره خاصه", "نقل خاص", "المواصلة")
+_alias("program", "campaign program", "package program", "برنامج", "البرنامج",
+       "برنامج الحمله", "نوع البرنامج")
 _alias("hady", "hadi", "sacrifice", "الهدى", "الاضحيه", "الهدي")
 _alias("wheelchair", "wheel chair", "كرسي متحرك", "الكرسي المتحرك", "عربة")
 _alias("executive_service", "executive", "vip", "خدمة تنفيذيه", "التنفيذي",
