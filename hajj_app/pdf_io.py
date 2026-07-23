@@ -1077,7 +1077,7 @@ def build_invoice_item(rec, *, season: str = "") -> str:
 
 def export_invoice_pdf(rec, path: str | Path, *, company=None,
                        number: str = "INV-0001", date_str: str = "",
-                       electronic: bool = False, vat_mode: str = "inclusive",
+                       electronic: bool = False, vat_mode: str = "none",
                        season: str = "", item_desc: str = "",
                        notes: str = "") -> Path:
     """يبني **فاتورة ضريبية** (أو **فاتورة إلكترونية** بصيغة PEPPOL عند
@@ -1208,17 +1208,26 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     story.append(it)
     story.append(Spacer(1, 10))
 
-    # الإجماليات (يمين) بجانب رمز QR (يسار، للفاتورة الإلكترونية)
-    tot_rows = [
-        ("المجموع الفرعي (غير شامل الضريبة)", money(net)),
-        ("ضريبة القيمة المضافة 5%", money(vat)),
-        ("الإجمالي شامل الضريبة", money(total)),
-        ("المدفوع", money(paid)),
-        ("المتبقّي", money(remaining)),
-    ]
+    # الإجماليات — عند «بدون استخراج» يُعرض السعر كاملاً شاملاً الضريبة بلا تقسيم
+    if vat_mode == "none":
+        tot_rows = [
+            ("الإجمالي (شامل الضريبة)", money(total)),
+            ("المدفوع", money(paid)),
+            ("المتبقّي", money(remaining)),
+        ]
+        big_idx = 0
+    else:
+        tot_rows = [
+            ("المجموع الفرعي (غير شامل الضريبة)", money(net)),
+            ("ضريبة القيمة المضافة 5%", money(vat)),
+            ("الإجمالي شامل الضريبة", money(total)),
+            ("المدفوع", money(paid)),
+            ("المتبقّي", money(remaining)),
+        ]
+        big_idx = 2
     trows = []
     for i, (k, v) in enumerate(tot_rows):
-        big = (i == 2)
+        big = (i == big_idx)
         vs = ParagraphStyle("tv", parent=val, alignment=0,
                             fontName=_FONT_BOLD if big else _FONT,
                             fontSize=11 if big else 9.5)
@@ -1231,8 +1240,8 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("BACKGROUND", (0, 2), (-1, 2), _ACCENT),
-        ("TEXTCOLOR", (0, 2), (0, 2), colors.white),
+        ("BACKGROUND", (0, big_idx), (-1, big_idx), _ACCENT),
+        ("TEXTCOLOR", (0, big_idx), (0, big_idx), colors.white),
     ]
     tot.setStyle(TableStyle(tstyle))
 
@@ -1287,7 +1296,7 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
 
 
 def build_contract_body(rec, *, company=None, season: str = "",
-                        vat_mode: str = "inclusive") -> str:
+                        vat_mode: str = "none") -> str:
     """نصّ بنود العقد الافتراضي (قابل للتحرير في النافذة)، مبنيّ من بيانات الحاج.
 
     كل بند فقرة تبدأ بسطر عنوان ثم سطر المحتوى، والفقرات يفصلها سطر فارغ.
@@ -1301,15 +1310,18 @@ def build_contract_body(rec, *, company=None, season: str = "",
     prog = "برنامج الحج" + (f" موسم {season}هـ" if season else "")
     hotel = rec.hotel or "—"
     room = f" في غرفة {rec.room_type}" if rec.room_type else ""
+    # عند «بدون استخراج» يُذكر أنّ القيمة شاملة الضريبة دون تفصيل المبلغ
+    vat_part = (f" شاملةً ضريبة القيمة المضافة ({format_amount(vat)} درهماً)"
+                if vat > 0 else " شاملةً ضريبة القيمة المضافة")
 
     clauses = [
         ("البند الأول: موضوع العقد",
          f"يقدّم الطرف الأول للطرف الثاني {prog}، ويشمل الإقامة في {hotel}{room} "
          "والإعاشة والتنقّلات الداخلية وتذاكر الطيران والهدي وفق البرنامج المعتمد."),
         ("البند الثاني: قيمة العقد",
-         f"القيمة الإجمالية {format_amount(total)} درهماً شاملةً ضريبة القيمة "
-         f"المضافة ({format_amount(vat)} درهماً). المدفوع {format_amount(paid)} "
-         f"درهماً، والمتبقّي {format_amount(remaining)} درهماً."),
+         f"القيمة الإجمالية {format_amount(total)} درهماً{vat_part}. "
+         f"المدفوع {format_amount(paid)} درهماً، والمتبقّي "
+         f"{format_amount(remaining)} درهماً."),
         ("البند الثالث: الدفعات",
          "جميع الدفعات المسدّدة غير مستردّة وتُستخدَم في تأكيد الحجوزات والخدمات."),
         ("البند الرابع: التزامات الطرف الثاني",
@@ -1327,7 +1339,7 @@ def build_contract_body(rec, *, company=None, season: str = "",
 def export_contract_pdf(rec, path: str | Path, *, company=None,
                         number: str = "CON-0001", date_str: str = "",
                         season: str = "", body: str = "",
-                        vat_mode: str = "inclusive") -> Path:
+                        vat_mode: str = "none") -> Path:
     """يبني **عقد خدمات حج** بين الشركة (الطرف الأول) والحاج (الطرف الثاني)
     على صفحة A4 عمودية، مع بنود قابلة للتحرير وتوقيعَي الطرفين."""
     _register_fonts()

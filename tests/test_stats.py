@@ -159,19 +159,25 @@ print("\n=== الفاتورة الإلكترونية PEPPOL (UBL 2.1 / PINT AE) 
 import xml.etree.ElementTree as ET
 from hajj_app.einvoice import (build_ubl_invoice, export_invoice_xml,
                                PINT_AE_CUSTOMIZATION)
+# الوضع الافتراضي «بدون استخراج»: السعر كاملاً بلا تفصيل الضريبة
 xml = build_ubl_invoice(inv, company=co, number="EINV-0119", date_str="2026-05-01")
 root = ET.fromstring(xml)                        # XML صالح (يُحلَّل بلا خطأ)
 assert root.tag.endswith("}Invoice"), root.tag
 assert PINT_AE_CUSTOMIZATION in xml
 assert "<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>" in xml
-for s in ("100123456700003", "438095.24", "21904.76", "460000.00",
-          "2026-05-01", 'currencyID="AED"'):
+for s in ("100123456700003", "460000.00", "2026-05-01", 'currencyID="AED"'):
     assert s in xml, s
+assert "438095.24" not in xml and "21904.76" not in xml, "لا يُستخرَج 5%"
+assert "<cbc:ID>Z</cbc:ID>" in xml and "<cbc:Percent>0</cbc:Percent>" in xml
+# عند طلب الاستخراج صراحةً يظهر التفصيل بنسبة 5%
+xml_inc = build_ubl_invoice(inv, company=co, vat_mode="inclusive")
+assert "438095.24" in xml_inc and "21904.76" in xml_inc
+assert "<cbc:Percent>5</cbc:Percent>" in xml_inc
 # التاريخ غير الصالح يتراجع إلى صيغة ISO
 assert "IssueDate>" in build_ubl_invoice(inv, company=co, date_str="بلا تاريخ")
 px = _os.path.join(_OUTDIR, "einvoice.xml")
 export_invoice_xml(inv, px, company=co, number="EINV-0119")
 assert _os.path.getsize(px) > 800
-print(f"  OK: ملف XML صالح ({_os.path.getsize(px)} بايت) بتخصيص PINT AE")
+print(f"  OK: XML «بدون استخراج» + وضع الاستخراج ({_os.path.getsize(px)} بايت)")
 
 print("\n*** STATS TESTS PASSED ***")

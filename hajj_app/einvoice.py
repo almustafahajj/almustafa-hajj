@@ -32,7 +32,7 @@ def _iso_date(value: str) -> str:
     return s if re.match(r"^\d{4}-\d{2}-\d{2}$", s) else date.today().isoformat()
 
 
-def invoice_amounts(rec, *, vat_mode: str = "inclusive"):
+def invoice_amounts(rec, *, vat_mode: str = "none"):
     """يعيد (صافي، ضريبة، إجمالي) للفاتورة من قيمة البرنامج."""
     gross = parse_amount(rec.program_value)
     if gross is None:
@@ -42,7 +42,7 @@ def invoice_amounts(rec, *, vat_mode: str = "inclusive"):
 
 def build_ubl_invoice(rec, *, company=None, number: str = "INV-0001",
                       date_str: str = "", item_desc: str = "",
-                      vat_mode: str = "inclusive", currency: str = "AED",
+                      vat_mode: str = "none", currency: str = "AED",
                       vat_rate: int = 5) -> str:
     """يبني فاتورة إلكترونية بصيغة UBL 2.1 (PINT AE) كنصّ XML."""
     from .pdf_io import build_invoice_item, company_info
@@ -53,6 +53,10 @@ def build_ubl_invoice(rec, *, company=None, number: str = "INV-0001",
     net, vat, total = invoice_amounts(rec, vat_mode=vat_mode)
     issue = _iso_date(date_str)
     customer = rec.full_name_ar or rec.full_name_en or "—"
+    # عند «بدون استخراج» تكون الضريبة صفراً فتُخفَّض النسبة إلى 0 وفئة الضريبة
+    # إلى Z (صفرية) لتناسق المستند؛ وإلا S (قياسية).
+    pct = vat_rate if vat > 0 else 0
+    cat = "S" if vat > 0 else "Z"
 
     e = escape
     cur = currency
@@ -103,8 +107,8 @@ def build_ubl_invoice(rec, *, company=None, number: str = "INV-0001",
       <cbc:TaxableAmount currencyID="{cur}">{m(net)}</cbc:TaxableAmount>
       <cbc:TaxAmount currencyID="{cur}">{m(vat)}</cbc:TaxAmount>
       <cac:TaxCategory>
-        <cbc:ID>S</cbc:ID>
-        <cbc:Percent>{vat_rate}</cbc:Percent>
+        <cbc:ID>{cat}</cbc:ID>
+        <cbc:Percent>{pct}</cbc:Percent>
         <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
       </cac:TaxCategory>
     </cac:TaxSubtotal>
@@ -122,8 +126,8 @@ def build_ubl_invoice(rec, *, company=None, number: str = "INV-0001",
     <cac:Item>
       <cbc:Name>{e(item_desc)}</cbc:Name>
       <cac:ClassifiedTaxCategory>
-        <cbc:ID>S</cbc:ID>
-        <cbc:Percent>{vat_rate}</cbc:Percent>
+        <cbc:ID>{cat}</cbc:ID>
+        <cbc:Percent>{pct}</cbc:Percent>
         <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
       </cac:ClassifiedTaxCategory>
     </cac:Item>
