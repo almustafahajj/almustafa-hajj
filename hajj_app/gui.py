@@ -1321,7 +1321,8 @@ class HajjApp:
         self._progress_show(len(paths))
         self.set_status(f"جارٍ قراءة {len(paths)} ملف…")
         self._disable_toolbar(True)
-        self._scan_state = {"failures": [], "notes": [], "added": 0}
+        self._scan_state = {"failures": [], "notes": [], "added": 0,
+                            "processed": 0}
 
         # القراءة في خيط منفصل حتى لا تتجمّد الواجهة
         threading.Thread(target=self._scan_worker, args=(list(paths),), daemon=True).start()
@@ -1400,7 +1401,10 @@ class HajjApp:
             elif kind == "progress":
                 self.set_status(f"جارٍ القراءة… {payload}")
             elif kind == "step":
-                self.progress.step(1)
+                state["processed"] = state.get("processed", 0) + 1
+                # تعيين القيمة صراحةً وإجبار إعادة الرسم فوراً ليتحرّك الشريط
+                self.progress.configure(value=state["processed"])
+                self.progress.update_idletasks()
             else:
                 finished = True
 
