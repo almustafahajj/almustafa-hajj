@@ -317,6 +317,26 @@ assert len(_sel) == 1 and _sel[0].full_name_ar == "أ", _sel
 rsd2 = RoomingScopeDialog(root, app.records); rsd2._ok()
 assert rsd2.result == (None, None)
 print("  OK: نطاق التسكين يفلتر بالفندق ونوع الغرفة")
+
+# ---- تحسينات الواجهة: تلوين الصفوف + الحالة الفارغة + الرقائق + الإحصاء ----
+app.records = []
+app.refresh()
+assert app._empty.winfo_manager() == "place", "الحالة الفارغة يجب أن تظهر"
+app.records = [
+    PassportData(full_name_ar="د", program_value="20000", paid_amount="5000"),
+    PassportData(full_name_ar="هـ", program_value="20000", paid_amount="20000"),
+]
+app.refresh()
+assert app._empty.winfo_manager() == "", "الحالة الفارغة يجب أن تختفي مع وجود سجلات"
+_rtags = [app.tree.item(i, "tags")[0] for i in app.tree.get_children()]
+assert "due" in _rtags and "paid" in _rtags, _rtags
+assert "المحصّل" in app._fin_label.cget("text"), app._fin_label.cget("text")
+# رقاقة فلتر نشطة عبر البحث الحر (لا يُعاد ضبطه في _populate_filters)
+app.filter_search.set("د")
+assert app._chips_row.winfo_manager() == "pack", "صفّ الرقائق يظهر مع فلتر نشط"
+app.filter_search.set("")
+assert app._chips_row.winfo_manager() == "", "الرقائق تختفي بلا فلاتر"
+print("  OK: تلوين الصفوف، الحالة الفارغة، رقائق الفلاتر، الإحصاء الدائم")
 print("  OK: كشف المواصلات يجمع بالباص ويصفّي بالاختيار")
 
 print("\n=== لوحة الإحصاءات والمالية (StatsDialog) ===")

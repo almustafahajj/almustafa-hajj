@@ -66,12 +66,14 @@ _PALETTES = {
         "HOVER_BG": "#EADFCB", "BORDER": "#E2DACE", "MUTED": "#777777",
         "TEXT": "#111111", "GHOST_BG": "#F1ECE3", "GHOST_HOVER": "#E7DECF",
         "GHOST_LIGHT": "#FFFFFF", "GHOST_EDGE": "#C7BBA6", "PANEL_EDGE": "#D8CFC0",
+        "DUE_BG": "#F8E4E2", "PAID_BG": "#E6F1E9",
     },
     "داكن": {
         "BG": "#1E1E22", "PANEL": "#26262B", "ROW_ALT": "#2C2C33",
         "HOVER_BG": "#3A3A44", "BORDER": "#3A3A44", "MUTED": "#9A948B",
         "TEXT": "#EAE6DF", "GHOST_BG": "#33333A", "GHOST_HOVER": "#3E3E48",
         "GHOST_LIGHT": "#4A4A54", "GHOST_EDGE": "#141418", "PANEL_EDGE": "#141418",
+        "DUE_BG": "#3C2A2A", "PAID_BG": "#26332B",
     },
 }
 THEMES = tuple(_PALETTES)
@@ -79,18 +81,21 @@ THEMES = tuple(_PALETTES)
 # القيم الحالية (تُضبط بـ apply_theme)
 BG = PANEL = ROW_ALT = HOVER_BG = BORDER = MUTED = TEXT = ""
 GHOST_BG = GHOST_HOVER = GHOST_LIGHT = GHOST_EDGE = PANEL_EDGE = ""
+DUE_BG = PAID_BG = ""
 
 
 def apply_theme(name: str) -> None:
     """يضبط أدوار الألوان حسب الوضع (فاتح/داكن)."""
     global BG, PANEL, ROW_ALT, HOVER_BG, BORDER, MUTED, TEXT
     global GHOST_BG, GHOST_HOVER, GHOST_LIGHT, GHOST_EDGE, PANEL_EDGE
+    global DUE_BG, PAID_BG
     pal = _PALETTES.get(name, _PALETTES["فاتح"])
     BG, PANEL, ROW_ALT = pal["BG"], pal["PANEL"], pal["ROW_ALT"]
     HOVER_BG, BORDER, MUTED = pal["HOVER_BG"], pal["BORDER"], pal["MUTED"]
     TEXT = pal["TEXT"]
     GHOST_BG, GHOST_HOVER = pal["GHOST_BG"], pal["GHOST_HOVER"]
     GHOST_LIGHT, GHOST_EDGE, PANEL_EDGE = pal["GHOST_LIGHT"], pal["GHOST_EDGE"], pal["PANEL_EDGE"]
+    DUE_BG, PAID_BG = pal["DUE_BG"], pal["PAID_BG"]
 
 
 apply_theme("فاتح")            # الافتراضي حتى تُحمَّل الإعدادات
@@ -136,6 +141,37 @@ def install_entry_editing(widget) -> None:
 
     widget.bind("<Button-3>", popup)
     widget.bind("<Control-KeyPress>", ctrl)
+
+
+def add_tooltip(widget, text: str) -> None:
+    """تلميح صغير يظهر عند مرور الفأرة فوق الأداة (Tooltip)."""
+    if not text:
+        return
+    state = {"tip": None}
+
+    def show(_e=None):
+        if state["tip"] is not None:
+            return
+        try:
+            x = widget.winfo_rootx() + 18
+            y = widget.winfo_rooty() + widget.winfo_height() + 4
+        except tk.TclError:
+            return
+        tw = tk.Toplevel(widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tk.Label(tw, text=text, bg="#1A1A1A", fg="#FFFFFF", justify="right",
+                 font=("Segoe UI", 9), padx=8, pady=3).pack()
+        state["tip"] = tw
+
+    def hide(_e=None):
+        if state["tip"] is not None:
+            state["tip"].destroy()
+            state["tip"] = None
+
+    widget.bind("<Enter>", show, add="+")
+    widget.bind("<Leave>", hide, add="+")
+    widget.bind("<ButtonPress>", hide, add="+")
 
 
 def open_preview(parent, export_fn, base_name: str, ext: str):
@@ -381,8 +417,10 @@ class HajjApp:
                       foreground=MUTED, background=BG).pack(anchor="w")
 
         # زرّ لوحة التحكم — بارز في وسط الترويسة
-        ttk.Button(bar, text=rtl("🏠  لوحة التحكم"), style="Primary.TButton",
-                   command=self.do_dashboard).pack(side=LEFT, padx=16)
+        _dash = ttk.Button(bar, text=rtl("🏠  لوحة التحكم"), style="Primary.TButton",
+                           command=self.do_dashboard)
+        _dash.pack(side=LEFT, padx=16)
+        add_tooltip(_dash, "مؤشّرات سريعة + إعدادات العرض")
 
         # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
         ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
@@ -445,7 +483,7 @@ class HajjApp:
         return cache[key]
 
     def _menubutton(self, parent, text, items, *, style="Toolbar.TMenubutton",
-                    icon=None):
+                    icon=None, tip=None):
         """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)، بأيقونة اختيارية."""
         mb = ttk.Menubutton(parent, text=rtl(text), style=style, direction="below")
         if icon is not None:
@@ -461,6 +499,8 @@ class HajjApp:
                 menu.add_command(label=label, command=cmd)
         mb["menu"] = menu
         self._menus.append(menu)          # نحتفظ بمرجع لمنع جمع القمامة
+        if tip:
+            add_tooltip(mb, tip)
         return mb
 
     def _icon_button(self, parent, text, command, style, icon):
@@ -482,7 +522,8 @@ class HajjApp:
         # 📋 البرامج
         programs_mb = self._menubutton(bar, "البرامج  ▾", [
             ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
-        ], style="Ghost.TMenubutton", icon=("columns", BRONZE))
+        ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
+            tip="إعداد برامج الحملة الثلاثة")
         programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -497,7 +538,8 @@ class HajjApp:
             ("📱  رسالة واتساب للمحدّدين", self.do_whatsapp),
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
             ("🧹  مسح الكل", self.clear_all),
-        ], style="Ghost.TMenubutton", icon=("id", BLUE))
+        ], style="Ghost.TMenubutton", icon=("id", BLUE),
+            tip="سجلّات الحجّاج: إضافة/تعديل/حذف/واتساب/فحص")
         book_mb.pack(side=RIGHT, padx=3)
 
         # 🏨 إدارة التسكين
@@ -505,7 +547,8 @@ class HajjApp:
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
             ("⛺  خيام المخيمات", self.do_camps),
-        ], style="Ghost.TMenubutton", icon=("tent", ORANGE))
+        ], style="Ghost.TMenubutton", icon=("tent", ORANGE),
+            tip="كشوف التسكين وخيام المخيمات")
         housing_mb.pack(side=RIGHT, padx=3)
 
         # 💰 المالية والمحاسبة
@@ -521,7 +564,8 @@ class HajjApp:
             ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
             None,
             ("🧾  توليد جماعي للمستندات (للمعروضين)", self.do_bulk_docs),
-        ], style="Ghost.TMenubutton", icon=("chart", GOLD))
+        ], style="Ghost.TMenubutton", icon=("chart", GOLD),
+            tip="الإحصاءات والسندات والفواتير والعقود")
         fin_mb.pack(side=RIGHT, padx=3)
 
         # 📊 التقارير
@@ -536,7 +580,8 @@ class HajjApp:
             ("🪪  بطاقات الحجّاج", self.do_badges),
             ("🏷  طباعة الاستيكرات (حقائب/غرف/أظرف)", self.do_stickers),
             ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
-        ], style="Ghost.TMenubutton", icon=("report", BLUE))
+        ], style="Ghost.TMenubutton", icon=("report", BLUE),
+            tip="التصدير والكشوفات والبطاقات والطباعة")
         rep_mb.pack(side=RIGHT, padx=3)
 
         # ⚙ لوحة الإدارة (النسخ الاحتياطية والحساب)
@@ -550,14 +595,16 @@ class HajjApp:
                             ("🔑  تغيير كلمة المرور", self.change_password),
                             ("🗝  مفتاح استرداد جديد", self.new_recovery_key)]
         admin_mb = self._menubutton(bar, "لوحة الإدارة  ▾", admin_items,
-                                    style="Ghost.TMenubutton", icon=("gear", GRAY))
+                                    style="Ghost.TMenubutton", icon=("gear", GRAY),
+                                    tip="النسخ الاحتياطية وسجلّ التدقيق والحساب")
         admin_mb.pack(side=RIGHT, padx=3)
 
         # 📥 استيراد البيانات
         import_mb = self._menubutton(bar, "استيراد البيانات  ▾", [
             ("📁  استيراد من إكسل", self.import_from_excel),
             ("📷  إضافة جوازات (صور / PDF)", self.add_images),
-        ], style="Ghost.TMenubutton", icon=("add", GREEN))
+        ], style="Ghost.TMenubutton", icon=("add", GREEN),
+            tip="استيراد من إكسل أو قراءة الجوازات")
         import_mb.pack(side=RIGHT, padx=3)
 
         # شريط التقدّم يُنشأ مخفيّاً ويظهر فقط أثناء العمليات الطويلة
@@ -635,7 +682,39 @@ class HajjApp:
             ("filter", TEXT))
         self._filter_btn.pack(side=RIGHT, padx=(0, 12))
 
+        # صفّ رقائق الفلاتر النشطة (يُملأ ويُظهَر في refresh عند وجود فلاتر)
+        self._chips_row = ttk.Frame(outer, style="Toolbar.TFrame")
+
         self._build_filter_panel()
+
+    def _update_chips(self) -> None:
+        """يعرض الفلاتر النشطة كوسوم قابلة للإزالة بنقرة."""
+        if not hasattr(self, "_chips_row"):
+            return
+        for w in self._chips_row.winfo_children():
+            w.destroy()
+        active = []
+        for key, label in self._FILTER_FIELDS:
+            val = self.filter_vars[key].get()
+            if val != self._ALL:
+                active.append((f"{label}: {val}",
+                               lambda k=key: (self.filter_vars[k].set(self._ALL),
+                                              self.refresh())))
+        q = self.filter_search.get().strip()
+        if q:
+            active.append((f"بحث: {q}", lambda: self.filter_search.set("")))
+
+        if not active:
+            self._chips_row.pack_forget()
+            return
+        self._chips_row.pack(fill=X, pady=(5, 0))
+        ttk.Label(self._chips_row, text="الفلاتر النشطة:", font=("Segoe UI", 9),
+                  foreground=MUTED, background=BG).pack(side=RIGHT, padx=(0, 6))
+        for text, clear in active:
+            chip = tk.Label(self._chips_row, text=f" ✕  {text} ", bg=GHOST_BG,
+                            fg=TEXT, font=("Segoe UI", 9), padx=2, cursor="hand2")
+            chip.pack(side=RIGHT, padx=3)
+            chip.bind("<Button-1>", lambda _e, c=clear: c())
 
     def _build_filter_panel(self) -> None:
         """لوحة منسدلة تجمع كل الفلاتر التسعة في مكان واحد."""
@@ -685,6 +764,7 @@ class HajjApp:
                                        command=self._toggle_sort_dir,
                                        style="Act.TButton")
         self.sort_dir_btn.pack(side=RIGHT)
+        add_tooltip(self.sort_dir_btn, "اتجاه الترتيب: تصاعدي/تنازلي")
 
         btns = ttk.Frame(inner, style="Panel.TFrame")
         btns.grid(row=99, column=0, columnspan=6, sticky="e", pady=(12, 0))
@@ -1078,12 +1158,34 @@ class HajjApp:
         self.tree.tag_configure("even", background=PANEL)
         self.tree.tag_configure("odd", background=ROW_ALT)
         self.tree.tag_configure("warn", background=WARN_BG, foreground="#5A4A2E")
+        self.tree.tag_configure("due", background=DUE_BG)      # عليه متأخّرات
+        self.tree.tag_configure("paid", background=PAID_BG)    # مكتمل السداد
         self.tree.tag_configure("hover", background=HOVER_BG)
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
         self._hover_iid = None
         self._hover_prev: tuple = ()
         self.tree.bind("<Motion>", self._on_row_hover)
         self.tree.bind("<Leave>", lambda _e: self._clear_hover())
+
+        # لوحة الحالة الفارغة (تُظهَر فوق الجدول حين لا سجلّات — يُدار في refresh)
+        self._empty = ttk.Frame(wrap, style="Toolbar.TFrame", padding=30)
+        ttk.Label(self._empty, text="🕋", font=("Segoe UI", 42),
+                  background=BG, foreground=BRONZE).pack()
+        ttk.Label(self._empty, text="لا يوجد حجّاج بعد",
+                  font=("Segoe UI Semibold", 16), background=BG,
+                  foreground=TEXT).pack(pady=(6, 2))
+        ttk.Label(self._empty, background=BG, foreground=MUTED,
+                  font=("Segoe UI", 10),
+                  text="ابدأ بإضافة حاج يدوياً، أو استيراد ملف إكسل، أو قراءة "
+                       "الجوازات من الصور.").pack(pady=(0, 14))
+        eb = ttk.Frame(self._empty, style="Toolbar.TFrame")
+        eb.pack()
+        ttk.Button(eb, text=rtl("➕  إضافة حاج يدوياً"), style="Primary.TButton",
+                   command=self.add_manual).pack(side=RIGHT, padx=4)
+        ttk.Button(eb, text=rtl("📁  استيراد إكسل"), style="Ghost.TButton",
+                   command=self.import_from_excel).pack(side=RIGHT, padx=4)
+        ttk.Button(eb, text=rtl("📷  قراءة الجوازات"), style="Ghost.TButton",
+                   command=self.add_images).pack(side=RIGHT, padx=4)
 
         # قائمة يمين الفأرة على الصف
         self._row_menu = tk.Menu(self.tree, tearoff=0, font=("Segoe UI", 10))
@@ -1168,6 +1270,10 @@ class HajjApp:
         self.count_label = ttk.Label(bar, text="", font=("Segoe UI Semibold", 11),
                                      foreground=TEXT)
         self.count_label.pack(side=LEFT)
+        # إحصاء مالي دائم (المحصّل/المتبقّي) — يُحدَّث مع كل عملية
+        self._fin_label = ttk.Label(bar, text="", font=("Segoe UI", 10),
+                                    foreground=MUTED)
+        self._fin_label.pack(side=LEFT, padx=12)
         ttk.Label(bar, text="💾 الحفظ تلقائي", font=("Segoe UI", 9),
                   foreground=MUTED).pack(side=LEFT, padx=12)
 
@@ -1285,6 +1391,19 @@ class HajjApp:
         except Exception:
             pass
 
+    def _row_tag(self, data: dict, shown: int) -> str:
+        """وسم لون الصف: تنبيه المراجعة، ثم متأخّر/مكتمل مالياً، وإلا متناوب."""
+        if data.get("warnings"):
+            return "warn"
+        from .fields import parse_amount
+        rem = parse_amount(data.get("remaining_amount"))
+        prog = parse_amount(data.get("program_value"))
+        if rem is not None and rem > 0.005:
+            return "due"
+        if prog and (rem is None or rem <= 0.005):
+            return "paid"
+        return "odd" if shown % 2 else "even"
+
     def refresh(self) -> None:
         """يعيد رسم الجدول من self.records مطبّقاً الفلاتر النشطة.
 
@@ -1305,8 +1424,8 @@ class HajjApp:
             shown += 1
             data = row_dict(rec, shown)
             values = [data.get(f.key, "") for f in self.columns]
-            # صفّ التنبيه بلونه، والبقية متناوبة الألوان
-            tag = "warn" if data.get("warnings") else ("odd" if shown % 2 else "even")
+            # الأولوية: تنبيه المراجعة، ثم الحالة المالية (متأخّر/مكتمل)، وإلا متناوب
+            tag = self._row_tag(data, shown)
             self.tree.insert("", END, iid=str(orig_index[id(rec)]), values=values,
                              tags=(tag,))
 
@@ -1315,6 +1434,15 @@ class HajjApp:
             self.count_label.configure(text=f"المعروض: {shown} من {total}")
         else:
             self.count_label.configure(text=f"إجمالي الحجاج: {total}")
+
+        # إحصاء مالي دائم في شريط الحالة
+        if hasattr(self, "_fin_label"):
+            from .fields import format_amount
+            from .stats import financial_summary
+            fin = financial_summary(self.records)
+            self._fin_label.configure(
+                text=(f"المحصّل {format_amount(fin.paid) or 0}  •  "
+                      f"المتبقّي {format_amount(fin.remaining) or 0}"))
 
         # حالة فارغة: نُظهر اللوحة الترحيبية فوق الجدول حين لا سجلات
         if hasattr(self, "_empty"):
@@ -1325,6 +1453,7 @@ class HajjApp:
 
         self._update_heading_arrows()
         self._update_filter_button()
+        self._update_chips()
         self._scroll_to_start()
 
     def _selected_indices(self) -> list[int]:
