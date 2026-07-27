@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 import io
 import os
 import secrets
@@ -33,6 +34,15 @@ _COOKIE = "hajj_session"
 
 # يُسلسِل عمليات الكتابة داخل الخادم حتى لا يدهس طلبان الملف نفسه
 _WRITE_LOCK = threading.Lock()
+
+# مكدّس تراجع بسيط في ذاكرة الخادم: (وصف، نسخة من السجلات) قبل كل عملية مُتلِفة
+_UNDO: list = []
+_UNDO_MAX = 10
+
+
+def _push_undo(records, label):
+    _UNDO.append((label, copy.deepcopy(records)))
+    del _UNDO[:-_UNDO_MAX]
 
 # أعمدة الجدول (المفتاح، العنوان) — عنوان مختصر مأخوذ من fields حيث أمكن
 COLUMNS = [
@@ -379,16 +389,92 @@ def create_app(auth_path: str | Path | None = None,
             if (request.form.get("orig") or "") != (rec.passport_number or ""):
                 abort(409)
             name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+            _push_undo(records, f"حذف «{name}»")
             del records[idx]
             storage.save_records(records, _data_path(), g.session)
         _audit("حذف حاج", name)
         flash(f"حُذف الحاج: {name}", "ok")
         return redirect(url_for("index"))
 
+    def _selected_idxs():
+        out = []
+        for s in request.form.getlist("sel"):
+            try:
+                out.append(int(s))
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    @app.route("/bulk/delete", methods=["POST"])
+    @edit_required
+    def bulk_delete():
+        sel = _selected_idxs()
+        if not sel:
+            flash("لم تحدّد أي حاج", "error")
+            return redirect(url_for("index"))
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            _push_undo(records, f"حذف {len(sel)} سجل")
+            for i in sorted(set(sel), reverse=True):
+                if 0 <= i < len(records):
+                    del records[i]
+            storage.save_records(records, _data_path(), g.session)
+        _audit("حذف سجلات", f"{len(sel)} سجل")
+        flash(f"حُذف {len(sel)} حاجّاً", "ok")
+        return redirect(url_for("index"))
+
+    @app.route("/bulk/edit", methods=["POST"])
+    @edit_required
+    def bulk_edit():
+        sel = _selected_idxs()
+        if not sel:
+            flash("لم تحدّد أي حاج", "error")
+            return redirect(url_for("index"))
+        return render_template(
+            "bulk_edit.html", sel=sel, count=len(sel),
+            groups=_form_groups(PassportData()), choices=CHOICES,
+            textareas=TEXTAREA_KEYS, username=g.session.username,
+            role=g.session.role_label)
+
+    @app.route("/bulk/edit/apply", methods=["POST"])
+    @edit_required
+    def bulk_edit_apply():
+        sel = _selected_idxs()
+        apply_keys = [k for k in EDITABLE_KEYS if request.form.get(f"apply_{k}")]
+        if not sel or not apply_keys:
+            flash("حدّد الحقول المراد تعديلها", "error")
+            return redirect(url_for("index"))
+        values = {k: (request.form.get(k) or "").strip() for k in apply_keys}
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            _push_undo(records, f"تعديل جماعي {len(sel)} سجل")
+            for i in sel:
+                if 0 <= i < len(records):
+                    for k, v in values.items():
+                        setattr(records[i], k, v)
+            storage.save_records(records, _data_path(), g.session)
+        _audit("تعديل جماعي", f"{len(sel)} سجل — {' + '.join(apply_keys)}")
+        flash(f"عُدّل {len(sel)} حاجّاً", "ok")
+        return redirect(url_for("index"))
+
+    @app.route("/undo", methods=["POST"])
+    @edit_required
+    def undo():
+        if not _UNDO:
+            flash("لا يوجد ما يُتراجع عنه", "warn")
+            return redirect(url_for("index"))
+        label, records = _UNDO.pop()
+        with _WRITE_LOCK:
+            storage.save_records(records, _data_path(), g.session)
+        _audit("تراجع", label)
+        flash(f"تم التراجع: {label}", "ok")
+        return redirect(url_for("index"))
+
     # ---------------------------------------------------- الاستيراد
     def _append(records_to_add):
         with _WRITE_LOCK:
             records, _ = storage.load_records(_data_path(), g.session)
+            _push_undo(records, f"استيراد {len(records_to_add)} سجل")
             records.extend(records_to_add)
             storage.save_records(records, _data_path(), g.session)
 

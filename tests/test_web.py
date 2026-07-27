@@ -367,4 +367,37 @@ pp = mgr.get("/reports/passports.pdf")
 assert pp.status_code == 200 and pp.data[:5] == b"%PDF-"
 print("  OK: رفع صورة الجواز، عرضها PNG، طباعة الجوازات PDF، ومنع المطّلع")
 
+print("\n=== تحديد متعدّد: تعديل جماعي + حذف + تراجع ===")
+n0 = len(storage.load_records(DATA, admin)[0])
+assert n0 >= 3, n0
+# تعديل جماعي: طبّق الفندق على أول سجلّين
+r = mgr.post("/bulk/edit/apply", data={"sel": ["0", "1"],
+             "apply_hotel": "on", "hotel": "فندق موحّد"})
+assert r.status_code == 302
+recs = storage.load_records(DATA, admin)[0]
+assert recs[0].hotel == "فندق موحّد" and recs[1].hotel == "فندق موحّد"
+# تراجع يعيد الفنادق السابقة
+u = mgr.post("/undo")
+assert u.status_code == 302
+recs2 = storage.load_records(DATA, admin)[0]
+assert recs2[0].hotel != "فندق موحّد", "التراجع لم يُرجِع القيمة"
+print("  OK: تعديل جماعي للحقول المفعّلة، والتراجع يعيد الحالة")
+
+# حذف جماعي + تراجع
+before = len(storage.load_records(DATA, admin)[0])
+r = mgr.post("/bulk/delete", data={"sel": ["0", "1"]})
+assert r.status_code == 302
+assert len(storage.load_records(DATA, admin)[0]) == before - 2
+mgr.post("/undo")
+assert len(storage.load_records(DATA, admin)[0]) == before, "التراجع عن الحذف فشل"
+print("  OK: حذف جماعي والتراجع يستعيد المحذوفين")
+
+# المطّلع ممنوع من كل المسارات الجماعية
+for path in ["/bulk/delete", "/bulk/edit", "/bulk/edit/apply", "/undo"]:
+    assert client.post(path).status_code == 403, path
+# مربّعات الاختيار تظهر للمحرّر/المدير فقط
+assert 'name="sel"' in mgr.get("/").get_data(as_text=True)
+assert 'name="sel"' not in client.get("/").get_data(as_text=True)
+print("  OK: المطّلع ممنوع من المسارات الجماعية ولا يرى مربّعات التحديد")
+
 print("\n*** WEB TESTS PASSED ***")

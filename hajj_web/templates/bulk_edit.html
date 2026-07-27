@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}تعديل جماعي — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>✏️ تعديل جماعي — {{ count }} حاج</h1>
+  </div>
+  <p class="hint">فعّل الحقول التي تريد تطبيقها على كل المحدّدين، واترك الباقي كما هو.</p>
+
+  <form method="post" action="{{ url_for('bulk_edit_apply') }}" class="record-form">
+    {% for i in sel %}<input type="hidden" name="sel" value="{{ i }}">{% endfor %}
+    <div class="cards">
+      {% for group_title, items in groups %}
+      <section class="card">
+        <h2>{{ group_title }}</h2>
+        {% for key, label, value in items %}
+        <div class="field bulk-field">
+          <label class="apply-lbl">
+            <input type="checkbox" name="apply_{{ key }}"> <span>{{ label }}</span>
+          </label>
+          {% if key in choices %}
+            <select name="{{ key }}">
+              {% for opt in choices[key] %}<option value="{{ opt }}">{{ opt if opt else "—" }}</option>{% endfor %}
+            </select>
+          {% elif key in textareas %}
+            <textarea name="{{ key }}" rows="2"></textarea>
+          {% else %}
+            <input type="text" name="{{ key }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </section>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">تطبيق على المحدّدين</button>
+      <a class="btn-ghost" href="{{ url_for('index') }}">إلغاء</a>
+    </div>
+  </form>
+</main>
+{% endblock %}
