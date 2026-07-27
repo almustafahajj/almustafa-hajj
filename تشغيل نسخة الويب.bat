@@ -1,22 +1,26 @@
 @echo off
 chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 echo ============================================
-echo    برنامج موسم الحج - نسخة الويب
+echo    Hajj Season Program - Web version
 echo ============================================
 echo.
 if not exist ".venv\Scripts\python.exe" (
-  echo [خطأ] لا توجد بيئة .venv. شغّل "إعداد.bat" اولا.
-  pause & exit /b 1
+  echo [ERROR] .venv not found. Run the setup .bat first.
+  echo.
+  pause
+  exit /b 1
 )
-REM التأكد من مكتبات الويب
 ".venv\Scripts\python.exe" -c "import flask, waitress" 2>nul
 if errorlevel 1 (
-  echo تثبيت مكتبات الويب...
+  echo Installing web libraries...
   ".venv\Scripts\python.exe" -m pip install -r requirements-web.txt
 )
-echo تشغيل الخادم... افتح الرابط الظاهر بالاسفل من المتصفّح.
-echo (لايقاف الخادم اضغط Ctrl+C ثم اغلق النافذة)
+echo Starting server... your browser will open automatically.
+echo Keep this window open. Press Ctrl+C to stop the server.
 echo.
 ".venv\Scripts\python.exe" -m hajj_web
+echo.
+echo Server stopped.
 pause
