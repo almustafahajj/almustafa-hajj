@@ -423,4 +423,44 @@ root_open.update()
 root_open.destroy()
 print("  OK: الوضع المفتوح يستعمل ملفاً منفصلاً دون المساس بالمشفّر")
 
+print("\n=== الصلاحيات: مدير/محرّر/مطّلع ===")
+from hajj_app.auth import Session
+
+
+def _menu_labels(a):
+    out = []
+    for m in a._menus:
+        end = m.index("end")
+        for i in range(0, (end + 1) if end is not None else 0):
+            try:
+                out.append(m.entrycget(i, "label"))
+            except Exception:
+                pass
+    return out
+
+
+expect = {
+    "admin":  dict(edit=True,  imp=True,  accounts=True),
+    "editor": dict(edit=True,  imp=True,  accounts=False),
+    "viewer": dict(edit=False, imp=False, accounts=False),
+}
+for role, exp in expect.items():
+    r = Tk(); r.withdraw()
+    a = HajjApp(r, session=Session(f"u_{role}", b"0" * 32, role=role))
+    labels = _menu_labels(a)
+    has = lambda s: any(s in x for x in labels)
+    assert a._can_edit() is exp["edit"], role
+    assert has("إضافة حاج") is exp["edit"], role
+    assert has("حذف المحدد") is exp["edit"], role
+    assert has("استيراد من إكسل") is exp["imp"], role
+    assert has("إدارة الحسابات") is exp["accounts"], role
+    # التصدير والتقارير متاحة للجميع (بما فيهم المطّلع)
+    assert has("تصدير إكسل") and has("سجلّ التدقيق"), role
+    if role == "viewer":                      # محاولات التعديل تُمنع بلا استثناء
+        a.records = list(app.records)
+        a.add_manual(); a.edit_selected(); a.delete_selected(); a.clear_all()
+        assert len(a.records) == len(app.records), "المطّلع عدّل البيانات!"
+    r.update(); r.destroy()
+    print(f"  OK: {role} — تعديل={exp['edit']} استيراد={exp['imp']} حسابات={exp['accounts']}")
+
 print("\n*** GUI SMOKE TEST PASSED ***")

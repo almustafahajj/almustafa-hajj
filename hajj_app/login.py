@@ -420,6 +420,258 @@ class ChangePasswordDialog(tk.Toplevel):
         self.destroy()
 
 
+class _AddAccountDialog(tk.Toplevel):
+    """نموذج إضافة حساب: اسم، كلمة مرور، ودور. للمدير فقط."""
+
+    def __init__(self, parent: tk.Misc, session: Session,
+                 auth_path: Path | None = None) -> None:
+        super().__init__(parent)
+        self.session = session
+        self.auth_path = auth_path
+        self.recovery_key: str | None = None
+        self.title("إضافة حساب")
+        self.configure(bg=PAPER)
+        self.resizable(False, False)
+        apply_window_icon(self)
+        self.transient(parent)
+
+        outer = tk.Frame(self, bg=PAPER, padx=36, pady=26)
+        outer.pack()
+        tk.Label(outer, text="إضافة حساب جديد", bg=PAPER, fg=INK,
+                 font=("Segoe UI", 14, "bold")).pack()
+        tk.Label(
+            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="center",
+            wraplength=380,
+            text=rtl("سيفتح الحساب الجديد نفس بيانات الحجّاج بكلمة مروره\n"
+                     "سيُعرض له مفتاح استرداد مرة واحدة — احفظه له"),
+        ).pack(pady=(8, 16))
+
+        self.username = self._field(outer, "اسم المستخدم")
+        self.password = self._field(outer, "كلمة المرور", secret=True)
+        self.confirm = self._field(outer, "تأكيد كلمة المرور", secret=True)
+
+        tk.Label(outer, text="الصلاحية", bg=PAPER, fg=INK, font=("Segoe UI", 10),
+                 anchor="e").pack(fill="x", pady=(8, 2))
+        self._roles = [r for r in auth.ROLES]
+        self.role = ttk.Combobox(
+            outer, state="readonly", justify="right", font=("Segoe UI", 11),
+            values=[auth.ROLE_LABELS[r] for r in self._roles],
+        )
+        self.role.current(self._roles.index("viewer"))
+        self.role.pack(fill="x")
+
+        self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
+                                font=("Segoe UI", 9), wraplength=380, justify="center")
+        self.message.pack(pady=(12, 0))
+        tk.Button(
+            outer, text="إضافة الحساب", command=self._submit,
+            bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
+            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=9,
+            cursor="hand2",
+        ).pack(pady=(14, 0), fill="x")
+
+        self.bind("<Return>", lambda _e: self._submit())
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.username.focus_set()
+        self.grab_set()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _field(self, parent: tk.Frame, label: str, *, secret: bool = False) -> ttk.Entry:
+        tk.Label(parent, text=label, bg=PAPER, fg=INK, font=("Segoe UI", 10),
+                 anchor="e").pack(fill="x", pady=(6, 2))
+        entry = ttk.Entry(parent, width=32, justify="right",
+                          show="●" if secret else "", font=("Segoe UI", 11))
+        entry.pack(fill="x")
+        return entry
+
+    def _submit(self) -> None:
+        problem = auth.password_problem(self.password.get(), self.confirm.get())
+        if problem:
+            self.message.configure(text=rtl(problem))
+            return
+        role = self._roles[self.role.current()]
+        try:
+            self.recovery_key = auth.add_account(
+                self.session, self.username.get(), self.password.get(),
+                role, self.auth_path,
+            )
+        except AuthError as exc:
+            self.message.configure(text=rtl(str(exc)))
+            return
+        self.destroy()
+
+
+class AccountsDialog(tk.Toplevel):
+    """إدارة الحسابات: عرض/إضافة/تغيير الدور/حذف. للمدير فقط."""
+
+    def __init__(self, parent: tk.Misc, session: Session,
+                 auth_path: Path | None = None) -> None:
+        super().__init__(parent)
+        self.session = session
+        self.auth_path = auth_path
+        self.title("إدارة الحسابات")
+        self.configure(bg=PAPER)
+        apply_window_icon(self)
+        self.transient(parent)
+
+        outer = tk.Frame(self, bg=PAPER, padx=28, pady=22)
+        outer.pack(fill="both", expand=True)
+        tk.Label(outer, text="👥  إدارة الحسابات", bg=PAPER, fg=INK,
+                 font=("Segoe UI", 15, "bold")).pack(anchor="e")
+        tk.Label(
+            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="right",
+            text=rtl("كل الحسابات تفتح البيانات نفسها؛ الدور يحدّد ما يُسمح به"),
+        ).pack(anchor="e", pady=(4, 12))
+
+        cols = ("username", "role", "updated")
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings", height=8)
+        self.tree.heading("username", text="المستخدم")
+        self.tree.heading("role", text="الصلاحية")
+        self.tree.heading("updated", text="آخر تحديث")
+        self.tree.column("username", width=180, anchor="e")
+        self.tree.column("role", width=90, anchor="center")
+        self.tree.column("updated", width=150, anchor="center")
+        self.tree.pack(fill="both", expand=True)
+
+        self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
+                                font=("Segoe UI", 9), justify="right", wraplength=430)
+        self.message.pack(anchor="e", pady=(8, 0))
+
+        row = tk.Frame(outer, bg=PAPER)
+        row.pack(fill="x", pady=(12, 0))
+        self._button(row, "➕  إضافة حساب", self._add).pack(side="right", padx=3)
+        self._button(row, "🎚  تغيير الصلاحية", self._change_role).pack(side="right", padx=3)
+        self._button(row, "🗑  حذف", self._remove).pack(side="right", padx=3)
+        self._button(row, "إغلاق", self.destroy).pack(side="left", padx=3)
+
+        self._reload()
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.grab_set()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _button(self, parent: tk.Frame, text: str, command) -> tk.Button:
+        return tk.Button(
+            parent, text=text, command=command, bg="#EFE9E1", fg=INK,
+            activebackground=BRONZE, activeforeground=PAPER, relief="flat",
+            font=("Segoe UI", 10), padx=12, pady=7, cursor="hand2",
+        )
+
+    def _reload(self) -> None:
+        self.tree.delete(*self.tree.get_children())
+        for acc in auth.list_accounts(self.auth_path):
+            me = " (أنت)" if acc["username"].lower() == self.session.username.lower() else ""
+            self.tree.insert(
+                "", "end", iid=acc["username"],
+                values=(acc["username"] + me,
+                        auth.ROLE_LABELS.get(acc["role"], acc["role"]),
+                        (acc["updated_at"] or "").replace("T", "  ")),
+            )
+
+    def _selected(self) -> str | None:
+        sel = self.tree.selection()
+        if not sel:
+            self.message.configure(text=rtl("اختر حساباً من القائمة أولاً"))
+            return None
+        return sel[0]
+
+    def _add(self) -> None:
+        dialog = _AddAccountDialog(self, self.session, self.auth_path)
+        self.wait_window(dialog)
+        if dialog.recovery_key:
+            self.wait_window(RecoveryKeyDialog(self, dialog.recovery_key))
+            self.message.configure(text=rtl("أُضيف الحساب — سلّم صاحبه كلمة المرور ومفتاح الاسترداد"),
+                                   fg=BRONZE)
+            self._reload()
+
+    def _change_role(self) -> None:
+        username = self._selected()
+        if not username:
+            return
+        dialog = _RolePickDialog(self, username)
+        self.wait_window(dialog)
+        if dialog.role is None:
+            return
+        try:
+            auth.set_role(self.session, username, dialog.role, self.auth_path)
+        except AuthError as exc:
+            self.message.configure(text=rtl(str(exc)), fg=DANGER)
+            return
+        self.message.configure(text=rtl(f"غُيّرت صلاحية «{username}»"), fg=BRONZE)
+        self._reload()
+
+    def _remove(self) -> None:
+        username = self._selected()
+        if not username:
+            return
+        from tkinter import messagebox
+        if not messagebox.askyesno("حذف حساب",
+                                   rtl(f"حذف الحساب «{username}» نهائياً؟"),
+                                   parent=self):
+            return
+        try:
+            auth.remove_account(self.session, username, self.auth_path)
+        except AuthError as exc:
+            self.message.configure(text=rtl(str(exc)), fg=DANGER)
+            return
+        self.message.configure(text=rtl(f"حُذف الحساب «{username}»"), fg=BRONZE)
+        self._reload()
+
+
+class _RolePickDialog(tk.Toplevel):
+    """اختيار دور جديد لحساب."""
+
+    def __init__(self, parent: tk.Misc, username: str) -> None:
+        super().__init__(parent)
+        self.role: str | None = None
+        self.title("تغيير الصلاحية")
+        self.configure(bg=PAPER)
+        self.resizable(False, False)
+        apply_window_icon(self)
+        self.transient(parent)
+
+        outer = tk.Frame(self, bg=PAPER, padx=32, pady=24)
+        outer.pack()
+        tk.Label(outer, text=rtl(f"صلاحية «{username}»"), bg=PAPER, fg=INK,
+                 font=("Segoe UI", 13, "bold")).pack(pady=(0, 14))
+        self._roles = [r for r in auth.ROLES]
+        self._var = tk.StringVar(value="viewer")
+        descs = {
+            "admin": "كل شيء + إدارة الحسابات",
+            "editor": "إضافة/تعديل/حذف/استيراد + تصدير",
+            "viewer": "عرض وتصدير وطباعة فقط",
+        }
+        for r in self._roles:
+            tk.Radiobutton(
+                outer, variable=self._var, value=r, bg=PAPER, fg=INK,
+                activebackground=PAPER, anchor="e", justify="right",
+                font=("Segoe UI", 11), selectcolor=PAPER,
+                text=rtl(f"{auth.ROLE_LABELS[r]} — {descs[r]}"),
+            ).pack(fill="x", pady=2)
+
+        tk.Button(
+            outer, text="حفظ", command=self._ok, bg=INK, fg=PAPER,
+            activebackground=BRONZE, activeforeground=INK,
+            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=8,
+            cursor="hand2",
+        ).pack(pady=(16, 0), fill="x")
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.grab_set()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _ok(self) -> None:
+        self.role = self._var.get()
+        self.destroy()
+
+
 class _AuthWindow:
     """نافذة الدخول/الإعداد. تعيد جلسة عند النجاح أو None عند الإلغاء."""
 

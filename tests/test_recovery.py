@@ -45,9 +45,10 @@ raw = AUTH.read_text(encoding="utf-8")
 assert recovery not in raw and auth.normalize_recovery_key(recovery) not in raw
 assert PASSWORD not in raw
 stored = json.loads(raw)
-assert stored["schema"] == 2
-assert stored["password_salt"] != stored["recovery_salt"]
-assert "auth_hash" not in stored, "بقيت بصمة الصيغة القديمة"
+assert stored["schema"] == 3
+acc = stored["accounts"][USER.lower()]
+assert acc["password_salt"] != acc["recovery_salt"]
+assert "auth_hash" not in acc, "بقيت بصمة الصيغة القديمة"
 print("  OK: لا كلمة المرور ولا مفتاح الاسترداد محفوظان بأي صورة")
 
 save_records([a_record()], DATA, session)
@@ -170,7 +171,9 @@ assert OLD_DATA.read_bytes() == legacy_blob, "أُعيد تشفير الكشف �
 assert not opened.needs_recovery_key
 print(f"  OK: رُقّي بلا إعادة تشفير — مفتاح الاسترداد: {new_key}")
 
-assert json.loads(OLD_AUTH.read_text(encoding="utf-8"))["schema"] == 2
+upgraded = json.loads(OLD_AUTH.read_text(encoding="utf-8"))
+assert upgraded["schema"] == 3
+assert upgraded["accounts"][USER.lower()]["role"] == "admin"
 after_upgrade = auth.login(USER, old_pass, OLD_AUTH)
 assert not after_upgrade.needs_recovery_key
 assert load_records(OLD_DATA, after_upgrade)[0][0].passport_number == "AA0693247"

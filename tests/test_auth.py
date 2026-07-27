@@ -34,7 +34,10 @@ raw = AUTH.read_text(encoding="utf-8")
 assert PASSWORD not in raw, "كلمة المرور ظهرت نصاً في ملف الحساب!"
 assert recovery not in raw, "مفتاح الاسترداد ظهر نصاً في ملف الحساب!"
 stored = json.loads(raw)
-assert stored["password_salt"] != stored["recovery_salt"], "الملحان يجب أن يختلفا"
+acc = stored["accounts"][USER.lower()]
+assert acc["role"] == "admin", "أول حساب يجب أن يكون مديراً"
+assert session.role == "admin" and session.is_admin and session.can_edit
+assert acc["password_salt"] != acc["recovery_salt"], "الملحان يجب أن يختلفا"
 assert stored["iterations"] >= 200_000, stored["iterations"]
 assert "password" not in raw.lower().replace("password_salt", "").replace(
     "key_by_password", "")
@@ -121,5 +124,81 @@ assert old[0].passport_number == "AA0693247"
 old_with_session, _ = load_records(legacy, fresh)
 assert old_with_session[0].passport_number == "AA0693247"
 print("  OK: الملف الصريح يُقرأ بجلسة وبدونها — لا يضيع كشف أُنشئ قبل التشفير")
+
+print("\n=== حسابات متعددة بصلاحيات ===")
+MULTI = WORK / "multi.json"
+admin, _rk = auth.create_account("mgr", "Admin-Pass-11", MULTI)
+# المدير يضيف محرّراً ومطّلعاً — يتشاركان مفتاح البيانات نفسه
+rk_ed = auth.add_account(admin, "editor1", "Editor-Pass-1", "editor", MULTI)
+rk_vw = auth.add_account(admin, "viewer1", "Viewer-Pass-1", "viewer", MULTI)
+s_admin = auth.login("mgr", "Admin-Pass-11", MULTI)
+s_editor = auth.login("editor1", "Editor-Pass-1", MULTI)
+s_viewer = auth.login("viewer1", "Viewer-Pass-1", MULTI)
+assert s_admin.data_key == s_editor.data_key == s_viewer.data_key, "مفتاح البيانات يجب أن يكون مشتركاً"
+assert s_editor.role == "editor" and s_editor.can_edit and not s_editor.can_manage_accounts
+assert s_viewer.role == "viewer" and not s_viewer.can_edit
+print("  OK: 3 حسابات تفتح المفتاح نفسه، والأدوار محفوظة")
+
+# كل حساب يفتح نفس الكشف المشفّر
+MDATA = WORK / "multi-data.json"
+save_records([rec], MDATA, s_admin)
+for who in (s_editor, s_viewer):
+    got, _ = load_records(MDATA, who)
+    assert got[0].passport_number == "AA0693247"
+print("  OK: المحرّر والمطّلع يفتحان نفس الكشف الذي شفّره المدير")
+
+# الصلاحيات تُفرض في طبقة auth
+for bad_session, op in [
+    (s_editor, lambda: auth.add_account(s_editor, "x", "Xxxxxx-11", "viewer", MULTI)),
+    (s_viewer, lambda: auth.remove_account(s_viewer, "editor1", MULTI)),
+    (s_editor, lambda: auth.set_role(s_editor, "viewer1", "admin", MULTI)),
+]:
+    try:
+        op(); raise AssertionError("نُفّذت عملية إدارية بلا صلاحية!")
+    except AuthError:
+        pass
+print("  OK: غير المدير لا يضيف/يحذف/يغيّر الأدوار")
+
+# لا حذف للذات ولا لآخر مدير
+for op, why in [
+    (lambda: auth.remove_account(s_admin, "mgr", MULTI), "حذف الذات"),
+    (lambda: auth.set_role(s_admin, "mgr", "viewer", MULTI), "إنزال آخر مدير"),
+]:
+    try:
+        op(); raise AssertionError(f"سُمح بـ{why}!")
+    except AuthError:
+        print(f"  OK: مُنع ({why})")
+
+# تغيير الدور والحذف يعملان للمدير
+auth.set_role(s_admin, "viewer1", "editor", MULTI)
+assert {a["username"]: a["role"] for a in auth.list_accounts(MULTI)}["viewer1"] == "editor"
+auth.remove_account(s_admin, "editor1", MULTI)
+assert "editor1" not in {a["username"] for a in auth.list_accounts(MULTI)}
+print("  OK: المدير يغيّر الأدوار ويحذف الحسابات")
+
+# الاسترداد يجد الحساب الصحيح (viewer1 صار محرّراً) ويبقي دوره ومفتاحه
+reset = auth.reset_with_recovery_key(rk_vw, "Viewer-New-22", MULTI)
+assert reset.username == "viewer1" and reset.role == "editor", reset.role
+assert reset.data_key == s_admin.data_key
+assert auth.login("viewer1", "Viewer-New-22", MULTI).data_key == s_admin.data_key
+print("  OK: مفتاح الاسترداد يفتح حسابه الصحيح ويبقي الدور ومفتاح البيانات")
+
+print("\n=== التوافق مع ملف حساب أحادي قديم (schema 2) ===")
+LEGACY_AUTH = WORK / "legacy-auth.json"
+# نبني ملف schema-2 أحادي الحساب يدوياً من مدخل حساب الصيغة الجديدة
+seed, _ = auth.create_account("solo", "Solo-Pass-123", LEGACY_AUTH)
+new_raw = json.loads(LEGACY_AUTH.read_text(encoding="utf-8"))
+entry = new_raw["accounts"]["solo"]
+LEGACY_AUTH.write_text(json.dumps({
+    "schema": 2, "username": "solo", "kdf": "pbkdf2_sha256",
+    "iterations": new_raw["iterations"],
+    "password_salt": entry["password_salt"], "key_by_password": entry["key_by_password"],
+    "recovery_salt": entry["recovery_salt"], "key_by_recovery": entry["key_by_recovery"],
+    "updated_at": entry["updated_at"],
+}, ensure_ascii=False), encoding="utf-8")
+relog = auth.login("solo", "Solo-Pass-123", LEGACY_AUTH)
+assert relog.role == "admin" and relog.data_key == seed.data_key
+assert auth.list_accounts(LEGACY_AUTH)[0]["role"] == "admin"
+print("  OK: ملف أحادي قديم يُقرأ كحساب مدير واحد بلا إعادة كتابة")
 
 print("\n*** AUTH + ENCRYPTION TESTS PASSED ***")

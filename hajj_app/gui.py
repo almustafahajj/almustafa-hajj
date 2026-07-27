@@ -23,8 +23,8 @@ from .pdf_in import PDFError, extract_from_pdf
 from .pdf_io import export_pdf
 from .rooming import ROOM_CATEGORIES, room_capacity, room_category, room_number_in_type
 from .login import (
-    ChangePasswordDialog, NewRecoveryKeyDialog, RecoveryKeyDialog,
-    apply_window_icon, authenticate, logo_image, rtl,
+    AccountsDialog, ChangePasswordDialog, NewRecoveryKeyDialog,
+    RecoveryKeyDialog, apply_window_icon, authenticate, logo_image, rtl,
 )
 from .storage import (
     default_data_path, load_records, load_settings, save_records, save_settings,
@@ -417,7 +417,7 @@ class HajjApp:
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
-            ttk.Label(info, text=f"👤  {self.session.username}",
+            ttk.Label(info, text=f"👤  {self.session.username}  ·  {self.session.role_label}",
                       font=(_FSB, 10), foreground=TEXT,
                       background=BG).pack(anchor="w")
             ttk.Label(info, text="🔒 البيانات مشفّرة", font=(_FUI, 9),
@@ -470,6 +470,29 @@ class HajjApp:
         if dialog.session.fresh_recovery_key:
             RecoveryKeyDialog(self.root, dialog.session.fresh_recovery_key, is_new=False)
         self.set_status("تم تغيير كلمة المرور — بياناتك كما هي")
+
+    # ---------------------------------------------------- الصلاحيات والحسابات
+    def _can_edit(self) -> bool:
+        """صلاحية تعديل البيانات — مفتوحة في الوضع المفتوح/الاختبار (بلا جلسة)."""
+        return self.session is None or self.session.can_edit
+
+    def _is_admin(self) -> bool:
+        return self.session is None or self.session.can_manage_accounts
+
+    def _require_edit(self) -> bool:
+        """يتحقق من صلاحية التعديل، ويُظهر تنبيهاً إن كان الحساب «مطّلعاً»."""
+        if self._can_edit():
+            return True
+        self.set_status("حسابك «مطّلع» — لا يملك صلاحية التعديل", warn=True)
+        return False
+
+    def manage_accounts(self) -> None:
+        """يفتح نافذة إدارة الحسابات — للمدير فقط."""
+        if not self._is_admin():
+            self.set_status("إدارة الحسابات للمدير فقط", warn=True)
+            return
+        AccountsDialog(self.root, self.session)
+        self._audit("إدارة الحسابات")
 
     def _on_season_change(self) -> None:
         """يحفظ السنة الهجرية المختارة."""
@@ -542,26 +565,37 @@ class HajjApp:
         BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
         GRAY, GREEN = "#6B6459", "#2E7D46"
 
-        # 📋 البرامج
-        programs_mb = self._menubutton(bar, "البرامج  ▾", [
-            ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
-        ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
-            tip="إعداد برامج الحملة الثلاثة")
-        programs_mb.pack(side=RIGHT, padx=3)
+        # صلاحية التعديل تحدّد أي عناصر القوائم تظهر (المطّلع يرى المقروء فقط)
+        ce = self._can_edit()
+
+        # 📋 البرامج (إعداد — للمحرّر فأعلى)
+        if ce:
+            programs_mb = self._menubutton(bar, "البرامج  ▾", [
+                ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
+            ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
+                tip="إعداد برامج الحملة الثلاثة")
+            programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
-        book_mb = self._menubutton(bar, "الحجوزات  ▾", [
-            ("➕  إضافة حاج يدوياً", self.add_manual),
-            None,
-            ("✏️  تعديل السجل", self.edit_selected),
-            ("✏️  تعديل جماعي للمحدّدين", self.bulk_edit_selected),
-            ("🗑  حذف المحدد", self.delete_selected),
-            ("↩  تراجع  (Ctrl+Z)", self.undo),
-            None,
+        book_items = []
+        if ce:
+            book_items += [
+                ("➕  إضافة حاج يدوياً", self.add_manual),
+                None,
+                ("✏️  تعديل السجل", self.edit_selected),
+                ("✏️  تعديل جماعي للمحدّدين", self.bulk_edit_selected),
+                ("🗑  حذف المحدد", self.delete_selected),
+                ("↩  تراجع  (Ctrl+Z)", self.undo),
+                None,
+            ]
+        book_items += [
             ("📱  رسالة واتساب للمحدّدين", self.do_whatsapp),
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
-            ("🧹  مسح الكل", self.clear_all),
-        ], style="Ghost.TMenubutton", icon=("id", BLUE),
+        ]
+        if ce:
+            book_items.append(("🧹  مسح الكل", self.clear_all))
+        book_mb = self._menubutton(bar, "الحجوزات  ▾", book_items,
+            style="Ghost.TMenubutton", icon=("id", BLUE),
             tip="سجلّات الحجّاج: إضافة/تعديل/حذف/واتساب/فحص")
         book_mb.pack(side=RIGHT, padx=3)
 
@@ -608,27 +642,29 @@ class HajjApp:
         rep_mb.pack(side=RIGHT, padx=3)
 
         # ⚙ لوحة الإدارة (النسخ الاحتياطية والحساب)
-        admin_items = [
-            ("🛡  نسخة احتياطية الآن", self.do_backup_now),
-            ("↩  استعادة نسخة احتياطية", self.do_restore),
-            ("📝  سجلّ التدقيق", self.do_audit),
-        ]
+        admin_items = [("🛡  نسخة احتياطية الآن", self.do_backup_now)]
+        if ce:
+            admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
+        admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
+        if self._is_admin() and self.session is not None:
+            admin_items += [None, ("👥  إدارة الحسابات", self.manage_accounts)]
         if self.session is not None:
             admin_items += [None,
                             ("🔑  تغيير كلمة المرور", self.change_password),
                             ("🗝  مفتاح استرداد جديد", self.new_recovery_key)]
         admin_mb = self._menubutton(bar, "لوحة الإدارة  ▾", admin_items,
                                     style="Ghost.TMenubutton", icon=("gear", GRAY),
-                                    tip="النسخ الاحتياطية وسجلّ التدقيق والحساب")
+                                    tip="النسخ الاحتياطية وسجلّ التدقيق والحسابات")
         admin_mb.pack(side=RIGHT, padx=3)
 
-        # 📥 استيراد البيانات
-        import_mb = self._menubutton(bar, "استيراد البيانات  ▾", [
-            ("📁  استيراد من إكسل", self.import_from_excel),
-            ("📷  إضافة جوازات (صور / PDF)", self.add_images),
-        ], style="Ghost.TMenubutton", icon=("add", GREEN),
-            tip="استيراد من إكسل أو قراءة الجوازات")
-        import_mb.pack(side=RIGHT, padx=3)
+        # 📥 استيراد البيانات (للمحرّر فأعلى)
+        if ce:
+            import_mb = self._menubutton(bar, "استيراد البيانات  ▾", [
+                ("📁  استيراد من إكسل", self.import_from_excel),
+                ("📷  إضافة جوازات (صور / PDF)", self.add_images),
+            ], style="Ghost.TMenubutton", icon=("add", GREEN),
+                tip="استيراد من إكسل أو قراءة الجوازات")
+            import_mb.pack(side=RIGHT, padx=3)
 
         # شريط التقدّم يُنشأ مخفيّاً ويظهر فقط أثناء العمليات الطويلة
         self.progress = ttk.Progressbar(bar, mode="determinate", length=180)
@@ -1192,11 +1228,12 @@ class HajjApp:
 
         # قائمة يمين الفأرة على الصف
         self._row_menu = tk.Menu(self.tree, tearoff=0, font=(_FUI, 10))
-        self._row_menu.add_command(label="✏️  تعديل السجل", command=self.edit_selected)
-        self._row_menu.add_command(label="✏️  تعديل جماعي للمحدّدين",
-                                   command=self.bulk_edit_selected)
-        self._row_menu.add_command(label="🗑  حذف المحدد", command=self.delete_selected)
-        self._row_menu.add_separator()
+        if self._can_edit():
+            self._row_menu.add_command(label="✏️  تعديل السجل", command=self.edit_selected)
+            self._row_menu.add_command(label="✏️  تعديل جماعي للمحدّدين",
+                                       command=self.bulk_edit_selected)
+            self._row_menu.add_command(label="🗑  حذف المحدد", command=self.delete_selected)
+            self._row_menu.add_separator()
         self._row_menu.add_command(label="نسخ اسم الحاج",
                                    command=lambda: self._copy_field("full_name_ar"))
         self._row_menu.add_command(label="نسخ رقم الجواز",
@@ -1334,6 +1371,8 @@ class HajjApp:
 
     def undo(self) -> None:
         """يتراجع عن آخر عملية مُتلِفة (حذف/مسح/تعديل جماعي)."""
+        if not self._require_edit():
+            return
         if not self._undo_stack:
             self.set_status("لا يوجد ما يُتراجع عنه", warn=True)
             return
@@ -1487,6 +1526,8 @@ class HajjApp:
     # ------------------------------------------------------------ إضافة يدوية
     def add_manual(self) -> None:
         """يفتح سجلاً فارغاً لإدخال بيانات حاج يدوياً."""
+        if not self._require_edit():
+            return
         record = PassportData(source_file="إدخال يدوي")
         EditDialog(
             self.root, record, on_save=self._after_manual_add,
@@ -1508,6 +1549,8 @@ class HajjApp:
 
     # ------------------------------------------------------------- إضافة صور
     def add_images(self) -> None:
+        if not self._require_edit():
+            return
         if not self.tesseract_path:
             self.tesseract_path = configure_tesseract()
             if not self.tesseract_path:
@@ -1654,6 +1697,8 @@ class HajjApp:
 
     # ----------------------------------------------------------- إكسل / PDF
     def import_from_excel(self) -> None:
+        if not self._require_edit():
+            return
         path = filedialog.askopenfilename(title="اختر ملف الإكسل", filetypes=EXCEL_TYPES)
         if not path:
             return
@@ -2026,6 +2071,8 @@ class HajjApp:
 
     def do_restore(self) -> None:
         """يفتح نافذة استعادة نسخة احتياطية."""
+        if not self._require_edit():
+            return
         from .storage import list_snapshots
         if not list_snapshots():
             messagebox.showinfo(
@@ -2076,6 +2123,8 @@ class HajjApp:
 
     def bulk_edit_selected(self) -> None:
         """تعديل جماعي: يطبّق حقولاً على كل السجلات المحدّدة."""
+        if not self._require_edit():
+            return
         idxs = self._selected_indices()
         if len(idxs) < 2:
             messagebox.showinfo(
@@ -2211,6 +2260,8 @@ class HajjApp:
 
     def do_programs(self) -> None:
         """يفتح نافذة إعداد برامج الحملة (الأول/الثاني/الثالث)."""
+        if not self._require_edit():
+            return
         ProgramsDialog(self.root, self)
 
     def _receipt_selected(self) -> None:
@@ -2444,6 +2495,8 @@ class HajjApp:
 
     # ------------------------------------------------------------ تحرير/حذف
     def edit_selected(self) -> None:
+        if not self._require_edit():
+            return
         idx = self._selected_indices()
         if not idx:
             messagebox.showinfo("لم يتم التحديد", "اختر سجلاً من الجدول أولاً.")
@@ -2459,6 +2512,8 @@ class HajjApp:
         self.set_status("تم حفظ التعديلات")
 
     def delete_selected(self) -> None:
+        if not self._require_edit():
+            return
         idx = self._selected_indices()
         if not idx:
             messagebox.showinfo("لم يتم التحديد", "اختر سجلاً أو أكثر للحذف.")
@@ -2558,6 +2613,8 @@ class HajjApp:
         return state["ok"]
 
     def clear_all(self) -> None:
+        if not self._require_edit():
+            return
         if not self.records:
             return
         if not self._confirm_destructive():
