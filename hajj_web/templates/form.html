@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>{{ title }}</h1>
+  </div>
+
+  <form method="post" action="{{ action }}" class="record-form">
+    <input type="hidden" name="orig" value="{{ orig }}">
+    <div class="cards">
+      {% for group_title, items in groups %}
+      <section class="card">
+        <h2>{{ group_title }}</h2>
+        {% for key, label, value in items %}
+        <div class="field">
+          <label for="f_{{ key }}">{{ label }}</label>
+          {% if key in choices %}
+            <select id="f_{{ key }}" name="{{ key }}">
+              {% set opts = choices[key] %}
+              {% for opt in opts %}
+                <option value="{{ opt }}" {% if value == opt %}selected{% endif %}>{{ opt if opt else "—" }}</option>
+              {% endfor %}
+              {% if value and value not in opts %}
+                <option value="{{ value }}" selected>{{ value }}</option>
+              {% endif %}
+            </select>
+          {% elif key in textareas %}
+            <textarea id="f_{{ key }}" name="{{ key }}" rows="3">{{ value }}</textarea>
+          {% else %}
+            <input type="text" id="f_{{ key }}" name="{{ key }}" value="{{ value }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </section>
+      {% endfor %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{{ "إضافة" if is_new else "حفظ" }}</button>
+      <a class="btn-ghost" href="{{ url_for('index') }}">إلغاء</a>
+    </div>
+  </form>
+</main>
+{% endblock %}

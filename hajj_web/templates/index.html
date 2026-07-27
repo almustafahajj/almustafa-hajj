@@ -5,6 +5,7 @@
   <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
   <div class="spacer"></div>
   <div class="user">
+    {% if can_edit %}<a class="add-btn" href="{{ url_for('pilgrim_new') }}">➕ إضافة حاج</a>{% endif %}
     <span class="who">👤 {{ username }} · {{ role }}</span>
     <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
   </div>

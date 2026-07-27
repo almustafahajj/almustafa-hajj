@@ -14,6 +14,16 @@
   <div class="detail-head">
     <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
     <h1>{{ name }}</h1>
+    {% if can_edit %}
+    <div class="detail-actions">
+      <a class="btn-primary" href="{{ url_for('pilgrim_edit', idx=idx) }}">✏️ تعديل</a>
+      <form method="post" action="{{ url_for('pilgrim_delete', idx=idx) }}"
+            onsubmit="return confirm('حذف هذا الحاج نهائياً؟');">
+        <input type="hidden" name="orig" value="{{ orig }}">
+        <button type="submit" class="btn-danger">🗑 حذف</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
 
   <div class="cards">

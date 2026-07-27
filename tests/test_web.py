@@ -96,10 +96,58 @@ client.get("/logout")
 assert client.get("/").status_code == 302, "الجلسة بقيت بعد الخروج"
 print("  OK: بعد الخروج يُطلب الدخول من جديد")
 
-print("\n=== كلمة مرور خاطئة عبر جلسة أخرى ===")
-c2 = app.test_client()
-c2.post("/login", data={"username": "MHU", "password": "Web-Pass-1234"})
-assert "عبدالله الشامسي" in c2.get("/").get_data(as_text=True)
-print("  OK: المدير يدخل ويرى الكشف نفسه (مفتاح تشفير مشترك)")
+print("\n=== المطّلع لا يرى أزرار التعديل ولا مساراته ===")
+viewer_home = client.post("/login", data={"username": "viewer1",
+                          "password": "View-Pass-1234"}) and client.get("/").get_data(as_text=True)
+assert "إضافة حاج" not in viewer_home, "زر الإضافة ظاهر للمطّلع!"
+# مسارات الكتابة محجوبة للمطّلع (403)
+assert client.get("/pilgrim/new").status_code == 403
+assert client.post("/pilgrim/0/delete", data={"orig": "A111"}).status_code == 403
+print("  OK: المطّلع بلا أزرار تعديل ومساراته 403")
+
+print("\n=== المدير: إضافة/تعديل/حذف ===")
+mgr = app.test_client()
+mgr.post("/login", data={"username": "MHU", "password": "Web-Pass-1234"})
+assert "إضافة حاج" in mgr.get("/").get_data(as_text=True), "زر الإضافة غائب عن المدير"
+# نماذج الإضافة/التعديل تُعرض (GET)
+newform = mgr.get("/pilgrim/new").get_data(as_text=True)
+assert "إضافة حاج جديد" in newform and "اسم الحاج بالعربي" in newform
+editform = mgr.get("/pilgrim/0/edit").get_data(as_text=True)
+assert "تعديل سجلّ الحاج" in editform and "عبدالله الشامسي" in editform
+print("  OK: نماذج الإضافة والتعديل تُعرض بالحقول")
+# إضافة
+r = mgr.post("/pilgrim/new", data={"full_name_ar": "حاج جديد",
+             "passport_number": "C333", "hotel": "هيلتون", "program": "الأول"})
+assert r.status_code == 302
+recs, _ = storage.load_records(DATA, admin)
+assert any(x.passport_number == "C333" and x.full_name_ar == "حاج جديد" for x in recs)
+assert len(recs) == 3
+print("  OK: أُضيف الحاج وحُفظ مشفّراً")
+
+# تعديل (الحاج الجديد آخر السجلّات = فهرس 2)
+r = mgr.post("/pilgrim/2/edit", data={"full_name_ar": "حاج معدّل",
+             "passport_number": "C333", "orig": "C333", "hotel": "هيلتون"})
+assert r.status_code == 302
+recs, _ = storage.load_records(DATA, admin)
+assert recs[2].full_name_ar == "حاج معدّل"
+# حارس التزامن: قيمة orig خاطئة تُرفض
+bad = mgr.post("/pilgrim/2/edit", data={"passport_number": "C333", "orig": "WRONG"})
+assert bad.status_code == 409
+print("  OK: عُدّل الحاج، وحارس التزامن يرفض orig الخاطئ (409)")
+
+# حذف
+r = mgr.post("/pilgrim/2/delete", data={"orig": "C333"})
+assert r.status_code == 302
+recs, _ = storage.load_records(DATA, admin)
+assert len(recs) == 2 and all(x.passport_number != "C333" for x in recs)
+print("  OK: حُذف الحاج")
+
+# سجلّ التدقيق سجّل العمليات باسم المستخدم (ويب)
+from hajj_app import audit
+entries = audit.read_entries(path=WORK / "audit.log")
+actions = {e["action"] for e in entries}
+assert {"إضافة حاج", "تعديل حاج", "حذف حاج"} <= actions, actions
+assert all("(ويب)" in e["user"] for e in entries if e["action"].endswith("حاج"))
+print("  OK: العمليات مسجّلة في التدقيق باسم المستخدم (ويب)")
 
 print("\n*** WEB TESTS PASSED ***")
