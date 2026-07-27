@@ -20,6 +20,8 @@ WORK = Path(_OUTDIR) / "webdata"
 shutil.rmtree(WORK, ignore_errors=True)
 WORK.mkdir(parents=True, exist_ok=True)
 AUTH, DATA = WORK / "auth.json", WORK / "hajjaj.json"
+# عزل الإعدادات والنسخ الاحتياطية عن بيانات المستخدم الحقيقية
+storage.default_data_path = lambda: DATA
 
 print("=== تجهيز حساب وبيانات مشفّرة ===")
 admin, _rk = auth.create_account("MHU", "Web-Pass-1234", AUTH)
@@ -255,5 +257,47 @@ assert "سجلّ التدقيق" in au
 assert "إضافة حساب" in au and "web_editor" in au       # العمليات السابقة مسجّلة
 assert "(ويب)" in au
 print("  OK: سجلّ التدقيق يعرض العمليات باسم المستخدم (ويب)")
+
+print("\n=== كشف التسكين + مستندات الحاج + PEPPOL ===")
+for path, head in [("/reports/rooming.pdf", b"%PDF-"),
+                   ("/pilgrim/0/receipt.pdf", b"%PDF-"),
+                   ("/pilgrim/0/invoice.pdf", b"%PDF-"),
+                   ("/pilgrim/0/contract.pdf", b"%PDF-")]:
+    r = mgr.get(path)
+    assert r.status_code == 200 and r.data[:5] == head, path
+assert mgr.get("/reports/rooming.xlsx").data[:2] == b"PK"
+xml = mgr.get("/pilgrim/0/einvoice.xml")
+assert xml.status_code == 200 and b"<?xml" in xml.data[:10] and b"Invoice" in xml.data
+print("  OK: تسكين PDF/إكسل، سند/فاتورة/عقد PDF، وفاتورة PEPPOL XML")
+
+print("\n=== واتساب الحاج ===")
+# الحاج 0 لا هاتف له -> يعيد التوجيه للسجلّ برسالة؛ نضيف هاتفاً لواحد
+wa = mgr.get("/pilgrim/0/whatsapp")
+assert wa.status_code == 302   # إمّا wa.me أو رجوع للسجلّ
+print("  OK: مسار واتساب يعمل (تحويل)")
+
+print("\n=== فحص الجاهزية ===")
+ql = mgr.get("/quality").get_data(as_text=True)
+assert "فحص جاهزية الكشف" in ql
+print("  OK: صفحة فحص الجاهزية")
+
+print("\n=== برامج الحملة (تعديل + حفظ) ===")
+assert client.get("/programs").status_code == 403          # المطّلع ممنوع
+pg = mgr.get("/programs").get_data(as_text=True)
+assert "برامج الحملة" in pg and "تاريخ السفر" in pg
+# حفظ قيمة ثم قراءتها (الإعدادات معزولة في WORK)
+r = mgr.post("/programs", data={"p0_hotel": "فندق البرنامج الأول",
+             "p0_cost_double": "6000", "p0_travel_date": "1447-12-01"})
+assert r.status_code == 302
+from hajj_app import programs as _pg
+saved = _pg.load_programs(storage.load_settings())
+assert saved[0].hotel == "فندق البرنامج الأول" and saved[0].cost_double == "6000"
+print("  OK: صفحة البرامج تُعرض وتُحفظ القيم، والمطّلع ممنوع (403)")
+
+print("\n=== نسخة احتياطية ===")
+assert client.post("/backup").status_code == 403           # المطّلع ممنوع
+b = mgr.post("/backup")
+assert b.status_code == 302
+print("  OK: نسخة احتياطية للمحرّر/المدير، والمطّلع ممنوع")
 
 print("\n*** WEB TESTS PASSED ***")

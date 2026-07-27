@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}فحص الجاهزية — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>🩺 فحص جاهزية الكشف</h1>
+  </div>
+
+  {% if clean %}
+    <div class="flash ok" style="max-width:none">لا مشكلات — الكشف جاهز ✓</div>
+  {% else %}
+    <div class="note">{{ summary }}</div>
+    <div class="cards">
+      {% for kind, issues in groups.items() %}
+      <section class="card">
+        <h2>{{ kind }} ({{ issues|length }})</h2>
+        <table class="mini">
+          <tbody>
+            {% for iss in issues %}
+            <tr>
+              <td><a href="{{ url_for('pilgrim', idx=iss.index) }}">{{ iss.name }}</a></td>
+              <td class="ltr">{{ iss.passport }}</td>
+              <td>{{ iss.detail }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endfor %}
+    </div>
+  {% endif %}
+</main>
+{% endblock %}

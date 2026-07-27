@@ -11,6 +11,7 @@ import os
 import secrets
 import tempfile
 import threading
+from datetime import date
 from functools import wraps
 from pathlib import Path
 
@@ -20,7 +21,8 @@ from flask import (
 )
 
 from hajj_app import (
-    audit, auth, excel_io, fields, pdf_io, stats, storage, transport,
+    audit, auth, einvoice, excel_io, fields, pdf_io, programs, quality,
+    stats, storage, transport,
 )
 from hajj_app.mrz import PassportData
 from . import sessions
@@ -91,6 +93,16 @@ def create_app(auth_path: str | Path | None = None,
 
     def _data_path():
         return app.config["DATA_PATH"] or storage.default_data_path()
+
+    def _company():
+        return pdf_io.company_info(storage.load_settings().get("company"))
+
+    def _season():
+        return str(storage.load_settings().get("season_year", "")).strip()
+
+    def _programs_map():
+        return dict(zip(programs.PROGRAM_NAMES,
+                        programs.load_programs(storage.load_settings())))
 
     # -------------------------------------------------- إدارة الجلسة الحالية
     def current_session():
@@ -544,6 +556,154 @@ def create_app(auth_path: str | Path | None = None,
         return _report_download(
             lambda r, p: pdf_io.export_stickers_pdf(r, p, kind=kind),
             f"استيكرات {names[kind]}.pdf")
+
+    @app.route("/reports/rooming.xlsx")
+    @login_required
+    def report_rooming_xlsx():
+        return _report_download(
+            lambda r, p: excel_io.export_grouped_excel(r, p, title="كشف التسكين"),
+            "كشف التسكين.xlsx", _XLSX_MIME)
+
+    @app.route("/reports/rooming.pdf")
+    @login_required
+    def report_rooming_pdf():
+        return _report_download(
+            lambda r, p: pdf_io.export_pdf(r, p, title="كشف التسكين",
+                                           group_by_room=True),
+            "كشف التسكين.pdf")
+
+    # ---------------------------------------- مستندات الحاج الفردية
+    def _load_one(idx):
+        records, _note = load_records()
+        if idx < 0 or idx >= len(records):
+            abort(404)
+        return records[idx]
+
+    def _doc_route(idx, make_fn, name, mimetype="application/pdf"):
+        try:
+            rec = _load_one(idx)
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        _audit("مستند حاج", name)
+        return _send_generated(lambda p: make_fn(rec, p), name, mimetype)
+
+    @app.route("/pilgrim/<int:idx>/receipt.pdf")
+    @login_required
+    def pilgrim_receipt(idx):
+        return _doc_route(idx, lambda rec, p: pdf_io.export_receipt_pdf(
+            rec, p, company=_company()["name_ar"],
+            company_en=_company()["name_en"], season=_season(),
+            date_str=date.today().isoformat(),
+            amount=fields.parse_amount(rec.paid_amount),
+            description=pdf_io.build_receipt_description(rec, season=_season())),
+            "سند قبض.pdf")
+
+    @app.route("/pilgrim/<int:idx>/invoice.pdf")
+    @login_required
+    def pilgrim_invoice(idx):
+        return _doc_route(idx, lambda rec, p: pdf_io.export_invoice_pdf(
+            rec, p, company=_company(), season=_season(),
+            date_str=date.today().isoformat(),
+            item_desc=pdf_io.build_invoice_item(rec, season=_season())),
+            "فاتورة ضريبية.pdf")
+
+    @app.route("/pilgrim/<int:idx>/contract.pdf")
+    @login_required
+    def pilgrim_contract(idx):
+        return _doc_route(idx, lambda rec, p: pdf_io.export_contract_pdf(
+            rec, p, company=_company(), season=_season(),
+            date_str=date.today().isoformat(),
+            body=pdf_io.build_contract_body(rec, company=_company(),
+                                            season=_season())),
+            "عقد خدمات حج.pdf")
+
+    @app.route("/pilgrim/<int:idx>/einvoice.xml")
+    @login_required
+    def pilgrim_einvoice(idx):
+        return _doc_route(idx, lambda rec, p: einvoice.export_invoice_xml(
+            rec, p, company=_company(), date_str=date.today().isoformat(),
+            item_desc=pdf_io.build_invoice_item(rec, season=_season())),
+            "فاتورة إلكترونية PEPPOL.xml", "application/xml")
+
+    @app.route("/pilgrim/<int:idx>/whatsapp")
+    @login_required
+    def pilgrim_whatsapp(idx):
+        try:
+            rec = _load_one(idx)
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        from hajj_app import whatsapp
+        cc = str(storage.load_settings().get("whatsapp_cc", "971")).strip() or "971"
+        msg = f"حيّاكم الله، بخصوص حجّكم لهذا الموسم"
+        link = whatsapp.wa_link(rec.phone, msg, default_cc=cc)
+        if not link:
+            flash("لا يوجد رقم هاتف صالح لهذا الحاج", "error")
+            return redirect(url_for("pilgrim", idx=idx))
+        return redirect(link)
+
+    # ---------------------------------------------------- فحص الجاهزية
+    @app.route("/quality")
+    @login_required
+    def quality_page():
+        try:
+            records, _note = load_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        report = quality.check_records(records, programs=_programs_map())
+        return render_template(
+            "quality.html", groups=report.by_kind(),
+            summary=quality.summary_text(report), clean=report.clean,
+            username=g.session.username, role=g.session.role_label)
+
+    # ---------------------------------------------------- برامج الحملة
+    @app.route("/programs", methods=["GET", "POST"])
+    @edit_required
+    def programs_page():
+        settings = storage.load_settings()
+        progs = programs.load_programs(settings)
+        if request.method == "POST":
+            new = []
+            for i in range(len(programs.PROGRAM_NAMES)):
+                data = {k: (request.form.get(f"p{i}_{k}") or "").strip()
+                        for k in programs.PROGRAM_KEYS}
+                new.append(data)
+            settings["programs"] = new
+            try:
+                storage.save_settings(settings)
+            except OSError as exc:
+                flash(f"تعذّر الحفظ: {exc}", "error")
+            else:
+                _audit("تعديل البرامج")
+                flash("حُفظت برامج الحملة", "ok")
+            return redirect(url_for("programs_page"))
+        prog_forms = []
+        for name, prog in zip(programs.PROGRAM_NAMES, progs):
+            prog_forms.append((name, [
+                (title, [(k, label, getattr(prog, k, "") or "")
+                         for k, label, _t in items])
+                for title, items in programs.FIELD_GROUPS
+            ]))
+        return render_template(
+            "programs.html", program_names=list(programs.PROGRAM_NAMES),
+            prog_forms=prog_forms, username=g.session.username,
+            role=g.session.role_label)
+
+    # ---------------------------------------------------- نسخة احتياطية
+    @app.route("/backup", methods=["POST"])
+    @edit_required
+    def backup_now():
+        try:
+            records, _note = load_records()
+            storage.write_snapshot(records, g.session)
+        except (RuntimeError, OSError) as exc:
+            flash(f"تعذّرت النسخة الاحتياطية: {exc}", "error")
+            return redirect(url_for("index"))
+        _audit("نسخة احتياطية", f"{len(records)} سجل")
+        flash("تم إنشاء نسخة احتياطية", "ok")
+        return redirect(url_for("index"))
 
     # ---------------------------------------------------- إدارة الحسابات
     def admin_required(view):

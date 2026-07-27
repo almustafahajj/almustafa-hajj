@@ -26,6 +26,15 @@
     {% endif %}
   </div>
 
+  <div class="docs-bar">
+    <span class="exp-label">مستندات:</span>
+    <a class="exp-btn" href="{{ url_for('pilgrim_receipt', idx=idx) }}">🧾 سند قبض</a>
+    <a class="exp-btn" href="{{ url_for('pilgrim_invoice', idx=idx) }}">🧾 فاتورة ضريبية</a>
+    <a class="exp-btn" href="{{ url_for('pilgrim_einvoice', idx=idx) }}">💳 فاتورة PEPPOL</a>
+    <a class="exp-btn" href="{{ url_for('pilgrim_contract', idx=idx) }}">📜 عقد خدمات</a>
+    <a class="exp-btn wa" href="{{ url_for('pilgrim_whatsapp', idx=idx) }}" target="_blank">📱 واتساب</a>
+  </div>
+
   <div class="cards">
     {% for title, items in groups %}
     <section class="card">

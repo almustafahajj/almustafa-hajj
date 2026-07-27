@@ -15,8 +15,15 @@
 <nav class="nav">
   <a href="{{ url_for('stats_page') }}">📊 الإحصاءات</a>
   <a href="{{ url_for('reports_page') }}">📄 الكشوف والبطاقات</a>
+  <a href="{{ url_for('quality_page') }}">🩺 فحص الجاهزية</a>
+  {% if can_edit %}<a href="{{ url_for('programs_page') }}">🗂 برامج الحملة</a>{% endif %}
   <a href="{{ url_for('audit_page') }}">📝 سجلّ التدقيق</a>
   {% if is_admin %}<a href="{{ url_for('accounts_page') }}">👥 الحسابات</a>{% endif %}
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('backup_now') }}" class="inline">
+    <button type="submit" class="nav-btn">🛡 نسخة احتياطية</button>
+  </form>
+  {% endif %}
 </nav>
 
 <main class="content">

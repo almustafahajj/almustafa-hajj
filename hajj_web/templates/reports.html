@@ -20,6 +20,13 @@
 
   <div class="cards">
     <section class="card">
+      <h2>🏨 كشف التسكين</h2>
+      <div class="dl-row">
+        <a class="exp-btn" href="{{ url_for('report_rooming_pdf') }}{{ qs }}">📄 PDF</a>
+        <a class="exp-btn" href="{{ url_for('report_rooming_xlsx') }}{{ qs }}">📊 إكسل</a>
+      </div>
+    </section>
+    <section class="card">
       <h2>🚌 كشف المواصلات</h2>
       <div class="dl-row">
         <a class="exp-btn" href="{{ url_for('report_transport_pdf') }}{{ qs }}">📄 PDF</a>

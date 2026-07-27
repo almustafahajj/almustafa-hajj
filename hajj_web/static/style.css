@@ -57,6 +57,13 @@ code{background:#f0eadf; padding:1px 5px; border-radius:5px}
 .nav{display:flex; gap:8px; flex-wrap:wrap; padding:10px 22px; background:#f4efe7; border-bottom:1px solid var(--line)}
 .nav a{background:#fff; border:1px solid var(--line); padding:7px 14px; border-radius:8px; color:var(--ink); font-weight:600; font-size:14px}
 .nav a:hover{background:var(--bronze); color:#fff; border-color:var(--bronze); text-decoration:none}
+.nav-btn{background:#fff; border:1px solid var(--line); padding:7px 14px; border-radius:8px; color:var(--ink); font-weight:600; font-size:14px; cursor:pointer; font-family:inherit}
+.nav-btn:hover{background:var(--bronze); color:#fff; border-color:var(--bronze)}
+.docs-bar{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px}
+.exp-btn.wa{background:#25d366; color:#fff}
+.exp-btn.wa:hover{background:#1da851}
+.grp-title{color:var(--bronze); font-size:13px; font-weight:700; margin:12px 0 6px; border-bottom:1px solid var(--line); padding-bottom:4px}
+td.ltr, .ltr{direction:ltr; text-align:right}
 
 /* ---------- الإحصاءات ---------- */
 .kpis{display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:12px; margin-bottom:18px}
