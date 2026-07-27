@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}استعادة نسخة احتياطية — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>↩ استعادة نسخة احتياطية</h1>
+  </div>
+  <p class="hint">تُحفظ نسخة من الكشف الحالي تلقائياً قبل الاستعادة.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>النسخة</th><th></th></tr></thead>
+      <tbody>
+        {% for name, label in items %}
+        <tr>
+          <td>{{ label }}</td>
+          <td>
+            <form method="post" action="{{ url_for('restore_apply') }}" class="inline"
+                  onsubmit="return confirm('استعادة هذه النسخة؟ سيُستبدل الكشف الحالي (بعد حفظ نسخة منه).');">
+              <input type="hidden" name="name" value="{{ name }}">
+              <button type="submit" class="btn-primary">استعادة</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="2">لا توجد نسخ احتياطية بعد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

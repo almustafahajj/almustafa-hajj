@@ -225,10 +225,11 @@ def create_app(auth_path: str | Path | None = None,
             {"idx": i, "cells": [getattr(r, key, "") or "" for key, _ in COLUMNS]}
             for i, r in indexed
         ]
+        kpis = stats.financial_summary(records).as_rows()
         return render_template(
             "index.html", columns=[label for _, label in COLUMNS],
             rows=rows, total=len(rows), grand_total=len(records), query=query,
-            filters=FILTERS, options=options, selected=selected,
+            filters=FILTERS, options=options, selected=selected, kpis=kpis,
             query_string=request.query_string.decode("utf-8"),
             username=g.session.username, role=g.session.role_label, note=note,
             can_edit=g.session.can_edit, is_admin=g.session.can_manage_accounts,
@@ -781,6 +782,85 @@ def create_app(auth_path: str | Path | None = None,
         return render_template(
             "audit.html", entries=entries, username=g.session.username,
             role=g.session.role_label)
+
+    # ---------------------------------------------------- حساب المستخدم
+    @app.route("/account/password", methods=["GET", "POST"])
+    @login_required
+    def account_password():
+        if request.method == "POST":
+            cur = request.form.get("current") or ""
+            new = request.form.get("password") or ""
+            confirm = request.form.get("confirm") or ""
+            problem = auth.password_problem(new, confirm)
+            if problem:
+                flash(problem, "error")
+                return redirect(url_for("account_password"))
+            try:
+                newsess = auth.change_password(
+                    g.session.username, cur, new, _auth_path())
+            except auth.AuthError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("account_password"))
+            _audit("تغيير كلمة المرور")
+            flash("تم تغيير كلمة المرور — بياناتك كما هي", "ok")
+            if newsess.fresh_recovery_key:
+                return render_template(
+                    "recovery_shown.html", key=newsess.fresh_recovery_key,
+                    username=g.session.username, role=g.session.role_label)
+            return redirect(url_for("index"))
+        return render_template("account_password.html",
+                               username=g.session.username,
+                               role=g.session.role_label)
+
+    @app.route("/account/recovery", methods=["GET", "POST"])
+    @login_required
+    def account_recovery():
+        if request.method == "POST":
+            password = request.form.get("password") or ""
+            try:
+                key = auth.regenerate_recovery_key(
+                    g.session.username, password, _auth_path())
+            except auth.AuthError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("account_recovery"))
+            _audit("مفتاح استرداد جديد")
+            return render_template(
+                "recovery_shown.html", key=key, username=g.session.username,
+                role=g.session.role_label)
+        return render_template("account_recovery.html",
+                               username=g.session.username,
+                               role=g.session.role_label)
+
+    # ---------------------------------------------------- استعادة نسخة
+    @app.route("/restore")
+    @edit_required
+    def restore_page():
+        items = [(p.name, storage.snapshot_label(p))
+                 for p in storage.list_snapshots()]
+        return render_template("restore.html", items=items,
+                               username=g.session.username,
+                               role=g.session.role_label)
+
+    @app.route("/restore/apply", methods=["POST"])
+    @edit_required
+    def restore_apply():
+        name = (request.form.get("name") or "").strip()
+        snaps = {p.name: p for p in storage.list_snapshots()}
+        target = snaps.get(name)
+        if not target:
+            abort(404)
+        try:
+            with _WRITE_LOCK:
+                current, _ = storage.load_records(_data_path(), g.session)
+                storage.write_snapshot(current, g.session)   # أمان قبل الاستبدال
+                records, _note = storage.load_records(target, g.session)
+                storage.save_records(records, _data_path(), g.session)
+        except (auth.AuthError, OSError) as exc:
+            flash(f"تعذّرت الاستعادة: {exc}", "error")
+            return redirect(url_for("restore_page"))
+        _audit("استعادة نسخة", storage.snapshot_label(target))
+        flash(f"استُعيدت النسخة ({len(records)} سجل)", "ok")
+        return redirect(url_for("index"))
 
     @app.route("/qr")
     def qr():

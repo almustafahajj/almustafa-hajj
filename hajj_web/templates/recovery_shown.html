@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}مفتاح الاسترداد — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+<main class="content">
+  <div class="detail-head"><h1>🔑 مفتاح الاسترداد</h1></div>
+  <div class="recovery-box">
+    <b>احفظ هذا المفتاح — يُعرض مرة واحدة فقط ولا يمكن استخراجه لاحقاً:</b>
+    <div class="recovery-key">{{ key }}</div>
+    <span class="hint">اطبعه أو اكتبه على ورق واحفظه في مكان آمن بعيد عن الجهاز.
+      به تفتح بياناتك وتعيّن كلمة مرور جديدة إن نسيت الحالية.</span>
+    <div style="margin-top:14px"><a class="btn-primary" href="{{ url_for('index') }}">حفظتُه — متابعة</a></div>
+  </div>
+</main>
+{% endblock %}

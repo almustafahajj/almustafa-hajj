@@ -70,6 +70,9 @@ td.ltr, .ltr{direction:ltr; text-align:right}
 .kpi{background:var(--card); border:1px solid var(--line); border-top:3px solid var(--bronze); border-radius:12px; padding:16px; text-align:center}
 .kpi-val{font-size:22px; font-weight:800; color:var(--ink)}
 .kpi-lbl{color:var(--muted); font-size:13px; margin-top:4px}
+.kpis.dash{grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:10px}
+.kpis.dash .kpi{padding:12px}
+.kpis.dash .kpi-val{font-size:19px}
 table.mini{width:100%; border-collapse:collapse; font-size:14px}
 table.mini td, table.mini th{padding:7px 10px; border-bottom:1px solid var(--line); text-align:right}
 table.mini .num{text-align:center; font-weight:700; width:60px}

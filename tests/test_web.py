@@ -300,4 +300,44 @@ b = mgr.post("/backup")
 assert b.status_code == 302
 print("  OK: نسخة احتياطية للمحرّر/المدير، والمطّلع ممنوع")
 
+print("\n=== لوحة المؤشّرات على الكشف ===")
+home = mgr.get("/").get_data(as_text=True)
+assert "kpis dash" in home and "المحصّل" in home
+print("  OK: شريط المؤشّرات المالية يظهر أعلى الكشف")
+
+print("\n=== استعادة نسخة احتياطية ===")
+assert client.get("/restore").status_code == 403          # المطّلع ممنوع
+mgr.post("/backup")                                       # أنشئ نسخة
+rlist = mgr.get("/restore").get_data(as_text=True)
+assert "استعادة نسخة احتياطية" in rlist
+import re
+m = re.search(r'name="name" value="(hajjaj-[^"]+)"', rlist)
+assert m, "لا توجد نسخة للاستعادة"
+before = len(storage.load_records(DATA, admin)[0])
+ra = mgr.post("/restore/apply", data={"name": m.group(1)})
+assert ra.status_code == 302
+assert len(storage.load_records(DATA, admin)[0]) == before  # نفس العدد بعد الاستعادة
+# اسم نسخة غير موجود -> 404
+assert mgr.post("/restore/apply", data={"name": "hajjaj-x.json"}).status_code == 404
+print("  OK: استعادة نسخة (مع نسخ أمان)، والمطّلع ممنوع، والاسم الخاطئ 404")
+
+print("\n=== تغيير كلمة المرور ومفتاح الاسترداد ===")
+# كلمة مرور خاطئة تُرفض
+mgr.post("/account/password", data={"current": "خطأ", "password": "New-Pass-9999",
+         "confirm": "New-Pass-9999"})
+assert auth.login("MHU", "Web-Pass-1234", AUTH)          # لم تتغيّر
+# تغيير صحيح
+r = mgr.post("/account/password", data={"current": "Web-Pass-1234",
+             "password": "New-Pass-9999", "confirm": "New-Pass-9999"})
+assert r.status_code in (302, 200)
+try:
+    auth.login("MHU", "Web-Pass-1234", AUTH); assert False, "القديمة تعمل"
+except auth.AuthError:
+    pass
+assert auth.login("MHU", "New-Pass-9999", AUTH)
+# مفتاح استرداد جديد يُعرض
+rk = mgr.post("/account/recovery", data={"password": "New-Pass-9999"})
+assert "مفتاح الاسترداد" in rk.get_data(as_text=True)
+print("  OK: تغيير كلمة المرور فعّال، ومفتاح الاسترداد الجديد يُعرض")
+
 print("\n*** WEB TESTS PASSED ***")

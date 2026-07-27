@@ -23,10 +23,19 @@
   <form method="post" action="{{ url_for('backup_now') }}" class="inline">
     <button type="submit" class="nav-btn">🛡 نسخة احتياطية</button>
   </form>
+  <a href="{{ url_for('restore_page') }}">↩ استعادة</a>
   {% endif %}
+  <a href="{{ url_for('account_password') }}">🔑 كلمة المرور</a>
+  <a href="{{ url_for('account_recovery') }}">🗝 مفتاح استرداد</a>
 </nav>
 
 <main class="content">
+  <div class="kpis dash">
+    {% for label, value in kpis %}
+    <div class="kpi"><div class="kpi-val">{{ value }}</div><div class="kpi-lbl">{{ label }}</div></div>
+    {% endfor %}
+  </div>
+
   <form class="filters" method="get" action="{{ url_for('index') }}">
     <input class="q" type="text" name="q" value="{{ query }}"
            placeholder="بحث بالاسم أو الجواز أو الهاتف…">
