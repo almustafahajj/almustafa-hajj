@@ -340,4 +340,31 @@ rk = mgr.post("/account/recovery", data={"password": "New-Pass-9999"})
 assert "مفتاح الاسترداد" in rk.get_data(as_text=True)
 print("  OK: تغيير كلمة المرور فعّال، ومفتاح الاسترداد الجديد يُعرض")
 
+print("\n=== صور الجوازات (رفع/عرض/طباعة) ===")
+# نبني صورة PNG بسيطة في الذاكرة
+from PIL import Image
+import io as _io2
+img_buf = _io2.BytesIO()
+Image.new("RGB", (400, 260), (200, 180, 140)).save(img_buf, format="PNG")
+img_bytes = img_buf.getvalue()
+# لا صورة قبل الرفع
+assert mgr.get("/pilgrim/0/image/passport").status_code == 404
+# رفع صورة جواز للحاج 0 (مدير)
+r = mgr.post("/pilgrim/0/image/passport/upload",
+             data={"file": (_io2.BytesIO(img_bytes), "jaz.png")},
+             content_type="multipart/form-data")
+assert r.status_code == 302
+# الآن تُعرض كـ PNG
+shown = mgr.get("/pilgrim/0/image/passport")
+assert shown.status_code == 200 and shown.data[:8] == b"\x89PNG\r\n\x1a\n"
+assert "image/png" in shown.headers.get("Content-Type", "")
+# صفحة السجلّ تُظهر الصورة
+assert "الصور" in mgr.get("/pilgrim/0").get_data(as_text=True)
+# المطّلع لا يرفع
+assert client.post("/pilgrim/0/image/passport/upload").status_code == 403
+# طباعة الجوازات: الآن فيها جواز واحد على الأقل
+pp = mgr.get("/reports/passports.pdf")
+assert pp.status_code == 200 and pp.data[:5] == b"%PDF-"
+print("  OK: رفع صورة الجواز، عرضها PNG، طباعة الجوازات PDF، ومنع المطّلع")
+
 print("\n*** WEB TESTS PASSED ***")

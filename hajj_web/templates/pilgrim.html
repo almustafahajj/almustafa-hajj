@@ -35,6 +35,31 @@
     <a class="exp-btn wa" href="{{ url_for('pilgrim_whatsapp', idx=idx) }}" target="_blank">📱 واتساب</a>
   </div>
 
+  <section class="card images-card">
+    <h2>🖼 الصور</h2>
+    <div class="img-grid">
+      {% for kind, label in img_kinds %}
+      <div class="img-cell">
+        <div class="img-label">{{ label }}</div>
+        {% if img_present[kind] %}
+          <a href="{{ url_for('pilgrim_image', idx=idx, kind=kind) }}" target="_blank">
+            <img src="{{ url_for('pilgrim_image', idx=idx, kind=kind) }}" alt="{{ label }}">
+          </a>
+        {% else %}
+          <div class="img-none">لا توجد صورة</div>
+        {% endif %}
+        {% if can_edit %}
+        <form method="post" action="{{ url_for('pilgrim_image_upload', idx=idx, kind=kind) }}"
+              enctype="multipart/form-data" class="img-upload">
+          <input type="file" name="file" accept="image/*,.pdf" required>
+          <button type="submit" class="exp-btn">{{ "استبدال" if img_present[kind] else "رفع" }}</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
   <div class="cards">
     {% for title, items in groups %}
     <section class="card">

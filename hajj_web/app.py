@@ -307,10 +307,15 @@ def create_app(auth_path: str | Path | None = None,
                 items.append((label, value))
             groups.append((title, items))
 
+        from hajj_app import images
+        img_kinds = [("passport", "صورة الجواز"), ("permit", "التصريح السعودي")]
+        img_present = {k: bool(rec.image_id and images.has_image(rec.image_id, k))
+                       for k, _ in img_kinds}
         name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
         return render_template(
             "pilgrim.html", name=name, groups=groups, idx=idx,
-            orig=rec.passport_number or "",
+            orig=rec.passport_number or "", img_kinds=img_kinds,
+            img_present=img_present,
             username=g.session.username, role=g.session.role_label,
             can_edit=g.session.can_edit,
         )
@@ -643,6 +648,113 @@ def create_app(auth_path: str | Path | None = None,
             flash("لا يوجد رقم هاتف صالح لهذا الحاج", "error")
             return redirect(url_for("pilgrim", idx=idx))
         return redirect(link)
+
+    # ---------------------------------------- صور الجوازات والتصاريح
+    def _image_as_png(blob):
+        """يحوّل بايتات صورة/PDF إلى PNG للعرض في المتصفّح، أو None."""
+        from hajj_app import images
+        if images.is_pdf(blob):
+            pages = images.render_pages_png(blob)
+            return pages[0] if pages else None
+        try:
+            img = images.to_pil_image(blob)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception:                              # noqa: BLE001
+            return None
+
+    @app.route("/pilgrim/<int:idx>/image/<kind>")
+    @login_required
+    def pilgrim_image(idx, kind):
+        from hajj_app import images
+        if kind not in images.KINDS:
+            abort(404)
+        try:
+            rec = _load_one(idx)
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        if not rec.image_id or not images.has_image(rec.image_id, kind):
+            abort(404)
+        blob = images.load_image(rec.image_id, kind, g.session)
+        if blob is None:
+            abort(404)
+        png = _image_as_png(blob)
+        if png is None:
+            abort(404)
+        return send_file(io.BytesIO(png), mimetype="image/png")
+
+    @app.route("/pilgrim/<int:idx>/image/<kind>/upload", methods=["POST"])
+    @edit_required
+    def pilgrim_image_upload(idx, kind):
+        from hajj_app import images
+        if kind not in images.KINDS:
+            abort(404)
+        file = request.files.get("file")
+        if not file or not file.filename:
+            flash("اختر ملف صورة أو PDF", "error")
+            return redirect(url_for("pilgrim", idx=idx))
+        fd, tmp = tempfile.mkstemp(suffix=Path(file.filename).suffix or ".img")
+        os.close(fd)
+        try:
+            file.save(tmp)
+            with _WRITE_LOCK:
+                records, _ = storage.load_records(_data_path(), g.session)
+                if idx < 0 or idx >= len(records):
+                    abort(404)
+                rec = records[idx]
+                if not rec.image_id:
+                    rec.image_id = images.new_image_id()
+                images.save_image(rec.image_id, kind, tmp, g.session)
+                storage.save_records(records, _data_path(), g.session)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        _audit("رفع صورة", images.KIND_LABELS.get(kind, kind))
+        flash("تم رفع الصورة", "ok")
+        return redirect(url_for("pilgrim", idx=idx))
+
+    @app.route("/reports/passports.pdf")
+    @login_required
+    def report_passports_pdf():
+        from hajj_app import images
+        try:
+            records = _current_filtered()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        entries, temps = [], []
+        try:
+            for rec in records:
+                if not (rec.image_id and images.has_image(rec.image_id, images.PASSPORT)):
+                    continue
+                blob = images.load_image(rec.image_id, images.PASSPORT, g.session)
+                png = _image_as_png(blob) if blob else None
+                if png is None:
+                    continue
+                fd, tmp = tempfile.mkstemp(suffix=".png")
+                os.close(fd)
+                Path(tmp).write_bytes(png)
+                temps.append(tmp)
+                name = (rec.full_name_ar or rec.full_name_en
+                        or rec.passport_number or "—")
+                entries.append((name, tmp))
+            if not entries:
+                flash("لا توجد صور جوازات في المعروض", "error")
+                return redirect(url_for("reports_page"))
+            _audit("طباعة الجوازات", f"{len(entries)} جواز")
+            return _send_generated(
+                lambda p: pdf_io.export_passports_pdf(entries, p),
+                "جوازات الحجّاج.pdf", "application/pdf")
+        finally:
+            for t in temps:
+                try:
+                    os.unlink(t)
+                except OSError:
+                    pass
 
     # ---------------------------------------------------- فحص الجاهزية
     @app.route("/quality")
