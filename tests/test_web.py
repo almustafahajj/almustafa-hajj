@@ -408,4 +408,32 @@ assert cp2.status_code == 200 and cp2.data[:5] == b"%PDF-"
 assert "خيام المخيمات" in mgr.get("/reports").get_data(as_text=True)
 print("  OK: كشف مخيّم منى/عرفة PDF بسعة مختارة")
 
+print("\n=== المعاينة: PDF داخل المتصفّح، إكسل تنزيل ===")
+pdfr = mgr.get("/export/pdf")
+assert "inline" in pdfr.headers.get("Content-Disposition", ""), \
+    pdfr.headers.get("Content-Disposition")
+xlr = mgr.get("/export/excel")
+assert "attachment" in xlr.headers.get("Content-Disposition", "")
+# مستند الحاج (سند قبض) يُعرض داخلياً أيضاً
+rc = mgr.get("/pilgrim/0/receipt.pdf")
+assert "inline" in rc.headers.get("Content-Disposition", "")
+print("  OK: PDF يُفتح للمعاينة (inline)، وإكسل يُنزَّل (attachment)")
+
+print("\n=== إضافة حاج بقراءة الجواز ===")
+assert "قراءة الجواز" in mgr.get("/pilgrim/scan").get_data(as_text=True)
+assert client.get("/pilgrim/scan").status_code == 403           # المطّلع ممنوع
+# بلا ملف -> رجوع
+assert mgr.post("/pilgrim/scan").status_code == 302
+# رفع صورة بلا MRZ صالح -> يعرض النموذج للمراجعة (يدوياً) دون تعطّل
+from PIL import Image as _Img
+import io as _io3
+b = _io3.BytesIO(); _Img.new("RGB", (600, 400), (240, 240, 240)).save(b, format="PNG")
+sc = mgr.post("/pilgrim/scan", data={"file": (_io3.BytesIO(b.getvalue()), "jaz.png")},
+              content_type="multipart/form-data")
+# إمّا 200 (النموذج للمراجعة) أو 302 (إن غاب Tesseract على هذا الجهاز)
+assert sc.status_code in (200, 302)
+if sc.status_code == 200:
+    assert "من الجواز" in sc.get_data(as_text=True)
+print("  OK: صفحة قراءة الجواز تعمل، والمطّلع ممنوع، والرفع الفارغ آمن")
+
 print("\n*** WEB TESTS PASSED ***")

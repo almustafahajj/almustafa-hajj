@@ -246,7 +246,11 @@ def create_app(auth_path: str | Path | None = None,
         )
 
     def _send_generated(make_fn, download_name, mimetype):
-        """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله تنزيلاً ويحذفه."""
+        """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
+
+        ملفات PDF تُعرض **داخل المتصفّح** (معاينة) فيطبعها المستخدم أو يحفظها
+        من عارض المتصفّح؛ بقية الأنواع (إكسل/XML) تُنزَّل مباشرة.
+        """
         suffix = Path(download_name).suffix
         fd, tmp = tempfile.mkstemp(suffix=suffix)
         os.close(fd)
@@ -258,7 +262,8 @@ def create_app(auth_path: str | Path | None = None,
                 os.unlink(tmp)
             except OSError:
                 pass
-        return send_file(io.BytesIO(data), as_attachment=True,
+        inline = (mimetype == "application/pdf")
+        return send_file(io.BytesIO(data), as_attachment=not inline,
                          download_name=download_name, mimetype=mimetype)
 
     def _current_filtered():
@@ -351,6 +356,69 @@ def create_app(auth_path: str | Path | None = None,
             textareas=TEXTAREA_KEYS, orig="", is_new=True,
             username=g.session.username, role=g.session.role_label,
         )
+
+    @app.route("/pilgrim/scan", methods=["GET", "POST"])
+    @edit_required
+    def pilgrim_scan():
+        """إضافة حاج بقراءة جوازه (صورة/PDF): يقرأ ثم يعرض النموذج مملوءاً
+        للمراجعة قبل الحفظ."""
+        if request.method == "GET":
+            return render_template("scan.html", username=g.session.username,
+                                   role=g.session.role_label)
+        file = request.files.get("file")
+        if not file or not file.filename:
+            flash("اختر صورة أو ملف PDF للجواز", "error")
+            return redirect(url_for("pilgrim_scan"))
+        try:
+            from hajj_app import ocr
+            from hajj_app.tesseract_setup import configure_tesseract
+            configure_tesseract()
+            ocr.ensure_tesseract()
+        except Exception:                              # noqa: BLE001
+            flash("قراءة الجواز تحتاج تثبيت Tesseract-OCR على جهاز الخادم.",
+                  "error")
+            return redirect(url_for("pilgrim_scan"))
+
+        from hajj_app.mrz import MRZError
+        suffix = Path(file.filename).suffix.lower()
+        fd, tmp = tempfile.mkstemp(suffix=suffix or ".img")
+        os.close(fd)
+        rec, note = None, ""
+        try:
+            file.save(tmp)
+            if suffix == ".pdf":
+                from hajj_app import pdf_in
+                recs, _notes = pdf_in.extract_from_pdf(tmp)
+                if recs:
+                    rec = recs[0]
+                    if len(recs) > 1:
+                        note = (f"عُثر على {len(recs)} جوازات في الملف — عُرض "
+                                "الأول. للبقية استعمل «استيراد».")
+            else:
+                try:
+                    rec = ocr.extract_passport(tmp)
+                except MRZError as exc:
+                    note = str(exc)
+        except Exception as exc:                       # noqa: BLE001
+            note = str(exc)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+        if rec is None:
+            flash(note or "تعذّرت قراءة الجواز — أدخل البيانات يدوياً.", "error")
+            rec = PassportData()
+        else:
+            if note:
+                flash(note, "warn")
+            flash("راجع البيانات المقروءة ثم اضغط «إضافة».", "ok")
+        return render_template(
+            "form.html", title="إضافة حاج (من الجواز)",
+            action=url_for("pilgrim_new"), groups=_form_groups(rec),
+            choices=CHOICES, textareas=TEXTAREA_KEYS, orig="", is_new=True,
+            username=g.session.username, role=g.session.role_label)
 
     @app.route("/pilgrim/<int:idx>/edit", methods=["GET", "POST"])
     @edit_required

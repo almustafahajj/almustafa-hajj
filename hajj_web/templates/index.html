@@ -6,6 +6,7 @@
   <div class="spacer"></div>
   <div class="user">
     {% if can_edit %}<a class="add-btn" href="{{ url_for('pilgrim_new') }}">➕ إضافة حاج</a>{% endif %}
+    {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('pilgrim_scan') }}">📷 قراءة جواز</a>{% endif %}
     {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('import_page') }}">📥 استيراد</a>{% endif %}
     <span class="who">👤 {{ username }} · {{ role }}</span>
     <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
@@ -57,8 +58,8 @@
 
   <div class="exports">
     <span class="exp-label">تصدير المعروض:</span>
-    <a class="exp-btn" href="{{ url_for('export_excel_route') }}{% if query_string %}?{{ query_string }}{% endif %}">📊 إكسل</a>
-    <a class="exp-btn" href="{{ url_for('export_pdf_route') }}{% if query_string %}?{{ query_string }}{% endif %}">📄 PDF</a>
+    <a class="exp-btn" href="{{ url_for('export_excel_route') }}{% if query_string %}?{{ query_string }}{% endif %}">📊 إكسل (حفظ)</a>
+    <a class="exp-btn" href="{{ url_for('export_pdf_route') }}{% if query_string %}?{{ query_string }}{% endif %}" target="_blank">📄 PDF (معاينة)</a>
   </div>
 
   {% if note %}<div class="note">{{ note }}</div>{% endif %}
