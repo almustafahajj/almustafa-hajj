@@ -12,7 +12,7 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-".venv\Scripts\python.exe" -c "import flask, waitress" 2>nul
+".venv\Scripts\python.exe" -c "import flask, waitress, qrcode" 2>nul
 if errorlevel 1 (
   echo Installing web libraries...
   ".venv\Scripts\python.exe" -m pip install -r requirements-web.txt

@@ -34,6 +34,8 @@ a:hover{text-decoration:underline}
 .error{background:#fdecec; color:var(--danger); padding:10px; border-radius:9px; font-size:13px; margin-bottom:6px}
 .hint{color:var(--muted); font-size:13px; line-height:1.8; text-align:right}
 .foot{margin-top:20px; color:var(--muted); font-size:11px}
+.qr-link{margin-top:16px}
+.qr-url{font-family:Consolas,monospace; font-size:15px; color:var(--bronze); text-align:center; direction:ltr; margin-top:6px}
 code{background:#f0eadf; padding:1px 5px; border-radius:5px}
 
 /* ---------- الشريط العلوي ---------- */

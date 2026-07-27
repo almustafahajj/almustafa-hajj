@@ -460,6 +460,23 @@ def create_app(auth_path: str | Path | None = None,
             flash("لم تُقرأ أي بيانات من الملفات", "error")
         return redirect(url_for("index"))
 
+    @app.route("/qr")
+    def qr():
+        """صفحة برمز QR للرابط على الشبكة — لفتحه من جوال/لوحي بمسح سريع."""
+        import base64
+        import qrcode
+        from .server import _local_ip
+
+        host = request.host
+        port = host.split(":")[-1] if ":" in host else os.environ.get(
+            "HAJJ_WEB_PORT", "8000")
+        url = f"http://{_local_ip()}:{port}"
+        img = qrcode.make(url)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return render_template("qr.html", url=url, qr_b64=b64)
+
     @app.route("/healthz")
     def healthz():
         return {"ok": True}

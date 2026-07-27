@@ -197,4 +197,14 @@ assert mgr.post("/import/passports", data={},
                 content_type="multipart/form-data").status_code == 302
 print("  OK: صفحة الاستيراد، ومنع المطّلع (403)، ورفع فارغ آمن")
 
+print("\n=== رمز QR للفتح من جهاز آخر ===")
+q = client.get("/qr")                         # متاح بلا دخول (يعرض رابط الشبكة فقط)
+qhtml = q.get_data(as_text=True)
+assert q.status_code == 200
+assert "data:image/png;base64," in qhtml, "صورة QR غير مضمّنة"
+assert "http://" in qhtml, "الرابط لا يظهر"
+# الرابط في صفحة الدخول
+assert "رمز QR" in client.get("/login").get_data(as_text=True)
+print("  OK: صفحة QR تعرض الرمز والرابط، ورابطها في صفحة الدخول")
+
 print("\n*** WEB TESTS PASSED ***")
