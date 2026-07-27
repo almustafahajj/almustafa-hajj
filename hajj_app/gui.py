@@ -230,6 +230,7 @@ class HajjApp:
         self.root = root
         self.session = session      # يحمل مفتاح التشفير؛ None في الاختبارات
         self._open_mode = open_mode  # فتح بلا رقم سري (بلا تشفير) — ملف بيانات منفصل
+        self._logout_requested = False   # يرفعه «تسجيل الخروج» ليعيد main شاشة الدخول
         self.records: list[PassportData] = []
         self.data_path = default_data_path()
         if open_mode:
@@ -430,6 +431,10 @@ class HajjApp:
                                  foreground=TEXT, background=BG, cursor="hand2")
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
+            logout_btn = ttk.Button(bar, text=rtl("🚪  تسجيل الخروج"),
+                                    style="Ghost.TButton", command=self.do_logout)
+            logout_btn.pack(side=LEFT, padx=(0, 8))
+            add_tooltip(logout_btn, "حفظ البيانات والعودة إلى شاشة الدخول")
         elif self._open_mode:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
@@ -493,6 +498,24 @@ class HajjApp:
             return
         AccountsDialog(self.root, self.session)
         self._audit("إدارة الحسابات")
+
+    def do_logout(self) -> None:
+        """يسجّل الخروج ويعود إلى شاشة الدخول (يبقى البرنامج مفتوحاً)."""
+        if self.session is None:
+            return                    # الوضع المفتوح لا يتطلّب دخولاً
+        if not messagebox.askyesno(
+            "تسجيل الخروج",
+            f"تسجيل خروج «{self.session.username}» والعودة إلى شاشة الدخول؟",
+            parent=self.root,
+        ):
+            return
+        try:
+            self.save_data()          # اطمئنان: احفظ آخر تغييرات قبل الإغلاق
+        except Exception:
+            pass
+        self._audit("تسجيل خروج")
+        self._logout_requested = True
+        self.root.destroy()           # ينهي حلقة الأحداث؛ main يعيد شاشة الدخول
 
     def _on_season_change(self) -> None:
         """يحفظ السنة الهجرية المختارة."""
@@ -651,7 +674,9 @@ class HajjApp:
         if self.session is not None:
             admin_items += [None,
                             ("🔑  تغيير كلمة المرور", self.change_password),
-                            ("🗝  مفتاح استرداد جديد", self.new_recovery_key)]
+                            ("🗝  مفتاح استرداد جديد", self.new_recovery_key),
+                            None,
+                            ("🚪  تسجيل الخروج", self.do_logout)]
         admin_mb = self._menubutton(bar, "لوحة الإدارة  ▾", admin_items,
                                     style="Ghost.TMenubutton", icon=("gear", GRAY),
                                     tip="النسخ الاحتياطية وسجلّ التدقيق والحسابات")
@@ -4965,20 +4990,13 @@ def _show_splash(root):
 OPEN_MODE_NO_LOGIN = False
 
 
-def main() -> None:
-    if OPEN_MODE_NO_LOGIN:
-        session, open_mode = None, True        # بلا دخول، بلا تشفير (مؤقتاً)
-    else:
-        session = authenticate()               # الدخول أولاً بمفتاح فك التشفير
-        if session is None:
-            return
-        open_mode = False
-
+def _run_session(session, open_mode: bool) -> bool:
+    """يبني النافذة الرئيسية ويشغّلها. يعيد True إن طُلب تسجيل الخروج."""
     root = Tk()
     root.withdraw()                            # نخفيها حتى تجهز، خلف شاشة البداية
     apply_window_icon(root)
     splash = _show_splash(root)
-    HajjApp(root, session, open_mode=open_mode)
+    app = HajjApp(root, session, open_mode=open_mode)
 
     def _reveal():
         if splash is not None:
@@ -4987,3 +5005,18 @@ def main() -> None:
 
     root.after(900, _reveal)
     root.mainloop()
+    return bool(getattr(app, "_logout_requested", False))
+
+
+def main() -> None:
+    if OPEN_MODE_NO_LOGIN:
+        _run_session(None, True)               # بلا دخول، بلا تشفير (مؤقتاً)
+        return
+
+    # حلقة الدخول: تسجيل الخروج يعيد شاشة الدخول بدل إغلاق البرنامج
+    while True:
+        session = authenticate()               # الدخول أولاً بمفتاح فك التشفير
+        if session is None:
+            return
+        if not _run_session(session, False):
+            return                             # النافذة أُغلقت عادةً — إنهاء
