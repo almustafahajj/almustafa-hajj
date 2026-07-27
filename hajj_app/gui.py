@@ -1190,26 +1190,6 @@ class HajjApp:
         self.tree.bind("<Motion>", self._on_row_hover)
         self.tree.bind("<Leave>", lambda _e: self._clear_hover())
 
-        # لوحة الحالة الفارغة (تُظهَر فوق الجدول حين لا سجلّات — يُدار في refresh)
-        self._empty = ttk.Frame(wrap, style="Toolbar.TFrame", padding=30)
-        ttk.Label(self._empty, text="🕋", font=(_FUI, 42),
-                  background=BG, foreground=BRONZE).pack()
-        ttk.Label(self._empty, text="لا يوجد حجّاج بعد",
-                  font=(_FSB, 16), background=BG,
-                  foreground=TEXT).pack(pady=(6, 2))
-        ttk.Label(self._empty, background=BG, foreground=MUTED,
-                  font=(_FUI, 10),
-                  text="ابدأ بإضافة حاج يدوياً، أو استيراد ملف إكسل، أو قراءة "
-                       "الجوازات من الصور.").pack(pady=(0, 14))
-        eb = ttk.Frame(self._empty, style="Toolbar.TFrame")
-        eb.pack()
-        ttk.Button(eb, text=rtl("➕  إضافة حاج يدوياً"), style="Primary.TButton",
-                   command=self.add_manual).pack(side=RIGHT, padx=4)
-        ttk.Button(eb, text=rtl("📁  استيراد إكسل"), style="Ghost.TButton",
-                   command=self.import_from_excel).pack(side=RIGHT, padx=4)
-        ttk.Button(eb, text=rtl("📷  قراءة الجوازات"), style="Ghost.TButton",
-                   command=self.add_images).pack(side=RIGHT, padx=4)
-
         # قائمة يمين الفأرة على الصف
         self._row_menu = tk.Menu(self.tree, tearoff=0, font=(_FUI, 10))
         self._row_menu.add_command(label="✏️  تعديل السجل", command=self.edit_selected)
@@ -1312,11 +1292,33 @@ class HajjApp:
         self.records = records
         self.refresh()
 
+        # تشفير فوري: إن كنّا في وضع الدخول والملف على القرص غير مشفّر
+        # (كشف قديم أو مُرحّل)، نحفظه فوراً فيُشفَّر بدل انتظار أول تعديل.
+        if self.session is not None and records and not self._file_is_encrypted():
+            if self.save_data():
+                # نحذف نسخة .bak غير المشفّرة (حالة ما قبل التحويل) لئلّا تبقى
+                # بيانات صريحة على القرص؛ تُعاد مشفّرةً عند أول حفظ لاحق.
+                try:
+                    self.data_path.with_suffix(".bak").unlink()
+                except OSError:
+                    pass
+                self._audit("تشفير الكشف", f"{len(records)} حاج")
+                self.set_status(f"تم تشفير {len(records)} حاج وحفظهم", ok=True)
+
         if note:
             messagebox.showwarning("ملف البيانات", note)
             self.set_status("تم البدء بعد مشكلة في ملف البيانات", warn=True)
         elif records:
             self.set_status(f"تمت استعادة {len(records)} حاج من آخر جلسة")
+
+    def _file_is_encrypted(self) -> bool:
+        """هل ملف البيانات على القرص مشفّر فعلاً؟ (يبدأ بعلامة التشفير)."""
+        try:
+            from .storage import _ENCRYPTED_MAGIC
+            with open(self.data_path, "rb") as fh:
+                return fh.read(len(_ENCRYPTED_MAGIC)) == _ENCRYPTED_MAGIC
+        except OSError:
+            return True        # لا ملف بعد — لا داعي لإعادة الحفظ
 
     def _audit(self, action: str, details: str = "") -> None:
         """يسجّل عملية في سجلّ التدقيق (من فعل ماذا ومتى)."""
@@ -4901,10 +4903,9 @@ def _show_splash(root):
         return None
 
 
-# ⚠ وضع مؤقّت أثناء البناء: يفتح البرنامج **بلا رقم سري** وبلا تشفير، على ملف
-# بيانات منفصل (hajjaj-open.json)، دون المساس بالكشف المشفّر ولا حساب الدخول.
-# لإعادة الدخول برقم سري لاحقاً: اجعل هذا False، فتعود بياناتك المشفّرة.
-OPEN_MODE_NO_LOGIN = True
+# التشفير مُفعَّل: يطلب البرنامج الدخول (حساب MHU) ويشفّر ملف البيانات.
+# للعودة إلى وضع البناء المفتوح مؤقّتاً: اجعل هذا True.
+OPEN_MODE_NO_LOGIN = False
 
 
 def main() -> None:
