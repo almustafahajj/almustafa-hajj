@@ -168,4 +168,33 @@ flat = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
 assert "سالم أحمد" in flat and "عبدالله الشامسي" not in flat
 print("  OK: إكسل وPDF صالحان، والتصدير يحترم فلتر البرنامج")
 
+print("\n=== الاستيراد من إكسل (رفع ملف) ===")
+# نبني ملف إكسل من حاجّين ونرفعه فيُضافان
+from hajj_app.excel_io import export_excel
+IMP = WORK / "to_import.xlsx"
+export_excel([
+    PassportData(full_name_ar="مستورد أول", passport_number="X1", hotel="فندق"),
+    PassportData(full_name_ar="مستورد ثاني", passport_number="X2", hotel="فندق"),
+], IMP)
+before = len(storage.load_records(DATA, admin)[0])
+with open(IMP, "rb") as fh:
+    r = mgr.post("/import/excel", data={"file": (fh, "to_import.xlsx")},
+                 content_type="multipart/form-data")
+assert r.status_code == 302
+after = storage.load_records(DATA, admin)[0]
+assert len(after) == before + 2, f"{before} -> {len(after)}"
+assert any(x.passport_number == "X1" for x in after)
+print(f"  OK: أُضيف حاجّان بالاستيراد ({before} -> {len(after)})")
+
+# صفحة الاستيراد + المطّلع ممنوع + بلا ملف
+assert "استيراد من إكسل" in mgr.get("/import").get_data(as_text=True)
+assert client.get("/import").status_code == 403          # المطّلع
+assert client.post("/import/excel").status_code == 403
+nof = mgr.post("/import/excel", data={}, content_type="multipart/form-data")
+assert nof.status_code == 302                            # يعيد التوجيه برسالة خطأ
+# رفع بلا ملفات لقراءة الجوازات يعيد التوجيه (لا يتعطّل)
+assert mgr.post("/import/passports", data={},
+                content_type="multipart/form-data").status_code == 302
+print("  OK: صفحة الاستيراد، ومنع المطّلع (403)، ورفع فارغ آمن")
+
 print("\n*** WEB TESTS PASSED ***")

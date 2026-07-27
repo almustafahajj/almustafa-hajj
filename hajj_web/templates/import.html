@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}استيراد البيانات — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>استيراد البيانات</h1>
+  </div>
+
+  <div class="cards">
+    <section class="card">
+      <h2>📁 استيراد من إكسل</h2>
+      <p class="hint">اختر ملف إكسل بكشف الحجّاج. تُضاف السجلات إلى الكشف الحالي.</p>
+      <form method="post" action="{{ url_for('import_excel_route') }}"
+            enctype="multipart/form-data" class="upload-form">
+        <input type="file" name="file" accept=".xlsx,.xls" required>
+        <button type="submit" class="btn-primary">استيراد إكسل</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>📷 قراءة الجوازات (صور / PDF)</h2>
+      <p class="hint">اختر صور الجوازات أو ملف PDF. تُقرأ البيانات تلقائياً
+        وتُضاف. (يتطلّب تثبيت Tesseract-OCR على جهاز الخادم.)</p>
+      <form method="post" action="{{ url_for('import_passports_route') }}"
+            enctype="multipart/form-data" class="upload-form">
+        <input type="file" name="files" accept="image/*,.pdf" multiple required>
+        <button type="submit" class="btn-primary">قراءة وإضافة</button>
+      </form>
+    </section>
+  </div>
+</main>
+{% endblock %}

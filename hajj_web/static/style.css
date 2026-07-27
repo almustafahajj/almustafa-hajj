@@ -92,6 +92,10 @@ tbody tr{cursor:pointer}
 /* ---------- أزرار ورسائل ونماذج ---------- */
 .add-btn{background:var(--bronze); color:#fff; padding:8px 14px; border-radius:8px; font-weight:700}
 .add-btn:hover{background:var(--bronze-dark); color:#fff; text-decoration:none}
+.ghost-add{background:#f0eadf; color:var(--ink)}
+.ghost-add:hover{background:var(--bronze); color:#fff}
+.upload-form{display:flex; flex-direction:column; gap:12px; align-items:flex-start}
+.upload-form input[type=file]{width:100%; font-size:14px}
 .detail-actions{display:flex; gap:10px; align-items:center; margin-inline-start:auto}
 .detail-actions form{margin:0}
 .btn-primary{background:var(--ink); color:#fff; padding:9px 18px; border:0; border-radius:8px; font-weight:700; cursor:pointer; font-size:15px}

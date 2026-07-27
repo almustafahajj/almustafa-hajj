@@ -365,6 +365,101 @@ def create_app(auth_path: str | Path | None = None,
         flash(f"حُذف الحاج: {name}", "ok")
         return redirect(url_for("index"))
 
+    # ---------------------------------------------------- الاستيراد
+    def _append(records_to_add):
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            records.extend(records_to_add)
+            storage.save_records(records, _data_path(), g.session)
+
+    @app.route("/import")
+    @edit_required
+    def import_page():
+        return render_template(
+            "import.html", username=g.session.username, role=g.session.role_label)
+
+    @app.route("/import/excel", methods=["POST"])
+    @edit_required
+    def import_excel_route():
+        file = request.files.get("file")
+        if not file or not file.filename:
+            flash("اختر ملف إكسل أولاً", "error")
+            return redirect(url_for("import_page"))
+        fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        try:
+            file.save(tmp)
+            records, notes = excel_io.import_excel(tmp)
+        except Exception as exc:                       # noqa: BLE001
+            flash(f"تعذّر قراءة الملف: {exc}", "error")
+            return redirect(url_for("import_page"))
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        if not records:
+            flash("الملف لا يحتوي بيانات حجّاج صالحة", "error")
+            return redirect(url_for("import_page"))
+        _append(records)
+        _audit("استيراد إكسل", f"{len(records)} سجل")
+        flash(f"تم استيراد {len(records)} حاجّاً من إكسل", "ok")
+        if notes:
+            flash(" | ".join(notes[:3]), "error")
+        return redirect(url_for("index"))
+
+    @app.route("/import/passports", methods=["POST"])
+    @edit_required
+    def import_passports_route():
+        files = [f for f in request.files.getlist("files") if f and f.filename]
+        if not files:
+            flash("اختر صور الجوازات أو ملف PDF", "error")
+            return redirect(url_for("import_page"))
+        # قراءة الجوازات تحتاج Tesseract على جهاز الخادم
+        try:
+            from hajj_app import ocr
+            from hajj_app.tesseract_setup import configure_tesseract
+            configure_tesseract()
+            ocr.ensure_tesseract()
+        except Exception:                              # noqa: BLE001
+            flash("قراءة الجوازات تحتاج تثبيت Tesseract-OCR على جهاز الخادم.",
+                  "error")
+            return redirect(url_for("import_page"))
+
+        from hajj_app import pdf_in
+        from hajj_app.mrz import MRZError
+        new, errors = [], []
+        for f in files:
+            suffix = Path(f.filename).suffix.lower()
+            fd, tmp = tempfile.mkstemp(suffix=suffix or ".img")
+            os.close(fd)
+            try:
+                f.save(tmp)
+                if suffix == ".pdf":
+                    recs, _notes = pdf_in.extract_from_pdf(tmp)
+                    new.extend(recs)
+                else:
+                    try:
+                        new.append(ocr.extract_passport(tmp))
+                    except MRZError as exc:
+                        errors.append(f"{f.filename}: {exc}")
+            except Exception as exc:                   # noqa: BLE001
+                errors.append(f"{f.filename}: {exc}")
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        if new:
+            _append(new)
+            _audit("إضافة جوازات", f"{len(new)} حاج")
+            flash(f"أُضيف {len(new)} حاجّاً من الجوازات", "ok")
+        if errors:
+            flash("تعذّرت قراءة: " + " | ".join(errors[:5]), "error")
+        if not new and not errors:
+            flash("لم تُقرأ أي بيانات من الملفات", "error")
+        return redirect(url_for("index"))
+
     @app.route("/healthz")
     def healthz():
         return {"ok": True}
