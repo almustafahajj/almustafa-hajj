@@ -44,7 +44,7 @@ HIJRI_YEARS = tuple(str(y) for y in range(1445, 1456))
 _DEFAULT_SEASON = "1447"
 
 # ---- ألوان العلامة الثابتة (لا تتبدّل بين الفاتح والداكن) ----
-ACCENT = "#111111"          # الأسود — سطح رؤوس الجدول
+ACCENT = "#241E17"          # فحميّ دافئ — سطح رؤوس الجدول (منسجم مع البرونزي)
 BRONZE = "#8A6E4B"          # البرونزي — التمييز والتفاعل
 BRONZE_DARK = "#6F5738"
 ACCENT_HOVER = BRONZE
@@ -99,6 +99,28 @@ def apply_theme(name: str) -> None:
 
 
 apply_theme("فاتح")            # الافتراضي حتى تُحمَّل الإعدادات
+
+
+# ---- عائلة الخطّ (تُكتشف عند الإقلاع؛ افتراضياً Segoe UI) ----
+_FUI = "Segoe UI"
+_FSB = "Segoe UI Semibold"
+
+
+def detect_fonts(root) -> None:
+    """يختار أجمل خطّ عربي متوفّر (Dubai/Sakkal) مع تراجع إلى Segoe UI."""
+    global _FUI, _FSB
+    try:
+        from tkinter import font as _tkfont
+        fams = set(_tkfont.families(root))
+    except Exception:
+        return
+    for reg, semi in (("Dubai", "Dubai Medium"),
+                      ("Sakkal Majalla", "Sakkal Majalla"),
+                      ("Segoe UI", "Segoe UI Semibold")):
+        if reg in fams:
+            _FUI = reg
+            _FSB = semi if semi in fams else reg
+            return
 
 
 def install_entry_editing(widget) -> None:
@@ -161,7 +183,7 @@ def add_tooltip(widget, text: str) -> None:
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{x}+{y}")
         tk.Label(tw, text=text, bg="#1A1A1A", fg="#FFFFFF", justify="right",
-                 font=("Segoe UI", 9), padx=8, pady=3).pack()
+                 font=(_FUI, 9), padx=8, pady=3).pack()
         state["tip"] = tw
 
     def hide(_e=None):
@@ -252,6 +274,7 @@ class HajjApp:
         root.minsize(900, 560)
         root.configure(bg=BG)
 
+        detect_fonts(root)            # اختيار أجمل خطّ عربي متوفّر قبل بناء الأنماط
         self._build_styles()
         self._build_header()
         self._build_toolbar()
@@ -294,17 +317,17 @@ class HajjApp:
 
         # الجدول: صفوف متناوبة الألوان وتمييز برونزي للصف المحدد
         self._apply_table_style()
-        s.configure("Treeview.Heading", font=("Segoe UI Semibold", 10),
-                    background=ACCENT, foreground="white", padding=7, relief="raised",
-                    borderwidth=2, lightcolor="#3A3A3A", darkcolor="#000000",
-                    bordercolor="#000000")
+        s.configure("Treeview.Heading", font=(_FSB, 10),
+                    background=ACCENT, foreground="white", padding=8, relief="raised",
+                    borderwidth=2, lightcolor="#4A4038", darkcolor="#17120D",
+                    bordercolor="#17120D")
         s.map("Treeview.Heading",
               background=[("active", BRONZE)],
               relief=[("pressed", "sunken"), ("active", "raised")])
 
         # ---- أزرار ثلاثية الأبعاد (حواف مشطوفة + ضغطة غائرة) ----
         def bevel(name, bg, fg, light, dark, hover, *, bold=True, pad=(15, 8)):
-            font = ("Segoe UI Semibold", 10) if bold else ("Segoe UI", 10)
+            font = (_FSB, 10) if bold else (_FUI, 10)
             s.configure(name, font=font, padding=pad, foreground=fg, background=bg,
                         relief="raised", borderwidth=3, focuscolor=bg,
                         lightcolor=light, darkcolor=dark, bordercolor=dark)
@@ -326,7 +349,7 @@ class HajjApp:
 
         # ---- قوائم منسدلة ثلاثية الأبعاد ----
         def bevel_mb(name, bg, fg, light, dark, hover, arrow, *, bold=True):
-            font = ("Segoe UI Semibold", 10) if bold else ("Segoe UI", 10)
+            font = (_FSB, 10) if bold else (_FUI, 10)
             s.configure(name, font=font, padding=(15, 8), foreground=fg, background=bg,
                         arrowcolor=arrow, relief="raised", borderwidth=3,
                         lightcolor=light, darkcolor=dark, bordercolor=dark)
@@ -339,7 +362,7 @@ class HajjApp:
         bevel_mb("Toolbar.TMenubutton", BRONZE, "white", BRONZE_LIGHT, BRONZE_EDGE,
                  BRONZE_DARK, "white")
         # إبراز القوائم الأساسية (إضافة/التقارير) بخطّ أكبر قليلاً
-        s.configure("Toolbar.TMenubutton", font=("Segoe UI Semibold", 11),
+        s.configure("Toolbar.TMenubutton", font=(_FSB, 11),
                     padding=(17, 9))
         bevel_mb("Ghost.TMenubutton", GHOST_BG, TEXT, GHOST_LIGHT, GHOST_EDGE,
                  GHOST_HOVER, TEXT, bold=False)
@@ -364,7 +387,7 @@ class HajjApp:
         rowheight = self._DENSITY.get(self._density, 26)
         size = self._FONT_SIZES.get(self._font_size, 10)
         s = self._style
-        s.configure("Treeview", rowheight=rowheight, font=("Segoe UI", size),
+        s.configure("Treeview", rowheight=rowheight, font=(_FUI, size),
                     background=PANEL, fieldbackground=PANEL, foreground=TEXT,
                     borderwidth=0)
         s.map("Treeview",
@@ -381,11 +404,11 @@ class HajjApp:
 
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
-        ttk.Label(titles, text="برنامج الحج موسم", font=("Segoe UI Semibold", 17),
+        ttk.Label(titles, text="برنامج الحج موسم", font=(_FSB, 17),
                   foreground=TEXT, background=BG).pack(side=RIGHT)
         year_box = ttk.Combobox(
             titles, textvariable=self.season_year, state="readonly",
-            width=6, font=("Segoe UI Semibold", 15), values=HIJRI_YEARS,
+            width=6, font=(_FSB, 15), values=HIJRI_YEARS,
         )
         year_box.pack(side=RIGHT, padx=(8, 0))
         year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
@@ -395,15 +418,15 @@ class HajjApp:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
             ttk.Label(info, text=f"👤  {self.session.username}",
-                      font=("Segoe UI Semibold", 10), foreground=TEXT,
+                      font=(_FSB, 10), foreground=TEXT,
                       background=BG).pack(anchor="w")
-            ttk.Label(info, text="🔒 البيانات مشفّرة", font=("Segoe UI", 9),
+            ttk.Label(info, text="🔒 البيانات مشفّرة", font=(_FUI, 9),
                       foreground=BRONZE, background=BG).pack(anchor="w")
             for text, action in (
                 ("تغيير كلمة المرور", self.change_password),
                 ("مفتاح استرداد جديد", self.new_recovery_key),
             ):
-                link = ttk.Label(info, text=text, font=("Segoe UI", 9, "underline"),
+                link = ttk.Label(info, text=text, font=(_FUI, 9, "underline"),
                                  foreground=TEXT, background=BG, cursor="hand2")
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
@@ -411,9 +434,9 @@ class HajjApp:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
             ttk.Label(info, text="🔓 وضع مفتوح — بلا رقم سري",
-                      font=("Segoe UI Semibold", 10), foreground=AMBER_FG,
+                      font=(_FSB, 10), foreground=AMBER_FG,
                       background=BG).pack(anchor="w")
-            ttk.Label(info, text="البيانات غير مشفّرة (مؤقتاً)", font=("Segoe UI", 9),
+            ttk.Label(info, text="البيانات غير مشفّرة (مؤقتاً)", font=(_FUI, 9),
                       foreground=MUTED, background=BG).pack(anchor="w")
 
         # زرّ لوحة التحكم — بارز في وسط الترويسة
@@ -490,7 +513,7 @@ class HajjApp:
             img = self._icon(*icon)
             if img is not None:
                 mb.configure(image=img, compound="right")
-        menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
+        menu = tk.Menu(mb, tearoff=0, font=(_FUI, 10))
         for entry in items:
             if entry is None:
                 menu.add_separator()
@@ -669,11 +692,11 @@ class HajjApp:
         self.filter_search = StringVar()
         self.filter_search.trace_add("write", lambda *_a: self.refresh())
         entry = ttk.Entry(row1, textvariable=self.filter_search, width=20,
-                          justify="right", font=("Segoe UI", 10))
+                          justify="right", font=(_FUI, 10))
         entry.pack(side=RIGHT, padx=(0, 6))
         self._search_entry = entry
         install_entry_editing(entry)
-        ttk.Label(row1, text="🔍 بحث", font=("Segoe UI", 9),
+        ttk.Label(row1, text="🔍 بحث", font=(_FUI, 9),
                   background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 4))
 
         # زرّ واحد يفتح لوحة كل الفلاتر (تجميع الفلاتر في قائمة واحدة)
@@ -708,11 +731,11 @@ class HajjApp:
             self._chips_row.pack_forget()
             return
         self._chips_row.pack(fill=X, pady=(5, 0))
-        ttk.Label(self._chips_row, text="الفلاتر النشطة:", font=("Segoe UI", 9),
+        ttk.Label(self._chips_row, text="الفلاتر النشطة:", font=(_FUI, 9),
                   foreground=MUTED, background=BG).pack(side=RIGHT, padx=(0, 6))
         for text, clear in active:
             chip = tk.Label(self._chips_row, text=f" ✕  {text} ", bg=GHOST_BG,
-                            fg=TEXT, font=("Segoe UI", 9), padx=2, cursor="hand2")
+                            fg=TEXT, font=(_FUI, 9), padx=2, cursor="hand2")
             chip.pack(side=RIGHT, padx=3)
             chip.bind("<Button-1>", lambda _e, c=clear: c())
 
@@ -725,7 +748,7 @@ class HajjApp:
         self._filter_panel = panel
         inner = ttk.Frame(panel, style="Panel.TFrame", padding=14)
         inner.pack(padx=1, pady=1)
-        ttk.Label(inner, text="تصفية الكشف", font=("Segoe UI Semibold", 11),
+        ttk.Label(inner, text="تصفية الكشف", font=(_FSB, 11),
                   foreground=TEXT, background=BG).grid(row=0, column=0, columnspan=6,
                                                        sticky="e", pady=(0, 8))
 
@@ -735,12 +758,12 @@ class HajjApp:
         for index, (key, label) in enumerate(self._FILTER_FIELDS):
             r = 1 + index // cols
             c = (index % cols) * 2
-            ttk.Label(inner, text=label, font=("Segoe UI", 9), foreground=TEXT,
+            ttk.Label(inner, text=label, font=(_FUI, 9), foreground=TEXT,
                       background=BG).grid(row=r, column=c + 1, sticky="e", padx=(10, 3),
                                           pady=3)
             var = StringVar(value=self._ALL)
             box = ttk.Combobox(inner, textvariable=var, state="readonly",
-                               width=13, font=("Segoe UI", 9), values=[self._ALL])
+                               width=13, font=(_FUI, 9), values=[self._ALL])
             box.grid(row=r, column=c, sticky="e", pady=3)
             box.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
             self.filter_vars[key] = var
@@ -751,12 +774,12 @@ class HajjApp:
             row=97, column=0, columnspan=6, sticky="ew", pady=(12, 0))
         sort_row = ttk.Frame(inner, style="Panel.TFrame")
         sort_row.grid(row=98, column=0, columnspan=6, sticky="e", pady=(8, 0))
-        ttk.Label(sort_row, text="ترتيب حسب", font=("Segoe UI", 9),
+        ttk.Label(sort_row, text="ترتيب حسب", font=(_FUI, 9),
                   background=BG, foreground=TEXT).pack(side=RIGHT, padx=(2, 6))
         self.sort_var = StringVar(value=self._SORT_NONE)
         sort_box = ttk.Combobox(
             sort_row, textvariable=self.sort_var, state="readonly", width=16,
-            font=("Segoe UI", 9),
+            font=(_FUI, 9),
             values=[self._SORT_NONE, *(label for _k, label in self._SORT_FIELDS)])
         sort_box.pack(side=RIGHT, padx=(0, 4))
         sort_box.bind("<<ComboboxSelected>>", lambda _e: self._apply_sort())
@@ -832,7 +855,7 @@ class HajjApp:
         _img = self._icon("columns", TEXT)
         if _img is not None:
             mb.configure(image=_img, compound="right")
-        menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
+        menu = tk.Menu(mb, tearoff=0, font=(_FUI, 10))
         self._ensure_col_vars()
         for f in self._display_columns():
             menu.add_checkbutton(label=f.label, variable=self._col_vars[f.key],
@@ -873,16 +896,16 @@ class HajjApp:
         _img = self._icon("gear", TEXT)
         if _img is not None:
             mb.configure(image=_img, compound="right")
-        menu = tk.Menu(mb, tearoff=0, font=("Segoe UI", 10))
+        menu = tk.Menu(mb, tearoff=0, font=(_FUI, 10))
         self._density_var = tk.StringVar(value=self._density)
-        dmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
+        dmenu = tk.Menu(menu, tearoff=0, font=(_FUI, 10))
         for name in self._DENSITY:
             dmenu.add_radiobutton(label=name, value=name,
                                   variable=self._density_var,
                                   command=self._on_density_change)
         menu.add_cascade(label="كثافة الصفوف", menu=dmenu)
         self._fontsize_var = tk.StringVar(value=self._font_size)
-        fmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
+        fmenu = tk.Menu(menu, tearoff=0, font=(_FUI, 10))
         for name in self._FONT_SIZES:
             fmenu.add_radiobutton(label=name, value=name,
                                   variable=self._fontsize_var,
@@ -890,7 +913,7 @@ class HajjApp:
         menu.add_cascade(label="حجم الخط", menu=fmenu)
         menu.add_separator()
         self._theme_var = tk.StringVar(value=self._theme)
-        tmenu = tk.Menu(menu, tearoff=0, font=("Segoe UI", 10))
+        tmenu = tk.Menu(menu, tearoff=0, font=(_FUI, 10))
         for name in THEMES:
             tmenu.add_radiobutton(label=name, value=name, variable=self._theme_var,
                                   command=self._on_theme_change)
@@ -1169,13 +1192,13 @@ class HajjApp:
 
         # لوحة الحالة الفارغة (تُظهَر فوق الجدول حين لا سجلّات — يُدار في refresh)
         self._empty = ttk.Frame(wrap, style="Toolbar.TFrame", padding=30)
-        ttk.Label(self._empty, text="🕋", font=("Segoe UI", 42),
+        ttk.Label(self._empty, text="🕋", font=(_FUI, 42),
                   background=BG, foreground=BRONZE).pack()
         ttk.Label(self._empty, text="لا يوجد حجّاج بعد",
-                  font=("Segoe UI Semibold", 16), background=BG,
+                  font=(_FSB, 16), background=BG,
                   foreground=TEXT).pack(pady=(6, 2))
         ttk.Label(self._empty, background=BG, foreground=MUTED,
-                  font=("Segoe UI", 10),
+                  font=(_FUI, 10),
                   text="ابدأ بإضافة حاج يدوياً، أو استيراد ملف إكسل، أو قراءة "
                        "الجوازات من الصور.").pack(pady=(0, 14))
         eb = ttk.Frame(self._empty, style="Toolbar.TFrame")
@@ -1188,7 +1211,7 @@ class HajjApp:
                    command=self.add_images).pack(side=RIGHT, padx=4)
 
         # قائمة يمين الفأرة على الصف
-        self._row_menu = tk.Menu(self.tree, tearoff=0, font=("Segoe UI", 10))
+        self._row_menu = tk.Menu(self.tree, tearoff=0, font=(_FUI, 10))
         self._row_menu.add_command(label="✏️  تعديل السجل", command=self.edit_selected)
         self._row_menu.add_command(label="✏️  تعديل جماعي للمحدّدين",
                                    command=self.bulk_edit_selected)
@@ -1221,9 +1244,9 @@ class HajjApp:
             ttk.Label(self._empty, image=self._empty_logo,
                       background=BG).pack(pady=(0, 12))
         ttk.Label(self._empty, text="لا يوجد حجّاج بعد", background=BG,
-                  font=("Segoe UI Semibold", 16), foreground=TEXT).pack()
+                  font=(_FSB, 16), foreground=TEXT).pack()
         ttk.Label(self._empty, text="ابدأ بإضافة صور الجوازات أو استيراد ملف إكسل",
-                  background=BG, font=("Segoe UI", 10), foreground=MUTED).pack(
+                  background=BG, font=(_FUI, 10), foreground=MUTED).pack(
             pady=(4, 14))
         eb = ttk.Frame(self._empty, style="Toolbar.TFrame")
         eb.pack()
@@ -1261,20 +1284,20 @@ class HajjApp:
         bar = ttk.Frame(self.root, padding=(16, 7))
         bar.pack(fill=X)
         # مؤشّر حالة ملوّن (نقطة) يمين النص
-        self._status_dot = tk.Label(bar, text="●", font=("Segoe UI", 11),
+        self._status_dot = tk.Label(bar, text="●", font=(_FUI, 11),
                                     fg="#8C857A", bg=BG)
         self._status_dot.pack(side=RIGHT, padx=(6, 0))
         self.status_label = ttk.Label(bar, textvariable=self.status,
-                                      font=("Segoe UI", 10), foreground="#444")
+                                      font=(_FUI, 10), foreground="#444")
         self.status_label.pack(side=RIGHT)
-        self.count_label = ttk.Label(bar, text="", font=("Segoe UI Semibold", 11),
+        self.count_label = ttk.Label(bar, text="", font=(_FSB, 11),
                                      foreground=TEXT)
         self.count_label.pack(side=LEFT)
         # إحصاء مالي دائم (المحصّل/المتبقّي) — يُحدَّث مع كل عملية
-        self._fin_label = ttk.Label(bar, text="", font=("Segoe UI", 10),
+        self._fin_label = ttk.Label(bar, text="", font=(_FUI, 10),
                                     foreground=MUTED)
         self._fin_label.pack(side=LEFT, padx=12)
-        ttk.Label(bar, text="💾 الحفظ تلقائي", font=("Segoe UI", 9),
+        ttk.Label(bar, text="💾 الحفظ تلقائي", font=(_FUI, 9),
                   foreground=MUTED).pack(side=LEFT, padx=12)
 
     # ------------------------------------------------------------ حفظ واستعادة
@@ -1381,7 +1404,7 @@ class HajjApp:
             win.configure(bg=bg)
             win.attributes("-topmost", True)
             tk.Label(win, text=f"   {icon}   {message}   ", bg=bg, fg="white",
-                     font=("Segoe UI Semibold", 10)).pack(ipady=9)
+                     font=(_FSB, 10)).pack(ipady=9)
             win.update_idletasks()
             rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
             rw, rh = self.root.winfo_width(), self.root.winfo_height()
@@ -2481,9 +2504,9 @@ class HajjApp:
         frame.pack(fill=BOTH, expand=True)
 
         ttk.Label(frame, text="⚠  مسح جميع السجلات", background=BG,
-                  font=("Segoe UI Semibold", 13), foreground=DANGER).pack(anchor="e")
+                  font=(_FSB, 13), foreground=DANGER).pack(anchor="e")
         ttk.Label(frame, background=BG, foreground=TEXT, justify="right",
-                  font=("Segoe UI", 10), wraplength=340,
+                  font=(_FUI, 10), wraplength=340,
                   text=(f"سيُحذف {len(self.records)} سجلاً وكل صورهم نهائياً "
                         "(تبقى نسخة احتياطية .bak).")).pack(anchor="e", pady=(8, 10))
 
@@ -2492,7 +2515,7 @@ class HajjApp:
         else:
             prompt = f"للتأكيد، اكتب كلمة «{self._CLEAR_CONFIRM_WORD}» في الحقل:"
         ttk.Label(frame, text=prompt, background=BG, foreground=TEXT,
-                  font=("Segoe UI", 10), wraplength=340, justify="right").pack(anchor="e")
+                  font=(_FUI, 10), wraplength=340, justify="right").pack(anchor="e")
 
         var = StringVar()
         entry = ttk.Entry(frame, textvariable=var, width=30, justify="center",
@@ -2501,7 +2524,7 @@ class HajjApp:
         entry.pack(anchor="e", pady=(6, 0))
         entry.focus_set()
         err = ttk.Label(frame, text="", background=BG, foreground=DANGER,
-                        font=("Segoe UI", 9))
+                        font=(_FUI, 9))
         err.pack(anchor="e", pady=(4, 0))
 
         state = {"ok": False, "attempts": 0}
@@ -2569,19 +2592,19 @@ class AirlineDialog(Toplevel):
         # اختيار الرحلة/الطيران + عدد الركّاب المطابق
         top = ttk.Frame(outer)
         top.pack(fill=X)
-        self._count_label = ttk.Label(top, font=("Segoe UI Semibold", 11),
+        self._count_label = ttk.Label(top, font=(_FSB, 11),
                                       foreground=TEXT)
         self._count_label.pack(side=LEFT)
         self._flight_var = StringVar(value=self._ALL_FLIGHTS)
         box = ttk.Combobox(top, textvariable=self._flight_var, state="readonly",
-                           width=24, font=("Segoe UI", 10),
+                           width=24, font=(_FUI, 10),
                            values=self._flight_combo_values())
         box.pack(side=RIGHT)
         box.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
-        ttk.Label(top, text="الطيران:", font=("Segoe UI", 10),
+        ttk.Label(top, text="الطيران:", font=(_FUI, 10),
                   foreground=TEXT).pack(side=RIGHT, padx=(2, 5))
 
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   text=rtl("الأعمدة (إنجليزي، يسار←يمين): # • Last • First • "
                            "Passport • Expiry • DOB • Gender • Nationality • "
                            "Class • Family • PNR")).pack(anchor="e", pady=(4, 10))
@@ -2595,7 +2618,7 @@ class AirlineDialog(Toplevel):
 
         ttk.Separator(outer, orient="horizontal").pack(fill=X, pady=8)
         ttk.Label(outer, text="إدخالات أماديوس — انقر نقراً مزدوجاً على راكب لنسخ إدخاله:",
-                  font=("Segoe UI Semibold", 10), foreground=TEXT).pack(anchor="e")
+                  font=(_FSB, 10), foreground=TEXT).pack(anchor="e")
 
         table_frame = ttk.Frame(outer)
         table_frame.pack(fill=BOTH, expand=True, pady=(6, 8))
@@ -2743,16 +2766,16 @@ class CampsDialog(Toplevel):
         def field(label, var, width, combo=None, on_change=None):
             cell = ttk.Frame(form)
             cell.pack(side=RIGHT, padx=(6, 0))
-            ttk.Label(cell, text=label, font=("Segoe UI", 10),
+            ttk.Label(cell, text=label, font=(_FUI, 10),
                       foreground=TEXT).pack(anchor="e")
             if combo is not None:
                 w = ttk.Combobox(cell, textvariable=var, state="readonly",
-                                 width=width, values=combo, font=("Segoe UI", 10))
+                                 width=width, values=combo, font=(_FUI, 10))
                 if on_change:
                     w.bind("<<ComboboxSelected>>", lambda _e: on_change())
             else:
                 w = ttk.Entry(cell, textvariable=var, width=width,
-                              justify="center", font=("Segoe UI", 10))
+                              justify="center", font=(_FUI, 10))
                 install_entry_editing(w)
                 if on_change:
                     w.bind("<Return>", lambda _e: on_change())
@@ -2770,17 +2793,17 @@ class CampsDialog(Toplevel):
         # اسم الحملة (يظهر في كشف الخيمة)
         camp_row = ttk.Frame(outer)
         camp_row.pack(fill=X, pady=(8, 0))
-        ttk.Label(camp_row, text="اسم الحملة:", font=("Segoe UI", 10),
+        ttk.Label(camp_row, text="اسم الحملة:", font=(_FUI, 10),
                   foreground=TEXT).pack(side=RIGHT, padx=(4, 5))
         camp_entry = ttk.Entry(camp_row, textvariable=self._campaign_var, width=32,
-                               justify="right", font=("Segoe UI", 10))
+                               justify="right", font=(_FUI, 10))
         install_entry_editing(camp_entry)
         camp_entry.pack(side=RIGHT)
 
-        self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 11),
+        self._summary = ttk.Label(outer, font=(_FSB, 11),
                                   foreground=TEXT)
         self._summary.pack(anchor="e", pady=(10, 2))
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   text=rtl("تُملأ الخيمة تلقائياً بعدد الأشخاص المحدّد من التصنيف "
                            "المختار (العائلة وسكّان الغرفة معاً). «تصدير» يُنشئ ملف "
                            "هذه الخيمة ثم ينتقل للتالية بمن تبقّى."))\
@@ -2917,9 +2940,9 @@ class BulkEditDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text=f"سيُطبّق على {count} سجلاً محدّداً",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT,
+                  font=(_FSB, 12), foreground=TEXT,
                   background=BG).pack(anchor="e")
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   background=BG,
                   text=rtl("علّم «طبّق» بجانب الحقل واكتب قيمته — تُطبَّق على "
                            "الجميع. الحقول غير المعلّمة تبقى كما هي.")).pack(
@@ -2951,7 +2974,7 @@ class BulkEditDialog(Toplevel):
             chk = ttk.Checkbutton(grid, text=label, variable=apply_var)
             chk.grid(row=row, column=1, sticky="e", padx=(8, 0), pady=2)
             entry = ttk.Entry(grid, textvariable=val_var, width=26, justify="right",
-                              font=("Segoe UI", 10))
+                              font=(_FUI, 10))
             install_entry_editing(entry)
             entry.grid(row=row, column=0, sticky="e", pady=2)
             # الكتابة في الحقل تعلّم «طبّق» تلقائياً
@@ -2997,15 +3020,15 @@ class TransportDialog(Toplevel):
         outer.pack(fill=BOTH, expand=True)
         top = ttk.Frame(outer)
         top.pack(fill=X)
-        self._count = ttk.Label(top, font=("Segoe UI Semibold", 11), foreground=TEXT)
+        self._count = ttk.Label(top, font=(_FSB, 11), foreground=TEXT)
         self._count.pack(side=LEFT)
         self._var = StringVar(value=self._ALL)
         box = ttk.Combobox(top, textvariable=self._var, state="readonly", width=24,
-                           font=("Segoe UI", 10),
+                           font=(_FUI, 10),
                            values=[self._ALL, *distinct_transports(records)])
         box.pack(side=RIGHT)
         box.bind("<<ComboboxSelected>>", lambda _e: self._rebuild())
-        ttk.Label(top, text="الوسيلة:", font=("Segoe UI", 10),
+        ttk.Label(top, text="الوسيلة:", font=(_FUI, 10),
                   foreground=TEXT).pack(side=RIGHT, padx=(2, 5))
 
         cols = ("phone", "hotel", "executive", "wheelchair")
@@ -3083,7 +3106,7 @@ class AuditDialog(Toplevel):
         outer = ttk.Frame(self, padding=14)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text="سجلّ العمليات (الأحدث أولاً)",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT,
+                  font=(_FSB, 12), foreground=TEXT,
                   background=BG).pack(anchor="e", pady=(0, 8))
 
         box = ttk.Frame(outer)
@@ -3156,18 +3179,20 @@ class DashboardDialog(Toplevel):
         self.geometry(f"+{x}+{y}")
 
     def _card(self, parent, value, label, color, on_click=None):
-        card = ttk.Frame(parent, style="Toolbar.TFrame", padding=(16, 12))
-        big = ttk.Label(card, text=str(value), background=BG,
-                        font=("Segoe UI Semibold", 20), foreground=color)
+        # بطاقة أنيقة: حدّ ناعم + شريط لون علوي رفيع + خلفية اللوح
+        outer = tk.Frame(parent, bg=BORDER)
+        tk.Frame(outer, bg=color, height=3).pack(fill="x", padx=1, pady=(1, 0))
+        card = tk.Frame(outer, bg=PANEL, padx=16, pady=12)
+        card.pack(fill="both", expand=True, padx=1, pady=(0, 1))
+        big = tk.Label(card, text=str(value), bg=PANEL, font=(_FSB, 20), fg=color)
         big.pack(anchor="e")
-        sub = ttk.Label(card, text=label, background=BG, foreground=MUTED,
-                        font=("Segoe UI", 10))
+        sub = tk.Label(card, text=label, bg=PANEL, fg=MUTED, font=(_FUI, 10))
         sub.pack(anchor="e")
         if on_click is not None:
-            for w in (card, big, sub):
+            for w in (outer, card, big, sub):
                 w.configure(cursor="hand2")
                 w.bind("<Button-1>", lambda _e: on_click())
-        return card
+        return outer
 
     def refresh(self) -> None:
         from .fields import format_amount
@@ -3185,7 +3210,7 @@ class DashboardDialog(Toplevel):
 
         name = self.app.season_year.get().strip()
         ttk.Label(self._outer, text=f"لوحة التحكم — موسم {name}هـ" if name
-                  else "لوحة التحكم", font=("Segoe UI Semibold", 14),
+                  else "لوحة التحكم", font=(_FSB, 14),
                   foreground=TEXT, background=BG).pack(anchor="e", pady=(0, 12))
 
         # بطاقات المؤشّرات (شبكة 3 أعمدة)
@@ -3213,7 +3238,7 @@ class DashboardDialog(Toplevel):
 
         # المالية حسب البرنامج
         ttk.Label(self._outer, text="المالية حسب البرنامج",
-                  font=("Segoe UI Semibold", 11), foreground=BRONZE,
+                  font=(_FSB, 11), foreground=BRONZE,
                   background=BG).pack(anchor="e", pady=(14, 4))
         tv = ttk.Treeview(self._outer, columns=("count", "paid", "remaining", "pct"),
                           show="tree headings", height=5)
@@ -3234,7 +3259,7 @@ class DashboardDialog(Toplevel):
         view_row = ttk.Frame(self._outer)
         view_row.pack(anchor="e", pady=(14, 0))
         ttk.Label(view_row, text="إعدادات العرض:", background=BG, foreground=MUTED,
-                  font=("Segoe UI", 9)).pack(side=RIGHT, padx=(4, 8))
+                  font=(_FUI, 9)).pack(side=RIGHT, padx=(4, 8))
         self.app._build_view_menubutton(view_row).pack(side=RIGHT, padx=3)
 
         row = ttk.Frame(self._outer)
@@ -3283,10 +3308,10 @@ class StatsDialog(Toplevel):
             card = ttk.Frame(cards, style="Toolbar.TFrame", padding=(12, 6))
             card.pack(side=RIGHT, padx=4)
             ttk.Label(card, text=value, background=BG,
-                      font=("Segoe UI Semibold", 15),
+                      font=(_FSB, 15),
                       foreground=self._CARD_COLORS.get(label, ACCENT)).pack(anchor="e")
             ttk.Label(card, text=label, background=BG, foreground=MUTED,
-                      font=("Segoe UI", 9)).pack(anchor="e")
+                      font=(_FUI, 9)).pack(anchor="e")
 
         nb = ttk.Notebook(outer)
         nb.pack(fill=BOTH, expand=True)
@@ -3299,11 +3324,11 @@ class StatsDialog(Toplevel):
         self._group_var = StringVar(value=GROUPINGS[0][1])
         self._group_map = {lbl: key for key, lbl in GROUPINGS}
         box = ttk.Combobox(top, textvariable=self._group_var, state="readonly",
-                           width=16, font=("Segoe UI", 10),
+                           width=16, font=(_FUI, 10),
                            values=[lbl for _k, lbl in GROUPINGS])
         box.pack(side=RIGHT)
         box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_dist())
-        ttk.Label(top, text="التوزيع حسب:", font=("Segoe UI", 10),
+        ttk.Label(top, text="التوزيع حسب:", font=(_FUI, 10),
                   foreground=TEXT).pack(side=RIGHT, padx=(4, 6))
 
         self._dist = ttk.Treeview(dist_tab, columns=("count", "pct", "bar"),
@@ -3321,7 +3346,7 @@ class StatsDialog(Toplevel):
         # ---- تبويب المتأخّرات ----
         owe_tab = ttk.Frame(nb, padding=10)
         nb.add(owe_tab, text="المتأخّرات")
-        self._owe_total = ttk.Label(owe_tab, font=("Segoe UI Semibold", 11),
+        self._owe_total = ttk.Label(owe_tab, font=(_FSB, 11),
                                     foreground=DANGER)
         self._owe_total.pack(anchor="e", pady=(0, 6))
         self._owe = ttk.Treeview(owe_tab, columns=("passport", "phone", "amount"),
@@ -3429,9 +3454,9 @@ class BadgesDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text=f"إنشاء بطاقات لـ {len(records)} حاجاً",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT,
+                  font=(_FSB, 12), foreground=TEXT,
                   background=BG).pack(anchor="e")
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   background=BG, wraplength=420,
                   text=rtl("الوجه: الشعار + الصورة الشخصية (للرجال) أو رمز امرأة "
                            "محجّبة (للنساء) + الاسم والهاتف والفندق.\n"
@@ -3447,10 +3472,10 @@ class BadgesDialog(Toplevel):
         def row(label, var):
             fr = ttk.Frame(form)
             fr.pack(fill=X, pady=3)
-            ttk.Label(fr, text=label, font=("Segoe UI", 10), foreground=TEXT,
+            ttk.Label(fr, text=label, font=(_FUI, 10), foreground=TEXT,
                       background=BG, width=18, anchor="e").pack(side=RIGHT, padx=(6, 0))
             e = ttk.Entry(fr, textvariable=var, width=30, justify="right",
-                          font=("Segoe UI", 10))
+                          font=(_FUI, 10))
             install_entry_editing(e)
             e.pack(side=RIGHT, fill=X, expand=True)
 
@@ -3459,9 +3484,9 @@ class BadgesDialog(Toplevel):
         row("رقم الطوارئ", self._emergency)
 
         ttk.Label(outer, text="الإداريون (اختياري — سطر لكل إداري):",
-                  font=("Segoe UI", 10), foreground=TEXT, background=BG).pack(
+                  font=(_FUI, 10), foreground=TEXT, background=BG).pack(
             anchor="e", pady=(8, 2))
-        self._admins = tk.Text(outer, height=3, width=44, font=("Segoe UI", 10),
+        self._admins = tk.Text(outer, height=3, width=44, font=(_FUI, 10),
                                wrap="word")
         self._admins.pack(fill=X)
 
@@ -3510,10 +3535,10 @@ class QualityDialog(Toplevel):
 
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
-        self._summary = ttk.Label(outer, font=("Segoe UI Semibold", 12),
+        self._summary = ttk.Label(outer, font=(_FSB, 12),
                                   foreground=TEXT, background=BG)
         self._summary.pack(anchor="e")
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   background=BG,
                   text=rtl("انقر نقراً مزدوجاً على مشكلة للانتقال إلى سجل الحاج "
                            "في الجدول الرئيسي.")).pack(anchor="e", pady=(2, 8))
@@ -3594,9 +3619,9 @@ class RestoreDialog(Toplevel):
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text="اختر نسخة احتياطية لاستعادتها",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT,
+                  font=(_FSB, 12), foreground=TEXT,
                   background=BG).pack(anchor="e")
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9), justify="right",
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   background=BG,
                   text=rtl("الاستعادة تستبدل الكشف الحالي — لكن يُحفظ الحالي "
                            "كنسخة قبلها، فلا يضيع شيء.")).pack(anchor="e", pady=(2, 8))
@@ -3677,7 +3702,7 @@ class ImageKindDialog(Toplevel):
 
         # ---- نوع الصور ----
         ttk.Label(outer, text="نوع الصور للطباعة:",
-                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
+                  font=(_FSB, 11), foreground=TEXT).pack(
             anchor="e", pady=(0, 8))
         self._choice = StringVar(value="pass_permit")
         self._map = {
@@ -3701,7 +3726,7 @@ class ImageKindDialog(Toplevel):
 
         # ---- نطاق الطباعة ----
         ttk.Label(outer, text="نطاق الطباعة:",
-                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
+                  font=(_FSB, 11), foreground=TEXT).pack(
             anchor="e", pady=(0, 8))
         self._scope = StringVar(value="all")
         ttk.Radiobutton(outer, text="كل المعروض", value="all",
@@ -3798,7 +3823,7 @@ class ProgramsDialog(Toplevel):
         # اختيار البرنامج
         top = ttk.Frame(outer)
         top.pack(fill=X, pady=(0, 10))
-        ttk.Label(top, text="البرنامج:", font=("Segoe UI Semibold", 11),
+        ttk.Label(top, text="البرنامج:", font=(_FSB, 11),
                   foreground=TEXT).pack(side=RIGHT, padx=(0, 8))
         self._sel = StringVar(value="0")
         for idx, name in enumerate(PROGRAM_NAMES):
@@ -3811,7 +3836,7 @@ class ProgramsDialog(Toplevel):
         body.columnconfigure(0, weight=1)
         r = 0
         for gtitle, gfields in self._groups:
-            ttk.Label(body, text=gtitle, font=("Segoe UI Semibold", 11),
+            ttk.Label(body, text=gtitle, font=(_FSB, 11),
                       foreground=BRONZE, background=BG).grid(
                 row=r, column=0, columnspan=2, sticky="e", pady=(10, 3))
             r += 1
@@ -3904,8 +3929,8 @@ class WhatsAppDialog(Toplevel):
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text=f"إرسال إلى {len(records)} حاجاً محدَّداً",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT).pack(anchor="e")
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9),
+                  font=(_FSB, 12), foreground=TEXT).pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9),
                   text="يفتح لكلٍّ محادثة واتساب برسالة جاهزة — تضغط «إرسال» "
                        "بنفسك.").pack(anchor="e", pady=(0, 8))
 
@@ -3920,10 +3945,10 @@ class WhatsAppDialog(Toplevel):
 
         ttk.Label(outer, text="الرسالة:", foreground=TEXT).pack(anchor="e")
         self.txt = tk.Text(outer, width=62, height=5, wrap="word",
-                           font=("Segoe UI", 10))
+                           font=(_FUI, 10))
         self.txt.pack(fill=X)
         self.txt.insert("1.0", DEFAULT_TEMPLATE)
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9),
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9),
                   text="عناصر نائبة تُستبدَل لكل حاج: " + "  ".join(PLACEHOLDERS)
                   ).pack(anchor="e", pady=(2, 8))
 
@@ -4036,9 +4061,9 @@ class BulkDocsDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text=f"سيُنشأ مستند لكل حاج من {count} المعروضين،",
-                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(anchor="e")
+                  font=(_FSB, 11), foreground=TEXT).pack(anchor="e")
         ttk.Label(outer, text="مجموعةً في ملف PDF واحد للطباعة.",
-                  foreground=MUTED, font=("Segoe UI", 9)).pack(anchor="e",
+                  foreground=MUTED, font=(_FUI, 9)).pack(anchor="e",
                                                                pady=(0, 10))
 
         self._choice = StringVar(value="receipt")
@@ -4094,7 +4119,7 @@ class RoomingScopeDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text="اختر نطاق كشف التسكين:",
-                  font=("Segoe UI Semibold", 11), foreground=TEXT,
+                  font=(_FSB, 11), foreground=TEXT,
                   background=BG).grid(row=0, column=0, columnspan=2, sticky="e",
                                       pady=(0, 12))
 
@@ -4111,7 +4136,7 @@ class RoomingScopeDialog(Toplevel):
                      width=24, values=[self._ALL, *cats]).grid(
             row=2, column=0, sticky="ew", pady=5)
 
-        ttk.Label(outer, foreground=MUTED, font=("Segoe UI", 9),
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9),
                   text="«الكل» يشمل جميع الفنادق/الأنواع.").grid(
             row=3, column=0, columnspan=2, sticky="e", pady=(6, 12))
 
@@ -4152,7 +4177,7 @@ class StickersDialog(Toplevel):
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill=BOTH, expand=True)
         ttk.Label(outer, text="اختر نوع الاستيكرات:",
-                  font=("Segoe UI Semibold", 11), foreground=TEXT).pack(
+                  font=(_FSB, 11), foreground=TEXT).pack(
             anchor="e", pady=(0, 10))
 
         self._choice = StringVar(value="bag")
@@ -4214,7 +4239,7 @@ class ReceiptDialog(Toplevel):
         outer.columnconfigure(0, weight=1)
         name = rec.full_name_ar or rec.full_name_en or "—"
         ttk.Label(outer, text=f"🧾  سند قبض — {name}",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT).grid(
+                  font=(_FSB, 12), foreground=TEXT).grid(
             row=0, column=0, columnspan=2, sticky="e", pady=(0, 12))
 
         self.v_number = StringVar(value=str(number))
@@ -4247,7 +4272,7 @@ class ReceiptDialog(Toplevel):
         ttk.Label(outer, text="البيان «وذلك عن»:", foreground=TEXT).grid(
             row=6, column=1, sticky="ne", padx=(10, 0), pady=(8, 4))
         self.txt = tk.Text(outer, width=54, height=4, wrap="word",
-                           font=("Segoe UI", 10))
+                           font=(_FUI, 10))
         self.txt.grid(row=6, column=0, sticky="ew", pady=(8, 4))
         self.txt.insert("1.0", build_receipt_description(
             rec, season=season, amount=amount))
@@ -4325,7 +4350,7 @@ class InvoiceDialog(Toplevel):
         name = rec.full_name_ar or rec.full_name_en or "—"
         icon = "💳" if electronic else "🧾"
         ttk.Label(outer, text=f"{icon}  {kind} — {name}",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT).grid(
+                  font=(_FSB, 12), foreground=TEXT).grid(
             row=0, column=0, columnspan=2, sticky="e", pady=(0, 12))
 
         self.v_number = StringVar(value=str(number))
@@ -4353,7 +4378,7 @@ class InvoiceDialog(Toplevel):
         ttk.Label(outer, text="وصف البند:", foreground=TEXT).grid(
             row=self._r, column=1, sticky="ne", padx=(10, 0), pady=(8, 4))
         self.txt = tk.Text(outer, width=52, height=3, wrap="word",
-                           font=("Segoe UI", 10))
+                           font=(_FUI, 10))
         self.txt.grid(row=self._r, column=0, sticky="ew", pady=(8, 4))
         self.txt.insert("1.0", build_invoice_item(rec, season=season))
         self._r += 1
@@ -4460,7 +4485,7 @@ class ContractDialog(Toplevel):
         outer.columnconfigure(0, weight=1)
         name = rec.full_name_ar or rec.full_name_en or "—"
         ttk.Label(outer, text=f"📜  عقد خدمات حج — {name}",
-                  font=("Segoe UI Semibold", 12), foreground=TEXT).grid(
+                  font=(_FSB, 12), foreground=TEXT).grid(
             row=0, column=0, columnspan=2, sticky="e", pady=(0, 12))
 
         self.v_number = StringVar(value=str(number))
@@ -4484,7 +4509,7 @@ class ContractDialog(Toplevel):
         ttk.Label(outer, text="بنود العقد:", foreground=TEXT).grid(
             row=self._r, column=1, sticky="ne", padx=(10, 0), pady=(8, 4))
         self.txt = tk.Text(outer, width=66, height=15, wrap="word",
-                           font=("Segoe UI", 10))
+                           font=(_FUI, 10))
         self.txt.grid(row=self._r, column=0, sticky="ew", pady=(8, 4))
         self.txt.insert("1.0", build_contract_body(rec, company=co, season=season))
         self._r += 1
@@ -4593,7 +4618,7 @@ class EditDialog(Toplevel):
 
         # المتبقي محسوب تلقائياً، فنعرضه للقراءة فقط
         self.remaining = ttk.Label(
-            outer, font=("Segoe UI Semibold", 10), foreground=TEXT
+            outer, font=(_FSB, 10), foreground=TEXT
         )
         self.remaining.pack(anchor="e", pady=(10, 0))
         self._update_remaining()
@@ -4604,7 +4629,7 @@ class EditDialog(Toplevel):
         if record.warnings:
             ttk.Label(
                 outer, text="⚠ " + " | ".join(record.warnings), foreground="#B26A00",
-                font=("Segoe UI", 9), wraplength=640, justify="right",
+                font=(_FUI, 9), wraplength=640, justify="right",
             ).pack(anchor="e", pady=(8, 0))
 
         btns = ttk.Frame(outer)
@@ -4631,7 +4656,7 @@ class EditDialog(Toplevel):
             label = f.label
             if f.key in MRZ_FILLED:
                 label += " *"          # نجمة: مقروء من الجواز
-            ttk.Label(frame, text=label, font=("Segoe UI", 10)).grid(
+            ttk.Label(frame, text=label, font=(_FUI, 10)).grid(
                 row=row, column=col + 1, sticky="e", padx=(16, 6), pady=5
             )
             if f.key == "program":
@@ -4714,7 +4739,7 @@ class EditDialog(Toplevel):
             col = 1 - base                    # RTL: أول صورة أقصى اليمين
             box = ttk.Frame(frame, padding=6)
             box.grid(row=row, column=col, padx=10, pady=4, sticky="n")
-            ttk.Label(box, text=KIND_LABELS[kind], font=("Segoe UI Semibold", 10),
+            ttk.Label(box, text=KIND_LABELS[kind], font=(_FSB, 10),
                       foreground=TEXT).pack()
             preview = ttk.Label(box, relief="solid", borderwidth=1,
                                 anchor="center", width=22)
@@ -4861,9 +4886,9 @@ def _show_splash(root):
             lbl.image = img                    # مرجع يمنع جمع القمامة
             lbl.pack()
         tk.Label(frame, text="برنامج الحج", bg=BG, fg=ACCENT,
-                 font=("Segoe UI Semibold", 16)).pack(pady=(12, 0))
+                 font=(_FSB, 16)).pack(pady=(12, 0))
         tk.Label(frame, text="جارٍ التحميل…", bg=BG, fg=MUTED,
-                 font=("Segoe UI", 10)).pack(pady=(4, 0))
+                 font=(_FUI, 10)).pack(pady=(4, 0))
         splash.update_idletasks()
         w, h = splash.winfo_width(), splash.winfo_height()
         sw, sh = splash.winfo_screenwidth(), splash.winfo_screenheight()

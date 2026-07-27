@@ -51,11 +51,24 @@ def logo_image(master: tk.Misc, width: int = 260) -> tk.PhotoImage | None:
 
 
 def apply_window_icon(window: tk.Misc) -> None:
-    """يضع أيقونة الشركة على النافذة. يتجاهل الفشل بصمت."""
+    """يضع شعار الشركة أيقونةً للنافذة (العنوان وشريط المهام). يتجاهل الفشل."""
     icon = ASSETS / "logo.ico"
     if icon.is_file():
         try:
-            window.iconbitmap(str(icon))
+            window.iconbitmap(str(icon))          # لشريط المهام في ويندوز
+        except tk.TclError:
+            pass
+    # إضافةً: iconphoto من PNG لعنوان النافذة (أوضح وعبر المنصّات)
+    png = ASSETS / "logo.png"
+    if png.is_file():
+        try:
+            img = tk.PhotoImage(master=window, file=str(png))
+            factor = max(1, round(img.width() / 64))
+            small = img.subsample(factor, factor)
+            window.iconphoto(True, small)
+            refs = getattr(window, "_icon_refs", [])
+            refs.append(small)
+            window._icon_refs = refs               # مرجع يمنع جمع القمامة
         except tk.TclError:
             pass
 
