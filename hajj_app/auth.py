@@ -75,8 +75,9 @@ class AuthError(Exception):
 
 
 def default_auth_path() -> Path:
-    """مسار ملف الحساب: بجوار ملف البيانات."""
-    return Path(__file__).resolve().parent.parent / "data" / "auth.json"
+    """مسار ملف الحساب: بجوار ملف البيانات (يبقى دائماً في نسخة exe)."""
+    from .paths import data_dir
+    return data_dir() / "auth.json"
 
 
 # ------------------------------------------------------------------ أدوات

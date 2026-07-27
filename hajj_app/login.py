@@ -20,7 +20,9 @@ PAPER = "#FFFFFF"
 MUTED = "#7A6A58"
 DANGER = "#B91C1C"
 
-ASSETS = Path(__file__).resolve().parent / "assets"
+from .paths import resource_dir
+
+ASSETS = resource_dir() / "assets"
 
 # Tk لا يطبّق خوارزمية الاتجاه الثنائي (bidi)، فالنص العربي الذي يحوي
 # حروفاً لاتينية أو علامة ترقيم في آخره يظهر مقلوباً: "إكسل وPDF" تُعرض

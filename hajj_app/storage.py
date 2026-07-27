@@ -58,8 +58,9 @@ def save_settings(settings: dict) -> None:
 
 
 def default_data_path() -> Path:
-    """مسار ملف البيانات الافتراضي: مجلد data بجوار البرنامج."""
-    return Path(__file__).resolve().parent.parent / "data" / "hajjaj.json"
+    """مسار ملف البيانات الافتراضي: مجلد data الدائم بجوار البرنامج."""
+    from .paths import data_dir
+    return data_dir() / "hajjaj.json"
 
 
 def _to_dict(record: PassportData) -> dict:

@@ -113,7 +113,9 @@ def _register_fonts() -> None:
             continue
 
 
-_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "logo.png"
+from .paths import resource_dir
+
+_LOGO_PATH = resource_dir() / "assets" / "logo.png"
 
 
 def _logo_flowable(max_width_pt: float = 118):
