@@ -3031,10 +3031,11 @@ class TransportDialog(Toplevel):
         ttk.Label(top, text="الوسيلة:", font=(_FUI, 10),
                   foreground=TEXT).pack(side=RIGHT, padx=(2, 5))
 
-        cols = ("phone", "hotel", "executive", "wheelchair")
+        cols = ("family", "phone", "hotel", "executive", "wheelchair")
         self._tree = ttk.Treeview(outer, columns=cols, show="tree headings", height=13)
         self._tree.heading("#0", text="الباص / الحاج")
-        for c, lbl, w in (("phone", "الهاتف", 120), ("hotel", "الفندق", 150),
+        for c, lbl, w in (("family", "رقم العائلة", 90), ("phone", "الهاتف", 120),
+                          ("hotel", "الفندق", 150),
                           ("executive", "خدمة التنفيذي", 100),
                           ("wheelchair", "كرسي متحرك", 90)):
             self._tree.heading(c, text=lbl)
@@ -3070,7 +3071,8 @@ class TransportDialog(Toplevel):
             for rec in occ:
                 self._tree.insert(gid, END,
                                   text=rec.full_name_ar or rec.full_name_en or "—",
-                                  values=(str(rec.phone or "").strip() or "—",
+                                  values=(str(rec.family_number or "").strip() or "—",
+                                          str(rec.phone or "").strip() or "—",
                                           str(rec.hotel or "").strip() or "—",
                                           executive_display(rec) or "—",
                                           str(rec.wheelchair or "").strip() or "—"))

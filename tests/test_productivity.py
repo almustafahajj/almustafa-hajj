@@ -39,8 +39,10 @@ print("  OK: أسطر مقروءة تُعرّف الحاج")
 
 print("\n=== تجميع المواصلات ===")
 recs = [
-    rec(full_name_ar="أ", transport="باص 1", passport_number="P1", hotel="الصفوة"),
-    rec(full_name_ar="ب", transport="باص 2", passport_number="P2"),
+    rec(full_name_ar="أ", transport="باص 1", passport_number="P1", hotel="الصفوة",
+        family_number="101"),
+    rec(full_name_ar="ب", transport="باص 2", passport_number="P2",
+        family_number="102"),
     rec(full_name_ar="ج", transport="باص 1", passport_number="P3"),
     rec(full_name_ar="د", transport="", passport_number="P4"),   # بلا مواصلات
 ]
@@ -66,9 +68,14 @@ assert ws.sheet_view.rightToLeft is True
 assert [c.value for c in ws[2]] == list(TRANSPORT_COLUMNS)
 assert "رقم الجواز" not in TRANSPORT_COLUMNS and "الغرفة" not in TRANSPORT_COLUMNS
 assert list(TRANSPORT_COLUMNS) == [
-    "م", "اسم الحاج", "الهاتف", "الفندق", "خدمة التنفيذي", "كرسي متحرك"]
+    "م", "اسم الحاج", "رقم العائلة", "الهاتف", "الفندق", "خدمة التنفيذي",
+    "كرسي متحرك"]
 serials = [row[0].value for row in ws.iter_rows(min_row=3) if isinstance(row[0].value, int)]
 assert len(serials) == 4, serials     # كل الحجّاج مُدرجون (مع مجموعة بلا مواصلات)
+# رقم العائلة يظهر في العمود الثالث
+fam_vals = [row[2].value for row in ws.iter_rows(min_row=3)
+            if isinstance(row[0].value, int)]
+assert "101" in fam_vals, fam_vals
 print(f"  OK: إكسل RTL بأعمدة {list(TRANSPORT_COLUMNS)}، {len(serials)} حاجاً")
 
 print("\n=== تصدير المواصلات PDF (كل باص في صفحة واحدة) ===")

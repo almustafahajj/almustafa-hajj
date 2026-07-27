@@ -12,9 +12,10 @@ from .mrz import PassportData
 
 # أعمدة كشف المواصلات (من اليمين لليسار في العرض العربي)
 TRANSPORT_COLUMNS: tuple[str, ...] = (
-    "م", "اسم الحاج", "الهاتف", "الفندق", "خدمة التنفيذي", "كرسي متحرك",
+    "م", "اسم الحاج", "رقم العائلة", "الهاتف", "الفندق", "خدمة التنفيذي",
+    "كرسي متحرك",
 )
-_WIDTHS = (5, 26, 14, 18, 14, 10)
+_WIDTHS = (5, 26, 11, 14, 18, 14, 10)
 
 
 def _wheelchair(rec: PassportData) -> str:
@@ -93,6 +94,7 @@ def export_transport_excel(records: list[PassportData], path: str | Path,
 
     def occupant(rec: PassportData, serial: int) -> None:
         ws.append([serial, rec.full_name_ar or rec.full_name_en or "—",
+                   str(rec.family_number or "").strip(),
                    str(rec.phone or "").strip(), str(rec.hotel or "").strip(),
                    executive_display(rec), _wheelchair(rec)])
         row = ws.max_row

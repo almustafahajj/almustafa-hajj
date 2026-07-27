@@ -1659,10 +1659,11 @@ def export_transport_pdf(records: list, path: str | Path,
     groups, unassigned = group_by_transport(records)
     blocks = list(groups) + ([("بلا مواصلات", unassigned)] if unassigned else [])
 
-    labels = ["م", "اسم الحاج", "الهاتف", "الفندق", "خدمة التنفيذي", "كرسي متحرك"]
+    labels = ["م", "اسم الحاج", "رقم العائلة", "الهاتف", "الفندق",
+              "خدمة التنفيذي", "كرسي متحرك"]
     draw_labels = list(reversed(labels))
     # الأعمدة تملأ عرض الصفحة كاملاً (المجموع = عرض المحتوى)
-    weights = list(reversed([44, 196, 92, 110, 96, 82]))
+    weights = list(reversed([40, 178, 66, 88, 104, 92, 78]))
     scale = doc.width / sum(weights)
     col_widths = [w * scale for w in weights]
 
@@ -1692,6 +1693,7 @@ def export_transport_pdf(records: list, path: str | Path,
         body = []
         for serial, rec in enumerate(occ, start=1):
             values = [ltr(serial), rec.full_name_ar or rec.full_name_en or "—",
+                      ltr(str(rec.family_number or "").strip() or "—"),
                       ltr(str(rec.phone or "").strip() or "—"),
                       str(rec.hotel or "").strip() or "—",
                       executive_display(rec) or "—",
