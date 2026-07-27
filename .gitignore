@@ -19,9 +19,10 @@ __pycache__/
 # مخرجات الاختبارات
 /tests/_out/
 
-# مخرجات بناء نسخة exe (PyInstaller)
+# مخرجات بناء نسخة exe (PyInstaller) والمُثبِّت (Inno Setup)
 /build/
 /dist/
+/Output/
 
 # أدوات المساعد الداخلية
 .claude/

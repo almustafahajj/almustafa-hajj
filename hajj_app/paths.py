@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -20,14 +21,36 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
-def data_dir() -> Path:
-    """مجلد البيانات الدائم.
+def _is_writable(folder: Path) -> bool:
+    """هل يمكن الكتابة في هذا المجلد؟ (Program Files غالباً للقراءة فقط)."""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        probe = folder / ".write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
 
-    * نسخة exe: بجوار الملف التنفيذي ``HajjApp.exe`` (يبقى بعد الإغلاق).
-    * من المصدر: مجلد ``data`` بجانب حزمة ``hajj_app``.
+
+def data_dir() -> Path:
+    """مجلد البيانات الدائم — يبقى بعد الإغلاق ويحمل كشف الحجّاج والحسابات.
+
+    * **نسخة محمولة** (exe في مجلد يمكن الكتابة فيه، كسطح المكتب أو فلاشة):
+      مجلد ``data`` بجوار الملف التنفيذي — يسهل نقله ونسخه.
+    * **نسخة مثبّتة** (exe في ``Program Files`` للقراءة فقط): مجلد المستخدم
+      ``%LOCALAPPDATA%\\HajjApp\\data`` — لأن الكتابة بجوار البرنامج ممنوعة.
+    * **من المصدر**: مجلد ``data`` بجانب حزمة ``hajj_app``.
     """
     if is_frozen():
-        return Path(sys.executable).resolve().parent / "data"
+        exe_dir = Path(sys.executable).resolve().parent
+        beside_exe = exe_dir / "data"
+        # نسخة محمولة قائمة مسبقاً، أو مجلد يمكن الكتابة فيه -> بجوار البرنامج
+        if beside_exe.is_dir() or _is_writable(exe_dir):
+            return beside_exe
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        base_dir = Path(base) if base else Path.home()
+        return base_dir / "HajjApp" / "data"
     return Path(__file__).resolve().parent.parent / "data"
 
 
