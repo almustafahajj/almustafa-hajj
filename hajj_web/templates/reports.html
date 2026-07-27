@@ -27,6 +27,16 @@
       </div>
     </section>
     <section class="card">
+      <h2>⛺ خيام المخيمات</h2>
+      <form method="get" action="{{ url_for('report_camps_pdf') }}" class="camp-form">
+        <label>المخيّم</label>
+        <select name="camp"><option value="منى">منى</option><option value="عرفة">عرفة</option></select>
+        <label>سعة الخيمة</label>
+        <input type="number" name="capacity" value="40" min="1" style="width:80px">
+        <button type="submit" class="exp-btn">📄 تنزيل PDF</button>
+      </form>
+    </section>
+    <section class="card">
       <h2>🚌 كشف المواصلات</h2>
       <div class="dl-row">
         <a class="exp-btn" href="{{ url_for('report_transport_pdf') }}{{ qs }}">📄 PDF</a>

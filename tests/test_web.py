@@ -400,4 +400,12 @@ assert 'name="sel"' in mgr.get("/").get_data(as_text=True)
 assert 'name="sel"' not in client.get("/").get_data(as_text=True)
 print("  OK: المطّلع ممنوع من المسارات الجماعية ولا يرى مربّعات التحديد")
 
+print("\n=== خيام المخيمات ===")
+cp = mgr.get("/reports/camps.pdf?camp=منى&capacity=20")
+assert cp.status_code == 200 and cp.data[:5] == b"%PDF-"
+cp2 = mgr.get("/reports/camps.pdf?camp=عرفة")
+assert cp2.status_code == 200 and cp2.data[:5] == b"%PDF-"
+assert "خيام المخيمات" in mgr.get("/reports").get_data(as_text=True)
+print("  OK: كشف مخيّم منى/عرفة PDF بسعة مختارة")
+
 print("\n*** WEB TESTS PASSED ***")

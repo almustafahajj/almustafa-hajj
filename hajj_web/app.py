@@ -664,6 +664,28 @@ def create_app(auth_path: str | Path | None = None,
                                            group_by_room=True),
             "كشف التسكين.pdf")
 
+    @app.route("/reports/camps.pdf")
+    @login_required
+    def report_camps_pdf():
+        from hajj_app import camps
+        camp = (request.args.get("camp") or camps.CAMP_MINA).strip()
+        if camp not in camps.CAMPS:
+            camp = camps.CAMP_MINA
+        try:
+            capacity = int(request.args.get("capacity") or 40)
+        except (TypeError, ValueError):
+            capacity = 40
+        try:
+            records = _current_filtered()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        _audit("كشف المخيمات", f"{camp} — {len(records)} حاج")
+        plan = camps.build_camp_plan(records, camp, capacity=capacity)
+        return _send_generated(
+            lambda p: pdf_io.export_tents_pdf(plan, p, title=f"مخيّم {camp}"),
+            f"مخيّم {camp}.pdf", "application/pdf")
+
     # ---------------------------------------- مستندات الحاج الفردية
     def _load_one(idx):
         records, _note = load_records()

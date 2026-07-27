@@ -95,6 +95,9 @@ table.mini .pct{text-align:center; color:var(--muted); width:64px}
 .recovery-key{font-family:Consolas,monospace; font-size:20px; font-weight:800; color:var(--bronze); letter-spacing:2px; margin:8px 0; direction:ltr}
 .ts{white-space:nowrap; color:var(--muted); direction:ltr; text-align:right}
 .dl-row{display:flex; gap:8px; flex-wrap:wrap}
+.camp-form{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.camp-form label{color:var(--muted); font-size:13px}
+.camp-form select, .camp-form input{padding:7px 9px; border:1px solid var(--line); border-radius:7px}
 
 /* ---------- المحتوى ---------- */
 .content{padding:20px 22px}
