@@ -69,6 +69,10 @@ code{background:#f0eadf; padding:1px 5px; border-radius:5px}
 .count{color:var(--muted); font-weight:600; margin-inline-start:auto}
 .note{background:#fff7e6; border:1px solid #f0d9a8; color:#8a5a00; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:13px}
 .tip{color:var(--muted); font-size:13px; margin-top:10px}
+.exports{display:flex; align-items:center; gap:10px; margin-bottom:12px}
+.exp-label{color:var(--muted); font-size:13px}
+.exp-btn{background:#f0eadf; color:var(--ink); padding:7px 13px; border-radius:8px; font-weight:600; font-size:14px}
+.exp-btn:hover{background:var(--bronze); color:#fff; text-decoration:none}
 tbody tr{cursor:pointer}
 
 /* ---------- سجلّ الحاج الكامل ---------- */

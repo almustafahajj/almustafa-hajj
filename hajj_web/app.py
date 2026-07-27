@@ -6,19 +6,24 @@
 
 from __future__ import annotations
 
+import io
+import os
 import secrets
+import tempfile
 import threading
 from functools import wraps
 from pathlib import Path
 
 from flask import (
-    Flask, abort, flash, g, redirect, render_template, request, url_for,
-    make_response,
+    Flask, abort, flash, g, redirect, render_template, request, send_file,
+    url_for, make_response,
 )
 
-from hajj_app import audit, auth, fields, storage
+from hajj_app import audit, auth, excel_io, fields, pdf_io, storage
 from hajj_app.mrz import PassportData
 from . import sessions
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 _COOKIE = "hajj_session"
 
@@ -168,30 +173,14 @@ def create_app(auth_path: str | Path | None = None,
         resp.delete_cookie(_COOKIE)
         return resp
 
-    @app.route("/")
-    @login_required
-    def index():
-        try:
-            records, note = load_records()
-        except RuntimeError:
-            sessions.destroy(request.cookies.get(_COOKIE))
-            return redirect(url_for("login"))
-
-        # قوائم الفلاتر من كامل البيانات (قبل الترشيح)
-        options = {
-            key: sorted({(getattr(r, key, "") or "").strip()
-                         for r in records if (getattr(r, key, "") or "").strip()})
-            for key, _ in FILTERS
-        }
+    def _filter_indexed(records):
+        """يطبّق الفلاتر والبحث من ?args، ويعيد ([(الفهرس، السجلّ)], selected, q)."""
         selected = {key: (request.args.get(key) or "").strip() for key, _ in FILTERS}
-
-        # نحتفظ بالفهرس الأصلي ليصل رابط السجلّ إلى الحاج الصحيح
         indexed = list(enumerate(records))
         for key, value in selected.items():
             if value:
                 indexed = [(i, r) for i, r in indexed
                            if (getattr(r, key, "") or "").strip() == value]
-
         query = (request.args.get("q") or "").strip()
         if query:
             ql = query.lower()
@@ -201,7 +190,23 @@ def create_app(auth_path: str | Path | None = None,
                 or ql in (r.passport_number or "").lower()
                 or ql in (r.phone or "").lower()
             ]
+        return indexed, selected, query
 
+    @app.route("/")
+    @login_required
+    def index():
+        try:
+            records, note = load_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+
+        options = {
+            key: sorted({(getattr(r, key, "") or "").strip()
+                         for r in records if (getattr(r, key, "") or "").strip()})
+            for key, _ in FILTERS
+        }
+        indexed, selected, query = _filter_indexed(records)
         rows = [
             {"idx": i, "cells": [getattr(r, key, "") or "" for key, _ in COLUMNS]}
             for i, r in indexed
@@ -210,9 +215,57 @@ def create_app(auth_path: str | Path | None = None,
             "index.html", columns=[label for _, label in COLUMNS],
             rows=rows, total=len(rows), grand_total=len(records), query=query,
             filters=FILTERS, options=options, selected=selected,
+            query_string=request.query_string.decode("utf-8"),
             username=g.session.username, role=g.session.role_label, note=note,
             can_edit=g.session.can_edit,
         )
+
+    def _send_generated(make_fn, download_name, mimetype):
+        """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله تنزيلاً ويحذفه."""
+        suffix = Path(download_name).suffix
+        fd, tmp = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        try:
+            make_fn(tmp)
+            data = Path(tmp).read_bytes()
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        return send_file(io.BytesIO(data), as_attachment=True,
+                         download_name=download_name, mimetype=mimetype)
+
+    def _current_filtered():
+        """يحمّل الكشف ويطبّق الفلاتر الحالية، ويعيد قائمة السجلات فقط."""
+        records, _note = load_records()
+        indexed, _sel, _q = _filter_indexed(records)
+        return [r for _i, r in indexed]
+
+    @app.route("/export/excel")
+    @login_required
+    def export_excel_route():
+        try:
+            records = _current_filtered()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        _audit("تصدير إكسل", f"{len(records)} حاج")
+        return _send_generated(lambda p: excel_io.export_excel(records, p),
+                               "كشف الحجاج.xlsx", _XLSX_MIME)
+
+    @app.route("/export/pdf")
+    @login_required
+    def export_pdf_route():
+        try:
+            records = _current_filtered()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        _audit("تصدير PDF", f"{len(records)} حاج")
+        return _send_generated(
+            lambda p: pdf_io.export_pdf(records, p, title="كشف الحجاج"),
+            "كشف الحجاج.pdf", "application/pdf")
 
     @app.route("/pilgrim/<int:idx>")
     @login_required

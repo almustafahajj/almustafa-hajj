@@ -150,4 +150,22 @@ assert {"إضافة حاج", "تعديل حاج", "حذف حاج"} <= actions, a
 assert all("(ويب)" in e["user"] for e in entries if e["action"].endswith("حاج"))
 print("  OK: العمليات مسجّلة في التدقيق باسم المستخدم (ويب)")
 
+print("\n=== التصدير (إكسل/PDF) يحترم الفلتر ===")
+xl = mgr.get("/export/excel")
+assert xl.status_code == 200 and xl.data[:2] == b"PK", "إكسل غير صالح"
+assert "spreadsheetml" in xl.headers.get("Content-Type", "")
+pf = mgr.get("/export/pdf")
+assert pf.status_code == 200 and pf.data[:5] == b"%PDF-", "PDF غير صالح"
+# التصدير المفلتر: برنامج «الثاني» فيه حاجّ واحد -> إكسل أصغر وPDF صالح
+xl2 = mgr.get("/export/excel?program=الثاني")
+assert xl2.status_code == 200 and xl2.data[:2] == b"PK"
+from openpyxl import load_workbook
+import io as _io
+wb = load_workbook(_io.BytesIO(xl2.data)); ws = wb.active
+data_rows = ws.max_row - 2          # صف العنوان + صف الرؤوس
+assert data_rows == 1, f"التصدير المفلتر يجب أن يحوي حاجّاً واحداً لا {data_rows}"
+flat = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+assert "سالم أحمد" in flat and "عبدالله الشامسي" not in flat
+print("  OK: إكسل وPDF صالحان، والتصدير يحترم فلتر البرنامج")
+
 print("\n*** WEB TESTS PASSED ***")

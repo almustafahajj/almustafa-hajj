@@ -28,6 +28,12 @@
     <div class="count">المعروض: {{ total }} من {{ grand_total }}</div>
   </form>
 
+  <div class="exports">
+    <span class="exp-label">تصدير المعروض:</span>
+    <a class="exp-btn" href="{{ url_for('export_excel_route') }}{% if query_string %}?{{ query_string }}{% endif %}">📊 إكسل</a>
+    <a class="exp-btn" href="{{ url_for('export_pdf_route') }}{% if query_string %}?{{ query_string }}{% endif %}">📄 PDF</a>
+  </div>
+
   {% if note %}<div class="note">{{ note }}</div>{% endif %}
 
   <div class="table-wrap">
