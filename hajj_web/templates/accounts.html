@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}إدارة الحسابات — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>👥 إدارة الحسابات</h1>
+  </div>
+
+  {% if new_recovery %}
+  <div class="recovery-box">
+    <b>مفتاح استرداد الحساب «{{ new_recovery[0] }}» — يُعرض مرة واحدة فقط:</b>
+    <div class="recovery-key">{{ new_recovery[1] }}</div>
+    <span class="hint">اطبعه أو احفظه في مكان آمن وسلّمه لصاحب الحساب. لا يمكن استخراجه لاحقاً.</span>
+  </div>
+  {% endif %}
+
+  <div class="cards">
+    <section class="card">
+      <h2>الحسابات الحالية</h2>
+      <table class="mini accounts-table">
+        <thead><tr><th>المستخدم</th><th>الصلاحية</th><th>إجراءات</th></tr></thead>
+        <tbody>
+          {% for a in accounts %}
+          <tr>
+            <td>{{ a.username }}{% if a.username|lower == me|lower %} <span class="you">(أنت)</span>{% endif %}</td>
+            <td>
+              <form method="post" action="{{ url_for('accounts_role') }}" class="inline">
+                <input type="hidden" name="username" value="{{ a.username }}">
+                <select name="role" onchange="this.form.submit()">
+                  {% for key, label in roles %}
+                  <option value="{{ key }}" {% if a.role == key %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+            <td>
+              {% if a.username|lower != me|lower %}
+              <form method="post" action="{{ url_for('accounts_delete') }}" class="inline"
+                    onsubmit="return confirm('حذف الحساب «{{ a.username }}»؟');">
+                <input type="hidden" name="username" value="{{ a.username }}">
+                <button type="submit" class="btn-danger small">حذف</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>➕ إضافة حساب</h2>
+      <form method="post" action="{{ url_for('accounts_add') }}" class="record-form">
+        <div class="field"><label>اسم المستخدم</label><input type="text" name="username" required></div>
+        <div class="field"><label>كلمة المرور</label><input type="password" name="password" required></div>
+        <div class="field">
+          <label>الصلاحية</label>
+          <select name="role">
+            {% for key, label in roles %}<option value="{{ key }}" {% if key=='viewer' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn-primary">إضافة الحساب</button>
+      </form>
+    </section>
+  </div>
+</main>
+{% endblock %}

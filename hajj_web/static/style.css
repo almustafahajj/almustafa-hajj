@@ -53,6 +53,31 @@ code{background:#f0eadf; padding:1px 5px; border-radius:5px}
 }
 .logout:hover{background:var(--bronze); color:#fff; text-decoration:none}
 
+/* ---------- شريط التنقّل ---------- */
+.nav{display:flex; gap:8px; flex-wrap:wrap; padding:10px 22px; background:#f4efe7; border-bottom:1px solid var(--line)}
+.nav a{background:#fff; border:1px solid var(--line); padding:7px 14px; border-radius:8px; color:var(--ink); font-weight:600; font-size:14px}
+.nav a:hover{background:var(--bronze); color:#fff; border-color:var(--bronze); text-decoration:none}
+
+/* ---------- الإحصاءات ---------- */
+.kpis{display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:12px; margin-bottom:18px}
+.kpi{background:var(--card); border:1px solid var(--line); border-top:3px solid var(--bronze); border-radius:12px; padding:16px; text-align:center}
+.kpi-val{font-size:22px; font-weight:800; color:var(--ink)}
+.kpi-lbl{color:var(--muted); font-size:13px; margin-top:4px}
+table.mini{width:100%; border-collapse:collapse; font-size:14px}
+table.mini td, table.mini th{padding:7px 10px; border-bottom:1px solid var(--line); text-align:right}
+table.mini .num{text-align:center; font-weight:700; width:60px}
+table.mini .pct{text-align:center; color:var(--muted); width:64px}
+
+/* ---------- الحسابات وسجلّ التدقيق ---------- */
+.accounts-table select{padding:6px 8px; border:1px solid var(--line); border-radius:7px}
+.inline{display:inline; margin:0}
+.you{color:var(--bronze); font-size:12px}
+.btn-danger.small{padding:5px 12px; font-size:13px}
+.recovery-box{background:#fff7e6; border:1px solid #f0d9a8; border-radius:12px; padding:16px; margin-bottom:16px}
+.recovery-key{font-family:Consolas,monospace; font-size:20px; font-weight:800; color:var(--bronze); letter-spacing:2px; margin:8px 0; direction:ltr}
+.ts{white-space:nowrap; color:var(--muted); direction:ltr; text-align:right}
+.dl-row{display:flex; gap:8px; flex-wrap:wrap}
+
 /* ---------- المحتوى ---------- */
 .content{padding:20px 22px}
 .filters{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap}

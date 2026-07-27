@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}الإحصاءات — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>الإحصاءات والملخّص المالي</h1>
+    <div class="detail-actions">
+      <a class="btn-primary" href="{{ url_for('stats_pdf_route') }}">📄 تصدير PDF</a>
+    </div>
+  </div>
+
+  <div class="kpis">
+    {% for label, value in fin_rows %}
+    <div class="kpi"><div class="kpi-val">{{ value }}</div><div class="kpi-lbl">{{ label }}</div></div>
+    {% endfor %}
+  </div>
+
+  <div class="cards">
+    {% for label, buckets in dists %}
+    <section class="card">
+      <h2>التوزيع حسب {{ label }}</h2>
+      <table class="mini">
+        <tbody>
+          {% for b in buckets %}
+          <tr><td>{{ b.label }}</td><td class="num">{{ b.count }}</td><td class="pct">{{ b.percent }}%</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

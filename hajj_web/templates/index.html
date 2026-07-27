@@ -12,6 +12,13 @@
   </div>
 </header>
 
+<nav class="nav">
+  <a href="{{ url_for('stats_page') }}">📊 الإحصاءات</a>
+  <a href="{{ url_for('reports_page') }}">📄 الكشوف والبطاقات</a>
+  <a href="{{ url_for('audit_page') }}">📝 سجلّ التدقيق</a>
+  {% if is_admin %}<a href="{{ url_for('accounts_page') }}">👥 الحسابات</a>{% endif %}
+</nav>
+
 <main class="content">
   <form class="filters" method="get" action="{{ url_for('index') }}">
     <input class="q" type="text" name="q" value="{{ query }}"

@@ -19,7 +19,9 @@ from flask import (
     url_for, make_response,
 )
 
-from hajj_app import audit, auth, excel_io, fields, pdf_io, storage
+from hajj_app import (
+    audit, auth, excel_io, fields, pdf_io, stats, storage, transport,
+)
 from hajj_app.mrz import PassportData
 from . import sessions
 
@@ -217,7 +219,7 @@ def create_app(auth_path: str | Path | None = None,
             filters=FILTERS, options=options, selected=selected,
             query_string=request.query_string.decode("utf-8"),
             username=g.session.username, role=g.session.role_label, note=note,
-            can_edit=g.session.can_edit,
+            can_edit=g.session.can_edit, is_admin=g.session.can_manage_accounts,
         )
 
     def _send_generated(make_fn, download_name, mimetype):
@@ -459,6 +461,166 @@ def create_app(auth_path: str | Path | None = None,
         if not new and not errors:
             flash("لم تُقرأ أي بيانات من الملفات", "error")
         return redirect(url_for("index"))
+
+    # ---------------------------------------------------- الإحصاءات
+    @app.route("/stats")
+    @login_required
+    def stats_page():
+        try:
+            records, _note = load_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        fin = stats.financial_summary(records)
+        dists = [(label, stats.distribution(records, key))
+                 for key, label in stats.GROUPINGS]
+        return render_template(
+            "stats.html", fin_rows=fin.as_rows(), dists=dists,
+            total=len(records), username=g.session.username,
+            role=g.session.role_label)
+
+    @app.route("/stats/pdf")
+    @login_required
+    def stats_pdf_route():
+        try:
+            records, _note = load_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        _audit("تصدير الإحصاءات PDF", f"{len(records)} حاج")
+        return _send_generated(
+            lambda p: pdf_io.export_stats_pdf(records, p),
+            "الإحصاءات والملخص المالي.pdf", "application/pdf")
+
+    # ---------------------------------------------------- الكشوف والبطاقات
+    @app.route("/reports")
+    @login_required
+    def reports_page():
+        return render_template(
+            "reports.html", query_string=request.query_string.decode("utf-8"),
+            username=g.session.username, role=g.session.role_label)
+
+    def _report_download(make_fn, name, mimetype="application/pdf"):
+        try:
+            records = _current_filtered()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        _audit("تصدير تقرير", name)
+        return _send_generated(lambda p: make_fn(records, p), name, mimetype)
+
+    @app.route("/reports/transport.pdf")
+    @login_required
+    def report_transport_pdf():
+        return _report_download(
+            lambda r, p: pdf_io.export_transport_pdf(r, p), "كشف المواصلات.pdf")
+
+    @app.route("/reports/transport.xlsx")
+    @login_required
+    def report_transport_xlsx():
+        return _report_download(
+            lambda r, p: transport.export_transport_excel(r, p),
+            "كشف المواصلات.xlsx", _XLSX_MIME)
+
+    @app.route("/reports/airline.pdf")
+    @login_required
+    def report_airline_pdf():
+        return _report_download(
+            lambda r, p: pdf_io.export_airline_pdf(r, p), "كشف الطيران.pdf")
+
+    @app.route("/reports/badges.pdf")
+    @login_required
+    def report_badges_pdf():
+        return _report_download(
+            lambda r, p: pdf_io.export_badges_pdf(r, p, session=g.session),
+            "بطاقات الحجّاج.pdf")
+
+    @app.route("/reports/stickers/<kind>.pdf")
+    @login_required
+    def report_stickers_pdf(kind):
+        if kind not in ("bag", "room", "envelope"):
+            abort(404)
+        names = {"bag": "حقائب", "room": "غرف", "envelope": "أظرف"}
+        return _report_download(
+            lambda r, p: pdf_io.export_stickers_pdf(r, p, kind=kind),
+            f"استيكرات {names[kind]}.pdf")
+
+    # ---------------------------------------------------- إدارة الحسابات
+    def admin_required(view):
+        @wraps(view)
+        def wrapped(*a, **kw):
+            g.session = current_session()
+            if g.session is None:
+                return redirect(url_for("login", next=request.path))
+            if not g.session.can_manage_accounts:
+                abort(403)
+            return view(*a, **kw)
+        return wrapped
+
+    def _render_accounts(new_recovery=None):
+        return render_template(
+            "accounts.html", accounts=auth.list_accounts(_auth_path()),
+            roles=[(r, auth.ROLE_LABELS[r]) for r in auth.ROLES],
+            me=g.session.username, new_recovery=new_recovery,
+            username=g.session.username, role=g.session.role_label)
+
+    @app.route("/accounts")
+    @admin_required
+    def accounts_page():
+        return _render_accounts()
+
+    @app.route("/accounts/add", methods=["POST"])
+    @admin_required
+    def accounts_add():
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        role = (request.form.get("role") or "viewer").strip()
+        try:
+            recovery = auth.add_account(g.session, username, password, role,
+                                        _auth_path())
+        except auth.AuthError as exc:
+            flash(str(exc), "error")
+            return _render_accounts()
+        _audit("إضافة حساب", f"{username} ({auth.ROLE_LABELS.get(role, role)})")
+        flash(f"أُضيف الحساب: {username}", "ok")
+        return _render_accounts(new_recovery=(username, recovery))
+
+    @app.route("/accounts/role", methods=["POST"])
+    @admin_required
+    def accounts_role():
+        username = (request.form.get("username") or "").strip()
+        role = (request.form.get("role") or "").strip()
+        try:
+            auth.set_role(g.session, username, role, _auth_path())
+        except auth.AuthError as exc:
+            flash(str(exc), "error")
+        else:
+            _audit("تغيير دور", f"{username} -> {auth.ROLE_LABELS.get(role, role)}")
+            flash(f"غُيّرت صلاحية «{username}»", "ok")
+        return redirect(url_for("accounts_page"))
+
+    @app.route("/accounts/delete", methods=["POST"])
+    @admin_required
+    def accounts_delete():
+        username = (request.form.get("username") or "").strip()
+        try:
+            auth.remove_account(g.session, username, _auth_path())
+        except auth.AuthError as exc:
+            flash(str(exc), "error")
+        else:
+            _audit("حذف حساب", username)
+            flash(f"حُذف الحساب «{username}»", "ok")
+        return redirect(url_for("accounts_page"))
+
+    # ---------------------------------------------------- سجلّ التدقيق
+    @app.route("/audit")
+    @login_required
+    def audit_page():
+        entries = audit.read_entries(limit=500,
+                                     path=Path(_data_path()).parent / "audit.log")
+        return render_template(
+            "audit.html", entries=entries, username=g.session.username,
+            role=g.session.role_label)
 
     @app.route("/qr")
     def qr():

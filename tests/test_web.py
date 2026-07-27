@@ -207,4 +207,53 @@ assert "http://" in qhtml, "الرابط لا يظهر"
 assert "رمز QR" in client.get("/login").get_data(as_text=True)
 print("  OK: صفحة QR تعرض الرمز والرابط، ورابطها في صفحة الدخول")
 
+print("\n=== الإحصاءات ===")
+st = mgr.get("/stats").get_data(as_text=True)
+assert "الملخّص المالي" in st and "التوزيع حسب" in st
+assert "عدد الحجّاج" in st
+sp = mgr.get("/stats/pdf")
+assert sp.status_code == 200 and sp.data[:5] == b"%PDF-"
+print("  OK: صفحة الإحصاءات + تصدير PDF")
+
+print("\n=== الكشوف والبطاقات (تنزيلات PDF) ===")
+rp = mgr.get("/reports").get_data(as_text=True)
+assert "كشف المواصلات" in rp and "بطاقات الحجّاج" in rp
+for path in ["/reports/transport.pdf", "/reports/airline.pdf",
+             "/reports/badges.pdf", "/reports/stickers/room.pdf"]:
+    r = mgr.get(path)
+    assert r.status_code == 200 and r.data[:5] == b"%PDF-", path
+tx = mgr.get("/reports/transport.xlsx")
+assert tx.status_code == 200 and tx.data[:2] == b"PK"
+assert mgr.get("/reports/stickers/زبد.pdf").status_code == 404   # نوع غير معروف
+print("  OK: مواصلات/طيران/بطاقات/استيكرات PDF + مواصلات إكسل")
+
+print("\n=== إدارة الحسابات (مدير فقط) ===")
+# المطّلع لا يصل
+assert client.get("/accounts").status_code == 403
+# المدير: الصفحة + إضافة حساب (يظهر مفتاح الاسترداد مرة)
+acc = mgr.get("/accounts").get_data(as_text=True)
+assert "إدارة الحسابات" in acc and "viewer1" in acc
+r = mgr.post("/accounts/add", data={"username": "web_editor",
+             "password": "WebEd!Pass1", "role": "editor"})
+body = r.get_data(as_text=True)
+assert "مفتاح استرداد" in body, "لم يُعرض مفتاح الاسترداد"
+assert "web_editor" in {a["username"] for a in auth.list_accounts(AUTH)}
+# الحساب الجديد يفتح البيانات نفسها
+assert auth.login("web_editor", "WebEd!Pass1", AUTH).role == "editor"
+# تغيير الدور + منع حذف الذات
+mgr.post("/accounts/role", data={"username": "web_editor", "role": "viewer"})
+assert {a["username"]: a["role"] for a in auth.list_accounts(AUTH)}["web_editor"] == "viewer"
+mgr.post("/accounts/delete", data={"username": "MHU"})     # حذف الذات مرفوض
+assert "MHU" in {a["username"] for a in auth.list_accounts(AUTH)}
+mgr.post("/accounts/delete", data={"username": "web_editor"})
+assert "web_editor" not in {a["username"] for a in auth.list_accounts(AUTH)}
+print("  OK: إضافة (مع المفتاح)، تغيير الدور، منع حذف الذات، حذف")
+
+print("\n=== سجلّ التدقيق ===")
+au = mgr.get("/audit").get_data(as_text=True)
+assert "سجلّ التدقيق" in au
+assert "إضافة حساب" in au and "web_editor" in au       # العمليات السابقة مسجّلة
+assert "(ويب)" in au
+print("  OK: سجلّ التدقيق يعرض العمليات باسم المستخدم (ويب)")
+
 print("\n*** WEB TESTS PASSED ***")
