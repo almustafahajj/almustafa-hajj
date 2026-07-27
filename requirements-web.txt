@@ -1,0 +1,3 @@
+# مكتبات نسخة الويب (إضافة إلى requirements.txt)
+flask
+waitress

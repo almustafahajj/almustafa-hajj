@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}كشف الحجّاج — برنامج موسم الحج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles">
+    <span class="app-title">برنامج موسم الحج</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="toolbar">
+    <form class="search" method="get" action="{{ url_for('index') }}">
+      <input type="text" name="q" value="{{ query }}"
+             placeholder="بحث بالاسم أو الجواز أو الهاتف…">
+      <button type="submit">بحث</button>
+      {% if query %}<a class="clear" href="{{ url_for('index') }}">مسح</a>{% endif %}
+    </form>
+    <div class="count">عدد الحجّاج: {{ total }}</div>
+  </div>
+
+  {% if note %}<div class="note">{{ note }}</div>{% endif %}
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="idx">م</th>
+          {% for col in columns %}<th>{{ col }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="idx">{{ loop.index }}</td>
+          {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="{{ columns|length + 1 }}">
+          لا يوجد حجّاج لعرضهم{% if query %} مطابقون لبحثك{% endif %}.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}
