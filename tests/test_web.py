@@ -26,9 +26,12 @@ admin, _rk = auth.create_account("MHU", "Web-Pass-1234", AUTH)
 auth.add_account(admin, "viewer1", "View-Pass-1234", "viewer", AUTH)
 storage.save_records([
     PassportData(full_name_ar="عبدالله الشامسي", passport_number="A111",
-                 phone="0501112233", hotel="الصفوة", program="الأول"),
+                 phone="0501112233", hotel="الصفوة", program="الأول",
+                 nationality_ar="سعودي", room_number="101",
+                 program_value="5000", paid_amount="2000"),
     PassportData(full_name_ar="سالم أحمد", passport_number="B222",
-                 phone="0502223344", hotel="كونراد", program="الثاني"),
+                 phone="0502223344", hotel="كونراد", program="الثاني",
+                 nationality_ar="إماراتي", room_number="202"),
 ], DATA, admin)
 print("  OK: حسابان + حاجّان مشفّران")
 
@@ -57,7 +60,7 @@ cookie = r.headers["Set-Cookie"]
 page = client.get("/").get_data(as_text=True)
 assert "عبدالله الشامسي" in page and "سالم أحمد" in page, "الكشف لا يظهر"
 assert "مطّلع" in page, "الدور لا يظهر"
-assert "عدد الحجّاج: 2" in page, page[:200]
+assert "المعروض: 2 من 2" in page, page[:200]
 print("  OK: الجدول يعرض الحجّاج والدور، والكوكيّ رمز فقط")
 
 print("\n=== البحث يُرشّح ===")
@@ -66,6 +69,27 @@ assert "سالم أحمد" in f and "عبدالله الشامسي" not in f
 f2 = client.get("/?q=A111").get_data(as_text=True)
 assert "عبدالله الشامسي" in f2 and "سالم أحمد" not in f2
 print("  OK: البحث بالاسم والجواز يُرشّح النتائج")
+
+print("\n=== الفلاتر تُرشّح (البرنامج/الفندق/الجنسية) ===")
+fp = client.get("/?program=الأول").get_data(as_text=True)
+assert "عبدالله الشامسي" in fp and "سالم أحمد" not in fp, "فلتر البرنامج لا يعمل"
+assert "المعروض: 1 من 2" in fp
+fh = client.get("/?hotel=كونراد").get_data(as_text=True)
+assert "سالم أحمد" in fh and "عبدالله الشامسي" not in fh, "فلتر الفندق لا يعمل"
+# قوائم الفلاتر تحوي القيم المتاحة
+assert "الصفوة" in page and "كونراد" in page, "قوائم الفلاتر ناقصة"
+print("  OK: الترشيح بالبرنامج والفندق، والقوائم مملوءة")
+
+print("\n=== فتح سجلّ الحاج كاملاً ===")
+detail = client.get("/pilgrim/0").get_data(as_text=True)
+assert "عبدالله الشامسي" in detail
+# عناوين المجموعات والحقول تظهر
+assert "بيانات الجواز" in detail and "المالية" in detail
+assert "المبلغ المتبقي" in detail, "الحقول المحسوبة لا تظهر"
+assert "3,000" in detail, "المتبقي (5000-2000) لا يُحسب"     # 5000 - 2000
+# فهرس خارج المدى يعطي 404
+assert client.get("/pilgrim/999").status_code == 404
+print("  OK: السجلّ الكامل يعرض كل الحقول والمتبقي المحسوب، والفهرس الخاطئ 404")
 
 print("\n=== الخروج ينهي الجلسة ===")
 client.get("/logout")

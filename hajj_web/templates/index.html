@@ -2,9 +2,7 @@
 {% block title %}كشف الحجّاج — برنامج موسم الحج{% endblock %}
 {% block body %}
 <header class="topbar">
-  <div class="titles">
-    <span class="app-title">برنامج موسم الحج</span>
-  </div>
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
   <div class="spacer"></div>
   <div class="user">
     <span class="who">👤 {{ username }} · {{ role }}</span>
@@ -13,15 +11,21 @@
 </header>
 
 <main class="content">
-  <div class="toolbar">
-    <form class="search" method="get" action="{{ url_for('index') }}">
-      <input type="text" name="q" value="{{ query }}"
-             placeholder="بحث بالاسم أو الجواز أو الهاتف…">
-      <button type="submit">بحث</button>
-      {% if query %}<a class="clear" href="{{ url_for('index') }}">مسح</a>{% endif %}
-    </form>
-    <div class="count">عدد الحجّاج: {{ total }}</div>
-  </div>
+  <form class="filters" method="get" action="{{ url_for('index') }}">
+    <input class="q" type="text" name="q" value="{{ query }}"
+           placeholder="بحث بالاسم أو الجواز أو الهاتف…">
+    {% for key, label in filters %}
+      <select name="{{ key }}">
+        <option value="">كل {{ label }}</option>
+        {% for opt in options[key] %}
+          <option value="{{ opt }}" {% if selected[key] == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    {% endfor %}
+    <button type="submit">تطبيق</button>
+    <a class="clear" href="{{ url_for('index') }}">مسح الفلاتر</a>
+    <div class="count">المعروض: {{ total }} من {{ grand_total }}</div>
+  </form>
 
   {% if note %}<div class="note">{{ note }}</div>{% endif %}
 
@@ -35,9 +39,9 @@
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr>
+        <tr onclick="location='{{ url_for('pilgrim', idx=row.idx) }}'">
           <td class="idx">{{ loop.index }}</td>
-          {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+          {% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}
         </tr>
         {% else %}
         <tr><td class="empty" colspan="{{ columns|length + 1 }}">
@@ -47,5 +51,6 @@
       </tbody>
     </table>
   </div>
+  <p class="tip">اضغط على أي صفّ لفتح سجلّ الحاج كاملاً.</p>
 </main>
 {% endblock %}

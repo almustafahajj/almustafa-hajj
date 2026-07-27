@@ -53,18 +53,37 @@ code{background:#f0eadf; padding:1px 5px; border-radius:5px}
 
 /* ---------- المحتوى ---------- */
 .content{padding:20px 22px}
-.toolbar{display:flex; align-items:center; gap:16px; margin-bottom:14px; flex-wrap:wrap}
-.search{display:flex; gap:8px; flex:1; min-width:240px}
-.search input{
-  flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:9px;
-  font-size:15px; background:#fff;
+.filters{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap}
+.filters .q{
+  flex:1; min-width:220px; padding:10px 12px; border:1px solid var(--line);
+  border-radius:9px; font-size:15px; background:#fff;
 }
-.search input:focus{outline:none; border-color:var(--bronze)}
-.search button{padding:10px 18px; background:var(--ink); color:#fff; border:0; border-radius:9px; cursor:pointer; font-weight:600}
-.search button:hover{background:var(--bronze)}
-.search .clear{align-self:center}
-.count{color:var(--muted); font-weight:600}
+.filters input:focus, .filters select:focus{outline:none; border-color:var(--bronze)}
+.filters select{
+  padding:10px 12px; border:1px solid var(--line); border-radius:9px;
+  font-size:14px; background:#fff; color:var(--ink); max-width:200px;
+}
+.filters button{padding:10px 18px; background:var(--ink); color:#fff; border:0; border-radius:9px; cursor:pointer; font-weight:600}
+.filters button:hover{background:var(--bronze)}
+.filters .clear{align-self:center}
+.count{color:var(--muted); font-weight:600; margin-inline-start:auto}
 .note{background:#fff7e6; border:1px solid #f0d9a8; color:#8a5a00; padding:8px 12px; border-radius:8px; margin-bottom:12px; font-size:13px}
+.tip{color:var(--muted); font-size:13px; margin-top:10px}
+tbody tr{cursor:pointer}
+
+/* ---------- سجلّ الحاج الكامل ---------- */
+.detail-head{display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap}
+.detail-head h1{font-size:22px; margin:0}
+.back{background:#f0eadf; padding:8px 14px; border-radius:8px; color:var(--ink); font-weight:600}
+.back:hover{background:var(--bronze); color:#fff; text-decoration:none}
+.cards{display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px}
+.card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px}
+.card h2{font-size:15px; margin:0 0 12px; color:var(--bronze); border-bottom:1px solid var(--line); padding-bottom:8px}
+.card dl{margin:0}
+.pair{display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px dashed #eee}
+.pair:last-child{border-bottom:0}
+.pair dt{color:var(--muted); font-size:13px}
+.pair dd{margin:0; font-weight:600; text-align:left; word-break:break-word}
 
 .table-wrap{overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px}
 table{width:100%; border-collapse:collapse; font-size:14px}

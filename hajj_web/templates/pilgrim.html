@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} — سجلّ الحاج{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">برنامج موسم الحج</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head">
+    <a class="back" href="{{ url_for('index') }}">→ رجوع إلى الكشف</a>
+    <h1>{{ name }}</h1>
+  </div>
+
+  <div class="cards">
+    {% for title, items in groups %}
+    <section class="card">
+      <h2>{{ title }}</h2>
+      <dl>
+        {% for label, value in items %}
+        <div class="pair">
+          <dt>{{ label }}</dt>
+          <dd>{{ value if value else "—" }}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

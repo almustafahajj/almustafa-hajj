@@ -1,7 +1,7 @@
-"""تطبيق Flask: الدخول وعرض كشف الحجّاج (المرحلة صفر).
+"""تطبيق Flask: الدخول، عرض كشف الحجّاج مع فلاتر، وفتح سجلّ الحاج كاملاً.
 
-يعيد استخدام ``hajj_app.auth`` و ``hajj_app.storage`` مباشرةً، فيقرأ نفس
-ملف البيانات المشفّر الذي يستعمله برنامج سطح المكتب.
+يعيد استخدام ``hajj_app.auth`` و ``hajj_app.storage`` و ``hajj_app.fields``
+مباشرةً، فيقرأ نفس ملف البيانات المشفّر الذي يستعمله برنامج سطح المكتب.
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from flask import (
     Flask, abort, g, redirect, render_template, request, url_for, make_response,
 )
 
-from hajj_app import auth, storage
+from hajj_app import auth, fields, storage
 from . import sessions
 
 _COOKIE = "hajj_session"
 
-# الأعمدة المعروضة في الجدول (المرحلة صفر — قراءة فقط)
+# أعمدة الجدول (المفتاح، العنوان) — عنوان مختصر مأخوذ من fields حيث أمكن
 COLUMNS = [
     ("full_name_ar", "اسم الحاج"),
     ("passport_number", "رقم الجواز"),
@@ -28,6 +28,27 @@ COLUMNS = [
     ("program", "البرنامج"),
     ("hotel", "الفندق"),
     ("room_number", "الغرفة"),
+]
+
+# فلاتر منسدلة تُملأ قيمها من البيانات
+FILTERS = [
+    ("program", "البرنامج"),
+    ("hotel", "الفندق"),
+    ("nationality_ar", "الجنسية"),
+]
+
+# تجميع حقول صفحة السجلّ الكامل (المفتاح من fields.BY_KEY للعنوان العربي)
+DETAIL_GROUPS = [
+    ("بيانات الجواز", ["full_name_ar", "full_name_en", "passport_number",
+                        "nationality_ar", "sex", "birth_date", "expiry_date"]),
+    ("الاتصال والتعريف", ["phone", "family_number", "reference_number"]),
+    ("البرنامج", ["program", "group", "staff"]),
+    ("التسكين", ["hotel", "room_type", "room_number"]),
+    ("المواصلات والخدمات", ["transport", "executive_service", "wheelchair", "hady"]),
+    ("الطيران", ["airline", "flight_number", "travel_class", "pnr",
+                 "arrival_date", "arrival_time", "departure_date", "departure_time"]),
+    ("المالية", ["program_value", "paid_amount", "remaining_amount"]),
+    ("ملاحظات", ["notes"]),
 ]
 
 
@@ -56,6 +77,13 @@ def create_app(auth_path: str | Path | None = None,
                 return redirect(url_for("login", next=request.path))
             return view(*a, **kw)
         return wrapped
+
+    def load_records():
+        """يحمّل الكشف بجلسة المستخدم، أو يرفع RuntimeError إن فشل التشفير."""
+        try:
+            return storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            raise RuntimeError("decrypt")
 
     # ------------------------------------------------------------- المسارات
     @app.route("/login", methods=["GET", "POST"])
@@ -89,31 +117,76 @@ def create_app(auth_path: str | Path | None = None,
     @login_required
     def index():
         try:
-            records, note = storage.load_records(_data_path(), g.session)
-        except auth.AuthError:
-            # مفتاح الجلسة لا يطابق الملف — أعِد الدخول
+            records, note = load_records()
+        except RuntimeError:
             sessions.destroy(request.cookies.get(_COOKIE))
             return redirect(url_for("login"))
+
+        # قوائم الفلاتر من كامل البيانات (قبل الترشيح)
+        options = {
+            key: sorted({(getattr(r, key, "") or "").strip()
+                         for r in records if (getattr(r, key, "") or "").strip()})
+            for key, _ in FILTERS
+        }
+        selected = {key: (request.args.get(key) or "").strip() for key, _ in FILTERS}
+
+        # نحتفظ بالفهرس الأصلي ليصل رابط السجلّ إلى الحاج الصحيح
+        indexed = list(enumerate(records))
+        for key, value in selected.items():
+            if value:
+                indexed = [(i, r) for i, r in indexed
+                           if (getattr(r, key, "") or "").strip() == value]
 
         query = (request.args.get("q") or "").strip()
         if query:
             ql = query.lower()
-            records = [
-                r for r in records
+            indexed = [
+                (i, r) for i, r in indexed
                 if ql in (r.full_name_ar or "").lower()
                 or ql in (r.passport_number or "").lower()
                 or ql in (r.phone or "").lower()
             ]
 
         rows = [
-            [getattr(r, key, "") or "" for key, _ in COLUMNS]
-            for r in records
+            {"idx": i, "cells": [getattr(r, key, "") or "" for key, _ in COLUMNS]}
+            for i, r in indexed
         ]
         return render_template(
             "index.html", columns=[label for _, label in COLUMNS],
-            rows=rows, total=len(rows), query=query,
+            rows=rows, total=len(rows), grand_total=len(records), query=query,
+            filters=FILTERS, options=options, selected=selected,
+            username=g.session.username, role=g.session.role_label, note=note,
+        )
+
+    @app.route("/pilgrim/<int:idx>")
+    @login_required
+    def pilgrim(idx):
+        try:
+            records, _note = load_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        if idx < 0 or idx >= len(records):
+            abort(404)
+        rec = records[idx]
+
+        groups = []
+        for title, keys in DETAIL_GROUPS:
+            items = []
+            for key in keys:
+                field = fields.BY_KEY.get(key)
+                label = field.label if field else key
+                if key == "remaining_amount":
+                    value = fields.compute_remaining(rec)
+                else:
+                    value = getattr(rec, key, "") or ""
+                items.append((label, value))
+            groups.append((title, items))
+
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        return render_template(
+            "pilgrim.html", name=name, groups=groups,
             username=g.session.username, role=g.session.role_label,
-            note=note,
         )
 
     @app.route("/healthz")
