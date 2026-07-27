@@ -201,4 +201,29 @@ assert relog.role == "admin" and relog.data_key == seed.data_key
 assert auth.list_accounts(LEGACY_AUTH)[0]["role"] == "admin"
 print("  OK: ملف أحادي قديم يُقرأ كحساب مدير واحد بلا إعادة كتابة")
 
+print("\n=== الدخول بحساب مُعدّ مسبقاً على جهاز جديد ===")
+# ملف حسابات مُعدّ على «جهاز آخر»
+PREP = WORK / "prepared-auth.json"
+padmin, _ = auth.create_account("MHU", "Prep-Admin-11", PREP)
+auth.add_account(padmin, "clerk", "Clerk-Pass-22", "editor", PREP)
+# ملف تالف لا يُقبل كملف حسابات
+BAD = WORK / "bad.json"
+BAD.write_text("{ليس ملف حسابات}", encoding="utf-8")
+try:
+    bad_accounts = auth.list_accounts(BAD)
+except AuthError:
+    bad_accounts = []
+assert not bad_accounts, "ملف تالف قُبل كملف حسابات!"
+# نقل الملف إلى «جهاز جديد» (مسار جديد) ثم الدخول به
+NEW = WORK / "device2" / "auth.json"
+NEW.parent.mkdir(parents=True, exist_ok=True)
+assert auth.list_accounts(PREP), "الملف المُعدّ يجب أن يحوي حسابات"
+shutil.copy2(PREP, NEW)
+names = {a["username"] for a in auth.list_accounts(NEW)}
+assert names == {"MHU", "clerk"}, names
+s_new = auth.login("clerk", "Clerk-Pass-22", NEW)
+assert s_new.role == "editor" and s_new.can_edit
+assert auth.login("MHU", "Prep-Admin-11", NEW).is_admin
+print("  OK: ملف حسابات مُعدّ يُنقل لجهاز جديد فيُدخَل به، والتالف يُرفض")
+
 print("\n*** AUTH + ENCRYPTION TESTS PASSED ***")

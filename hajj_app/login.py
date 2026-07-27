@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
+import shutil
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from . import auth
 from .auth import AuthError, Session
@@ -731,6 +732,9 @@ class _AuthWindow:
             self._field(form, 2, "تأكيد كلمة المرور", secret=True)
             if self.setup_mode else None
         )
+        prefill = getattr(self, "_prefill_user", "")
+        if prefill:
+            self.username.insert(0, prefill)
 
         self.message = tk.Label(
             outer, text="", bg=PAPER, fg=DANGER, font=("Segoe UI", 9),
@@ -755,6 +759,15 @@ class _AuthWindow:
             )
             forgot.pack(pady=(12, 0))
             forgot.bind("<Button-1>", lambda _e: self._forgot())
+        else:
+            # أول تشغيل: بدل إنشاء حساب جديد، يمكن استيراد حسابات مُعدّة مسبقاً
+            imp = tk.Label(
+                outer, text="لديّ حساب معدّ مسبقاً — استيراد ملف الحسابات",
+                bg=PAPER, fg=BRONZE, font=("Segoe UI", 9, "underline"),
+                cursor="hand2",
+            )
+            imp.pack(pady=(12, 0))
+            imp.bind("<Button-1>", lambda _e: self._import_prepared())
 
         tk.Label(
             outer, text=rtl("المصطفى للحج والعمرة © جميع الحقوق محفوظة"),
@@ -763,7 +776,10 @@ class _AuthWindow:
 
         self.root.bind("<Return>", lambda _e: self._submit())
         self.root.bind("<Escape>", lambda _e: self.root.destroy())
-        self.username.focus_set()
+        if prefill:
+            self.password.focus_set()      # الاسم مملوء — ننتقل لكلمة المرور
+        else:
+            self.username.focus_set()
 
     def _field(self, parent: tk.Frame, row: int, label: str, *, secret: bool = False):
         tk.Label(
@@ -798,6 +814,80 @@ class _AuthWindow:
         if dialog.session is not None:
             self.session = dialog.session
             self.root.destroy()
+
+    def _import_prepared(self) -> None:
+        """يستورد ملف حسابات مُعدّاً مسبقاً (auth.json) عند أول تشغيل.
+
+        هكذا يُدخَل الجهاز الجديد بحساب أُعدّ على جهاز آخر بدل إنشاء حساب
+        جديد. اختيارياً يُستورد ملف بيانات الحجّاج المشفّر معه. بعد الاستيراد
+        تتحوّل النافذة إلى وضع الدخول ليُدخل المستخدم كلمة مروره.
+        """
+        from .storage import default_data_path
+
+        picked = filedialog.askopenfilename(
+            parent=self.root, title="اختر ملف الحسابات المُعدّ مسبقاً (auth.json)",
+            filetypes=(("ملف الحسابات", "*.json"), ("كل الملفات", "*.*")),
+        )
+        if not picked:
+            return
+
+        # التحقّق أن الملف ملف حسابات صالح قبل نسخه
+        try:
+            accounts = auth.list_accounts(picked)
+        except AuthError:
+            accounts = []
+        if not accounts:
+            messagebox.showerror(
+                "ملف غير صالح",
+                rtl("الملف المختار ليس ملف حسابات صالحاً. اختر ملف auth.json "
+                    "المأخوذ من جهاز فيه البرنامج."),
+                parent=self.root,
+            )
+            return
+
+        target = Path(self.auth_path) if self.auth_path else auth.default_auth_path()
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(picked, target)
+        except OSError as exc:
+            messagebox.showerror("تعذّر النسخ", rtl(str(exc)), parent=self.root)
+            return
+
+        # اختيارياً: استيراد كشف الحجّاج المشفّر ليُفتح بنفس الحسابات
+        if messagebox.askyesno(
+            "استيراد البيانات",
+            rtl("تم استيراد الحسابات.\n\nهل تريد استيراد ملف بيانات الحجّاج "
+                "المشفّر (hajjaj.json) أيضاً؟\nإن لا، يبدأ البرنامج بكشف فارغ."),
+            parent=self.root,
+        ):
+            data_pick = filedialog.askopenfilename(
+                parent=self.root, title="اختر ملف بيانات الحجّاج المشفّر (hajjaj.json)",
+                filetypes=(("ملف البيانات", "*.json"), ("كل الملفات", "*.*")),
+            )
+            if data_pick:
+                try:
+                    dp = default_data_path()
+                    dp.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(data_pick, dp)
+                except OSError as exc:
+                    messagebox.showwarning(
+                        "تعذّر استيراد البيانات",
+                        rtl(f"استُوردت الحسابات لكن تعذّر نسخ البيانات:\n{exc}"),
+                        parent=self.root,
+                    )
+
+        # التحوّل إلى وضع الدخول وإعادة بناء النافذة بالحقول المناسبة
+        self.setup_mode = False
+        names = [a["username"] for a in accounts]
+        self._prefill_user = names[0] if len(names) == 1 else ""
+        for child in self.root.winfo_children():
+            child.destroy()
+        self._build()
+        self._center()
+        self.message.config(
+            text=rtl("تم استيراد الحسابات — أدخل اسم المستخدم وكلمة المرور"),
+            fg=BRONZE,
+        )
 
     def _submit(self) -> None:
         username = self.username.get().strip()
