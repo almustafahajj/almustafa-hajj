@@ -647,6 +647,7 @@ class HajjApp:
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
             None,
+            ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
             ("🧾  سند قبض (معاينة)", self._receipt_selected),
             ("🧾  فاتورة ضريبية (معاينة)",
              lambda: self._invoice_selected(electronic=False)),
@@ -1275,6 +1276,9 @@ class HajjApp:
         self._row_menu.add_command(label="نسخ رقم الجواز",
                                    command=lambda: self._copy_field("passport_number"))
         self._row_menu.add_separator()
+        if self._can_edit():
+            self._row_menu.add_command(label="💵  سجلّ دفعات الحاج",
+                                       command=self.do_payments)
         self._row_menu.add_command(label="🧾  سند قبض (معاينة)",
                                    command=self._receipt_selected)
         self._row_menu.add_command(
@@ -2353,6 +2357,23 @@ class HajjApp:
             messagebox.showinfo("لم يتم التحديد", "اختر حاجاً من الجدول أولاً.")
             return None
         return self.records[idxs[0]]
+
+    def do_payments(self) -> None:
+        """يفتح سجلّ دفعات (أقساط) الحاج المحدّد."""
+        if not self._require_edit():
+            return
+        rec = self._selected_record()
+        if rec is None:
+            return
+
+        def _on_change():
+            self.refresh()
+            self.save_data()
+            self._audit("تعديل دفعات",
+                        rec.full_name_ar or rec.passport_number or "—")
+            self.set_status("حُفظت دفعات الحاج", ok=True)
+
+        PaymentsDialog(self.root, rec, _on_change)
 
     def _invoice_selected(self, *, electronic: bool = False) -> None:
         """يفتح نافذة الفاتورة (الضريبية أو الإلكترونية) — معاينة فقط."""
@@ -3929,6 +3950,120 @@ class ImageKindDialog(Toplevel):
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
         self.destroy()
+
+
+class PaymentsDialog(Toplevel):
+    """سجلّ دفعات الحاج (الأقساط): عرض وإضافة وحذف، ومزامنة «المبلغ المدفوع»."""
+
+    METHODS = ("نقد", "تحويل بنكي", "شبكة/مدى", "شيك", "أخرى")
+
+    def __init__(self, parent, record: PassportData, on_change) -> None:
+        super().__init__(parent)
+        self.record = record
+        self.on_change = on_change
+        name = record.full_name_ar or record.full_name_en or record.passport_number or "—"
+        self.title(f"💵 دفعات: {name}")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+
+        self._totals = ttk.Label(outer, font=(_FSB, 11), foreground=TEXT)
+        self._totals.pack(anchor="e", pady=(0, 10))
+
+        cols = ("date", "amount", "method", "note")
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings", height=8)
+        for key, text, w, anc in (("date", "التاريخ", 110, "center"),
+                                   ("amount", "المبلغ", 100, "center"),
+                                   ("method", "الطريقة", 110, "center"),
+                                   ("note", "ملاحظة", 200, "e")):
+            self.tree.heading(key, text=text)
+            self.tree.column(key, width=w, anchor=anc)
+        self.tree.pack(fill=BOTH, expand=True)
+
+        # نموذج إضافة دفعة
+        form = ttk.Frame(outer)
+        form.pack(fill=X, pady=(10, 0))
+        from datetime import date
+        self._date = StringVar(value=date.today().isoformat())
+        self._amount = StringVar()
+        self._method = StringVar(value=self.METHODS[0])
+        self._note = StringVar()
+        ttk.Entry(form, textvariable=self._amount, width=12,
+                  justify="center").pack(side=RIGHT, padx=3)
+        ttk.Label(form, text="المبلغ", foreground=MUTED).pack(side=RIGHT)
+        ttk.Entry(form, textvariable=self._date, width=12,
+                  justify="center").pack(side=RIGHT, padx=3)
+        ttk.Label(form, text="التاريخ", foreground=MUTED).pack(side=RIGHT)
+        ttk.Combobox(form, textvariable=self._method, values=self.METHODS,
+                     state="readonly", width=11).pack(side=RIGHT, padx=3)
+        ttk.Entry(form, textvariable=self._note, width=18).pack(side=RIGHT, padx=3)
+        ttk.Label(form, text="ملاحظة", foreground=MUTED).pack(side=RIGHT)
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X, pady=(10, 0))
+        ttk.Button(btns, text=rtl("➕ إضافة دفعة"), style="Primary.TButton",
+                   command=self._add).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("🗑 حذف المحدّدة"), style="Ghost.TButton",
+                   command=self._delete).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._reload()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _reload(self) -> None:
+        from .fields import compute_remaining, format_amount, payment_total
+        self.tree.delete(*self.tree.get_children())
+        for i, p in enumerate(self.record.payments or []):
+            self.tree.insert("", "end", iid=str(i), values=(
+                p.get("date", ""), p.get("amount", ""),
+                p.get("method", ""), p.get("note", "")))
+        paid = format_amount(payment_total(self.record)) or "0"
+        value = self.record.program_value or "0"
+        rem = compute_remaining(self.record) or "0"
+        self._totals.configure(text=rtl(
+            f"قيمة البرنامج: {value}    •    المدفوع: {paid}    •    المتبقّي: {rem}"))
+
+    def _commit(self) -> None:
+        # داخل سجلّ الدفعات يصبح «المدفوع» = مجموع الدفعات دائماً (حتى صفر)
+        from .fields import format_amount, payment_total
+        self.record.paid_amount = format_amount(payment_total(self.record))
+        self.on_change()
+        self._reload()
+
+    def _add(self) -> None:
+        from .fields import parse_amount
+        amount = parse_amount(self._amount.get())
+        if not amount:
+            messagebox.showwarning("مبلغ غير صالح",
+                                   "أدخل مبلغ الدفعة بالأرقام.", parent=self)
+            return
+        from .fields import format_amount
+        self.record.payments.append({
+            "date": self._date.get().strip(),
+            "amount": format_amount(amount),
+            "method": self._method.get().strip(),
+            "note": self._note.get().strip(),
+        })
+        self._amount.set("")
+        self._note.set("")
+        self._commit()
+
+    def _delete(self) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        for iid in sorted((int(s) for s in sel), reverse=True):
+            if 0 <= iid < len(self.record.payments):
+                del self.record.payments[iid]
+        self._commit()
 
 
 class NewSeasonDialog(Toplevel):

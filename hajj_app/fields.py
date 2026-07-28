@@ -233,6 +233,25 @@ def normalize_time(text) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
+def payment_total(record) -> float:
+    """مجموع دفعات الحاج (سجلّ الأقساط)."""
+    total = 0.0
+    for p in getattr(record, "payments", None) or []:
+        amt = parse_amount(p.get("amount") if isinstance(p, dict) else None)
+        if amt:
+            total += amt
+    return total
+
+
+def sync_paid_amount(record) -> None:
+    """يجعل «المبلغ المدفوع» = مجموع الدفعات إن وُجد سجلّ دفعات.
+
+    هكذا يبقى حقل المدفوع (المستعمل في الإيصالات والمتبقّي) متّسقاً مع السجلّ.
+    """
+    if getattr(record, "payments", None):
+        record.paid_amount = format_amount(payment_total(record))
+
+
 def compute_remaining(record) -> str:
     """يحسب المبلغ المتبقي = قيمة البرنامج − المبلغ المدفوع.
 

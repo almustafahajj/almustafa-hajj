@@ -82,9 +82,25 @@ def _from_dict(raw: dict) -> PassportData:
             record.warnings = [str(w) for w in value] if isinstance(value, list) else []
         elif key == "checksum_ok":
             record.checksum_ok = bool(value)
+        elif key == "payments":
+            record.payments = _clean_payments(value)
         else:
             setattr(record, key, "" if value is None else str(value))
     return record
+
+
+_PAYMENT_KEYS = ("date", "amount", "method", "note")
+
+
+def _clean_payments(value) -> list:
+    """يعقّم قائمة الدفعات: عناصر قواميس بقيم نصّية فقط."""
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        if isinstance(item, dict):
+            out.append({k: str(item.get(k, "") or "") for k in _PAYMENT_KEYS})
+    return out
 
 
 def save_records(

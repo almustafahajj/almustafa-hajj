@@ -116,6 +116,9 @@ class PassportData:
     emergency_phone: str = ""
     emergency_relation: str = ""
 
+    # ---- سجلّ الدفعات (أقساط): قائمة {date, amount, method, note} ----
+    payments: list = field(default_factory=list)
+
     # ---- حقول داخلية: تُقرأ من الجواز لكنها لا تظهر في الكشف ----
     surname_en: str = ""
     given_names_en: str = ""
