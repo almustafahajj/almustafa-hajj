@@ -914,13 +914,16 @@ class _AuthWindow:
             self.session = auth.login(username, password, self.auth_path)
         except AuthError as exc:
             self.attempts += 1
+            self._log_audit("محاولة دخول فاشلة", username or "?")
             remaining = MAX_ATTEMPTS - self.attempts
             if remaining <= 0:
+                self._log_audit("قفل بعد محاولات فاشلة", username or "?")
                 self.message.config(text="تجاوزت عدد المحاولات — سيُغلق البرنامج.")
                 self.root.after(1400, self.root.destroy)
                 return
             self._fail(f"{exc}\nمحاولات متبقية: {remaining}")
             return
+        self._log_audit("تسجيل دخول", self.session.username)
 
         # حساب أُنشئ قبل ميزة الاسترداد: نرقّيه الآن ونعرض مفتاحه مرة واحدة.
         # الترقية لا تعيد تشفير الكشف — تعيد تغليف المفتاح فقط.
@@ -937,6 +940,16 @@ class _AuthWindow:
                 )
 
         self.root.destroy()
+
+    def _log_audit(self, action: str, username: str) -> None:
+        """يسجّل حدث دخول/محاولة في سجلّ التدقيق (سجلّ محاولات الدخول)."""
+        try:
+            from . import audit
+            path = (Path(self.auth_path).parent / "audit.log"
+                    if self.auth_path else None)
+            audit.record(action, "", user=str(username or "?"), path=path)
+        except Exception:                              # noqa: BLE001
+            pass
 
     def run(self) -> Session | None:
         self.root.mainloop()

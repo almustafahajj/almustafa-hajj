@@ -66,4 +66,22 @@ d.destroy()
 root.destroy()
 print("  OK: الحذف يُسجَّل ويظهر في النافذة")
 
+print("\n=== سجلّ محاولات الدخول ===")
+from hajj_app import auth as _auth
+from hajj_app.login import _AuthWindow
+_lh = _pl.Path(_OUTDIR) / "loginhist"
+_lh.mkdir(parents=True, exist_ok=True)
+for _f in _lh.glob("*"):
+    if _f.is_file():
+        _f.unlink()
+_AUTH = _lh / "auth.json"
+_auth.create_account("MHU", "Str0ng!Pass1", _AUTH)
+_w = _AuthWindow(_AUTH); _w.root.withdraw()
+_w._log_audit("تسجيل دخول", "MHU")
+_w._log_audit("محاولة دخول فاشلة", "MHU")
+_w.root.destroy()
+_acts = [e["action"] for e in read_entries(path=_lh / "audit.log")]
+assert "تسجيل دخول" in _acts and "محاولة دخول فاشلة" in _acts, _acts
+print("  OK: الدخول والمحاولة الفاشلة يُسجَّلان في التدقيق")
+
 print("\n*** AUDIT TESTS PASSED ***")

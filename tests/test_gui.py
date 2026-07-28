@@ -494,6 +494,18 @@ app._require_records()
 root.update()
 root.destroy()
 
+print("\n=== القفل التلقائي عند الخمول ===")
+from hajj_app.auth import Session as _Sess
+_r2 = Tk(); _r2.withdraw()
+_app2 = HajjApp(_r2, session=_Sess("MHU", b"0" * 32, role="admin"))
+assert _app2._idle_after is None                 # معطّل افتراضياً
+_app2._settings["auto_lock_min"] = 15
+_app2._setup_auto_lock()
+assert _app2._idle_ms == 15 * 60000 and _app2._idle_after is not None
+_app2._auto_lock()                               # يقفل ويطلب العودة للدخول
+assert _app2._logout_requested is True
+print("  OK: معطّل افتراضياً، يُجدوَل عند التفعيل، والقفل يطلب الدخول")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

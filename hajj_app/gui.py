@@ -295,6 +295,7 @@ class HajjApp:
 
         self._load_saved_data()
         root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._setup_auto_lock()
 
         if self.records:
             pass        # رسالة الاستعادة أهم من تنبيهات التهيئة
@@ -508,6 +509,79 @@ class HajjApp:
         AccountsDialog(self.root, self.session)
         self._audit("إدارة الحسابات")
 
+    # ------------------------------------------------------ القفل التلقائي
+    def _setup_auto_lock(self) -> None:
+        """يفعّل القفل التلقائي عند الخمول إن كانت المدّة > 0 (لوضع الدخول)."""
+        self._idle_after = None
+        if self.session is None:
+            return
+        try:
+            mins = int(self._settings.get("auto_lock_min", 0) or 0)
+        except (TypeError, ValueError):
+            mins = 0
+        self._idle_ms = max(0, mins) * 60000
+        if self._idle_ms <= 0:
+            return
+        for seq in ("<Motion>", "<Key>", "<Button>"):
+            self.root.bind_all(seq, self._reset_idle, add="+")
+        self._reset_idle()
+
+    def _reset_idle(self, _e=None) -> None:
+        if getattr(self, "_idle_ms", 0) <= 0:
+            return
+        if self._idle_after is not None:
+            try:
+                self.root.after_cancel(self._idle_after)
+            except Exception:
+                pass
+        self._idle_after = self.root.after(self._idle_ms, self._auto_lock)
+
+    def _auto_lock(self) -> None:
+        """يُقفل الجلسة بعد الخمول ويعود إلى شاشة الدخول (بلا تأكيد)."""
+        if self.session is None:
+            return
+        try:
+            self.save_data()
+        except Exception:
+            pass
+        self._audit("قفل تلقائي بعد خمول")
+        self._logout_requested = True
+        self.root.destroy()
+
+    def set_auto_lock(self) -> None:
+        """يضبط مدّة القفل التلقائي بالدقائق (0 = معطّل)."""
+        if self.session is None:
+            self.set_status("القفل التلقائي متاح في وضع الدخول فقط", warn=True)
+            return
+        from tkinter import simpledialog
+        current = int(self._settings.get("auto_lock_min", 0) or 0)
+        mins = simpledialog.askinteger(
+            "القفل التلقائي",
+            "أقفل البرنامج تلقائياً بعد كم دقيقة من الخمول؟\n(0 = معطّل)",
+            parent=self.root, initialvalue=current, minvalue=0, maxvalue=240)
+        if mins is None:
+            return
+        self._settings["auto_lock_min"] = int(mins)
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        self._idle_ms = int(mins) * 60000
+        self._audit("ضبط القفل التلقائي", f"{mins} دقيقة")
+        if int(mins) > 0:
+            for seq in ("<Motion>", "<Key>", "<Button>"):
+                self.root.bind_all(seq, self._reset_idle, add="+")
+            self._reset_idle()
+            self.set_status(f"القفل التلقائي: {mins} دقيقة", ok=True)
+        else:
+            if getattr(self, "_idle_after", None) is not None:
+                try:
+                    self.root.after_cancel(self._idle_after)
+                except Exception:
+                    pass
+                self._idle_after = None
+            self.set_status("عُطّل القفل التلقائي", ok=True)
+
     def do_logout(self) -> None:
         """يسجّل الخروج ويعود إلى شاشة الدخول (يبقى البرنامج مفتوحاً)."""
         if self.session is None:
@@ -693,6 +767,7 @@ class HajjApp:
             admin_items += [None,
                             ("🔑  تغيير كلمة المرور", self.change_password),
                             ("🗝  مفتاح استرداد جديد", self.new_recovery_key),
+                            ("🔒  القفل التلقائي عند الخمول", self.set_auto_lock),
                             None,
                             ("🚪  تسجيل الخروج", self.do_logout)]
         admin_mb = self._menubutton(bar, "لوحة الإدارة  ▾", admin_items,
