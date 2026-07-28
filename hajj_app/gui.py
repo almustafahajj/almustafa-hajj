@@ -651,6 +651,7 @@ class HajjApp:
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
             None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
+            ("🧮  المصروفات والمحاسبة", self.do_expenses),
             ("📄  كشف المتأخّرات المالية (معاينة)", self.do_arrears_report),
             ("🧾  سند قبض (معاينة)", self._receipt_selected),
             ("🧾  فاتورة ضريبية (معاينة)",
@@ -2513,6 +2514,12 @@ class HajjApp:
             self.set_status("فُتحت المعاينة — اطبع أو احفظ نسخةً من العارض",
                             ok=True)
 
+    def do_expenses(self) -> None:
+        """يفتح مصروفات الحملة ومحاسبتها (المحصّل − المصروفات = الصافي)."""
+        if not self._require_edit():
+            return
+        ExpensesDialog(self.root, self)
+
     def do_arrears_report(self) -> None:
         """كشف المتأخّرات المالية: الحجّاج الذين عليهم مبالغ متبقّية (معاينة)."""
         if not self._require_records():
@@ -4077,6 +4084,130 @@ class ImageKindDialog(Toplevel):
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
         self.destroy()
+
+
+class ExpensesDialog(Toplevel):
+    """مصروفات الحملة ومحاسبتها: موردون وفئات، مع صافي = المحصّل − المصروفات."""
+
+    CATEGORIES = ("فنادق", "نقل", "إعاشة", "تصاريح", "رواتب", "طيران", "أخرى")
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("🧮 المصروفات والمحاسبة")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        self._items = list(app._settings.get("expenses", []))
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        self._totals = ttk.Label(outer, font=(_FSB, 11), foreground=TEXT,
+                                 justify="right")
+        self._totals.pack(anchor="e", pady=(0, 10))
+
+        cols = ("date", "supplier", "category", "amount", "note")
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings", height=9)
+        for key, text, w, anc in (("date", "التاريخ", 100, "center"),
+                                   ("supplier", "المورّد", 150, "e"),
+                                   ("category", "الفئة", 90, "center"),
+                                   ("amount", "المبلغ", 100, "center"),
+                                   ("note", "ملاحظة", 160, "e")):
+            self.tree.heading(key, text=text)
+            self.tree.column(key, width=w, anchor=anc)
+        self.tree.pack(fill=BOTH, expand=True)
+
+        form = ttk.Frame(outer)
+        form.pack(fill=X, pady=(10, 0))
+        from datetime import date
+        self._date = StringVar(value=date.today().isoformat())
+        self._supplier = StringVar()
+        self._category = StringVar(value=self.CATEGORIES[0])
+        self._amount = StringVar()
+        self._note = StringVar()
+        ttk.Entry(form, textvariable=self._amount, width=11,
+                  justify="center").pack(side=RIGHT, padx=2)
+        ttk.Label(form, text="المبلغ", foreground=MUTED).pack(side=RIGHT)
+        ttk.Combobox(form, textvariable=self._category, values=self.CATEGORIES,
+                     state="readonly", width=9).pack(side=RIGHT, padx=2)
+        ttk.Entry(form, textvariable=self._supplier, width=15,
+                  justify="right").pack(side=RIGHT, padx=2)
+        ttk.Label(form, text="المورّد", foreground=MUTED).pack(side=RIGHT)
+        ttk.Entry(form, textvariable=self._date, width=11,
+                  justify="center").pack(side=RIGHT, padx=2)
+        ttk.Entry(form, textvariable=self._note, width=16).pack(side=RIGHT, padx=2)
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X, pady=(10, 0))
+        ttk.Button(btns, text=rtl("➕ إضافة مصروف"), style="Primary.TButton",
+                   command=self._add).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("🗑 حذف المحدّد"), style="Ghost.TButton",
+                   command=self._delete).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._reload()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _expense_total(self) -> float:
+        from .fields import parse_amount
+        return sum(parse_amount(e.get("amount")) or 0.0 for e in self._items)
+
+    def _reload(self) -> None:
+        from .fields import format_amount, parse_amount
+        self.tree.delete(*self.tree.get_children())
+        for i, e in enumerate(self._items):
+            self.tree.insert("", "end", iid=str(i), values=(
+                e.get("date", ""), e.get("supplier", ""), e.get("category", ""),
+                e.get("amount", ""), e.get("note", "")))
+        collected = sum(parse_amount(r.paid_amount) or 0.0 for r in self.app.records)
+        expenses = self._expense_total()
+        net = collected - expenses
+        self._totals.configure(text=rtl(
+            f"المحصّل من الحجّاج: {format_amount(collected) or 0}    •    "
+            f"المصروفات: {format_amount(expenses) or 0}    •    "
+            f"الصافي: {format_amount(net) or 0}"))
+
+    def _persist(self) -> None:
+        self.app._settings["expenses"] = self._items
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.app._audit("تعديل المصروفات", f"{len(self._items)} بند")
+        self._reload()
+
+    def _add(self) -> None:
+        from .fields import format_amount, parse_amount
+        amount = parse_amount(self._amount.get())
+        if not amount:
+            messagebox.showwarning("مبلغ غير صالح", "أدخل مبلغ المصروف بالأرقام.",
+                                   parent=self)
+            return
+        self._items.append({
+            "date": self._date.get().strip(),
+            "supplier": self._supplier.get().strip(),
+            "category": self._category.get().strip(),
+            "amount": format_amount(amount),
+            "note": self._note.get().strip(),
+        })
+        self._supplier.set("")
+        self._amount.set("")
+        self._note.set("")
+        self._persist()
+
+    def _delete(self) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        for iid in sorted((int(s) for s in sel), reverse=True):
+            if 0 <= iid < len(self._items):
+                del self._items[iid]
+        self._persist()
 
 
 class PaymentsDialog(Toplevel):

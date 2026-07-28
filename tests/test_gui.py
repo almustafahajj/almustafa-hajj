@@ -462,6 +462,19 @@ assert _grp["مجموعة 1"]["guide"] == "الشيخ خالد", _grp
 assert _grp["مجموعة 1"]["phone"] == "0501112233"
 print("  OK: كشف المجموعتين، وحفظ مرشد وهاتف مجموعة 1")
 
+print("\n=== المصروفات والمحاسبة ===")
+from hajj_app.gui import ExpensesDialog as _ED
+app.records = [_PD(paid_amount="10000"), _PD(paid_amount="5000")]
+_ed = _ED(root, app)
+_ed._supplier.set("فندق"); _ed._amount.set("4000"); _ed._add()
+_ed._supplier.set("نقل"); _ed._amount.set("2000"); _ed._add()
+assert _ed._expense_total() == 6000
+assert "9,000" in _ed._totals.cget("text")            # 15000 محصّل - 6000 مصروف
+assert len(_st.load_settings().get("expenses", [])) == 2
+_ed.tree.selection_set("0"); _ed._delete()
+assert _ed._expense_total() == 2000
+print("  OK: مصروفان، الصافي 9,000، والحذف يخفّض الإجمالي")
+
 app._require_records()
 root.update()
 root.destroy()
