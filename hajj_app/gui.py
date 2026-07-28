@@ -4862,7 +4862,9 @@ class TravelInfoDialog(Toplevel):
         self._travel = travel
         self._names = list(PROGRAM_NAMES)
         self._current = 0
-        self._data = {i: travel.load_travel(app._settings, i)
+        # برامج الحملة المُدخلة سابقاً — تُؤخذ منها الرحلة والتواريخ
+        self._progs = app._load_programs()
+        self._data = {i: travel.load_travel(app._settings, i, self._progs[i])
                       for i in range(len(self._names))}
 
         outer = ttk.Frame(self, padding=14)
@@ -4912,6 +4914,8 @@ class TravelInfoDialog(Toplevel):
                    command=self._export).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text=rtl("💾 حفظ"), style="Act.TButton",
                    command=self._save).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("⤓ من بيانات البرنامج"), style="Ghost.TButton",
+                   command=self._fill_from_program).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text=rtl("↺ استعادة القالب"), style="Ghost.TButton",
                    command=self._reset_template).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
@@ -4950,8 +4954,24 @@ class TravelInfoDialog(Toplevel):
                                    "استبدال محتوى هذا البرنامج بالقالب الافتراضي؟",
                                    parent=self):
             return
-        self._data[self._current] = self._travel.default_travel(self._current)
+        prog = self._progs[self._current]
+        self._data[self._current] = self._travel.default_travel(
+            self._current, prog)
         self._load_into_form(self._current)
+
+    def _fill_from_program(self) -> None:
+        """يملأ حقول الرحلة والتواريخ من برنامج الحملة المُدخل لهذا البرنامج."""
+        flight = self._travel.from_program(self._progs[self._current])
+        if not any(flight.values()):
+            messagebox.showinfo(
+                "لا بيانات",
+                "لا توجد تواريخ/مطارات في هذا البرنامج بعد.\n"
+                "أدخلها من «البرامج ← برامج الحملة» أولاً.", parent=self)
+            return
+        for key, val in flight.items():
+            if key in self._flight_vars and str(val or "").strip():
+                self._flight_vars[key].set(val)
+        self.app.set_status("مُلئت الرحلة من بيانات البرنامج", ok=True)
 
     def _save(self) -> None:
         self._dump_form(self._current)

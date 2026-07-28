@@ -66,4 +66,27 @@ assert _out.read_bytes()[:5] == b"%PDF-"
 root.destroy()
 print("  OK: النافذة تحفظ الرحلة والنصوص وتصدّر PDF، والتبديل يعمل")
 
+print("\n=== أخذ الرحلة والتواريخ من برامج الحملة ===")
+from hajj_app.programs import Program, programs_to_dicts
+_p = Program(travel_date="2026-5-21", return_date="2026-5-31",
+             departure_airport="مطار دبي", arrival_airport="مطار جدة")
+_fl = travel.from_program(_p)
+assert _fl["out_day"] == "2026-5-21" and _fl["out_dep"] == "مطار دبي"
+assert _fl["out_arr"] == "مطار جدة"
+assert _fl["ret_day"] == "2026-5-31" and _fl["ret_dep"] == "مطار جدة"
+assert _fl["ret_arr"] == "مطار دبي"                    # العودة تعكس المطارين
+# النافذة تُعبّئ الرحلة تلقائياً من برامج الحملة المحفوظة
+_st.save_settings({"programs": programs_to_dicts(
+    [_p, Program(), Program()])})
+_r2 = tk.Tk(); _r2.withdraw()
+_app2 = _g.HajjApp(_r2, session=None)
+_dlg2 = _g.TravelInfoDialog(_r2, _app2)
+assert _dlg2._flight_vars["out_day"].get() == "2026-5-21"
+assert _dlg2._flight_vars["out_dep"].get() == "مطار دبي"
+assert _dlg2._flight_vars["ret_arr"].get() == "مطار دبي"
+_dlg2._flight_vars["out_day"].set(""); _dlg2._fill_from_program()   # زرّ الإعادة
+assert _dlg2._flight_vars["out_day"].get() == "2026-5-21"
+_r2.destroy()
+print("  OK: from_program يعكس المطارين، والنافذة تُعبّئ تلقائياً + زرّ الإعادة")
+
 print("\n*** TRAVEL TESTS PASSED ***")

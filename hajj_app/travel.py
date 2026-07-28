@@ -83,10 +83,36 @@ _FLIGHT_P1 = {
 }
 
 
-def default_travel(idx: int) -> dict:
-    """بيانات افتراضية لبرنامج: مثال الرحلة (للأول) + قوالب النصوص."""
+def from_program(program) -> dict:
+    """يستخرج معلومات الرحلة والتواريخ من برنامج الحملة المُدخل سابقاً.
+
+    برنامج الحملة يحمل: تاريخ السفر والعودة، ومطاري المغادرة والوصول. رحلة
+    العودة تنطلق من مطار الوصول وتعود إلى مطار المغادرة.
+    """
+    if program is None:
+        return {}
+
+    def g(attr: str) -> str:
+        return str(getattr(program, attr, "") or "").strip()
+
+    dep, arr = g("departure_airport"), g("arrival_airport")
     return {
-        "flight": dict(_FLIGHT_P1) if idx == 0 else {},
+        "out_day": g("travel_date"), "out_dep": dep, "out_arr": arr,
+        "ret_day": g("return_date"), "ret_dep": arr, "ret_arr": dep,
+    }
+
+
+def default_travel(idx: int, program=None) -> dict:
+    """بيانات افتراضية لبرنامج: جدول الرحلة من برنامج الحملة + قوالب النصوص.
+
+    إن مُرّر ``program`` تُؤخذ الرحلة والتواريخ منه؛ وإلا مثال البرنامج الأول.
+    """
+    if program is not None:
+        flight = from_program(program)
+    else:
+        flight = dict(_FLIGHT_P1) if idx == 0 else {}
+    return {
+        "flight": flight,
         "instructions": DEFAULT_INSTRUCTIONS,
         "luggage": DEFAULT_LUGGAGE,
         "notes": DEFAULT_NOTES,
@@ -94,13 +120,18 @@ def default_travel(idx: int) -> dict:
     }
 
 
-def load_travel(settings: dict, idx: int) -> dict:
-    """يحمّل مواعيد/تعليمات برنامج (المحفوظ يعلو الافتراضي)."""
+def load_travel(settings: dict, idx: int, program=None) -> dict:
+    """يحمّل مواعيد/تعليمات برنامج (المحفوظ يعلو ما يُستخرج من البرنامج)."""
     store = settings.get("travel", {})
     saved = store.get(str(idx), {}) if isinstance(store, dict) else {}
-    d = default_travel(idx)
+    d = default_travel(idx, program)
     if isinstance(saved.get("flight"), dict):
-        d["flight"] = {**d["flight"], **saved["flight"]}
+        # المحفوظ يعلو، لكن الحقول الفارغة في المحفوظ تُملأ من البرنامج
+        merged = dict(d["flight"])
+        for k, v in saved["flight"].items():
+            if str(v or "").strip():
+                merged[k] = v
+        d["flight"] = merged
     for key, _ in TEXT_SECTIONS:
         if key in saved:
             d[key] = str(saved[key])
