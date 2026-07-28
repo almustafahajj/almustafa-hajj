@@ -637,6 +637,29 @@ assert _msgs[-1][1] == "تحديث متوفّر" and "2.1.0" in _msgs[-1][2]
 _r9.destroy()
 print("  OK: يُعلم بالإصدار الحالي، ويكتشف الأحدث عبر الرابط")
 
+print("\n=== معالج أول تشغيل ===")
+from hajj_app.gui import OnboardingWizard as _OW
+import hajj_app.gui as _gw
+_gw.ProgramsDialog = lambda root, appx: None          # لا نفتح البرامج فعلياً
+_r10 = Tk(); _r10.withdraw()
+_app10 = HajjApp(_r10, session=_S2("MHU", b"0" * 32, role="admin"))
+_w = _OW(_r10, _app10)
+assert _w._step == 0 and _w.STEPS == 4
+_w._next(); _w._v["name_ar"].set("حملة النور"); _w._v["trn"].set("100200300")
+_w._next(); _w._season.set("1448")
+_w._next(); assert _w._step == 3
+_w._open_programs.set(True); _w._finish()
+_co = _app10._company_info()
+assert _co["name_ar"] == "حملة النور" and _co["trn"] == "100200300"
+assert _app10.season_year.get() == "1448"
+assert _st.load_settings()["ui"]["onboarded"] is True
+# تخطّي يعلّم onboarded
+_app10._ui["onboarded"] = False; _st.save_settings(_app10._settings)
+_OW(_r10, _app10)._skip()
+assert _st.load_settings()["ui"]["onboarded"] is True
+_r10.destroy()
+print("  OK: خطوات المعالج تحفظ الشركة والموسم وتعلّم onboarded (وكذلك التخطّي)")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

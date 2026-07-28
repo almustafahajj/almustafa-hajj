@@ -319,8 +319,11 @@ class HajjApp:
         self._load_saved_data()
         root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._setup_auto_lock()
-        if self.session is not None and self._ui.get("show_welcome", True):
-            self.root.after(1300, self._show_welcome)
+        if self.session is not None:
+            if not self._ui.get("onboarded"):
+                self.root.after(1300, self._show_onboarding)   # أول تشغيل
+            elif self._ui.get("show_welcome", True):
+                self.root.after(1300, self._show_welcome)
 
         if self.records:
             pass        # رسالة الاستعادة أهم من تنبيهات التهيئة
@@ -844,6 +847,7 @@ class HajjApp:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
         admin_items += [None,
+                        ("🧭  معالج الإعداد", self.do_onboarding),
                         ("🏠  شاشة الترحيب", self._show_welcome),
                         (f"🎨  لون البرنامج ({self._accent})", self.cycle_accent),
                         ("⌨  اختصارات لوحة المفاتيح", self.do_shortcuts),
@@ -2328,6 +2332,16 @@ class HajjApp:
         except Exception:                              # noqa: BLE001
             pass
 
+    def _show_onboarding(self) -> None:
+        try:
+            OnboardingWizard(self.root, self)
+        except Exception:                              # noqa: BLE001
+            pass
+
+    def do_onboarding(self) -> None:
+        """يعيد فتح معالج الإعداد (بيانات الشركة والموسم والبرامج)."""
+        OnboardingWizard(self.root, self)
+
     def do_check_updates(self) -> None:
         """يتحقّق من وجود إصدار أحدث (إن ضُبط رابط في الإعدادات)، وإلا يُعلم يدوياً."""
         import hajj_app
@@ -3753,6 +3767,162 @@ class CommandPalette(Toplevel):
             payload()
         else:
             self.on_pilgrim(payload)
+
+
+class OnboardingWizard(Toplevel):
+    """معالج أول تشغيل: بيانات الشركة، الموسم، ثم إعداد البرامج — بخطوات."""
+
+    _COMPANY_FIELDS = (
+        ("name_ar", "اسم الشركة (عربي)"),
+        ("name_en", "اسم الشركة (إنجليزي)"),
+        ("trn", "الرقم الضريبي (TRN)"),
+        ("phone", "الهاتف"),
+        ("address", "العنوان"),
+    )
+    STEPS = 4
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("إعداد أول تشغيل")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+        self._step = 0
+
+        co = app._company_info()
+        self._v = {k: StringVar(value=str(co.get(k, "")))
+                   for k, _ in self._COMPANY_FIELDS}
+        self._season = StringVar(value=app.season_year.get())
+        self._open_programs = tk.BooleanVar(value=True)
+
+        body = ttk.Frame(self, padding=24)
+        body.pack(fill=BOTH, expand=True)
+        self._dots = ttk.Label(body, font=(_FUI, 11), foreground=BRONZE,
+                               background=BG)
+        self._dots.pack(anchor="e")
+        self._content = ttk.Frame(body)
+        self._content.pack(fill=BOTH, expand=True, pady=(8, 0))
+
+        nav = ttk.Frame(body)
+        nav.pack(fill=X, pady=(16, 0))
+        self._next_btn = ttk.Button(nav, text="التالي", style="Primary.TButton",
+                                    command=self._next)
+        self._next_btn.pack(side=RIGHT, padx=3)
+        self._back_btn = ttk.Button(nav, text="السابق", style="Ghost.TButton",
+                                    command=self._back)
+        self._back_btn.pack(side=RIGHT, padx=3)
+        ttk.Button(nav, text="تخطّي", style="Ghost.TButton",
+                   command=self._skip).pack(side=LEFT)
+
+        self.bind("<Escape>", lambda _e: self._skip())
+        self._render()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _render(self) -> None:
+        for w in self._content.winfo_children():
+            w.destroy()
+        self._dots.configure(text="●  " * (self._step + 1)
+                             + "○  " * (self.STEPS - self._step - 1)
+                             + f"   ({self._step + 1}/{self.STEPS})")
+        [self._welcome, self._company, self._season_step, self._finish_step][
+            self._step]()
+        self._back_btn.state(["!disabled"] if self._step > 0 else ["disabled"])
+        self._next_btn.configure(
+            text="إنهاء" if self._step == self.STEPS - 1 else "التالي")
+
+    def _welcome(self) -> None:
+        c = self._content
+        logo = logo_image(self, width=150)
+        if logo is not None:
+            lbl = ttk.Label(c, image=logo, background=BG)
+            lbl.image = logo
+            lbl.pack(pady=(0, 10))
+        ttk.Label(c, text=rtl("مرحباً بك في برنامج موسم الحج"), font=(_FSB, 15),
+                  foreground=TEXT, background=BG).pack()
+        ttk.Label(c, justify="center", wraplength=380, font=(_FUI, 10),
+                  foreground=MUTED, background=BG, text=rtl(
+                      "سنضبط معاً بيانات الشركة والموسم في خطوات سريعة.\n"
+                      "يمكنك تغييرها لاحقاً في أي وقت.")).pack(pady=(8, 0))
+
+    def _company(self) -> None:
+        c = self._content
+        ttk.Label(c, text=rtl("بيانات الشركة (تظهر في الفواتير والعقود):"),
+                  font=(_FSB, 11), foreground=TEXT, background=BG).pack(anchor="e")
+        grid = ttk.Frame(c)
+        grid.pack(fill=X, pady=(8, 0))
+        for i, (key, label) in enumerate(self._COMPANY_FIELDS):
+            ttk.Label(grid, text=label, font=(_FUI, 10), background=BG,
+                      foreground=TEXT).grid(row=i, column=1, sticky="e",
+                                            padx=(12, 6), pady=5)
+            ttk.Entry(grid, textvariable=self._v[key], width=32,
+                      justify="right").grid(row=i, column=0, pady=5)
+
+    def _season_step(self) -> None:
+        c = self._content
+        ttk.Label(c, text=rtl("موسم الحج (السنة الهجرية):"), font=(_FSB, 11),
+                  foreground=TEXT, background=BG).pack(anchor="e")
+        ttk.Combobox(c, textvariable=self._season, values=HIJRI_YEARS,
+                     state="readonly", width=10, font=(_FSB, 13),
+                     justify="center").pack(anchor="e", pady=(8, 6))
+        ttk.Label(c, justify="right", font=(_FUI, 9), foreground=MUTED,
+                  background=BG, text=rtl(
+                      "تظهر السنة في عناوين الكشوف والتقارير.\n"
+                      "عملة البرنامج: الدرهم الإماراتي (AED).")).pack(anchor="e")
+
+    def _finish_step(self) -> None:
+        c = self._content
+        ttk.Label(c, text=rtl("تمّ الإعداد ✓"), font=(_FSB, 15),
+                  foreground=SUCCESS_FG, background=BG).pack(anchor="e")
+        ttk.Label(c, justify="right", wraplength=380, font=(_FUI, 10),
+                  foreground=MUTED, background=BG, text=rtl(
+                      f"الشركة: {self._v['name_ar'].get() or '—'}\n"
+                      f"الموسم: {self._season.get()}هـ")).pack(anchor="e",
+                                                               pady=(8, 10))
+        ttk.Checkbutton(c, variable=self._open_programs, text=rtl(
+            "افتح إعداد برامج الحملة الآن (الرحلات والتكاليف والخدمات)")
+        ).pack(anchor="e")
+
+    def _back(self) -> None:
+        if self._step > 0:
+            self._step -= 1
+            self._render()
+
+    def _next(self) -> None:
+        if self._step < self.STEPS - 1:
+            self._step += 1
+            self._render()
+        else:
+            self._finish()
+
+    def _mark_done(self) -> None:
+        self.app._ui["onboarded"] = True
+        self.app._settings["ui"] = self.app._ui
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+
+    def _skip(self) -> None:
+        self._mark_done()
+        self.destroy()
+
+    def _finish(self) -> None:
+        self.app._save_company({k: v.get().strip() for k, v in self._v.items()})
+        year = self._season.get()
+        self.app.season_year.set(year)
+        self.app._settings["season_year"] = year
+        self._mark_done()
+        self.app._audit("إكمال معالج الإعداد", year)
+        self.app.set_status("تم إعداد البرنامج", ok=True)
+        open_progs = self._open_programs.get()
+        self.destroy()
+        if open_progs and self.app.session is not None:
+            self.app.do_programs()
 
 
 class WelcomeDialog(Toplevel):
