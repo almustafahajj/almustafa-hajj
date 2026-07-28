@@ -407,6 +407,39 @@ assert app._clear_credential_ok("") is False
 assert app._clear_credential_ok("1234") is False
 print("  OK: المسح محميّ — لا يتم إلا بكلمة التأكيد (أو كلمة مرور الحساب عند الدخول)")
 
+print("\n=== بدء موسم جديد (أرشفة ثم تفريغ + ضبط السنة) ===")
+import tkinter as _tk
+from hajj_app.mrz import PassportData as _PD
+
+
+class _FakeNSD(_tk.Toplevel):
+    def __init__(self, parent, current_year, pilgrim_count):
+        super().__init__(parent)
+        self.confirmed = True
+        self.year = "1448"
+        self.after(1, self.destroy)
+
+
+_orig_nsd, _orig_pd = _g.NewSeasonDialog, _g.ProgramsDialog
+_g.NewSeasonDialog = _FakeNSD
+_g.ProgramsDialog = lambda root, appx: None
+try:
+    app.records = [_PD(full_name_ar=f"حاج {i}", passport_number=f"NS{i}")
+                   for i in range(4)]
+    app.season_year.set("1447")
+    app.refresh()
+    app.do_new_season()
+    assert app.records == [], "الكشف لم يُفرَّغ"
+    assert app.season_year.get() == "1448", app.season_year.get()
+    assert _st.load_settings().get("season_year") == "1448"
+    snaps = _st.list_snapshots()
+    assert snaps, "لم تُنشأ لقطة أرشفة"
+    archived, _n = _st.load_records(snaps[0], None)
+    assert len(archived) == 4, "الأرشفة لم تحفظ حجّاج الموسم القديم"
+    print("  OK: أُرشف 4 حجّاج، فُرّغ الكشف، وضُبطت السنة إلى 1448هـ")
+finally:
+    _g.NewSeasonDialog, _g.ProgramsDialog = _orig_nsd, _orig_pd
+
 app._require_records()
 root.update()
 root.destroy()

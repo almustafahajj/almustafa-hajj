@@ -594,9 +594,11 @@ class HajjApp:
         # 📋 البرامج (إعداد — للمحرّر فأعلى)
         if ce:
             programs_mb = self._menubutton(bar, "البرامج  ▾", [
+                ("🌙  بدء موسم جديد", self.do_new_season),
+                None,
                 ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
             ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
-                tip="إعداد برامج الحملة الثلاثة")
+                tip="بدء موسم جديد وإعداد برامج الحملة")
             programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -2289,6 +2291,45 @@ class HajjApp:
             return
         ProgramsDialog(self.root, self)
 
+    def do_new_season(self) -> None:
+        """يبدأ موسماً جديداً: يؤرشف كشف الموسم الحالي (نسخة احتياطية) ثم
+        يفرّغه، ويضبط السنة الهجرية، ثم يفتح إعداد برامج الموسم الجديد."""
+        if not self._require_edit():
+            return
+        dialog = NewSeasonDialog(self.root, current_year=self.season_year.get(),
+                                 pilgrim_count=len(self.records))
+        self.root.wait_window(dialog)
+        if not dialog.confirmed:
+            return
+
+        year = dialog.year
+        archived = 0
+        if self.records:                        # أرشفة قبل التفريغ
+            try:
+                from .storage import write_snapshot
+                write_snapshot(self.records, self.session)
+                archived = len(self.records)
+            except Exception as exc:
+                messagebox.showerror(
+                    "تعذّرت الأرشفة",
+                    f"لم يبدأ الموسم الجديد — فشلت أرشفة الكشف الحالي.\n\n{exc}")
+                return
+
+        self.records = []                       # موسم جديد بكشف فارغ
+        self._undo_stack.clear()
+        self.season_year.set(year)
+        self._settings["season_year"] = year
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        self.refresh()
+        self.save_data()
+        self._audit("بدء موسم جديد", f"{year}هـ — أُرشف {archived} حاج")
+        self.set_status(f"بدأ موسم {year}هـ — أُرشف {archived} حاج", ok=True)
+        self.toast(f"بدأ موسم {year}هـ", kind="success")
+        ProgramsDialog(self.root, self)         # اضبط برامج الموسم الجديد
+
     def _receipt_selected(self) -> None:
         """يفتح نافذة سند القبض للحاج المحدّد — **معاينة فقط** بلا حفظ مباشر."""
         rec = self._selected_record()
@@ -3878,6 +3919,85 @@ class ImageKindDialog(Toplevel):
         else:
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
+        self.destroy()
+
+
+class NewSeasonDialog(Toplevel):
+    """تأكيد بدء موسم جديد: اختيار السنة الهجرية والموافقة على الأرشفة."""
+
+    def __init__(self, parent, current_year: str, pilgrim_count: int) -> None:
+        super().__init__(parent)
+        self.confirmed = False
+        self.year = current_year
+        self.title("🌙 بدء موسم جديد")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=22)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=rtl("🌙  بدء موسم حجّ جديد"), font=(_FSB, 15),
+                  foreground=TEXT).pack(anchor="e")
+        ttk.Label(
+            outer, wraplength=390, justify="right", font=(_FUI, 10),
+            foreground=MUTED,
+            text=rtl("اختر السنة الهجرية للموسم الجديد. يُحفظ كشف الموسم الحالي "
+                     "كنسخة احتياطية ثم يُفرَّغ لتبدأ بحجّاج جدد، ثم تُضبط برامج "
+                     "الحملة."),
+        ).pack(anchor="e", pady=(6, 14))
+
+        row = ttk.Frame(outer)
+        row.pack(fill=X, pady=(0, 10))
+        ttk.Label(row, text="السنة الهجرية:", font=(_FSB, 11),
+                  foreground=TEXT).pack(side=RIGHT, padx=(0, 8))
+        try:
+            nxt = str(int(current_year) + 1)
+        except (TypeError, ValueError):
+            nxt = current_year
+        default = nxt if nxt in HIJRI_YEARS else current_year
+        self._year = StringVar(value=default)
+        ttk.Combobox(row, textvariable=self._year, state="readonly", width=8,
+                     values=HIJRI_YEARS, font=(_FSB, 12)).pack(side=RIGHT)
+
+        if pilgrim_count:
+            ttk.Label(
+                outer, wraplength=390, justify="right", font=(_FUI, 9),
+                foreground=AMBER_FG,
+                text=rtl(f"⚠ سيُؤرشف {pilgrim_count} حاجّاً من الموسم الحالي "
+                         "(يمكن استعادتهم لاحقاً من «استعادة نسخة احتياطية»)."),
+            ).pack(anchor="e", pady=(0, 10))
+
+        self._ok = tk.BooleanVar(value=(pilgrim_count == 0))
+        ttk.Checkbutton(
+            outer, variable=self._ok, command=self._toggle,
+            text=rtl("أفهم أنه ستُؤرشف بيانات الموسم الحالي ويُفرَّغ الكشف"),
+        ).pack(anchor="e", pady=(0, 14))
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X)
+        self._start = ttk.Button(btns, text=rtl("🌙  بدء الموسم"),
+                                 style="Primary.TButton", command=self._confirm)
+        self._start.pack(side=RIGHT, padx=4)
+        if pilgrim_count:
+            self._start.state(["disabled"])
+        ttk.Button(btns, text="إلغاء", style="Ghost.TButton",
+                   command=self.destroy).pack(side=RIGHT, padx=4)
+
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _toggle(self) -> None:
+        self._start.state(["!disabled"] if self._ok.get() else ["disabled"])
+
+    def _confirm(self) -> None:
+        if not self._ok.get():
+            return
+        self.year = self._year.get()
+        self.confirmed = True
         self.destroy()
 
 
