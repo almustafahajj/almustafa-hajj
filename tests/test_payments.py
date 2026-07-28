@@ -93,31 +93,36 @@ assert isinstance(b[0].checkins, dict) and b[0].checkins.get("المطار")
 root2.destroy()
 print("  OK: مطابقة بالجواز/QR/المرجعي، الغائبون، والتخزين قاموساً")
 
-print("\n=== تصدير تقرير الحضور (مصفوفة المراحل) ===")
-import hajj_app.gui as _g
-_ATT = WORK / "attendance.xlsx"
-_g.open_preview = lambda parent, fn, name, ext: (fn(str(_ATT)), str(_ATT))[1]
-_g.default_data_path = lambda: WORK / "attdb.json"
-_ar = tk.Tk(); _ar.withdraw()
-_app = _g.HajjApp(_ar, session=None)
-_app.records = [
+print("\n=== تصدير تقرير الحضور PDF (معاينة) ===")
+# دالة الـPDF مباشرةً
+from hajj_app.pdf_io import export_attendance_pdf
+_ATT = WORK / "attendance.pdf"
+_recs = [
     PassportData(full_name_ar="أحمد", passport_number="A1", group="م1",
                  checkins={"المطار": "2026-07-01 08:00", "الباص": "2026-07-01 09:00"}),
     PassportData(full_name_ar="سالم", passport_number="B2",
                  checkins={"المطار": "2026-07-01 08:05"}),
     PassportData(full_name_ar="خالد", passport_number="C3"),
 ]
+export_attendance_pdf(_recs, _ATT, stages=["المطار", "الفندق", "الباص", "العودة"],
+                      season="1447")
+assert _ATT.is_file() and _ATT.read_bytes()[:5] == b"%PDF-"
+assert _ATT.stat().st_size > 2000
+# do_attendance_report يستدعي المعاينة بامتداد pdf
+import hajj_app.gui as _g
+_calls = {}
+_g.open_preview = lambda parent, fn, name, ext: (fn(str(WORK / "r.pdf")),
+                                                 _calls.update(ext=ext),
+                                                 str(WORK / "r.pdf"))[-1]
+_g.default_data_path = lambda: WORK / "attdb.json"
+_ar = tk.Tk(); _ar.withdraw()
+_app = _g.HajjApp(_ar, session=None)
+_app.records = _recs
 _app.season_year.set("1447")
 _app.do_attendance_report()
-from openpyxl import load_workbook as _lwb
-_ws = _lwb(_ATT).active
-_heads = [c.value for c in _ws[3]]
-assert "المطار" in _heads and "العودة" in _heads, _heads
-_summ = [str(c.value) for c in _ws[2] if c.value]
-assert any("2/3" in s for s in _summ), _summ          # حضر المطار 2 من 3
-_flat = [c.value for row in _ws.iter_rows(min_row=4) for c in row]
-assert "غائب" in _flat and "2026-07-01 08:00" in _flat  # غياب + وقت حضور
+assert _calls.get("ext") == "pdf"
+assert (WORK / "r.pdf").read_bytes()[:5] == b"%PDF-"
 _ar.destroy()
-print("  OK: تقرير الحضور مصفوفة بالمراحل مع ملخّص وأوقات وغياب")
+print("  OK: تقرير الحضور PDF صالح، والمعاينة بامتداد pdf")
 
 print("\n*** PAYMENTS TESTS PASSED ***")

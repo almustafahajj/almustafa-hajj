@@ -484,6 +484,88 @@ def _card(rec: PassportData, serial: int, st: dict, width: float) -> list:
     return elements
 
 
+def export_attendance_pdf(records: list, path: str | Path, *,
+                          stages: list, season: str = "",
+                          title: str = "تقرير الحضور") -> Path:
+    """يصدّر تقرير الحضور PDF: مصفوفة كل حاج × كل مرحلة (وقت الحضور أو «غائب»).
+
+    A4 عرضي، مع ملخّص الحاضرين لكل مرحلة، وتلوين الحاضر أخضر والغائب أحمر.
+    """
+    _register_fonts()
+    path = Path(path)
+    st = _styles()
+    stages = list(stages)
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=landscape(A4),
+        rightMargin=10 * mm, leftMargin=10 * mm,
+        topMargin=12 * mm, bottomMargin=16 * mm,
+        title=title, author="برنامج الحج",
+    )
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 5))
+
+    n = len(records)
+    present = {s: sum(1 for r in records if s in (getattr(r, "checkins", {}) or {}))
+               for s in stages}
+    head_title = f"{title} — موسم {ltr(season)}هـ" if season else title
+    summary = "    •    ".join(f"{s}: {ltr(present[s])}/{ltr(n)}" for s in stages)
+    story += [Paragraph(ar(head_title), st["title"]),
+              Paragraph(ar(summary), st["subtitle"])]
+
+    base_heads = ["م", "اسم الحاج", "رقم الجواز", "الهاتف", "المجموعة"]
+    heads = base_heads + stages
+    ncols = len(heads)
+
+    logical_rows = [heads]
+    for i, r in enumerate(records, start=1):
+        ck = getattr(r, "checkins", {}) or {}
+        name = r.full_name_ar or r.full_name_en or r.passport_number or "—"
+        row = [str(i), name, str(r.passport_number or ""), str(r.phone or ""),
+               str(r.group or "")]
+        row += [ck.get(s, "غائب") for s in stages]
+        logical_rows.append(row)
+
+    table_data = []
+    for ridx, lrow in enumerate(logical_rows):
+        style = st["head"] if ridx == 0 else st["cell"]
+        table_data.append([Paragraph(ar(str(v)), style) for v in reversed(lrow)])
+
+    weights = list(reversed([22, 90, 55, 55, 45] + [58] * len(stages)))
+    scale = doc.width / sum(weights)
+    col_widths = [w * scale for w in weights]
+
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+    ]
+    green, red = colors.HexColor("#E3F3E8"), colors.HexColor("#FADFDD")
+    for ridx in range(1, len(logical_rows)):
+        for s_i in range(len(stages)):
+            logical_col = 5 + s_i
+            disp_col = (ncols - 1) - logical_col
+            color = red if logical_rows[ridx][logical_col] == "غائب" else green
+            style.append(("BACKGROUND", (disp_col, ridx), (disp_col, ridx), color))
+
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle(style))
+    story.append(table)
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer(c, d, title),
+              onLaterPages=lambda c, d: _footer(c, d, title))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:
