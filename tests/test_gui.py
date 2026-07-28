@@ -611,6 +611,32 @@ assert _st.load_settings()["ui"]["show_welcome"] is False
 _wel.destroy(); _r8.destroy()
 print("  OK: شاشة الترحيب تبني المؤشّرات، و«لا تُظهر» تُحفظ")
 
+print("\n=== التحقق من التحديثات ===")
+import hajj_app.gui as _gg
+_r9 = Tk(); _r9.withdraw()
+_app9 = HajjApp(_r9)
+_msgs = []
+_gg.messagebox.showinfo = lambda t, m, **k: _msgs.append(("info", t, m))
+_gg.messagebox.showwarning = lambda t, m, **k: _msgs.append(("warn", t, m))
+_app9._settings["update_url"] = ""
+_app9.do_check_updates()                              # بلا رابط -> يدوي
+assert "2.0.0" in _msgs[-1][2]
+import urllib.request as _ur
+
+
+class _FR:
+    def read(self): return b"2.1.0\n"
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+_ur.urlopen = lambda url, timeout=5: _FR()
+_app9._settings["update_url"] = "http://x/v.txt"
+_app9.do_check_updates()
+assert _msgs[-1][1] == "تحديث متوفّر" and "2.1.0" in _msgs[-1][2]
+_r9.destroy()
+print("  OK: يُعلم بالإصدار الحالي، ويكتشف الأحدث عبر الرابط")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

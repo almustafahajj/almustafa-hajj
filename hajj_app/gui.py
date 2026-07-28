@@ -847,6 +847,7 @@ class HajjApp:
                         ("🏠  شاشة الترحيب", self._show_welcome),
                         (f"🎨  لون البرنامج ({self._accent})", self.cycle_accent),
                         ("⌨  اختصارات لوحة المفاتيح", self.do_shortcuts),
+                        ("🔄  التحقق من التحديثات", self.do_check_updates),
                         ("ℹ  حول البرنامج", self.do_about)]
         # زرّ اللغة يُظهر اللغة الهدف (عكس الحالية) بوضوح
         from . import i18n as _i18n
@@ -2326,6 +2327,34 @@ class HajjApp:
             WelcomeDialog(self.root, self)
         except Exception:                              # noqa: BLE001
             pass
+
+    def do_check_updates(self) -> None:
+        """يتحقّق من وجود إصدار أحدث (إن ضُبط رابط في الإعدادات)، وإلا يُعلم يدوياً."""
+        import hajj_app
+        cur = hajj_app.__version__
+        url = str(self._settings.get("update_url", "") or "").strip()
+        if not url:
+            messagebox.showinfo(
+                "التحديثات",
+                f"أنت على الإصدار {cur}.\n\nتُوزَّع التحديثات عبر المُثبِّت "
+                "الجديد (HajjApp-Setup.exe).")
+            return
+        try:
+            import urllib.request
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                latest = resp.read().decode("utf-8").strip().split()[0]
+        except Exception as exc:                       # noqa: BLE001
+            messagebox.showwarning("التحديثات",
+                                   f"تعذّر التحقق من التحديثات:\n{exc}")
+            return
+        self._audit("التحقق من التحديثات", latest)
+        if latest and latest != cur:
+            messagebox.showinfo(
+                "تحديث متوفّر",
+                f"يتوفّر إصدار أحدث: {latest}\n(أنت على {cur}).\n"
+                "حمّل المُثبِّت الجديد لتحديث البرنامج.")
+        else:
+            messagebox.showinfo("محدَّث", f"أنت على أحدث إصدار ({cur}).")
 
     def do_command_palette(self) -> None:
         """يفتح البحث السريع / لوحة الأوامر (Ctrl+K)."""
