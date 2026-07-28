@@ -606,8 +606,9 @@ class HajjApp:
                 ("🌙  بدء موسم جديد", self.do_new_season),
                 None,
                 ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
+                ("👥  المجموعات والمرشدون", self.do_groups),
             ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
-                tip="بدء موسم جديد وإعداد برامج الحملة")
+                tip="بدء موسم جديد وإعداد البرامج والمجموعات")
             programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -2311,6 +2312,12 @@ class HajjApp:
         if not self._require_edit():
             return
         ProgramsDialog(self.root, self)
+
+    def do_groups(self) -> None:
+        """يفتح إدارة المجموعات والمرشدين (مرشد وهاتف لكل مجموعة)."""
+        if not self._require_edit():
+            return
+        GroupsDialog(self.root, self)
 
     def do_new_season(self) -> None:
         """يبدأ موسماً جديداً: يؤرشف كشف الموسم الحالي (نسخة احتياطية) ثم
@@ -4175,6 +4182,83 @@ class PaymentsDialog(Toplevel):
             if 0 <= iid < len(self.record.payments):
                 del self.record.payments[iid]
         self._commit()
+
+
+class GroupsDialog(Toplevel):
+    """المجموعات والمرشدون: إسناد مرشد/مطوّف وهاتف لكل مجموعة، مع عدد أفرادها."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("👥 المجموعات والمرشدون")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        saved = dict(app._settings.get("groups", {}))
+        counts: dict[str, int] = {}
+        for r in app.records:
+            name = str(getattr(r, "group", "") or "").strip()
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+        names = sorted(set(counts) | set(saved))
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=rtl("👥  المجموعات والمرشدون"), font=(_FSB, 14),
+                  foreground=TEXT).pack(anchor="e")
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
+                  text=rtl("لكل مجموعة مرشد/مطوّف وهاتف. تُحدَّد «المجموعة» في "
+                           "سجلّ كل حاج.")).pack(anchor="e", pady=(4, 12))
+
+        self._vars: dict[str, tuple] = {}
+        if not names:
+            ttk.Label(outer, foreground=MUTED, font=(_FUI, 10),
+                      text=rtl("لا مجموعات بعد — عيّن حقل «المجموعة» في سجلّات "
+                               "الحجّاج أولاً.")).pack(anchor="e", pady=8)
+        else:
+            grid = ttk.Frame(outer)
+            grid.pack(fill=BOTH, expand=True)
+            for col, head in enumerate(("المجموعة", "المرشد/المطوّف", "الهاتف")):
+                ttk.Label(grid, text=head, font=(_FSB, 10), foreground=TEXT
+                          ).grid(row=0, column=col, padx=6, pady=(0, 6), sticky="e")
+            for i, name in enumerate(names, start=1):
+                info = saved.get(name, {})
+                gv = StringVar(value=str(info.get("guide", "")))
+                pv = StringVar(value=str(info.get("phone", "")))
+                self._vars[name] = (gv, pv)
+                label = f"{name}  ({counts.get(name, 0)})"
+                ttk.Label(grid, text=label, foreground=TEXT).grid(
+                    row=i, column=0, padx=6, pady=3, sticky="e")
+                ttk.Entry(grid, textvariable=gv, width=24, justify="right").grid(
+                    row=i, column=1, padx=6, pady=3)
+                ttk.Entry(grid, textvariable=pv, width=16, justify="center").grid(
+                    row=i, column=2, padx=6, pady=3)
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X, pady=(14, 0))
+        if names:
+            ttk.Button(btns, text=rtl("💾 حفظ"), style="Primary.TButton",
+                       command=self._save).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _save(self) -> None:
+        data = {name: {"guide": gv.get().strip(), "phone": pv.get().strip()}
+                for name, (gv, pv) in self._vars.items()}
+        self.app._settings["groups"] = data
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.app._audit("تعديل المجموعات", f"{len(data)} مجموعة")
+        self.app.set_status("حُفظت بيانات المجموعات والمرشدين", ok=True)
+        self.destroy()
 
 
 class NewSeasonDialog(Toplevel):

@@ -447,6 +447,21 @@ try:
 finally:
     _g.NewSeasonDialog, _g.ProgramsDialog = _orig_nsd, _orig_pd
 
+print("\n=== المجموعات والمرشدون ===")
+from hajj_app.gui import GroupsDialog as _GD
+app.records = [_PD(full_name_ar="أ", group="مجموعة 1"),
+               _PD(full_name_ar="ب", group="مجموعة 1"),
+               _PD(full_name_ar="ج", group="مجموعة 2")]
+_gd = _GD(root, app)
+assert set(_gd._vars.keys()) == {"مجموعة 1", "مجموعة 2"}
+_gd._vars["مجموعة 1"][0].set("الشيخ خالد")
+_gd._vars["مجموعة 1"][1].set("0501112233")
+_gd._save()
+_grp = _st.load_settings().get("groups", {})
+assert _grp["مجموعة 1"]["guide"] == "الشيخ خالد", _grp
+assert _grp["مجموعة 1"]["phone"] == "0501112233"
+print("  OK: كشف المجموعتين، وحفظ مرشد وهاتف مجموعة 1")
+
 app._require_records()
 root.update()
 root.destroy()
