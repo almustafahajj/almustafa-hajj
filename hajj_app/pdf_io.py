@@ -566,6 +566,117 @@ def export_attendance_pdf(records: list, path: str | Path, *,
     return path
 
 
+def export_travel_pdf(path: str | Path, *, program_name: str = "البرنامج الأول",
+                      data: dict | None = None, itinerary: list | None = None,
+                      season: str = "",
+                      title: str = "مواعيد وتعليمات السفر") -> Path:
+    """يصدّر وثيقة «مواعيد وتعليمات السفر» لرحلة برنامج: جدول الرحلة (ذهاب/عودة)
+    + تعليمات السفر والحقائب + برنامج المناسك + ملاحظات + أرقام التواصل.
+    """
+    _register_fonts()
+    path = Path(path)
+    data = data or {}
+    itinerary = itinerary or []
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=15 * mm, leftMargin=15 * mm,
+        topMargin=14 * mm, bottomMargin=16 * mm, title=title, author="برنامج الحج")
+
+    h2 = ParagraphStyle("h2", fontName=_FONT_BOLD, fontSize=12.5, alignment=2,
+                        textColor=_ACCENT, leading=17, spaceBefore=12, spaceAfter=5)
+    body = ParagraphStyle("body", fontName=_FONT, fontSize=9.5, alignment=2,
+                          textColor=_INK, leading=15)
+    kv = ParagraphStyle("kv", fontName=_FONT, fontSize=9, alignment=2, leading=13)
+    st = _styles()
+
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    sub = f"رحلة الحج — {program_name}"
+    if season:
+        sub += f"   ·   موسم {ltr(season)}هـ"
+    story += [Paragraph(ar(title), st["title"]),
+              Paragraph(ar(sub), st["subtitle"])]
+
+    # ---- جدول الرحلة (ذهاب/عودة) كأزواج مقروءة ----
+    flight = data.get("flight", {}) if isinstance(data.get("flight"), dict) else {}
+
+    def leg_block(head, prefix, fields):
+        rows = []
+        for label, key in fields:
+            val = str(flight.get(prefix + key, "") or "").strip()
+            if val:
+                rows.append([Paragraph(ar(val), kv),
+                             Paragraph(ar(label), ParagraphStyle(
+                                 "kvh", parent=kv, fontName=_FONT_BOLD))])
+        if not rows:
+            return
+        story.append(Paragraph(ar(head), h2))
+        t = Table(rows, colWidths=[doc.width * 0.66, doc.width * 0.34])
+        t.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#F3EFE8")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(t)
+
+    legs = (("اليوم والتاريخ", "day"), ("مطار المغادرة", "dep"),
+            ("رقم الرحلة", "flight"), ("الحضور/التحرّك للمطار", "report"),
+            ("وقت الإقلاع", "takeoff"), ("مطار الوصول", "arr"),
+            ("وقت الوصول", "land"))
+    leg_block("✈ رحلة الذهاب", "out_", legs)
+    leg_block("✈ رحلة العودة", "ret_", legs)
+
+    # ---- الأقسام النصّية ----
+    def section(head, text):
+        text = str(text or "").strip()
+        if not text:
+            return
+        story.append(Paragraph(ar(head), h2))
+        for line in text.splitlines():
+            line = line.strip()
+            if line:
+                story.append(Paragraph(ar(line), body))
+
+    section("📋 تعليمات هامة للسفر", data.get("instructions"))
+    section("🧳 تعليمات الأمتعة والحقائب", data.get("luggage"))
+
+    # ---- برنامج المناسك (من جدول المناسك إن وُجد) ----
+    if itinerary:
+        story.append(Paragraph(ar("🗓 برنامج المناسك"), h2))
+        heads = ["اليوم", "التاريخ", "النشاط/المنسك", "المكان"]
+        table_data = [[Paragraph(ar(h), st["head"]) for h in reversed(heads)]]
+        for row in itinerary:
+            row = list(row) + ["", "", "", ""]
+            cells = [row[0], row[1], row[2], row[3]]
+            table_data.append([Paragraph(ar(str(v)), st["cell"])
+                               for v in reversed(cells)])
+        weights = list(reversed([26, 26, 90, 30]))
+        scale = doc.width / sum(weights)
+        t = Table(table_data, colWidths=[w * scale for w in weights], repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t)
+
+    section("📝 ملاحظات", data.get("notes"))
+    section("📞 أرقام التواصل", data.get("contacts"))
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, title),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, title))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:

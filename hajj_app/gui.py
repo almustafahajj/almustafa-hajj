@@ -763,8 +763,9 @@ class HajjApp:
                 ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
                 ("👥  المجموعات والمرشدون", self.do_groups),
                 ("🗓  جدول المناسك", self.do_itinerary),
+                ("🧳  مواعيد وتعليمات السفر", self.do_travel_info),
             ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
-                tip="الموسم والبرامج والمجموعات وجدول المناسك")
+                tip="الموسم والبرامج والمجموعات والمناسك ومواعيد السفر")
             programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -2645,6 +2646,12 @@ class HajjApp:
         if not self._require_edit():
             return
         ItineraryDialog(self.root, self)
+
+    def do_travel_info(self) -> None:
+        """يفتح «مواعيد وتعليمات السفر» لكل برنامج (تحرير + تصدير PDF)."""
+        if not self._require_edit():
+            return
+        TravelInfoDialog(self.root, self)
 
     def do_new_season(self) -> None:
         """يبدأ موسماً جديداً: يؤرشف كشف الموسم الحالي (نسخة احتياطية) ثم
@@ -4837,6 +4844,138 @@ class ImageKindDialog(Toplevel):
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
         self.destroy()
+
+
+class TravelInfoDialog(Toplevel):
+    """مواعيد وتعليمات السفر لكل برنامج: جدول الرحلة + التعليمات، مع تصدير PDF."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("🧳 مواعيد وتعليمات السفر")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        from . import travel
+        from .programs import PROGRAM_NAMES
+        self._travel = travel
+        self._names = list(PROGRAM_NAMES)
+        self._current = 0
+        self._data = {i: travel.load_travel(app._settings, i)
+                      for i in range(len(self._names))}
+
+        outer = ttk.Frame(self, padding=14)
+        outer.pack(fill=BOTH, expand=True)
+
+        top = ttk.Frame(outer)
+        top.pack(fill=X, pady=(0, 8))
+        ttk.Label(top, text="البرنامج:", font=(_FSB, 11),
+                  foreground=TEXT).pack(side=RIGHT, padx=(0, 8))
+        self._sel = StringVar(value="0")
+        for i, name in enumerate(self._names):
+            ttk.Radiobutton(top, text=name, value=str(i), variable=self._sel,
+                            command=self._switch).pack(side=RIGHT, padx=4)
+
+        nb = ttk.Notebook(outer)
+        nb.pack(fill=BOTH, expand=True)
+        self._flight_vars: dict[str, StringVar] = {}
+        self._texts: dict[str, tk.Text] = {}
+
+        # تبويب الرحلة
+        ftab = ttk.Frame(nb, padding=12)
+        nb.add(ftab, text="الرحلة (ذهاب/عودة)")
+        for col, (prefix, head) in enumerate((("out_", "رحلة الذهاب"),
+                                              ("ret_", "رحلة العودة"))):
+            box = ttk.Labelframe(ftab, text=head, padding=8)
+            box.grid(row=0, column=col, padx=8, sticky="n")
+            for r, (key, label) in enumerate(travel.FLIGHT_FIELDS):
+                ttk.Label(box, text=label, font=(_FUI, 9),
+                          foreground=TEXT).grid(row=r, column=1, sticky="e",
+                                                padx=(8, 4), pady=3)
+                var = StringVar()
+                self._flight_vars[prefix + key] = var
+                ttk.Entry(box, textvariable=var, width=22,
+                          justify="right").grid(row=r, column=0, pady=3)
+
+        # تبويبات النصوص
+        for key, label in travel.TEXT_SECTIONS:
+            tab = ttk.Frame(nb, padding=8)
+            nb.add(tab, text=label)
+            txt = tk.Text(tab, width=70, height=14, wrap="word", font=(_FUI, 10))
+            txt.pack(fill=BOTH, expand=True)
+            self._texts[key] = txt
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X, pady=(10, 0))
+        ttk.Button(btns, text=rtl("📄 تصدير/معاينة PDF"), style="Primary.TButton",
+                   command=self._export).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("💾 حفظ"), style="Act.TButton",
+                   command=self._save).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("↺ استعادة القالب"), style="Ghost.TButton",
+                   command=self._reset_template).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+
+        self._load_into_form(0)
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 6
+        self.geometry(f"+{x}+{y}")
+
+    def _load_into_form(self, idx: int) -> None:
+        d = self._data[idx]
+        flight = d.get("flight", {})
+        for key, var in self._flight_vars.items():
+            var.set(str(flight.get(key, "") or ""))
+        for key, txt in self._texts.items():
+            txt.delete("1.0", "end")
+            txt.insert("1.0", str(d.get(key, "") or ""))
+
+    def _dump_form(self, idx: int) -> None:
+        self._data[idx] = {
+            "flight": {k: v.get().strip() for k, v in self._flight_vars.items()},
+            **{key: self._texts[key].get("1.0", "end").strip()
+               for key, _ in self._travel.TEXT_SECTIONS},
+        }
+
+    def _switch(self) -> None:
+        self._dump_form(self._current)
+        self._current = int(self._sel.get())
+        self._load_into_form(self._current)
+
+    def _reset_template(self) -> None:
+        if not messagebox.askyesno("استعادة القالب",
+                                   "استبدال محتوى هذا البرنامج بالقالب الافتراضي؟",
+                                   parent=self):
+            return
+        self._data[self._current] = self._travel.default_travel(self._current)
+        self._load_into_form(self._current)
+
+    def _save(self) -> None:
+        self._dump_form(self._current)
+        for i, data in self._data.items():
+            self._travel.save_travel(self.app._settings, i, data)
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.app._audit("حفظ مواعيد وتعليمات السفر", self._names[self._current])
+        self.app.set_status("حُفظت مواعيد وتعليمات السفر", ok=True)
+
+    def _export(self) -> None:
+        self._dump_form(self._current)
+        idx = self._current
+        data = self._data[idx]
+        name = self._names[idx]
+        season = self.app.season_year.get()
+        itinerary = [list(r) for r in self.app._settings.get("itinerary", [])]
+        from .pdf_io import export_travel_pdf
+        self.app._preview_export(
+            lambda p: export_travel_pdf(p, program_name=name, data=data,
+                                        itinerary=itinerary, season=season),
+            f"مواعيد وتعليمات السفر — {name}", "pdf")
 
 
 class ItineraryDialog(Toplevel):
