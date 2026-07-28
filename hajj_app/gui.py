@@ -627,6 +627,7 @@ class HajjApp:
             ("📱  رسالة واتساب للمحدّدين", self.do_whatsapp),
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
             ("✅  قائمة تحقّق الجاهزية", self.do_readiness),
+            ("🎫  تسجيل الحضور (مسح QR/جواز)", self.do_checkin),
         ]
         if ce:
             book_items.append(("🧹  مسح الكل", self.clear_all))
@@ -2008,6 +2009,14 @@ class HajjApp:
         if not self._require_records():
             return
         ReadinessDialog(self.root, lambda: self.records, self._focus_record)
+
+    def do_checkin(self) -> None:
+        """يفتح تسجيل الحضور بمسح QR/الجواز لكل مرحلة (المطار/الفندق/الباص)."""
+        if not self._require_edit():
+            return
+        if not self._require_records():
+            return
+        CheckInDialog(self.root, lambda: self.records, self.save_data)
 
     _BULK_DOC_LABEL = {"receipt": "سند قبض", "invoice": "فاتورة ضريبية",
                        "einvoice": "فاتورة إلكترونية", "contract": "عقد"}
@@ -4182,6 +4191,123 @@ class PaymentsDialog(Toplevel):
             if 0 <= iid < len(self.record.payments):
                 del self.record.payments[iid]
         self._commit()
+
+
+class CheckInDialog(Toplevel):
+    """تسجيل حضور الحجّاج بمسح رمز QR للبطاقة أو إدخال الجواز/الرقم المرجعي.
+
+    قارئات QR/الباركود تعمل كلوحة مفاتيح (تكتب الرمز ثم Enter)، فيكفي حقل نصّي.
+    """
+
+    STAGES = ("المطار", "الفندق", "الباص", "العودة")
+
+    def __init__(self, parent, get_records, on_change) -> None:
+        super().__init__(parent)
+        self.get_records = get_records
+        self.on_change = on_change
+        self.title("🎫 تسجيل الحضور")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+
+        top = ttk.Frame(outer)
+        top.pack(fill=X)
+        ttk.Label(top, text="المرحلة:", font=(_FSB, 11),
+                  foreground=TEXT).pack(side=RIGHT, padx=(0, 8))
+        self._stage = StringVar(value=self.STAGES[0])
+        cb = ttk.Combobox(top, textvariable=self._stage, values=self.STAGES,
+                          state="readonly", width=12, font=(_FSB, 11))
+        cb.pack(side=RIGHT)
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._refresh())
+
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
+                  text=rtl("امسح رمز QR للبطاقة، أو اكتب رقم الجواز/الرقم المرجعي "
+                           "ثم Enter.")).pack(anchor="e", pady=(10, 4))
+        self._scan = StringVar()
+        entry = ttk.Entry(outer, textvariable=self._scan, width=34,
+                          justify="center", font=(_FSB, 13))
+        entry.pack(fill=X)
+        entry.bind("<Return>", lambda _e: self._submit())
+        entry.focus_set()
+        self._entry = entry
+
+        self._result = ttk.Label(outer, font=(_FSB, 12), foreground=BRONZE)
+        self._result.pack(anchor="e", pady=(10, 4))
+        self._counts = ttk.Label(outer, font=(_FSB, 11), foreground=TEXT)
+        self._counts.pack(anchor="e")
+
+        ttk.Label(outer, text=rtl("الغائبون عن هذه المرحلة:"), font=(_FUI, 10),
+                  foreground=MUTED).pack(anchor="e", pady=(10, 2))
+        self.absent = ttk.Treeview(outer, columns=("name", "phone"),
+                                   show="headings", height=8)
+        self.absent.heading("name", text="اسم الحاج")
+        self.absent.column("name", width=220, anchor="e")
+        self.absent.heading("phone", text="الهاتف")
+        self.absent.column("phone", width=130, anchor="center")
+        self.absent.pack(fill=BOTH, expand=True)
+
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(anchor="w", pady=(10, 0))
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._refresh()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _find(self, text: str):
+        import re
+        t = str(text or "").strip()
+        if not t:
+            return None
+        m = re.search(r"الجواز[:\s]+([A-Za-z0-9]+)", t)
+        key = (m.group(1) if m else t).strip().upper()
+        for i, r in enumerate(self.get_records()):
+            if str(r.passport_number or "").strip().upper() == key:
+                return i
+            if str(r.reference_number or "").strip().upper() == key:
+                return i
+        return None
+
+    def _submit(self) -> None:
+        text = self._scan.get()
+        self._scan.set("")
+        if not text.strip():
+            return
+        idx = self._find(text)
+        if idx is None:
+            self._result.configure(text=rtl(f"✗ لم يُعثر على: {text.strip()}"),
+                                   foreground=DANGER)
+            return
+        rec = self.get_records()[idx]
+        stage = self._stage.get()
+        from datetime import datetime
+        already = stage in (rec.checkins or {})
+        if not isinstance(rec.checkins, dict):
+            rec.checkins = {}
+        rec.checkins[stage] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.on_change()
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        state = "مسجّل مسبقاً" if already else "سُجّل حضوره الآن"
+        self._result.configure(text=rtl(f"✓ {name} — {state}"), foreground=BRONZE)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        recs = self.get_records()
+        stage = self._stage.get()
+        present = [r for r in recs if stage in (r.checkins or {})]
+        absent = [r for r in recs if stage not in (r.checkins or {})]
+        self._counts.configure(text=rtl(
+            f"حضر: {len(present)}    •    غاب: {len(absent)}    •    "
+            f"الإجمالي: {len(recs)}"))
+        self.absent.delete(*self.absent.get_children())
+        for r in absent:
+            name = r.full_name_ar or r.full_name_en or r.passport_number or "—"
+            self.absent.insert("", "end", values=(name, r.phone or ""))
+        self._entry.focus_set()
 
 
 class GroupsDialog(Toplevel):

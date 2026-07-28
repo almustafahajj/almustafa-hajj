@@ -65,4 +65,30 @@ assert rec3.payments == [] and rec3.paid_amount == "0", rec3.paid_amount
 root.destroy()
 print("  OK: الإضافة والحذف يزامنان «المدفوع»، والتفريغ يعيده صفراً")
 
+print("\n=== تسجيل الحضور (مسح QR/جواز) ===")
+from hajj_app.gui import CheckInDialog
+recs = [PassportData(full_name_ar="أحمد", passport_number="A1", phone="0501"),
+        PassportData(full_name_ar="سالم", passport_number="B2",
+                     reference_number="REF9")]
+root2 = tk.Tk(); root2.withdraw()
+seen = []
+ci = CheckInDialog(root2, lambda: recs, lambda: seen.append(1))
+ci._scan.set("A1"); ci._submit()                    # مسح بالجواز
+assert "المطار" in recs[0].checkins and seen
+ci._scan.set("الحاج: سالم  الجواز: B2  الهاتف: 0502"); ci._submit()   # نصّ QR
+assert "المطار" in recs[1].checkins
+ci._stage.set("الباص"); ci._scan.set("REF9"); ci._submit()   # بالرقم المرجعي
+assert "الباص" in recs[1].checkins
+ci._scan.set("ZZZ"); ci._submit()                   # غير موجود
+assert "لم يُعثر" in ci._result.cget("text")
+ci._stage.set("المطار"); ci._refresh()              # كلاهما حضر للمطار
+assert len(ci.absent.get_children()) == 0
+# التخزين يحفظ الحضور قاموساً
+CK = WORK / "checkins.json"
+storage.save_records(recs, CK, None)
+b, _ = storage.load_records(CK, None)
+assert isinstance(b[0].checkins, dict) and b[0].checkins.get("المطار")
+root2.destroy()
+print("  OK: مطابقة بالجواز/QR/المرجعي، الغائبون، والتخزين قاموساً")
+
 print("\n*** PAYMENTS TESTS PASSED ***")

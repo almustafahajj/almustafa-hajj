@@ -118,6 +118,8 @@ class PassportData:
 
     # ---- سجلّ الدفعات (أقساط): قائمة {date, amount, method, note} ----
     payments: list = field(default_factory=list)
+    # ---- الحضور: {المرحلة: طابع زمني} (المطار/الفندق/الباص/العودة) ----
+    checkins: dict = field(default_factory=dict)
 
     # ---- حقول داخلية: تُقرأ من الجواز لكنها لا تظهر في الكشف ----
     surname_en: str = ""

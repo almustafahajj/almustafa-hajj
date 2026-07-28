@@ -84,6 +84,9 @@ def _from_dict(raw: dict) -> PassportData:
             record.checksum_ok = bool(value)
         elif key == "payments":
             record.payments = _clean_payments(value)
+        elif key == "checkins":
+            record.checkins = ({str(k): str(v) for k, v in value.items()}
+                               if isinstance(value, dict) else {})
         else:
             setattr(record, key, "" if value is None else str(value))
     return record
