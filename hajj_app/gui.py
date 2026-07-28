@@ -799,7 +799,12 @@ class HajjApp:
         if ce:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
-        admin_items += [None, ("🌐  اللغة / Language", self.change_language)]
+        # زرّ اللغة يُظهر اللغة الهدف (عكس الحالية) بوضوح
+        from . import i18n as _i18n
+        _lang_item = ("🌐  التغيير إلى الإنجليزية (English)"
+                      if _i18n.get_lang() == "ar"
+                      else "🌐  التغيير إلى العربية (Switch to Arabic)")
+        admin_items += [None, (_lang_item, self.change_language)]
         if self._is_admin() and self.session is not None:
             admin_items += [None, ("👥  إدارة الحسابات", self.manage_accounts)]
         if self.session is not None:
