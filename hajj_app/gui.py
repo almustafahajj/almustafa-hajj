@@ -738,6 +738,7 @@ class HajjApp:
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
             ("✅  قائمة تحقّق الجاهزية", self.do_readiness),
             ("🎫  تسجيل الحضور (مسح QR/جواز)", self.do_checkin),
+            ("📄  تقرير الحضور (معاينة)", self.do_attendance_report),
         ]
         if ce:
             book_items.append(("🧹  مسح الكل", self.clear_all))
@@ -2164,7 +2165,79 @@ class HajjApp:
             return
         if not self._require_records():
             return
-        CheckInDialog(self.root, lambda: self.records, self.save_data)
+        CheckInDialog(self.root, lambda: self.records, self.save_data,
+                      on_export=self.do_attendance_report)
+
+    def do_attendance_report(self) -> None:
+        """يصدّر تقرير الحضور: مصفوفة كل حاج × كل مرحلة (حاضر/غائب والوقت)."""
+        if not self._require_records():
+            return
+        records = self._visible_records()
+        stages = list(CheckInDialog.STAGES)
+        season = self.season_year.get()
+
+        def build(path):
+            from openpyxl import Workbook
+            from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+            from openpyxl.utils import get_column_letter
+            wb = Workbook(); ws = wb.active; ws.title = "الحضور"
+            ws.sheet_view.rightToLeft = True
+            base = ["م", "اسم الحاج", "رقم الجواز", "الهاتف", "المجموعة"]
+            heads = base + stages
+            ncols = len(heads)
+
+            ws.append([f"تقرير الحضور — موسم {season}هـ"] + [""] * (ncols - 1))
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+            c = ws.cell(row=1, column=1)
+            c.font = Font(bold=True, size=14)
+            c.alignment = Alignment(horizontal="center")
+
+            # سطر ملخّص: عدد الحاضرين لكل مرحلة
+            present = {s: sum(1 for r in records if s in (r.checkins or {}))
+                       for s in stages}
+            summ = ["الحاضرون", "", "", "", ""] + [f"{present[s]}/{len(records)}"
+                                                    for s in stages]
+            ws.append(summ)
+            for col in range(1, ncols + 1):
+                cell = ws.cell(row=2, column=col)
+                cell.font = Font(bold=True, color="1F6F4A")
+                cell.alignment = Alignment(horizontal="center")
+
+            ws.append(heads)
+            thin = Side(style="thin", color="D0D0D0")
+            border = Border(left=thin, right=thin, top=thin, bottom=thin)
+            for col in range(1, ncols + 1):
+                cell = ws.cell(row=3, column=col)
+                cell.fill = PatternFill("solid", fgColor="3A342B")
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.alignment = Alignment(horizontal="center", wrap_text=True)
+                cell.border = border
+            green = PatternFill("solid", fgColor="E8F6EC")
+            red = PatternFill("solid", fgColor="FBEBEA")
+
+            for i, r in enumerate(records, start=1):
+                name = r.full_name_ar or r.full_name_en or r.passport_number or "—"
+                row = [i, name, str(r.passport_number or ""), str(r.phone or ""),
+                       str(r.group or "")]
+                ck = r.checkins if isinstance(r.checkins, dict) else {}
+                for s in stages:
+                    row.append(ck.get(s, "غائب"))
+                ws.append(row)
+                rownum = ws.max_row
+                for col in range(1, ncols + 1):
+                    cell = ws.cell(row=rownum, column=col)
+                    cell.alignment = Alignment(horizontal="center")
+                    cell.border = border
+                    if col > len(base):
+                        cell.fill = red if cell.value == "غائب" else green
+
+            widths = [5, 26, 14, 15, 12] + [16] * len(stages)
+            for i, w in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = w
+            ws.freeze_panes = "F4"
+            wb.save(path)
+
+        self._preview_export(build, f"تقرير الحضور {season}هـ", "xlsx")
 
     _BULK_DOC_LABEL = {"receipt": "سند قبض", "invoice": "فاتورة ضريبية",
                        "einvoice": "فاتورة إلكترونية", "contract": "عقد"}
@@ -4865,10 +4938,11 @@ class CheckInDialog(Toplevel):
 
     STAGES = ("المطار", "الفندق", "الباص", "العودة")
 
-    def __init__(self, parent, get_records, on_change) -> None:
+    def __init__(self, parent, get_records, on_change, on_export=None) -> None:
         super().__init__(parent)
         self.get_records = get_records
         self.on_change = on_change
+        self.on_export = on_export
         self.title("🎫 تسجيل الحضور")
         self.configure(bg=BG)
         self.transient(parent)
@@ -4918,8 +4992,14 @@ class CheckInDialog(Toplevel):
         self.absent.column("phone", width=130, anchor="center")
         self.absent.pack(fill=BOTH, expand=True)
 
-        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
-                   command=self.destroy).pack(anchor="w", pady=(10, 0))
+        foot = ttk.Frame(outer)
+        foot.pack(fill=X, pady=(10, 0))
+        if self.on_export is not None:
+            ttk.Button(foot, text=rtl("📄 تصدير تقرير الحضور"),
+                       style="Act.TButton",
+                       command=self.on_export).pack(side=RIGHT, padx=3)
+        ttk.Button(foot, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
         self.bind("<Escape>", lambda _e: self.destroy())
         self._refresh()
         self.update_idletasks()
