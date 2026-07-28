@@ -7,7 +7,7 @@
 
 #define AppName "برنامج موسم الحج"
 #define AppNameEn "HajjApp"
-#define AppVersion "1.0.0"
+#define AppVersion "2.0.0"
 #define AppPublisher "المصطفى للحج والعمرة"
 #define AppExe "HajjApp.exe"
 

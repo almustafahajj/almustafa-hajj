@@ -559,6 +559,27 @@ assert len(_ch.canvas.find_all()) > 20
 _r5.destroy()
 print("  OK: رسوم التوزيعات والمالية تُرسَم على Canvas")
 
+print("\n=== حول/اختصارات/لوحة الأوامر (Ctrl+K) ===")
+import hajj_app as _ha
+from hajj_app.gui import AboutDialog as _AB, ShortcutsDialog as _SH, CommandPalette as _CP
+assert _ha.__version__ == "2.0.0"
+_r6 = Tk(); _r6.withdraw()
+_ab = _AB(_r6); _ab.destroy()
+_sh = _SH(_r6); _sh.destroy()
+_hit = []
+_cp = _CP(_r6, [("أمر", lambda: _hit.append("cmd"))],
+          [_PD(full_name_ar="أحمد", passport_number="A1"),
+           _PD(full_name_ar="سالم", passport_number="B2")],
+          lambda i: _hit.append(("pil", i)))
+assert _cp.listbox.size() == 3                     # أمر + حاجّان
+_cp._q.set("سالم")
+_rows = [_cp.listbox.get(i) for i in range(_cp.listbox.size())]
+assert any("سالم" in x for x in _rows) and not any("أحمد" in x for x in _rows)
+_cp.listbox.selection_set(0); _cp._run()
+assert ("pil", 1) in _hit
+_r6.destroy()
+print("  OK: النسخة 2.0.0، النوافذ تفتح، ولوحة الأوامر تصفّي وتقفز")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

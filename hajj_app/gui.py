@@ -800,6 +800,9 @@ class HajjApp:
         if ce:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
+        admin_items += [None,
+                        ("⌨  اختصارات لوحة المفاتيح", self.do_shortcuts),
+                        ("ℹ  حول البرنامج", self.do_about)]
         # زرّ اللغة يُظهر اللغة الهدف (عكس الحالية) بوضوح
         from . import i18n as _i18n
         _lang_item = ("🌐  التغيير إلى الإنجليزية (English)"
@@ -1169,6 +1172,9 @@ class HajjApp:
         self.root.bind("<Control-P>", lambda _e: self.do_print_filtered())
         self.root.bind("<Control-z>", lambda _e: self.undo())
         self.root.bind("<Control-Z>", lambda _e: self.undo())
+        self.root.bind("<Control-k>", lambda _e: self.do_command_palette())
+        self.root.bind("<Control-K>", lambda _e: self.do_command_palette())
+        self.root.bind("<F1>", lambda _e: self.do_shortcuts())
         self.tree.bind("<Delete>", lambda _e: self.delete_selected())
 
     def _focus_search(self) -> str:
@@ -2255,6 +2261,45 @@ class HajjApp:
     def do_dashboard(self) -> None:
         """يفتح لوحة التحكم الرئيسية (مؤشّرات سريعة قابلة للنقر)."""
         DashboardDialog(self.root, self)
+
+    def do_about(self) -> None:
+        """يفتح نافذة «حول البرنامج»."""
+        AboutDialog(self.root)
+
+    def do_command_palette(self) -> None:
+        """يفتح البحث السريع / لوحة الأوامر (Ctrl+K)."""
+        commands = [
+            ("➕ إضافة حاج يدوياً", self.add_manual),
+            ("📷 إضافة جوازات (صور/PDF)", self.add_images),
+            ("📁 استيراد من إكسل", self.import_from_excel),
+            ("📊 تصدير إكسل", self.do_export_excel),
+            ("📄 تصدير PDF", self.do_export_pdf),
+            ("🏠 لوحة التحكم", self.do_dashboard),
+            ("📊 الإحصاءات والمالية", self.do_stats),
+            ("📈 الرسوم البيانية", self.do_charts),
+            ("💵 دفعات الحاج", self.do_payments),
+            ("🧮 المصروفات والمحاسبة", self.do_expenses),
+            ("🎫 تسجيل الحضور", self.do_checkin),
+            ("📄 تقرير الحضور", self.do_attendance_report),
+            ("✅ قائمة الجاهزية", self.do_readiness),
+            ("🩺 فحص جاهزية الكشف", self.do_quality_check),
+            ("🛏 إشغال الغرف", self.do_occupancy),
+            ("🚌 كشف المواصلات", self.do_transport),
+            ("🪪 بطاقات الحجّاج", self.do_badges),
+            ("👥 المجموعات والمرشدون", self.do_groups),
+            ("🗓 جدول المناسك", self.do_itinerary),
+            ("🌙 بدء موسم جديد", self.do_new_season),
+            ("🛡 نسخة احتياطية الآن", self.do_backup_now),
+            ("📝 سجلّ التدقيق", self.do_audit),
+            ("⌨ الاختصارات", self.do_shortcuts),
+            ("ℹ حول البرنامج", self.do_about),
+        ]
+        CommandPalette(self.root, commands, list(self.records),
+                       self._focus_record)
+
+    def do_shortcuts(self) -> None:
+        """يعرض اختصارات لوحة المفاتيح."""
+        ShortcutsDialog(self.root)
 
     def do_audit(self) -> None:
         """يفتح سجلّ التدقيق (من فعل ماذا ومتى)."""
@@ -3529,6 +3574,180 @@ class AuditDialog(Toplevel):
             from . import audit
             audit.clear_log()
             self.refresh()
+
+
+class CommandPalette(Toplevel):
+    """بحث سريع / لوحة أوامر (Ctrl+K): اكتب لتصفية الأوامر والحجّاج ثم Enter."""
+
+    def __init__(self, parent, commands, records, on_pilgrim) -> None:
+        super().__init__(parent)
+        self.on_pilgrim = on_pilgrim
+        self.overrideredirect(True)
+        self.configure(bg=BRONZE)
+        frame = tk.Frame(self, bg=BG, padx=2, pady=2)
+        frame.pack()
+        inner = tk.Frame(frame, bg=BG, padx=10, pady=10)
+        inner.pack()
+
+        self._q = StringVar()
+        entry = ttk.Entry(inner, textvariable=self._q, width=46,
+                          justify="right", font=(_FSB, 13))
+        entry.pack(fill=X)
+        entry.focus_set()
+        self.listbox = tk.Listbox(inner, height=10, width=46, font=(_FUI, 11),
+                                  activestyle="dotbox", bg=PANEL, fg=TEXT,
+                                  selectbackground=BRONZE, selectforeground="white",
+                                  highlightthickness=0, bd=0)
+        self.listbox.pack(fill=BOTH, expand=True, pady=(8, 0))
+
+        # (النوع، النصّ المعروض، الحمولة)
+        self._all = [("cmd", label, cb) for label, cb in commands]
+        for i, rec in enumerate(records):
+            name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+            self._all.append(("pil", f"👤 {name}  ·  {rec.passport_number or ''}", i))
+        self._shown: list = []
+
+        self._q.trace_add("write", lambda *_a: self._filter())
+        entry.bind("<Down>", lambda _e: self._move(1))
+        entry.bind("<Up>", lambda _e: self._move(-1))
+        entry.bind("<Return>", lambda _e: self._run())
+        self.listbox.bind("<Return>", lambda _e: self._run())
+        self.listbox.bind("<Double-1>", lambda _e: self._run())
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.bind("<FocusOut>", lambda _e: self.after(120, self._maybe_close))
+
+        self._filter()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = self.winfo_screenheight() // 5
+        self.geometry(f"+{x}+{y}")
+
+    def _maybe_close(self) -> None:
+        try:
+            if self.focus_get() is None:
+                self.destroy()
+        except Exception:
+            pass
+
+    def _filter(self) -> None:
+        q = self._q.get().strip().lower()
+        self.listbox.delete(0, "end")
+        self._shown = []
+        for kind, label, payload in self._all:
+            if not q or q in label.lower():
+                self._shown.append((kind, label, payload))
+                self.listbox.insert("end", label)
+                if len(self._shown) >= 40:
+                    break
+        if self._shown:
+            self.listbox.selection_clear(0, "end")
+            self.listbox.selection_set(0)
+
+    def _move(self, delta: int) -> None:
+        if not self._shown:
+            return
+        cur = self.listbox.curselection()
+        i = (cur[0] if cur else 0) + delta
+        i = max(0, min(len(self._shown) - 1, i))
+        self.listbox.selection_clear(0, "end")
+        self.listbox.selection_set(i)
+        self.listbox.see(i)
+
+    def _run(self) -> None:
+        cur = self.listbox.curselection()
+        if not cur or cur[0] >= len(self._shown):
+            return
+        kind, _label, payload = self._shown[cur[0]]
+        self.destroy()
+        if kind == "cmd":
+            payload()
+        else:
+            self.on_pilgrim(payload)
+
+
+class AboutDialog(Toplevel):
+    """نافذة «حول البرنامج»: الشعار والاسم والإصدار والحقوق."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        from . import __release_name__, __version__
+        self.title("حول البرنامج")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+        outer = ttk.Frame(self, padding=28)
+        outer.pack()
+        logo = logo_image(self, width=190)
+        if logo is not None:
+            lbl = ttk.Label(outer, image=logo, background=BG)
+            lbl.image = logo
+            lbl.pack(pady=(0, 12))
+        ttk.Label(outer, text="المصطفى للحج والعمرة", font=(_FSB, 16),
+                  foreground=TEXT, background=BG).pack()
+        ttk.Label(outer, text="برنامج موسم الحج", font=(_FUI, 11),
+                  foreground=MUTED, background=BG).pack(pady=(2, 8))
+        ver = f"الإصدار {__version__}"
+        if __release_name__:
+            ver += f"   «{__release_name__}»"
+        ttk.Label(outer, text=ver, font=(_FSB, 12), foreground=BRONZE,
+                  background=BG).pack()
+        ttk.Label(outer, justify="center", font=(_FUI, 9), foreground=MUTED,
+                  background=BG, text=rtl(
+                      "إدارة متكاملة لبيانات الحجّاج: الجوازات والتأشيرات، التسكين\n"
+                      "والمواصلات، المالية والدفعات، الكشوف والبطاقات، والحضور.")
+                  ).pack(pady=(12, 8))
+        ttk.Label(outer, text=rtl("© جميع الحقوق محفوظة"), font=(_FUI, 8),
+                  foreground=MUTED, background=BG).pack()
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(pady=(16, 0))
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+
+class ShortcutsDialog(Toplevel):
+    """اختصارات لوحة المفاتيح."""
+
+    SHORTCUTS = (
+        ("Ctrl + K", "البحث السريع / لوحة الأوامر"),
+        ("Ctrl + Z", "تراجع عن آخر عملية"),
+        ("Delete", "حذف الحاج المحدّد"),
+        ("نقر مزدوج", "تعديل بيانات الحاج"),
+        ("زرّ الفأرة الأيمن", "قائمة إجراءات الصفّ"),
+        ("F1  /  ؟", "عرض هذه الاختصارات"),
+        ("Esc", "إغلاق النوافذ"),
+    )
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.title("⌨ اختصارات لوحة المفاتيح")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+        outer = ttk.Frame(self, padding=22)
+        outer.pack()
+        ttk.Label(outer, text=rtl("⌨  اختصارات لوحة المفاتيح"), font=(_FSB, 14),
+                  foreground=TEXT, background=BG).pack(anchor="e", pady=(0, 12))
+        grid = ttk.Frame(outer)
+        grid.pack(fill=BOTH, expand=True)
+        for i, (key, desc) in enumerate(self.SHORTCUTS):
+            ttk.Label(grid, text=desc, font=(_FUI, 10), foreground=TEXT,
+                      background=BG).grid(row=i, column=1, sticky="e",
+                                          padx=(18, 6), pady=5)
+            chip = tk.Label(grid, text=key, bg=PANEL, fg=BRONZE,
+                            font=("Consolas", 10, "bold"), padx=10, pady=3)
+            chip.grid(row=i, column=0, sticky="w", pady=5)
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(anchor="w", pady=(14, 0))
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
 
 
 class DashboardDialog(Toplevel):
@@ -6299,6 +6518,21 @@ def _show_splash(root):
             lbl.pack()
         tk.Label(frame, text="برنامج الحج", bg=BG, fg=ACCENT,
                  font=(_FSB, 16)).pack(pady=(12, 0))
+        from . import __release_name__, __version__
+        vtext = f"الإصدار {__version__}"
+        if __release_name__:
+            vtext += f"  «{__release_name__}»"
+        tk.Label(frame, text=vtext, bg=BG, fg=BRONZE,
+                 font=(_FUI, 9)).pack(pady=(3, 0))
+        import random
+        _tips = [
+            "نصيحة: اضغط Ctrl+K لفتح البحث السريع.",
+            "نصيحة: F1 يعرض اختصارات لوحة المفاتيح.",
+            "نصيحة: بطاقات QR تُسرّع تسجيل الحضور.",
+            "نصيحة: احفظ توليفة فلاترك من «⭐ فلاتر محفوظة».",
+        ]
+        tk.Label(frame, text=random.choice(_tips), bg=BG, fg=MUTED,
+                 font=(_FUI, 9)).pack(pady=(8, 0))
         tk.Label(frame, text="جارٍ التحميل…", bg=BG, fg=MUTED,
                  font=(_FUI, 10)).pack(pady=(4, 0))
         splash.update_idletasks()
