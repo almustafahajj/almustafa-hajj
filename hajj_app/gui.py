@@ -5059,6 +5059,9 @@ class ItineraryDialog(Toplevel):
                    command=self._delete).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text=rtl("📋 قالب أيام الحجّ"), style="Ghost.TButton",
                    command=self._fill_template).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("🕋 برنامج رحلة الحج (مفصّل)"),
+                   style="Ghost.TButton",
+                   command=self._fill_hajj_program).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text=rtl("📄 تصدير/طباعة"), style="Ghost.TButton",
                    command=self._export).pack(side=LEFT, padx=3)
         ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
@@ -5107,6 +5110,17 @@ class ItineraryDialog(Toplevel):
                 "قالب", "استبدال الجدول الحالي بقالب أيام الحجّ؟", parent=self):
             return
         self._items = [list(r) for r in self.TEMPLATE]
+        self._persist()
+
+    def _fill_hajj_program(self) -> None:
+        """يملأ الجدول ببرنامج رحلة الحج المفصّل (من وثيقة الحملة)."""
+        if self._items and not messagebox.askyesno(
+                "برنامج رحلة الحج",
+                "استبدال الجدول الحالي ببرنامج رحلة الحج المفصّل؟\n"
+                "(عدّل التواريخ حسب موسمك عند اللزوم)", parent=self):
+            return
+        from .travel import DETAILED_HAJJ_PROGRAM
+        self._items = [list(r) for r in DETAILED_HAJJ_PROGRAM]
         self._persist()
 
     def _export(self) -> None:

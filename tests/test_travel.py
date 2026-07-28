@@ -69,12 +69,18 @@ print("  OK: النافذة تحفظ الرحلة والنصوص وتصدّر PD
 print("\n=== أخذ الرحلة والتواريخ من برامج الحملة ===")
 from hajj_app.programs import Program, programs_to_dicts
 _p = Program(travel_date="2026-5-21", return_date="2026-5-31",
-             departure_airport="مطار دبي", arrival_airport="مطار جدة")
+             departure_airport="مطار دبي", arrival_airport="مطار جدة",
+             flight_out="SV 569", takeoff_out="14:25", land_out="16:25",
+             flight_ret="SV 566", takeoff_ret="05:55", land_ret="09:55")
 _fl = travel.from_program(_p)
 assert _fl["out_day"] == "2026-5-21" and _fl["out_dep"] == "مطار دبي"
 assert _fl["out_arr"] == "مطار جدة"
 assert _fl["ret_day"] == "2026-5-31" and _fl["ret_dep"] == "مطار جدة"
 assert _fl["ret_arr"] == "مطار دبي"                    # العودة تعكس المطارين
+# أرقام الرحلة والأوقات تُؤخذ من البرنامج أيضاً
+assert _fl["out_flight"] == "SV 569" and _fl["out_takeoff"] == "14:25"
+assert _fl["ret_flight"] == "SV 566" and _fl["ret_land"] == "09:55"
+assert len(travel.DETAILED_HAJJ_PROGRAM) == 12         # برنامج رحلة الحج المفصّل
 # النافذة تُعبّئ الرحلة تلقائياً من برامج الحملة المحفوظة
 _st.save_settings({"programs": programs_to_dicts(
     [_p, Program(), Program()])})

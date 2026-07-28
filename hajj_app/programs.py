@@ -31,6 +31,15 @@ class Program:
     svc_wheelchair_escort: str = "5000"
     svc_hady: str = "1000"
     svc_business_ticket: str = "7000"
+    # أرقام وأوقات الرحلة (ذهاب/عودة)
+    flight_out: str = ""
+    report_out: str = ""
+    takeoff_out: str = ""
+    land_out: str = ""
+    flight_ret: str = ""
+    report_ret: str = ""
+    takeoff_ret: str = ""
+    land_ret: str = ""
 
 
 # مجموعات الحقول للعرض: (عنوان المجموعة، [(المفتاح، التسمية، النوع)])
@@ -42,6 +51,16 @@ FIELD_GROUPS = (
         ("arrival_airport", "مطار الوصول", "text"),
         ("carrier", "الناقل", "text"),
         ("hotel", "اسم الفندق", "text"),
+    )),
+    ("أرقام وأوقات الرحلة", (
+        ("flight_out", "رقم رحلة الذهاب", "text"),
+        ("report_out", "الحضور للمطار (ذهاب)", "text"),
+        ("takeoff_out", "وقت الإقلاع (ذهاب)", "text"),
+        ("land_out", "وقت الوصول (ذهاب)", "text"),
+        ("flight_ret", "رقم رحلة العودة", "text"),
+        ("report_ret", "التحرّك للمطار (عودة)", "text"),
+        ("takeoff_ret", "وقت الإقلاع (عودة)", "text"),
+        ("land_ret", "وقت الوصول (عودة)", "text"),
     )),
     ("تكلفة الشخص في الغرفة", (
         ("cost_single", "المفردة", "money"),
