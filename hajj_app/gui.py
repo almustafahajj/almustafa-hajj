@@ -239,6 +239,7 @@ class HajjApp:
         self.session = session      # يحمل مفتاح التشفير؛ None في الاختبارات
         self._open_mode = open_mode  # فتح بلا رقم سري (بلا تشفير) — ملف بيانات منفصل
         self._logout_requested = False   # يرفعه «تسجيل الخروج» ليعيد main شاشة الدخول
+        self._exit_action = None          # 'logout' | 'restart' | None (إغلاق عادي)
         self.records: list[PassportData] = []
         self.data_path = default_data_path()
         if open_mode:
@@ -264,6 +265,8 @@ class HajjApp:
 
         # إعدادات الواجهة المحفوظة (تُستعاد بين الجلسات)
         self._ui = dict(self._settings.get("ui", {}))
+        from . import i18n
+        i18n.set_lang(self._ui.get("ui_lang", "ar"))
         self._density = self._ui.get("density", "عادي")
         if self._density not in self._DENSITY:
             self._density = "عادي"
@@ -413,9 +416,10 @@ class HajjApp:
         if self._logo is not None:
             ttk.Label(bar, image=self._logo, background=BG).pack(side=RIGHT, padx=(0, 14))
 
+        from . import i18n
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
-        ttk.Label(titles, text="برنامج الحج موسم", font=(_FSB, 17),
+        ttk.Label(titles, text=i18n.tr("برنامج الحج موسم"), font=(_FSB, 17),
                   foreground=TEXT, background=BG).pack(side=RIGHT)
         year_box = ttk.Combobox(
             titles, textvariable=self.season_year, state="readonly",
@@ -431,31 +435,31 @@ class HajjApp:
             ttk.Label(info, text=f"👤  {self.session.username}  ·  {self.session.role_label}",
                       font=(_FSB, 10), foreground=TEXT,
                       background=BG).pack(anchor="w")
-            ttk.Label(info, text="🔒 البيانات مشفّرة", font=(_FUI, 9),
+            ttk.Label(info, text=i18n.tr("🔒 البيانات مشفّرة"), font=(_FUI, 9),
                       foreground=BRONZE, background=BG).pack(anchor="w")
             for text, action in (
                 ("تغيير كلمة المرور", self.change_password),
                 ("مفتاح استرداد جديد", self.new_recovery_key),
             ):
-                link = ttk.Label(info, text=text, font=(_FUI, 9, "underline"),
+                link = ttk.Label(info, text=i18n.tr(text), font=(_FUI, 9, "underline"),
                                  foreground=TEXT, background=BG, cursor="hand2")
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
-            logout_btn = ttk.Button(bar, text=rtl("🚪  تسجيل الخروج"),
+            logout_btn = ttk.Button(bar, text=rtl(i18n.tr("🚪  تسجيل الخروج")),
                                     style="Ghost.TButton", command=self.do_logout)
             logout_btn.pack(side=LEFT, padx=(0, 8))
             add_tooltip(logout_btn, "حفظ البيانات والعودة إلى شاشة الدخول")
         elif self._open_mode:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
-            ttk.Label(info, text="🔓 وضع مفتوح — بلا رقم سري",
+            ttk.Label(info, text=i18n.tr("🔓 وضع مفتوح — بلا رقم سري"),
                       font=(_FSB, 10), foreground=AMBER_FG,
                       background=BG).pack(anchor="w")
-            ttk.Label(info, text="البيانات غير مشفّرة (مؤقتاً)", font=(_FUI, 9),
+            ttk.Label(info, text=i18n.tr("البيانات غير مشفّرة (مؤقتاً)"), font=(_FUI, 9),
                       foreground=MUTED, background=BG).pack(anchor="w")
 
         # زرّ لوحة التحكم — بارز في وسط الترويسة
-        _dash = ttk.Button(bar, text=rtl("🏠  لوحة التحكم"), style="Primary.TButton",
+        _dash = ttk.Button(bar, text=rtl(i18n.tr("🏠  لوحة التحكم")), style="Primary.TButton",
                            command=self.do_dashboard)
         _dash.pack(side=LEFT, padx=16)
         add_tooltip(_dash, "مؤشّرات سريعة + إعدادات العرض")
@@ -598,7 +602,33 @@ class HajjApp:
             pass
         self._audit("تسجيل خروج")
         self._logout_requested = True
+        self._exit_action = "logout"
         self.root.destroy()           # ينهي حلقة الأحداث؛ main يعيد شاشة الدخول
+
+    def change_language(self) -> None:
+        """يختار لغة الواجهة (عربي/إنجليزي) ويعيد بناء البرنامج بها."""
+        from . import i18n
+        cur = i18n.get_lang()
+        new = "en" if cur == "ar" else "ar"
+        label = i18n.LANG_LABELS[new]
+        if not messagebox.askyesno(
+                "اللغة / Language",
+                f"تبديل لغة الواجهة إلى «{label}»؟\nSwitch interface language to "
+                f"«{label}»?\n\nسيُعاد بناء الواجهة (تبقى جلستك وبياناتك)."):
+            return
+        self._ui["ui_lang"] = new
+        self._settings["ui"] = self._ui
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        self._audit("تغيير اللغة", new)
+        if self.session is None:
+            # وضع الاختبار/المفتوح بلا حلقة إعادة تشغيل — نطبّق فوراً قدر الإمكان
+            i18n.set_lang(new)
+            return
+        self._exit_action = "restart"
+        self.root.destroy()
 
     def _on_season_change(self) -> None:
         """يحفظ السنة الهجرية المختارة."""
@@ -636,8 +666,13 @@ class HajjApp:
 
     def _menubutton(self, parent, text, items, *, style="Toolbar.TMenubutton",
                     icon=None, tip=None):
-        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)، بأيقونة اختيارية."""
-        mb = ttk.Menubutton(parent, text=rtl(text), style=style, direction="below")
+        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)، بأيقونة اختيارية.
+
+        العناوين والعناصر تُترجَم تلقائياً حسب لغة الواجهة (i18n.tr).
+        """
+        from . import i18n
+        mb = ttk.Menubutton(parent, text=rtl(i18n.tr(text)), style=style,
+                            direction="below")
         if icon is not None:
             img = self._icon(*icon)
             if img is not None:
@@ -648,7 +683,7 @@ class HajjApp:
                 menu.add_separator()
             else:
                 label, cmd = entry
-                menu.add_command(label=label, command=cmd)
+                menu.add_command(label=i18n.tr(label), command=cmd)
         mb["menu"] = menu
         self._menus.append(menu)          # نحتفظ بمرجع لمنع جمع القمامة
         if tip:
@@ -764,6 +799,7 @@ class HajjApp:
         if ce:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
+        admin_items += [None, ("🌐  اللغة / Language", self.change_language)]
         if self._is_admin() and self.session is not None:
             admin_items += [None, ("👥  إدارة الحسابات", self.manage_accounts)]
         if self.session is not None:
@@ -1333,14 +1369,16 @@ class HajjApp:
         wrap.pack(fill=BOTH, expand=True)
 
         # الأعمدة معكوسة ليظهر "مسلسل" أقصى اليمين كما في الكشف الورقي
+        from . import i18n
         self.columns = tuple(reversed(FIELDS + DIAG_FIELDS))
-        self._col_labels = {f.key: f.label for f in self.columns}
+        self._col_labels = {f.key: i18n.field_label(f.key, f.label)
+                            for f in self.columns}
         cols = [f.key for f in self.columns]
         self.tree = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="extended")
 
         for f in self.columns:
             # النقر على رأس العمود يرتّب حسبه (مع سهم اتجاه)
-            self.tree.heading(f.key, text=f.label,
+            self.tree.heading(f.key, text=self._col_labels[f.key],
                               command=lambda k=f.key: self._sort_by_column(k))
             self.tree.column(f.key, width=max(f.width * 9, 70), anchor="center",
                              stretch=False)
@@ -6233,8 +6271,11 @@ def _show_splash(root):
 OPEN_MODE_NO_LOGIN = False
 
 
-def _run_session(session, open_mode: bool) -> bool:
-    """يبني النافذة الرئيسية ويشغّلها. يعيد True إن طُلب تسجيل الخروج."""
+def _run_session(session, open_mode: bool) -> str | None:
+    """يبني النافذة الرئيسية ويشغّلها.
+
+    يعيد إجراء الخروج: 'logout' أو 'restart' أو None (إغلاق عادي/إنهاء).
+    """
     root = Tk()
     root.withdraw()                            # نخفيها حتى تجهز، خلف شاشة البداية
     apply_window_icon(root)
@@ -6248,18 +6289,22 @@ def _run_session(session, open_mode: bool) -> bool:
 
     root.after(900, _reveal)
     root.mainloop()
-    return bool(getattr(app, "_logout_requested", False))
+    return getattr(app, "_exit_action", None)
 
 
 def main() -> None:
     if OPEN_MODE_NO_LOGIN:
-        _run_session(None, True)               # بلا دخول، بلا تشفير (مؤقتاً)
+        while _run_session(None, True) == "restart":   # تبديل اللغة يعيد البناء
+            pass
         return
 
-    # حلقة الدخول: تسجيل الخروج يعيد شاشة الدخول بدل إغلاق البرنامج
+    # حلقة الدخول: تسجيل الخروج يعيد شاشة الدخول، وتبديل اللغة يعيد البناء
     while True:
         session = authenticate()               # الدخول أولاً بمفتاح فك التشفير
         if session is None:
             return
-        if not _run_session(session, False):
+        action = "restart"
+        while action == "restart":
+            action = _run_session(session, False)
+        if action != "logout":
             return                             # النافذة أُغلقت عادةً — إنهاء
