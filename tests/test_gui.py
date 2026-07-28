@@ -580,6 +580,22 @@ assert ("pil", 1) in _hit
 _r6.destroy()
 print("  OK: النسخة 2.0.0، النوافذ تفتح، ولوحة الأوامر تصفّي وتقفز")
 
+print("\n=== تلوين الحالة + سمات اللون ===")
+from hajj_app.gui import ACCENTS as _ACC, apply_accent as _apac
+_r7 = Tk(); _r7.withdraw()
+_app7 = HajjApp(_r7)
+assert _app7._row_tag({"status": "ملغى"}, 1) == "cancelled"
+assert _app7._row_tag({"status": "قائمة انتظار"}, 1) == "waitlist"
+assert _app7._row_tag({"status": "", "warnings": ["x"]}, 1) == "warn"
+assert {"برونزي", "أخضر زمرّدي", "أزرق ملكي"} <= set(_ACC)
+_app7._accent = "برونزي"; _app7.cycle_accent()        # بلا جلسة يطبّق فوراً
+assert _st.load_settings()["ui"]["accent"] == "أخضر زمرّدي"
+# إعادة للبرونزي حتى لا يؤثّر على بقية الاختبارات
+_app7._ui["accent"] = "برونزي"; _app7._settings["ui"] = _app7._ui
+_st.save_settings(_app7._settings); _apac("برونزي")
+_r7.destroy()
+print("  OK: صفوف ملغى/انتظار ملوّنة، وتبديل لون البرنامج يُحفظ")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

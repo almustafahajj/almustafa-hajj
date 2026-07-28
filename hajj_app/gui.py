@@ -108,6 +108,22 @@ def apply_theme(name: str) -> None:
 
 apply_theme("فاتح")            # الافتراضي حتى تُحمَّل الإعدادات
 
+# سمات لون البرنامج (accent): (البرونزي، الداكن، الفاتح، الحافة)
+ACCENTS = {
+    "برونزي": ("#8A6E4B", "#6F5738", "#B4986E", "#4E3C25"),
+    "أخضر زمرّدي": ("#2E7D5B", "#245F46", "#5CA588", "#1B4433"),
+    "أزرق ملكي": ("#2C5AA0", "#214679", "#5B84C0", "#173156"),
+    "عنّابي": ("#9B3B45", "#7C2E37", "#C06A72", "#5A1F26"),
+}
+
+
+def apply_accent(name: str) -> None:
+    """يضبط لون التمييز (البرونزي) وتدرّجاته حسب السمة المختارة."""
+    global BRONZE, BRONZE_DARK, BRONZE_LIGHT, BRONZE_EDGE, ACCENT_HOVER
+    a = ACCENTS.get(name, ACCENTS["برونزي"])
+    BRONZE, BRONZE_DARK, BRONZE_LIGHT, BRONZE_EDGE = a
+    ACCENT_HOVER = BRONZE
+
 
 # ---- عائلة الخطّ (تُكتشف عند الإقلاع؛ افتراضياً Segoe UI) ----
 _FUI = "Segoe UI"
@@ -280,6 +296,10 @@ class HajjApp:
         if self._theme not in THEMES:
             self._theme = "فاتح"
         apply_theme(self._theme)
+        self._accent = self._ui.get("accent", "برونزي")
+        if self._accent not in ACCENTS:
+            self._accent = "برونزي"
+        apply_accent(self._accent)
 
         root.title("برنامج الحج — إدارة بيانات الحجاج")
         geom = self._ui.get("geometry")
@@ -605,6 +625,27 @@ class HajjApp:
         self._exit_action = "logout"
         self.root.destroy()           # ينهي حلقة الأحداث؛ main يعيد شاشة الدخول
 
+    def cycle_accent(self) -> None:
+        """يبدّل لون البرنامج (accent) إلى التالي ويعيد البناء بلونه."""
+        order = list(ACCENTS)
+        try:
+            nxt = order[(order.index(self._accent) + 1) % len(order)]
+        except ValueError:
+            nxt = order[0]
+        self._ui["accent"] = nxt
+        self._settings["ui"] = self._ui
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        self._audit("تغيير لون البرنامج", nxt)
+        if self.session is None:
+            apply_accent(nxt)
+            self.set_status(f"لون البرنامج: {nxt}", ok=True)
+            return
+        self._exit_action = "restart"
+        self.root.destroy()
+
     def change_language(self) -> None:
         """يختار لغة الواجهة (عربي/إنجليزي) ويعيد بناء البرنامج بها."""
         from . import i18n
@@ -801,6 +842,7 @@ class HajjApp:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
         admin_items += [None,
+                        (f"🎨  لون البرنامج ({self._accent})", self.cycle_accent),
                         ("⌨  اختصارات لوحة المفاتيح", self.do_shortcuts),
                         ("ℹ  حول البرنامج", self.do_about)]
         # زرّ اللغة يُظهر اللغة الهدف (عكس الحالية) بوضوح
@@ -1409,6 +1451,10 @@ class HajjApp:
         self.tree.tag_configure("warn", background=WARN_BG, foreground="#5A4A2E")
         self.tree.tag_configure("due", background=DUE_BG)      # عليه متأخّرات
         self.tree.tag_configure("paid", background=PAID_BG)    # مكتمل السداد
+        self.tree.tag_configure("cancelled", background="#ECE7E1",
+                                foreground="#9A8F80")           # ملغى (باهت)
+        self.tree.tag_configure("waitlist", background="#FBF0DC",
+                                foreground="#7A5A12")           # قائمة انتظار
         self.tree.tag_configure("hover", background=HOVER_BG)
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
         self._hover_iid = None
@@ -1649,7 +1695,12 @@ class HajjApp:
             pass
 
     def _row_tag(self, data: dict, shown: int) -> str:
-        """وسم لون الصف: تنبيه المراجعة، ثم متأخّر/مكتمل مالياً، وإلا متناوب."""
+        """وسم لون الصف: الحالة (ملغى/انتظار)، فتنبيه، فمتأخّر/مكتمل، وإلا متناوب."""
+        status = str(data.get("status", "") or "").strip()
+        if status == "ملغى":
+            return "cancelled"
+        if status == "قائمة انتظار":
+            return "waitlist"
         if data.get("warnings"):
             return "warn"
         from .fields import parse_amount
