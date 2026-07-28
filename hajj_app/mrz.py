@@ -71,6 +71,7 @@ class PassportData:
     # ---- برنامج الحملة والمجموعة ----
     program: str = ""
     group: str = ""
+    status: str = ""             # نشط / ملغى / قائمة انتظار (فارغ = نشط)
 
     # ---- الإقامة والخدمات ----
     hotel: str = ""

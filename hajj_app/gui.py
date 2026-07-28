@@ -5517,7 +5517,7 @@ class EditDialog(Toplevel):
     # التبويبات ومحتواها. الحقول غير المذكورة تُضاف إلى "أخرى".
     TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("بيانات الحاج", ("family_number", "reference_number", "full_name_ar",
-                          "full_name_en", "phone", "program", "group",
+                          "full_name_en", "phone", "program", "group", "status",
                           "mahram_name", "mahram_relation")),
         ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
                     "expiry_date")),
@@ -5534,6 +5534,13 @@ class EditDialog(Toplevel):
         ("المالية", ("program_value", "paid_amount")),
         ("ملاحظات", ("notes", "staff")),
     )
+
+    # حقول ذات قيم محدّدة تُعرض قائمةً منسدلة
+    CHOICE_FIELDS = {
+        "status": ("", "نشط", "ملغى", "قائمة انتظار"),
+        "sex": ("", "ذكر", "أنثى"),
+        "wheelchair": ("", "نعم"),
+    }
 
     def __init__(self, parent, record: PassportData, on_save, *,
                  title: str = "تعديل بيانات الحاج",
@@ -5628,6 +5635,12 @@ class EditDialog(Toplevel):
                              values=[""] + list(PROGRAM_NAMES)).pack(side=LEFT)
                 ttk.Button(cell, text="تطبيق", style="Ghost.TButton", width=7,
                            command=self._apply_program).pack(side=LEFT, padx=(4, 0))
+                continue
+            if f.key in self.CHOICE_FIELDS:
+                ttk.Combobox(frame, textvariable=var, state="readonly", width=24,
+                             justify="center",
+                             values=list(self.CHOICE_FIELDS[f.key])).grid(
+                    row=row, column=col, sticky="w", pady=5)
                 continue
             entry = ttk.Entry(frame, textvariable=var, width=26, justify="center")
             entry.grid(row=row, column=col, sticky="w", pady=5)

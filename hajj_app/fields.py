@@ -28,6 +28,7 @@ FIELDS: tuple[Field, ...] = (
     Field("phone",             "الهاتف المتحرك",         15, True,  False),
     Field("program",           "برنامج الحملة",          14, True,  False),
     Field("group",             "المجموعة",               12, True,  False),
+    Field("status",            "الحالة",                 11, True,  False),
     Field("hotel",             "الفندق",                 18, True,  True),
     Field("room_type",         "نوع الغرفة",             11, True,  True),
     Field("room_number",       "رقم الغرفة",             10, True,  True),

@@ -60,13 +60,15 @@ print("count label:", app.count_label.cget("text"))
 # exercise the edit dialog end-to-end
 saved = {}
 dlg = EditDialog(root, app.records[1], on_save=lambda r: saved.update({"r": r}))
-assert len(dlg.vars) == 45, f"editable fields in dialog: {len(dlg.vars)}"
+assert len(dlg.vars) == 46, f"editable fields in dialog: {len(dlg.vars)}"
 # الحقول الجديدة (تأشيرة/تصريح، محرم، صحّة وطوارئ) موجودة وتُحفظ
 for _k in ("visa_number", "permit_status", "mahram_name", "blood_type",
            "emergency_phone"):
     assert _k in dlg.vars, _k
 dlg.vars["permit_status"].set("صدر")
 dlg.vars["emergency_phone"].set("0501234567")
+assert "status" in dlg.vars
+dlg.vars["status"].set("قائمة انتظار")
 dlg.vars["full_name_ar"].set("فاطمة خان")
 dlg.vars["birth_date"].set("1992-03-15")
 dlg.vars["arrival_time"].set("2:30 PM")          # must normalize on save
@@ -82,6 +84,7 @@ assert r.full_name_ar == "فاطمة خان"
 assert r.arrival_time == "14:30", r.arrival_time
 assert r.program_value == "12,000", r.program_value
 assert r.permit_status == "صدر" and r.emergency_phone == "0501234567"
+assert r.status == "قائمة انتظار"
 assert r.warnings == [], "manual edit should clear warnings"
 print("OK: edit dialog normalizes time+money, live remaining, clears warnings")
 
