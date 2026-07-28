@@ -541,6 +541,24 @@ assert _app4.filter_search.get() == "الصفوة"
 _r4.destroy()
 print("  OK: حفظ الفلتر الحالي وتطبيقه لاحقاً")
 
+print("\n=== الرسوم البيانية ===")
+from hajj_app.gui import ChartsDialog as _CH
+_r5 = Tk(); _r5.withdraw()
+_ch = _CH(_r5, [
+    _PD(program="الأول", hotel="الصفوة", nationality_ar="سعودي", status="نشط",
+        program_value="5000", paid_amount="3000"),
+    _PD(program="الأول", hotel="كونراد", nationality_ar="إماراتي", status="نشط",
+        program_value="4000", paid_amount="4000"),
+    _PD(program="الثاني", hotel="الصفوة", nationality_ar="سعودي", status="ملغى",
+        program_value="6000", paid_amount="1000"),
+])
+_texts = [_ch.canvas.itemcget(i, "text") for i in _ch.canvas.find_all()
+          if _ch.canvas.type(i) == "text"]
+assert any("المالية" in t for t in _texts) and any("البرنامج" in t for t in _texts)
+assert len(_ch.canvas.find_all()) > 20
+_r5.destroy()
+print("  OK: رسوم التوزيعات والمالية تُرسَم على Canvas")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

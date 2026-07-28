@@ -725,6 +725,7 @@ class HajjApp:
         # 💰 المالية والمحاسبة
         fin_mb = self._menubutton(bar, "المالية والمحاسبة  ▾", [
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
+            ("📈  الرسوم البيانية", self.do_charts),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
             None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
@@ -2628,6 +2629,12 @@ class HajjApp:
         if not self._require_edit():
             return
         ExpensesDialog(self.root, self)
+
+    def do_charts(self) -> None:
+        """يفتح الرسوم البيانية (توزيعات ومالية)."""
+        if not self._require_records():
+            return
+        ChartsDialog(self.root, self._visible_records())
 
     def do_arrears_report(self) -> None:
         """كشف المتأخّرات المالية: الحجّاج الذين عليهم مبالغ متبقّية (معاينة)."""
@@ -4575,6 +4582,81 @@ class PaymentsDialog(Toplevel):
             if 0 <= iid < len(self.record.payments):
                 del self.record.payments[iid]
         self._commit()
+
+
+class ChartsDialog(Toplevel):
+    """رسوم بيانية للكشف: توزيعات (برنامج/فندق/جنسية/حالة) + المالية — أعمدة."""
+
+    def __init__(self, parent, records) -> None:
+        super().__init__(parent)
+        self.title("📊 الرسوم البيانية")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        from .fields import parse_amount
+        from .stats import distribution
+
+        W, section_h = 640, 24
+        outer = ttk.Frame(self, padding=10)
+        outer.pack(fill=BOTH, expand=True)
+        canvas = tk.Canvas(outer, width=W, height=560, bg="#FFFFFF",
+                           highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        sb.pack(side=LEFT, fill=Y)
+        canvas.pack(side=RIGHT, fill=BOTH, expand=True)
+        canvas.configure(yscrollcommand=sb.set)
+        self.canvas = canvas
+
+        datasets = []
+        for key, title in (("program", "التوزيع حسب البرنامج"),
+                           ("hotel", "التوزيع حسب الفندق"),
+                           ("nationality_ar", "التوزيع حسب الجنسية"),
+                           ("status", "التوزيع حسب الحالة")):
+            buckets = distribution(records, key)[:8]
+            if buckets:
+                datasets.append((title, [(b.label, b.count) for b in buckets]))
+        # المالية: المحصّل مقابل المتبقّي
+        paid = sum(parse_amount(r.paid_amount) or 0.0 for r in records)
+        value = sum(parse_amount(r.program_value) or 0.0 for r in records)
+        remaining = max(0.0, value - paid)
+        if value or paid:
+            datasets.append(("المالية (ريال)",
+                             [("المحصّل", paid), ("المتبقّي", remaining)]))
+
+        y = 16
+        for title, items in datasets:
+            y = self._draw_dataset(canvas, y, title, items, W)
+            y += section_h
+        canvas.configure(scrollregion=(0, 0, W, max(560, y)))
+
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy)  # (لا نعبّئه — الإغلاق بـ Esc/النافذة)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        yy = (self.winfo_screenheight() - self.winfo_height()) // 6
+        self.geometry(f"+{x}+{yy}")
+
+    def _draw_dataset(self, canvas, y, title, items, W) -> int:
+        canvas.create_text(W - 12, y, text=title, anchor="e",
+                           font=(_FSB, 12), fill=BRONZE)
+        y += 26
+        maxval = max((v for _, v in items), default=1) or 1
+        label_w, right, left = 150, W - 160, 30
+        bar_area = right - left
+        for label, val in items:
+            length = int(bar_area * (val / maxval)) if maxval else 0
+            x2 = right
+            x1 = right - length
+            canvas.create_rectangle(x1, y, x2, y + 18, fill=BRONZE, outline="")
+            canvas.create_text(W - 12, y + 9, text=str(label)[:20], anchor="e",
+                               font=(_FUI, 10), fill="#1a1a1a")
+            shown = int(val) if float(val).is_integer() else round(val, 1)
+            canvas.create_text(x1 - 6, y + 9, text=f"{shown:,}", anchor="e",
+                               font=(_FUI, 9), fill="#555555")
+            y += 26
+        return y
 
 
 class FilterPresetsDialog(Toplevel):
