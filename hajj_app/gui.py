@@ -625,6 +625,7 @@ class HajjApp:
         book_items += [
             ("📱  رسالة واتساب للمحدّدين", self.do_whatsapp),
             ("🩺  فحص جاهزية الكشف", self.do_quality_check),
+            ("✅  قائمة تحقّق الجاهزية", self.do_readiness),
         ]
         if ce:
             book_items.append(("🧹  مسح الكل", self.clear_all))
@@ -2000,6 +2001,12 @@ class HajjApp:
             return
         QualityDialog(self.root, lambda: self.records, self._focus_record,
                       programs=self._programs_by_name)
+
+    def do_readiness(self) -> None:
+        """يفتح قائمة تحقّق جاهزية الحجّاج (جواز/تأشيرة/تصريح/تطعيم/دفع)."""
+        if not self._require_records():
+            return
+        ReadinessDialog(self.root, lambda: self.records, self._focus_record)
 
     _BULK_DOC_LABEL = {"receipt": "سند قبض", "invoice": "فاتورة ضريبية",
                        "einvoice": "فاتورة إلكترونية", "contract": "عقد"}
@@ -3682,6 +3689,95 @@ class BadgesDialog(Toplevel):
             f"بطاقات_الحجاج_{date.today().isoformat()}", "pdf")
         if path is not None:
             self.destroy()
+
+
+class ReadinessDialog(Toplevel):
+    """قائمة تحقّق جاهزية الحجّاج: جواز/تأشيرة/تصريح/تطعيم/دفع/اتصال + النسبة."""
+
+    def __init__(self, parent, get_records, on_select) -> None:
+        super().__init__(parent)
+        self.get_records = get_records
+        self.on_select = on_select
+        self.title("✅ قائمة تحقّق الجاهزية")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        from .quality import READINESS_ITEMS
+        self._items = READINESS_ITEMS
+
+        outer = ttk.Frame(self, padding=14)
+        outer.pack(fill=BOTH, expand=True)
+        top = ttk.Frame(outer)
+        top.pack(fill=X, pady=(0, 8))
+        self._summary = ttk.Label(top, font=(_FSB, 11), foreground=TEXT)
+        self._summary.pack(side=RIGHT)
+        self._only_incomplete = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top, text=rtl("غير المكتملين فقط"),
+                        variable=self._only_incomplete,
+                        command=self._reload).pack(side=LEFT)
+
+        cols = ("idx", "name") + tuple(k for k, _ in self._items) + ("pct",)
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings", height=16)
+        self.tree.heading("idx", text="م")
+        self.tree.column("idx", width=42, anchor="center")
+        self.tree.heading("name", text="اسم الحاج")
+        self.tree.column("name", width=200, anchor="e")
+        for key, label in self._items:
+            self.tree.heading(key, text=label)
+            self.tree.column(key, width=88, anchor="center")
+        self.tree.heading("pct", text="الجاهزية")
+        self.tree.column("pct", width=78, anchor="center")
+        self.tree.tag_configure("done", background="#E8F6EC")
+        self.tree.tag_configure("low", background="#FBEBEA")
+        self.tree.pack(fill=BOTH, expand=True)
+        self.tree.bind("<Double-1>", self._jump)
+
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9),
+                  text=rtl("نقرة مزدوجة على الحاج لفتحه في الجدول.")
+                  ).pack(anchor="e", pady=(8, 0))
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(anchor="w", pady=(6, 0))
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._reload()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _reload(self) -> None:
+        from .quality import pilgrim_readiness, readiness_percent
+        self.tree.delete(*self.tree.get_children())
+        recs = self.get_records()
+        ready = 0
+        for i, rec in enumerate(recs):
+            checks = pilgrim_readiness(rec)
+            complete = all(checks.values())
+            if complete:
+                ready += 1
+            if self._only_incomplete.get() and complete:
+                continue
+            pct = readiness_percent(rec)
+            name = (rec.full_name_ar or rec.full_name_en
+                    or rec.passport_number or "—")
+            vals = ([i + 1, name]
+                    + ["✓" if checks[k] else "✗" for k, _ in self._items]
+                    + [f"{pct}%"])
+            tag = "done" if complete else ("low" if pct < 50 else "")
+            self.tree.insert("", "end", iid=str(i), values=vals,
+                             tags=((tag,) if tag else ()))
+        self._summary.configure(
+            text=rtl(f"مكتملو الجاهزية: {ready} من {len(recs)}"))
+
+    def _jump(self, _e) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        try:
+            self.on_select(int(sel[0]))
+        except Exception:
+            pass
+        self.destroy()
 
 
 class QualityDialog(Toplevel):

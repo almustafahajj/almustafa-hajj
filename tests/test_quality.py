@@ -147,4 +147,22 @@ clean = check_records([
 assert clean.clean and summary_text(clean).startswith("لا مشكلات")
 print(f"  OK: {summary_text(clean)}")
 
+print("\n=== قائمة تحقّق الجاهزية ===")
+from hajj_app.quality import pilgrim_readiness, readiness_percent, READINESS_ITEMS
+full = rec(full_name_ar="جاهز", phone="0501", passport_number="A1",
+           expiry_date="2032-01-01", visa_number="V1", permit_status="صدر",
+           vaccination="تمّ", program_value="1000", paid_amount="1000")
+checks = pilgrim_readiness(full, today=TODAY)
+assert all(checks.values()) and readiness_percent(full, TODAY) == 100
+part = rec(full_name_ar="ناقص", passport_number="B1", expiry_date="2032-01-01",
+           program_value="5000", paid_amount="1000")
+c2 = pilgrim_readiness(part, today=TODAY)
+assert c2["passport"] and not c2["visa"] and not c2["permit"] and not c2["payment"]
+assert readiness_percent(part, TODAY) < 50
+# جواز منتهٍ يسقط بند الجواز
+assert not pilgrim_readiness(rec(passport_number="C1", expiry_date="2020-01-01"),
+                             today=TODAY)["passport"]
+assert len(READINESS_ITEMS) == 6
+print(f"  OK: الجاهز 100%, الناقص {readiness_percent(part, TODAY)}%, والمنتهي يسقط")
+
 print("\n*** QUALITY TESTS PASSED ***")

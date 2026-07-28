@@ -25,6 +25,42 @@ KIND_MISSING = "نقص بيانات حرجة"
 KIND_ORDER = (KIND_PASSPORT, KIND_DUPLICATE, KIND_NAME, KIND_PROGRAM, KIND_MISSING)
 
 
+# ------------------------------------------------ قائمة تحقّق الجاهزية
+# بنود جاهزية الحاج للسفر (المفتاح، العنوان المعروض)
+READINESS_ITEMS = (
+    ("passport", "الجواز"),
+    ("visa", "التأشيرة"),
+    ("permit", "تصريح الحج"),
+    ("vaccination", "التطعيم"),
+    ("payment", "اكتمال الدفع"),
+    ("contact", "الاسم والهاتف"),
+)
+
+
+def pilgrim_readiness(rec: PassportData, today: date | None = None) -> dict:
+    """يعيد {المفتاح: مكتمل؟} لبنود جاهزية الحاج."""
+    today = today or date.today()
+    from .fields import compute_remaining, parse_amount
+    pp = str(rec.passport_number or "").strip()
+    exp = parse_date(rec.expiry_date)
+    rem = parse_amount(compute_remaining(rec)) or 0.0
+    name = str(rec.full_name_ar or rec.full_name_en or "").strip()
+    return {
+        "passport": bool(pp) and (exp is None or exp >= today),
+        "visa": bool(str(rec.visa_number or "").strip()),
+        "permit": bool(str(rec.permit_status or "").strip()),
+        "vaccination": bool(str(rec.vaccination or "").strip()),
+        "payment": rem <= 0,
+        "contact": bool(name) and bool(str(rec.phone or "").strip()),
+    }
+
+
+def readiness_percent(rec: PassportData, today: date | None = None) -> int:
+    """نسبة جاهزية الحاج (0–100)."""
+    checks = pilgrim_readiness(rec, today)
+    return round(100 * sum(1 for v in checks.values() if v) / len(checks))
+
+
 def parse_date(text) -> date | None:
     """يحوّل نصاً إلى تاريخ من الصيغ الشائعة، أو None إن تعذّر."""
     t = str(text or "").strip()
