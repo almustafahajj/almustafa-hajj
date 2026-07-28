@@ -4621,7 +4621,7 @@ class ChartsDialog(Toplevel):
         value = sum(parse_amount(r.program_value) or 0.0 for r in records)
         remaining = max(0.0, value - paid)
         if value or paid:
-            datasets.append(("المالية (ريال)",
+            datasets.append(("المالية (درهم)",
                              [("المحصّل", paid), ("المتبقّي", remaining)]))
 
         y = 16
