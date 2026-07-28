@@ -98,6 +98,24 @@ class PassportData:
     notes: str = ""
     staff: str = ""
 
+    # ---- التأشيرة وتصريح الحج ----
+    visa_number: str = ""
+    visa_status: str = ""
+    permit_status: str = ""          # تصريح الحج (نُسُك/مسار)
+    masar_number: str = ""
+    # ---- المحرم ----
+    mahram_name: str = ""
+    mahram_relation: str = ""
+    # ---- الصحة والطوارئ ----
+    blood_type: str = ""
+    medical_conditions: str = ""
+    medications: str = ""
+    vaccination: str = ""
+    insurance: str = ""
+    emergency_name: str = ""
+    emergency_phone: str = ""
+    emergency_relation: str = ""
+
     # ---- حقول داخلية: تُقرأ من الجواز لكنها لا تظهر في الكشف ----
     surname_en: str = ""
     given_names_en: str = ""

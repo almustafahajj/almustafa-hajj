@@ -51,6 +51,23 @@ FIELDS: tuple[Field, ...] = (
     Field("program_value",     "قيمة البرنامج",          13, True,  False),
     Field("paid_amount",       "المبلغ المدفوع",         13, True,  False),
     Field("remaining_amount",  "المبلغ المتبقي",         13, False, False),
+    # التأشيرة وتصريح الحج
+    Field("visa_number",       "رقم التأشيرة",           14, True,  False),
+    Field("visa_status",       "حالة التأشيرة",          13, True,  False),
+    Field("permit_status",     "تصريح الحج (نُسُك)",      15, True,  False),
+    Field("masar_number",      "رقم مسار",               13, True,  False),
+    # المحرم
+    Field("mahram_name",       "اسم المحرم",             22, True,  False),
+    Field("mahram_relation",   "صلة المحرم",             12, True,  False),
+    # الصحة والطوارئ
+    Field("blood_type",        "فصيلة الدم",             10, True,  False),
+    Field("medical_conditions", "أمراض مزمنة",           22, True,  False),
+    Field("medications",       "أدوية",                  20, True,  False),
+    Field("vaccination",       "التطعيم",                16, True,  False),
+    Field("insurance",         "التأمين الطبي",          16, True,  False),
+    Field("emergency_name",    "جهة اتصال الطوارئ",      22, True,  False),
+    Field("emergency_phone",   "هاتف الطوارئ",           15, True,  False),
+    Field("emergency_relation", "صلة جهة الطوارئ",        13, True,  False),
     Field("notes",             "ملاحظات",                24, True,  False),
     Field("staff",             "الموظف المسؤول",         18, True,  False),
 )

@@ -43,6 +43,14 @@ EXCEL_TYPES = (("ملفات إكسل", "*.xlsx *.xlsm"), ("كل الملفات",
 HIJRI_YEARS = tuple(str(y) for y in range(1445, 1456))
 _DEFAULT_SEASON = "1447"
 
+# أعمدة مخفيّة افتراضياً في الجدول (تفاصيل إضافية تظهر عند الطلب من «الأعمدة»)
+_DEFAULT_HIDDEN_COLS = (
+    "source_file", "visa_number", "visa_status", "permit_status", "masar_number",
+    "mahram_name", "mahram_relation", "blood_type", "medical_conditions",
+    "medications", "vaccination", "insurance", "emergency_name",
+    "emergency_phone", "emergency_relation",
+)
+
 # ---- ألوان العلامة الثابتة (لا تتبدّل بين الفاتح والداكن) ----
 ACCENT = "#241E17"          # فحميّ دافئ — سطح رؤوس الجدول (منسجم مع البرونزي)
 BRONZE = "#8A6E4B"          # البرونزي — التمييز والتفاعل
@@ -262,7 +270,8 @@ class HajjApp:
         self._font_size = self._ui.get("font_size", "متوسط")
         if self._font_size not in self._FONT_SIZES:
             self._font_size = "متوسط"
-        self._hidden_cols: set[str] = set(self._ui.get("hidden_columns", ["source_file"]))
+        self._hidden_cols: set[str] = set(
+            self._ui.get("hidden_columns", list(_DEFAULT_HIDDEN_COLS)))
         # الوضع الفاتح/الداكن — يُطبّق قبل بناء الأنماط
         self._theme = self._ui.get("theme", "فاتح")
         if self._theme not in THEMES:
@@ -4770,14 +4779,20 @@ class EditDialog(Toplevel):
     # التبويبات ومحتواها. الحقول غير المذكورة تُضاف إلى "أخرى".
     TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("بيانات الحاج", ("family_number", "reference_number", "full_name_ar",
-                          "full_name_en", "phone", "program", "group")),
+                          "full_name_en", "phone", "program", "group",
+                          "mahram_name", "mahram_relation")),
         ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
                     "expiry_date")),
+        ("التأشيرة والتصريح", ("visa_number", "visa_status", "permit_status",
+                               "masar_number")),
         ("السفر", ("airline", "flight_number", "travel_class", "pnr",
                    "arrival_date", "arrival_time", "departure_date",
                    "departure_time", "transport")),
         ("الإقامة والخدمات", ("hotel", "room_type", "room_number",
                               "executive_service", "wheelchair", "hady")),
+        ("الصحة والطوارئ", ("blood_type", "medical_conditions", "medications",
+                            "vaccination", "insurance", "emergency_name",
+                            "emergency_phone", "emergency_relation")),
         ("المالية", ("program_value", "paid_amount")),
         ("ملاحظات", ("notes", "staff")),
     )
