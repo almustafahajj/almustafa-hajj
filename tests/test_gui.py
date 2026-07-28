@@ -465,6 +465,7 @@ print("  OK: كشف المجموعتين، وحفظ مرشد وهاتف مجمو
 print("\n=== المصروفات والمحاسبة ===")
 from hajj_app.gui import ExpensesDialog as _ED
 app.records = [_PD(paid_amount="10000"), _PD(paid_amount="5000")]
+app._settings["expenses"] = []        # ابدأ من إعداد نظيف (الملف يبقى بين التشغيلات)
 _ed = _ED(root, app)
 _ed._supplier.set("فندق"); _ed._amount.set("4000"); _ed._add()
 _ed._supplier.set("نقل"); _ed._amount.set("2000"); _ed._add()
@@ -474,6 +475,17 @@ assert len(_st.load_settings().get("expenses", [])) == 2
 _ed.tree.selection_set("0"); _ed._delete()
 assert _ed._expense_total() == 2000
 print("  OK: مصروفان، الصافي 9,000، والحذف يخفّض الإجمالي")
+
+print("\n=== جدول المناسك ===")
+from hajj_app.gui import ItineraryDialog as _ID
+_itin = _ID(root, app)
+_itin._fill_template()
+assert len(_itin._items) == 8
+_saved_itin = _st.load_settings().get("itinerary", [])
+assert len(_saved_itin) == 8 and "عرفة" in _saved_itin[1][2]
+_itin._day.set("يوم"); _itin._activity.set("نشاط"); _itin._add()
+assert len(_itin._items) == 9
+print("  OK: قالب أيام الحجّ (8 بنود) يُحفظ، والإضافة تعمل")
 
 app._require_records()
 root.update()

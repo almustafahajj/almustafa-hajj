@@ -607,8 +607,9 @@ class HajjApp:
                 None,
                 ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
                 ("👥  المجموعات والمرشدون", self.do_groups),
+                ("🗓  جدول المناسك", self.do_itinerary),
             ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
-                tip="بدء موسم جديد وإعداد البرامج والمجموعات")
+                tip="الموسم والبرامج والمجموعات وجدول المناسك")
             programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -2328,6 +2329,12 @@ class HajjApp:
         if not self._require_edit():
             return
         GroupsDialog(self.root, self)
+
+    def do_itinerary(self) -> None:
+        """يفتح جدول المناسك الزمني (قابل للتعديل والتصدير)."""
+        if not self._require_edit():
+            return
+        ItineraryDialog(self.root, self)
 
     def do_new_season(self) -> None:
         """يبدأ موسماً جديداً: يؤرشف كشف الموسم الحالي (نسخة احتياطية) ثم
@@ -4084,6 +4091,150 @@ class ImageKindDialog(Toplevel):
             self.scope = ("all", None)
         self.kinds = self._map[self._choice.get()]
         self.destroy()
+
+
+class ItineraryDialog(Toplevel):
+    """جدول المناسك الزمني: يوم/تاريخ/النشاط/المكان/ملاحظة — يُحفظ ويُصدَّر."""
+
+    # قالب أيام الحجّ الافتراضي (يُملأ بضغطة)
+    TEMPLATE = (
+        ("8 ذو الحجة", "", "التوجّه إلى منى (يوم التروية)", "منى", ""),
+        ("9 ذو الحجة", "", "الوقوف بعرفة", "عرفة", "الدعاء والذكر"),
+        ("9 ذو الحجة", "", "المبيت والمزدلفة وجمع الحصى", "مزدلفة", ""),
+        ("10 ذو الحجة", "", "رمي جمرة العقبة، الحلق، طواف الإفاضة", "منى/مكة", "يوم النحر"),
+        ("11 ذو الحجة", "", "رمي الجمرات الثلاث", "منى", "أيام التشريق"),
+        ("12 ذو الحجة", "", "رمي الجمرات ثم التعجّل أو التأخّر", "منى", ""),
+        ("13 ذو الحجة", "", "رمي الجمرات لمن تأخّر", "منى", ""),
+        ("", "", "طواف الوداع قبل المغادرة", "مكة", ""),
+    )
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("🗓 جدول المناسك")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        self._items = [list(x) if isinstance(x, (list, tuple)) else x
+                       for x in app._settings.get("itinerary", [])]
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=rtl("🗓  جدول المناسك الزمني"), font=(_FSB, 14),
+                  foreground=TEXT).pack(anchor="e", pady=(0, 8))
+
+        cols = ("day", "date", "activity", "place", "note")
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings", height=10)
+        for key, text, w, anc in (("day", "اليوم", 100, "center"),
+                                   ("date", "التاريخ", 100, "center"),
+                                   ("activity", "النشاط/المنسك", 240, "e"),
+                                   ("place", "المكان", 100, "center"),
+                                   ("note", "ملاحظة", 140, "e")):
+            self.tree.heading(key, text=text)
+            self.tree.column(key, width=w, anchor=anc)
+        self.tree.pack(fill=BOTH, expand=True)
+
+        form = ttk.Frame(outer)
+        form.pack(fill=X, pady=(10, 0))
+        self._day = StringVar(); self._date = StringVar()
+        self._activity = StringVar(); self._place = StringVar(); self._note = StringVar()
+        for var, hint, w in ((self._day, "اليوم", 10), (self._date, "التاريخ", 10),
+                             (self._activity, "النشاط", 22), (self._place, "المكان", 10),
+                             (self._note, "ملاحظة", 14)):
+            ttk.Entry(form, textvariable=var, width=w,
+                      justify="right").pack(side=RIGHT, padx=2)
+            ttk.Label(form, text=hint, foreground=MUTED).pack(side=RIGHT)
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X, pady=(10, 0))
+        ttk.Button(btns, text=rtl("➕ إضافة"), style="Primary.TButton",
+                   command=self._add).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("🗑 حذف"), style="Ghost.TButton",
+                   command=self._delete).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("📋 قالب أيام الحجّ"), style="Ghost.TButton",
+                   command=self._fill_template).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("📄 تصدير/طباعة"), style="Ghost.TButton",
+                   command=self._export).pack(side=LEFT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._reload()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _reload(self) -> None:
+        self.tree.delete(*self.tree.get_children())
+        for i, row in enumerate(self._items):
+            self.tree.insert("", "end", iid=str(i), values=tuple(row))
+
+    def _persist(self) -> None:
+        self.app._settings["itinerary"] = [list(r) for r in self._items]
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.app._audit("تعديل جدول المناسك", f"{len(self._items)} بند")
+        self._reload()
+
+    def _add(self) -> None:
+        row = [self._day.get().strip(), self._date.get().strip(),
+               self._activity.get().strip(), self._place.get().strip(),
+               self._note.get().strip()]
+        if not any(row):
+            return
+        self._items.append(row)
+        for v in (self._day, self._date, self._activity, self._place, self._note):
+            v.set("")
+        self._persist()
+
+    def _delete(self) -> None:
+        sel = self.tree.selection()
+        for iid in sorted((int(s) for s in sel), reverse=True):
+            if 0 <= iid < len(self._items):
+                del self._items[iid]
+        self._persist()
+
+    def _fill_template(self) -> None:
+        if self._items and not messagebox.askyesno(
+                "قالب", "استبدال الجدول الحالي بقالب أيام الحجّ؟", parent=self):
+            return
+        self._items = [list(r) for r in self.TEMPLATE]
+        self._persist()
+
+    def _export(self) -> None:
+        if not self._items:
+            messagebox.showinfo("فارغ", "أضِف بنوداً أولاً أو استعمل القالب.",
+                                parent=self)
+            return
+        rows = [list(r) for r in self._items]
+        title = f"جدول المناسك — موسم {self.app.season_year.get()}هـ"
+
+        def build(path):
+            from openpyxl import Workbook
+            from openpyxl.styles import Alignment, Font, PatternFill
+            wb = Workbook(); ws = wb.active; ws.title = "المناسك"
+            ws.sheet_view.rightToLeft = True
+            ws.append([title]); ws.merge_cells("A1:E1")
+            ws["A1"].font = Font(bold=True, size=14)
+            ws["A1"].alignment = Alignment(horizontal="center")
+            heads = ["اليوم", "التاريخ", "النشاط/المنسك", "المكان", "ملاحظة"]
+            ws.append(heads)
+            for c in range(1, 6):
+                cell = ws.cell(row=2, column=c)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="3A342B")
+                cell.alignment = Alignment(horizontal="center")
+            for r in rows:
+                ws.append(r)
+            for i, w in enumerate((14, 14, 40, 14, 22), start=1):
+                ws.column_dimensions[chr(64 + i)].width = w
+            wb.save(path)
+
+        if open_preview(self.master, build, "جدول المناسك", "xlsx"):
+            self.app.set_status("فُتحت معاينة جدول المناسك", ok=True)
 
 
 class ExpensesDialog(Toplevel):
