@@ -4887,9 +4887,14 @@ class CheckInDialog(Toplevel):
         cb.pack(side=RIGHT)
         cb.bind("<<ComboboxSelected>>", lambda _e: self._refresh())
 
+        ttk.Label(outer, text=rtl("المسح أو الإدخال:"), font=(_FSB, 11),
+                  foreground=TEXT).pack(anchor="e", pady=(12, 2))
         ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
-                  text=rtl("امسح رمز QR للبطاقة، أو اكتب رقم الجواز/الرقم المرجعي "
-                           "ثم Enter.")).pack(anchor="e", pady=(10, 4))
+                  wraplength=380,
+                  text=rtl("امسح رمز QR على بطاقة الحاج (بقارئ USB)، أو اكتب "
+                           "رقم الجواز أو الرقم المرجعي أو اسم الحاج، ثم اضغط "
+                           "Enter. البطاقات تُطبع من: التقارير ← بطاقات الحجّاج.")
+                  ).pack(anchor="e", pady=(0, 4))
         self._scan = StringVar()
         entry = ttk.Entry(outer, textvariable=self._scan, width=34,
                           justify="center", font=(_FSB, 13))
@@ -4923,17 +4928,30 @@ class CheckInDialog(Toplevel):
         self.geometry(f"+{x}+{y}")
 
     def _find(self, text: str):
+        """يطابق المُدخَل: رقم الجواز أو الرقم المرجعي أو اسم الحاج، أو نصّ QR."""
         import re
         t = str(text or "").strip()
         if not t:
             return None
+        recs = self.get_records()
+        # 1) رقم الجواز/الرقم المرجعي (يُستخرج الجواز من نصّ رمز البطاقة إن وُجد)
         m = re.search(r"الجواز[:\s]+([A-Za-z0-9]+)", t)
         key = (m.group(1) if m else t).strip().upper()
-        for i, r in enumerate(self.get_records()):
+        for i, r in enumerate(recs):
             if str(r.passport_number or "").strip().upper() == key:
                 return i
             if str(r.reference_number or "").strip().upper() == key:
                 return i
+        # 2) بالاسم (كتابة يدوية): مطابقة تامّة ثم احتواء إن كان النصّ ذا معنى
+        for i, r in enumerate(recs):
+            if t == str(r.full_name_ar or "").strip():
+                return i
+        if len(t) >= 3:
+            low = t.lower()
+            for i, r in enumerate(recs):
+                blob = f"{r.full_name_ar or ''} {r.full_name_en or ''}".lower()
+                if low in blob:
+                    return i
         return None
 
     def _submit(self) -> None:

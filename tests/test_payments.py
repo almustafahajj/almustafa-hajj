@@ -79,6 +79,8 @@ ci._scan.set("الحاج: سالم  الجواز: B2  الهاتف: 0502"); ci._
 assert "المطار" in recs[1].checkins
 ci._stage.set("الباص"); ci._scan.set("REF9"); ci._submit()   # بالرقم المرجعي
 assert "الباص" in recs[1].checkins
+assert ci._find("أحمد") == 0                         # مطابقة بالاسم (كتابة يدوية)
+assert ci._find("زيد") is None
 ci._scan.set("ZZZ"); ci._submit()                   # غير موجود
 assert "لم يُعثر" in ci._result.cget("text")
 ci._stage.set("المطار"); ci._refresh()              # كلاهما حضر للمطار
