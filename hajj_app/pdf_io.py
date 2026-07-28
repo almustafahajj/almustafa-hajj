@@ -677,6 +677,51 @@ def export_travel_pdf(path: str | Path, *, program_name: str = "البرنامج
     return path
 
 
+def export_itinerary_pdf(path: str | Path, *, rows: list | None = None,
+                         season: str = "", title: str = "جدول المناسك") -> Path:
+    """يصدّر جدول المناسك الزمني إلى PDF (A4 عمودي): يوم/تاريخ/نشاط/مكان/ملاحظة."""
+    _register_fonts()
+    path = Path(path)
+    rows = rows or []
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=13 * mm, leftMargin=13 * mm,
+        topMargin=14 * mm, bottomMargin=16 * mm, title=title, author="برنامج الحج")
+    st = _styles()
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    sub = f"موسم {ltr(season)}هـ" if season else ""
+    story.append(Paragraph(ar(title), st["title"]))
+    if sub:
+        story.append(Paragraph(ar(sub), st["subtitle"]))
+
+    heads = ["اليوم", "التاريخ", "النشاط/المنسك", "المكان", "ملاحظة"]
+    table_data = [[Paragraph(ar(h), st["head"]) for h in reversed(heads)]]
+    for row in rows:
+        row = list(row) + ["", "", "", "", ""]
+        cells = [row[0], row[1], row[2], row[3], row[4]]
+        table_data.append([Paragraph(ar(str(v)), st["cell"])
+                           for v in reversed(cells)])
+    weights = list(reversed([28, 24, 78, 26, 40]))
+    scale = doc.width / sum(weights)
+    t = Table(table_data, colWidths=[w * scale for w in weights], repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(t)
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, title),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, title))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:

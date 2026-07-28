@@ -5039,6 +5039,10 @@ class ItineraryDialog(Toplevel):
             self.tree.heading(key, text=text)
             self.tree.column(key, width=w, anchor=anc)
         self.tree.pack(fill=BOTH, expand=True)
+        self.tree.bind("<Double-1>", self._edit_selected)
+        ttk.Label(outer, foreground=MUTED, font=(_FUI, 9),
+                  text=rtl("نقرة مزدوجة على أي بند لتعديله.")).pack(anchor="e",
+                                                                    pady=(4, 0))
 
         form = ttk.Frame(outer)
         form.pack(fill=X, pady=(10, 0))
@@ -5055,6 +5059,8 @@ class ItineraryDialog(Toplevel):
         btns.pack(fill=X, pady=(10, 0))
         ttk.Button(btns, text=rtl("➕ إضافة"), style="Primary.TButton",
                    command=self._add).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("✏️ تعديل"), style="Act.TButton",
+                   command=self._edit_selected).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text=rtl("🗑 حذف"), style="Ghost.TButton",
                    command=self._delete).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text=rtl("📋 قالب أيام الحجّ"), style="Ghost.TButton",
@@ -5105,6 +5111,58 @@ class ItineraryDialog(Toplevel):
                 del self._items[iid]
         self._persist()
 
+    def _edit_selected(self, _e=None) -> None:
+        """يفتح محرّراً لتعديل البند المحدّد (نقرة مزدوجة أو زرّ «تعديل»)."""
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("تعديل", "اختر بنداً من الجدول أولاً.", parent=self)
+            return
+        idx = int(sel[0])
+        if not (0 <= idx < len(self._items)):
+            return
+        row = list(self._items[idx]) + ["", "", "", "", ""]
+        ed = Toplevel(self)
+        ed.title("تعديل بند")
+        ed.configure(bg=BG)
+        ed.transient(self)
+        ed.grab_set()
+        ed.resizable(False, False)
+        frm = ttk.Frame(ed, padding=16)
+        frm.pack()
+        labels = ("اليوم", "التاريخ", "النشاط/المنسك", "المكان", "ملاحظة")
+        widths = (18, 18, 46, 18, 34)
+        vs = []
+        for i, (lab, w) in enumerate(zip(labels, widths)):
+            ttk.Label(frm, text=lab, font=(_FUI, 10), foreground=TEXT).grid(
+                row=i, column=1, sticky="e", padx=(10, 6), pady=4)
+            v = StringVar(value=str(row[i]))
+            vs.append(v)
+            ttk.Entry(frm, textvariable=v, width=w, justify="right").grid(
+                row=i, column=0, pady=4)
+
+        def _save():
+            self._items[idx] = [v.get().strip() for v in vs]
+            ed.destroy()
+            self._persist()
+            try:
+                self.tree.selection_set(str(idx))
+                self.tree.see(str(idx))
+            except Exception:
+                pass
+
+        bar = ttk.Frame(frm)
+        bar.grid(row=99, column=0, columnspan=2, pady=(12, 0), sticky="ew")
+        ttk.Button(bar, text=rtl("💾 حفظ"), style="Primary.TButton",
+                   command=_save).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text="إلغاء", style="Ghost.TButton",
+                   command=ed.destroy).pack(side=LEFT, padx=3)
+        ed.bind("<Return>", lambda _e: _save())
+        ed.bind("<Escape>", lambda _e: ed.destroy())
+        ed.update_idletasks()
+        x = (ed.winfo_screenwidth() - ed.winfo_width()) // 2
+        y = (ed.winfo_screenheight() - ed.winfo_height()) // 3
+        ed.geometry(f"+{x}+{y}")
+
     def _fill_template(self) -> None:
         if self._items and not messagebox.askyesno(
                 "قالب", "استبدال الجدول الحالي بقالب أيام الحجّ؟", parent=self):
@@ -5124,36 +5182,18 @@ class ItineraryDialog(Toplevel):
         self._persist()
 
     def _export(self) -> None:
+        """يعاين جدول المناسك PDF (تطبع أو تحفظ من العارض)."""
         if not self._items:
             messagebox.showinfo("فارغ", "أضِف بنوداً أولاً أو استعمل القالب.",
                                 parent=self)
             return
         rows = [list(r) for r in self._items]
-        title = f"جدول المناسك — موسم {self.app.season_year.get()}هـ"
-
-        def build(path):
-            from openpyxl import Workbook
-            from openpyxl.styles import Alignment, Font, PatternFill
-            wb = Workbook(); ws = wb.active; ws.title = "المناسك"
-            ws.sheet_view.rightToLeft = True
-            ws.append([title]); ws.merge_cells("A1:E1")
-            ws["A1"].font = Font(bold=True, size=14)
-            ws["A1"].alignment = Alignment(horizontal="center")
-            heads = ["اليوم", "التاريخ", "النشاط/المنسك", "المكان", "ملاحظة"]
-            ws.append(heads)
-            for c in range(1, 6):
-                cell = ws.cell(row=2, column=c)
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill("solid", fgColor="3A342B")
-                cell.alignment = Alignment(horizontal="center")
-            for r in rows:
-                ws.append(r)
-            for i, w in enumerate((14, 14, 40, 14, 22), start=1):
-                ws.column_dimensions[chr(64 + i)].width = w
-            wb.save(path)
-
-        if open_preview(self.master, build, "جدول المناسك", "xlsx"):
-            self.app.set_status("فُتحت معاينة جدول المناسك", ok=True)
+        season = self.app.season_year.get()
+        from .pdf_io import export_itinerary_pdf
+        if open_preview(self.master,
+                        lambda p: export_itinerary_pdf(p, rows=rows, season=season),
+                        "جدول المناسك", "pdf"):
+            self.app.set_status("فُتحت معاينة جدول المناسك — اطبع أو احفظ", ok=True)
 
 
 class ExpensesDialog(Toplevel):
