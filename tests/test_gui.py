@@ -596,6 +596,21 @@ _st.save_settings(_app7._settings); _apac("برونزي")
 _r7.destroy()
 print("  OK: صفوف ملغى/انتظار ملوّنة، وتبديل لون البرنامج يُحفظ")
 
+print("\n=== شاشة الترحيب ===")
+from hajj_app.gui import WelcomeDialog as _WEL
+from hajj_app.auth import Session as _S2
+_r8 = Tk(); _r8.withdraw()
+_app8 = HajjApp(_r8, session=_S2("MHU", b"0" * 32, role="admin"))
+_app8.records = [_PD(full_name_ar="أحمد", passport_number="A1",
+                     program_value="5000", paid_amount="2000")]
+_app8.season_year.set("1447")
+_wel = _WEL(_r8, _app8)
+assert len(_wel.winfo_children()) > 0
+_wel._hide.set(True); _wel._toggle_hide()
+assert _st.load_settings()["ui"]["show_welcome"] is False
+_wel.destroy(); _r8.destroy()
+print("  OK: شاشة الترحيب تبني المؤشّرات، و«لا تُظهر» تُحفظ")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

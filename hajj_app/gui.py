@@ -319,6 +319,8 @@ class HajjApp:
         self._load_saved_data()
         root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._setup_auto_lock()
+        if self.session is not None and self._ui.get("show_welcome", True):
+            self.root.after(1300, self._show_welcome)
 
         if self.records:
             pass        # رسالة الاستعادة أهم من تنبيهات التهيئة
@@ -842,6 +844,7 @@ class HajjApp:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
         admin_items += [None,
+                        ("🏠  شاشة الترحيب", self._show_welcome),
                         (f"🎨  لون البرنامج ({self._accent})", self.cycle_accent),
                         ("⌨  اختصارات لوحة المفاتيح", self.do_shortcuts),
                         ("ℹ  حول البرنامج", self.do_about)]
@@ -2317,6 +2320,13 @@ class HajjApp:
         """يفتح نافذة «حول البرنامج»."""
         AboutDialog(self.root)
 
+    def _show_welcome(self) -> None:
+        """يفتح شاشة الترحيب (بأمان — يتجاهل الأخطاء إن أُغلقت النافذة)."""
+        try:
+            WelcomeDialog(self.root, self)
+        except Exception:                              # noqa: BLE001
+            pass
+
     def do_command_palette(self) -> None:
         """يفتح البحث السريع / لوحة الأوامر (Ctrl+K)."""
         commands = [
@@ -3714,6 +3724,106 @@ class CommandPalette(Toplevel):
             payload()
         else:
             self.on_pilgrim(payload)
+
+
+class WelcomeDialog(Toplevel):
+    """شاشة ترحيب: تحية + مؤشّرات سريعة + إجراءات + آخر النشاطات."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("مرحباً")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.resizable(False, False)
+        outer = ttk.Frame(self, padding=22)
+        outer.pack(fill=BOTH, expand=True)
+
+        user = app.session.username if app.session is not None else "ضيف"
+        year = app.season_year.get()
+        ttk.Label(outer, text=rtl(f"حيّاك الله، {user} 👋"), font=(_FSB, 17),
+                  foreground=TEXT, background=BG).pack(anchor="e")
+        ttk.Label(outer, text=rtl(f"موسم الحج {year}هـ"), font=(_FUI, 11),
+                  foreground=BRONZE, background=BG).pack(anchor="e", pady=(2, 14))
+
+        # مؤشّرات سريعة
+        from .fields import format_amount
+        from .stats import financial_summary
+        recs = app.records
+        fin = financial_summary(recs)
+        try:
+            from .quality import readiness_percent
+            ready = (round(sum(readiness_percent(r) for r in recs) / len(recs))
+                     if recs else 0)
+        except Exception:                              # noqa: BLE001
+            ready = 0
+        kpis = [("عدد الحجّاج", f"{len(recs):,}"),
+                ("نسبة الجاهزية", f"{ready}%"),
+                ("المتبقّي المالي", format_amount(fin.remaining) or "0")]
+        krow = ttk.Frame(outer)
+        krow.pack(fill=X, pady=(0, 14))
+        for label, val in kpis:
+            card = tk.Frame(krow, bg=PANEL, highlightbackground=BORDER,
+                            highlightthickness=1, padx=16, pady=10)
+            card.pack(side=RIGHT, padx=5)
+            tk.Label(card, text=val, bg=PANEL, fg=TEXT,
+                     font=(_FSB, 16)).pack()
+            tk.Label(card, text=label, bg=PANEL, fg=MUTED,
+                     font=(_FUI, 9)).pack()
+
+        # إجراءات سريعة
+        ttk.Label(outer, text=rtl("إجراءات سريعة:"), font=(_FSB, 10),
+                  foreground=TEXT, background=BG).pack(anchor="e")
+        arow = ttk.Frame(outer)
+        arow.pack(fill=X, pady=(6, 14))
+        actions = [("➕ إضافة حاج", app.add_manual),
+                   ("📷 قراءة جواز", app.add_images),
+                   ("🎫 تسجيل الحضور", app.do_checkin),
+                   ("🏠 لوحة التحكم", app.do_dashboard)]
+        for label, cb in actions:
+            ttk.Button(arow, text=rtl(label), style="Act.TButton",
+                       command=lambda c=cb: (self.destroy(), c())).pack(
+                side=RIGHT, padx=4)
+
+        # آخر النشاطات
+        try:
+            from . import audit
+            entries = audit.read_entries(limit=6)
+        except Exception:                              # noqa: BLE001
+            entries = []
+        if entries:
+            ttk.Label(outer, text=rtl("آخر النشاطات:"), font=(_FSB, 10),
+                      foreground=TEXT, background=BG).pack(anchor="e")
+            box = tk.Text(outer, height=5, width=52, bg=PANEL, fg=MUTED,
+                          font=(_FUI, 9), relief="flat", wrap="word")
+            for e in entries:
+                ts = str(e.get("ts", "")).replace("T", " ")
+                box.insert("end", f"• {ts}  —  {e.get('user','')}: "
+                                  f"{e.get('action','')} {e.get('details','')}\n")
+            box.configure(state="disabled")
+            box.pack(fill=X, pady=(4, 10))
+
+        foot = ttk.Frame(outer)
+        foot.pack(fill=X, pady=(6, 0))
+        self._hide = tk.BooleanVar(value=not app._ui.get("show_welcome", True))
+        ttk.Checkbutton(foot, variable=self._hide, command=self._toggle_hide,
+                        text=rtl("لا تُظهر هذه الشاشة عند البدء")).pack(side=RIGHT)
+        ttk.Button(foot, text="ابدأ", style="Primary.TButton",
+                   command=self.destroy).pack(side=LEFT)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.grab_set()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 4
+        self.geometry(f"+{x}+{y}")
+
+    def _toggle_hide(self) -> None:
+        self.app._ui["show_welcome"] = not self._hide.get()
+        self.app._settings["ui"] = self.app._ui
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
 
 
 class AboutDialog(Toplevel):
