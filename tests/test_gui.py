@@ -525,6 +525,22 @@ assert "بلا غرفة: 1" in _s
 _r3.destroy()
 print("  OK: تجاوز 1، مكتملة 1، أسرّة شاغرة 2، بلا غرفة 1")
 
+print("\n=== الفلاتر المحفوظة ===")
+from hajj_app.gui import FilterPresetsDialog as _FP
+_r4 = Tk(); _r4.withdraw()
+_app4 = HajjApp(_r4)
+_app4._settings["filter_presets"] = {}     # ابدأ نظيفاً (الملف يبقى)
+_app4.records = [_PD(hotel="الصفوة"), _PD(hotel="كونراد")]
+_app4.refresh()
+_app4.filter_search.set("الصفوة")
+_fp = _FP(_r4, _app4); _fp._preset_name.set("حجّاج الصفوة"); _fp._save()
+assert "حجّاج الصفوة" in _st.load_settings().get("filter_presets", {})
+_app4.filter_search.set("")
+_fp._reload(); _fp.listbox.selection_set(0); _fp._apply()
+assert _app4.filter_search.get() == "الصفوة"
+_r4.destroy()
+print("  OK: حفظ الفلتر الحالي وتطبيقه لاحقاً")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

@@ -948,6 +948,8 @@ class HajjApp:
         btns = ttk.Frame(inner, style="Panel.TFrame")
         btns.grid(row=99, column=0, columnspan=6, sticky="e", pady=(12, 0))
         self._build_columns_menubutton(btns).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("⭐ فلاتر محفوظة"), style="Ghost.TButton",
+                   command=self.do_filter_presets).pack(side=RIGHT, padx=3)
         self._icon_button(btns, "مسح الفلاتر", self.clear_filters, "Ghost.TButton",
                           ("clear", TEXT)).pack(side=RIGHT, padx=3)
         ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
@@ -1201,6 +1203,23 @@ class HajjApp:
             current = self.filter_vars[key].get()
             if current != self._ALL and current not in values:
                 self.filter_vars[key].set(self._ALL)
+
+    def _current_filter_state(self) -> dict:
+        """يلتقط حالة الفلاتر الحالية (البحث + قيم القوائم)."""
+        return {"search": self.filter_search.get(),
+                "vars": {k: v.get() for k, v in self.filter_vars.items()}}
+
+    def _apply_filter_state(self, state: dict) -> None:
+        """يطبّق حالة فلاتر محفوظة."""
+        for key, val in (state.get("vars") or {}).items():
+            if key in self.filter_vars:
+                self.filter_vars[key].set(val)
+        self.filter_search.set(state.get("search", ""))
+        self.refresh()
+
+    def do_filter_presets(self) -> None:
+        """يفتح إدارة الفلاتر المحفوظة (حفظ الحالي/تطبيق/حذف)."""
+        FilterPresetsDialog(self.root, self)
 
     def clear_filters(self) -> None:
         """يعيد كل الفلاتر إلى وضع الكل ويمسح البحث."""
@@ -4556,6 +4575,104 @@ class PaymentsDialog(Toplevel):
             if 0 <= iid < len(self.record.payments):
                 del self.record.payments[iid]
         self._commit()
+
+
+class FilterPresetsDialog(Toplevel):
+    """الفلاتر المحفوظة: حفظ توليفة الفلتر الحالية باسم، وتطبيقها أو حذفها."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("⭐ الفلاتر المحفوظة")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+        self.resizable(False, False)
+
+        outer = ttk.Frame(self, padding=16)
+        outer.pack(fill=BOTH, expand=True)
+        ttk.Label(outer, text=rtl("⭐ الفلاتر المحفوظة"), font=(_FSB, 13),
+                  foreground=TEXT).pack(anchor="e", pady=(0, 8))
+
+        self.listbox = tk.Listbox(outer, height=8, width=34, font=(_FUI, 11),
+                                  activestyle="none")
+        self.listbox.pack(fill=BOTH, expand=True)
+        self.listbox.bind("<Double-1>", lambda _e: self._apply())
+
+        save = ttk.Frame(outer)
+        save.pack(fill=X, pady=(10, 0))
+        self._preset_name = StringVar()
+        ttk.Entry(save, textvariable=self._preset_name, width=20,
+                  justify="right").pack(side=RIGHT, padx=(0, 4))
+        ttk.Label(save, text="اسم:", foreground=MUTED).pack(side=RIGHT)
+        ttk.Button(save, text=rtl("💾 حفظ الفلتر الحالي"), style="Primary.TButton",
+                   command=self._save).pack(side=RIGHT, padx=4)
+
+        btns = ttk.Frame(outer)
+        btns.pack(fill=X, pady=(10, 0))
+        ttk.Button(btns, text=rtl("✔ تطبيق"), style="Act.TButton",
+                   command=self._apply).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=rtl("🗑 حذف"), style="Ghost.TButton",
+                   command=self._delete).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._reload()
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 3
+        self.geometry(f"+{x}+{y}")
+
+    def _presets(self) -> dict:
+        p = self.app._settings.get("filter_presets")
+        return dict(p) if isinstance(p, dict) else {}
+
+    def _reload(self) -> None:
+        self.listbox.delete(0, "end")
+        self._preset_names = sorted(self._presets().keys())
+        for name in self._preset_names:
+            self.listbox.insert("end", name)
+
+    def _selected_name(self):
+        sel = self.listbox.curselection()
+        return self._preset_names[sel[0]] if sel else None
+
+    def _save(self) -> None:
+        name = self._preset_name.get().strip()
+        if not name:
+            messagebox.showwarning("الاسم مطلوب", "أدخل اسماً للفلتر.", parent=self)
+            return
+        presets = self._presets()
+        presets[name] = self.app._current_filter_state()
+        self.app._settings["filter_presets"] = presets
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.app._audit("حفظ فلتر", name)
+        self._preset_name.set("")
+        self._reload()
+
+    def _apply(self) -> None:
+        name = self._selected_name()
+        if not name:
+            return
+        self.app._apply_filter_state(self._presets().get(name, {}))
+        self.app.set_status(f"طُبّق الفلتر: {name}", ok=True)
+        self.destroy()
+
+    def _delete(self) -> None:
+        name = self._selected_name()
+        if not name:
+            return
+        presets = self._presets()
+        presets.pop(name, None)
+        self.app._settings["filter_presets"] = presets
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self._reload()
 
 
 class OccupancyDialog(Toplevel):
