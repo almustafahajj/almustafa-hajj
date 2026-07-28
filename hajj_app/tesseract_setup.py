@@ -21,13 +21,40 @@ _CANDIDATES = (
 _LANG_CACHE: set[str] | None = None
 
 
+def _bundled_candidates() -> list[Path]:
+    """مسارات Tesseract المضمّنة مع نسخة exe المبنيّة (إن وُجدت)."""
+    out: list[Path] = []
+    try:
+        import sys
+
+        from .paths import is_frozen, resource_dir
+        if is_frozen():
+            out.append(resource_dir() / "tesseract" / "tesseract.exe")
+            exe_dir = Path(sys.executable).resolve().parent
+            out.append(exe_dir / "tesseract" / "tesseract.exe")
+            out.append(exe_dir / "_internal" / "tesseract" / "tesseract.exe")
+    except Exception:                                  # noqa: BLE001
+        pass
+    return out
+
+
 def configure_tesseract() -> str | None:
-    """يحدد مسار tesseract.exe ويضبطه في pytesseract. يعيد المسار أو None."""
+    """يحدد مسار tesseract.exe ويضبطه في pytesseract. يعيد المسار أو None.
+
+    الأولوية للنسخة **المضمّنة** مع البرنامج (نسخة exe)، ثم PATH، ثم أماكن
+    التثبيت المعتادة — فيعمل قارئ الجوازات دون تثبيت منفصل.
+    """
     current = pytesseract.pytesseract.tesseract_cmd
     if current and Path(current).is_file():
         return current
 
-    found = shutil.which("tesseract")
+    found = None
+    for bundled in _bundled_candidates():
+        if bundled.is_file():
+            found = str(bundled)
+            break
+    if not found:
+        found = shutil.which("tesseract")
     if not found:
         for candidate in _CANDIDATES:
             if Path(candidate).is_file():

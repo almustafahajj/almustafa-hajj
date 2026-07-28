@@ -37,6 +37,7 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "إنشاء اختصار على سطح المكتب"; GroupDescription: "اختصارات:"
+Name: "webicon"; Description: "اختصار نسخة الويب (فتح من المتصفّح)"; GroupDescription: "اختصارات:"; Flags: unchecked
 
 [Files]
 ; كل ناتج PyInstaller (الـexe + مجلد _internal بكل مكتباته)
@@ -45,8 +46,10 @@ Source: "dist\HajjApp\_internal\*"; DestDir: "{app}\_internal"; Flags: ignorever
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
+Name: "{group}\{#AppName} — نسخة الويب"; Filename: "{app}\{#AppExe}"; Parameters: "web"
 Name: "{group}\إلغاء تثبيت {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName} — ويب"; Filename: "{app}\{#AppExe}"; Parameters: "web"; Tasks: webicon
 
 [Run]
 ; تشغيل البرنامج مباشرة بعد انتهاء التثبيت (اختياري)

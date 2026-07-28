@@ -7,20 +7,31 @@
 مجلد `data` يُنشأ بجوار الـexe عند أول تشغيل ويبقى دائماً (بيانات المستخدم).
 """
 
+import os
 from PyInstaller.utils.hooks import collect_data_files
 
 # الموارد المضمّنة للقراءة فقط: الشعار والأيقونة. تُقرأ لاحقاً من _MEIPASS.
 datas = [("hajj_app/assets", "assets")]
 # arabic_reshaper يحمل ملف إعداد افتراضي يجب أن يُرافقه
 datas += collect_data_files("arabic_reshaper")
+# نسخة الويب: القوالب والأصول (Flask يقرأها من _MEIPASS في وضع exe)
+datas += [("hajj_web/templates", "hajj_web/templates"),
+          ("hajj_web/static", "hajj_web/static")]
+# محرّك Tesseract المضمّن (إن وُجد مجلد vendor/tesseract) — لقراءة الجوازات
+if os.path.isdir("vendor/tesseract"):
+    datas += [("vendor/tesseract", "tesseract")]
 
 a = Analysis(
     ["run_app.py"],
     pathex=[],
     binaries=[],
     datas=datas,
-    # مُلقّم tkinter داخل PIL لا يُكتشف تلقائياً أحياناً
-    hiddenimports=["PIL._tkinter_finder"],
+    # مُلقّم tkinter داخل PIL + مكتبات نسخة الويب (تُستورد بكسل أحياناً)
+    hiddenimports=[
+        "PIL._tkinter_finder",
+        "hajj_web", "hajj_web.app", "hajj_web.server", "hajj_web.sessions",
+        "flask", "waitress", "qrcode", "jinja2",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

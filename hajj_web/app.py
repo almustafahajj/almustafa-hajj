@@ -93,7 +93,14 @@ TEXTAREA_KEYS = {"notes"}
 
 def create_app(auth_path: str | Path | None = None,
                data_path: str | Path | None = None) -> Flask:
-    app = Flask(__name__)
+    from hajj_app.paths import is_frozen, resource_dir
+    if is_frozen():
+        # في نسخة exe تُستخرج القوالب/الأصول إلى مجلد PyInstaller المؤقّت
+        base = resource_dir() / "hajj_web"
+        app = Flask(__name__, template_folder=str(base / "templates"),
+                    static_folder=str(base / "static"))
+    else:
+        app = Flask(__name__)
     app.secret_key = secrets.token_hex(32)          # لتوقيع الكوكيّ
     app.config["AUTH_PATH"] = str(auth_path) if auth_path else None
     app.config["DATA_PATH"] = str(data_path) if data_path else None
