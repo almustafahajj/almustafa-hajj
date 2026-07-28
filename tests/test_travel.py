@@ -80,7 +80,7 @@ assert _fl["ret_arr"] == "مطار دبي"                    # العودة ت�
 # أرقام الرحلة والأوقات تُؤخذ من البرنامج أيضاً
 assert _fl["out_flight"] == "SV 569" and _fl["out_takeoff"] == "14:25"
 assert _fl["ret_flight"] == "SV 566" and _fl["ret_land"] == "09:55"
-assert len(travel.DETAILED_HAJJ_PROGRAM) == 12         # برنامج رحلة الحج المفصّل
+assert len(travel.DETAILED_HAJJ_PROGRAM) == 19         # برنامج رحلة الحج المفصّل
 # النافذة تُعبّئ الرحلة تلقائياً من برامج الحملة المحفوظة
 _st.save_settings({"programs": programs_to_dicts(
     [_p, Program(), Program()])})
