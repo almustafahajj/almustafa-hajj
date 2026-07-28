@@ -506,6 +506,25 @@ _app2._auto_lock()                               # يقفل ويطلب العو�
 assert _app2._logout_requested is True
 print("  OK: معطّل افتراضياً، يُجدوَل عند التفعيل، والقفل يطلب الدخول")
 
+print("\n=== إشغال الغرف ===")
+from hajj_app.gui import OccupancyDialog as _OD
+_r3 = Tk(); _r3.withdraw()
+_occ_recs = [
+    _PD(hotel="الصفوة", room_type="ثنائي", room_number="101"),
+    _PD(hotel="الصفوة", room_type="ثنائي", room_number="101"),
+    _PD(hotel="الصفوة", room_type="ثنائي", room_number="101"),   # تجاوز
+    _PD(hotel="الصفوة", room_type="رباعي", room_number="201"),
+    _PD(hotel="الصفوة", room_type="رباعي", room_number="201"),   # شاغر 2
+    _PD(hotel="كونراد", room_type="مفرد", room_number="5"),      # مكتملة
+    _PD(hotel=""),                                                # بلا غرفة
+]
+_od = _OD(_r3, _occ_recs)
+_s = _od._summary.cget("text")
+assert "متجاوِزة: 1" in _s and "مكتملة: 1" in _s and "أسرّة شاغرة: 2" in _s
+assert "بلا غرفة: 1" in _s
+_r3.destroy()
+print("  OK: تجاوز 1، مكتملة 1، أسرّة شاغرة 2، بلا غرفة 1")
+
 print("\n=== الوضع المفتوح (بلا رقم سري) ===")
 root_open = Tk()
 root_open.withdraw()

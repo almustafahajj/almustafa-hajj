@@ -713,11 +713,13 @@ class HajjApp:
 
         # 🏨 إدارة التسكين
         housing_mb = self._menubutton(bar, "إدارة التسكين  ▾", [
+            ("🛏  إشغال الغرف", self.do_occupancy),
+            None,
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
             ("⛺  خيام المخيمات", self.do_camps),
         ], style="Ghost.TMenubutton", icon=("tent", ORANGE),
-            tip="كشوف التسكين وخيام المخيمات")
+            tip="إشغال الغرف وكشوف التسكين وخيام المخيمات")
         housing_mb.pack(side=RIGHT, padx=3)
 
         # 💰 المالية والمحاسبة
@@ -2063,6 +2065,12 @@ class HajjApp:
             messagebox.showinfo("لا نتائج", "لا يوجد حاج مطابق للفلتر الحالي.")
             return
         AirlineDialog(self.root, records)
+
+    def do_occupancy(self) -> None:
+        """يفتح عرض إشغال الغرف (المشغول مقابل السعة)."""
+        if not self._require_records():
+            return
+        OccupancyDialog(self.root, self._visible_records())
 
     def do_camps(self) -> None:
         """يفتح نافذة خيام المخيمات (منى/عرفة): إنشاء كل خيمة على حدة وتصديرها."""
@@ -4548,6 +4556,63 @@ class PaymentsDialog(Toplevel):
             if 0 <= iid < len(self.record.payments):
                 del self.record.payments[iid]
         self._commit()
+
+
+class OccupancyDialog(Toplevel):
+    """عرض إشغال الغرف: المشغول مقابل السعة لكل غرفة، مع تمييز التجاوز والشواغر."""
+
+    def __init__(self, parent, records) -> None:
+        super().__init__(parent)
+        self.title("🛏 إشغال الغرف")
+        self.configure(bg=BG)
+        self.transient(parent)
+        self.grab_set()
+
+        from .rooming import group_records_by_room
+        rooms, unplaced = group_records_by_room(records)
+
+        outer = ttk.Frame(self, padding=14)
+        outer.pack(fill=BOTH, expand=True)
+        self._summary = ttk.Label(outer, font=(_FSB, 11), foreground=TEXT)
+        self._summary.pack(anchor="e", pady=(0, 8))
+
+        cols = ("hotel", "number", "cap", "occ", "status")
+        tree = ttk.Treeview(outer, columns=cols, show="headings", height=18)
+        for key, text, w, anc in (("hotel", "الفندق", 180, "e"),
+                                   ("number", "الغرفة", 90, "center"),
+                                   ("cap", "السعة", 70, "center"),
+                                   ("occ", "المشغول", 80, "center"),
+                                   ("status", "الحالة", 140, "center")):
+            tree.heading(key, text=text)
+            tree.column(key, width=w, anchor=anc)
+        tree.tag_configure("over", background="#FBEBEA")
+        tree.tag_configure("full", background="#E8F6EC")
+        tree.tag_configure("partial", background="#FBF0DC")
+        tree.pack(fill=BOTH, expand=True)
+
+        full = over = free_beds = 0
+        for hotel, cap, number, occ in rooms:
+            n = len(occ)
+            cap = cap or n
+            if n > cap:
+                over += 1; status = f"تجاوز (+{n - cap})"; tag = "over"
+            elif n == cap:
+                full += 1; status = "مكتملة"; tag = "full"
+            else:
+                free_beds += (cap - n); status = f"شاغر {cap - n}"; tag = "partial"
+            tree.insert("", "end", values=(hotel or "—", number, cap, n, status),
+                        tags=(tag,))
+        self._summary.configure(text=rtl(
+            f"غرف: {len(rooms)}    •    مكتملة: {full}    •    متجاوِزة: {over}"
+            f"    •    أسرّة شاغرة: {free_beds}    •    بلا غرفة: {len(unplaced)}"))
+
+        ttk.Button(outer, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(anchor="w", pady=(10, 0))
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 5
+        self.geometry(f"+{x}+{y}")
 
 
 class CheckInDialog(Toplevel):
