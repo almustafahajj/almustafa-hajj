@@ -648,6 +648,7 @@ class HajjApp:
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
             None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
+            ("📄  كشف المتأخّرات المالية (معاينة)", self.do_arrears_report),
             ("🧾  سند قبض (معاينة)", self._receipt_selected),
             ("🧾  فاتورة ضريبية (معاينة)",
              lambda: self._invoice_selected(electronic=False)),
@@ -2488,6 +2489,20 @@ class HajjApp:
         if open_preview(self.root, export_fn, base_name, ext):
             self.set_status("فُتحت المعاينة — اطبع أو احفظ نسخةً من العارض",
                             ok=True)
+
+    def do_arrears_report(self) -> None:
+        """كشف المتأخّرات المالية: الحجّاج الذين عليهم مبالغ متبقّية (معاينة)."""
+        if not self._require_records():
+            return
+        from .stats import outstanding
+        owe = [rec for rec, rem in outstanding(self._visible_records()) if rem > 0]
+        if not owe:
+            messagebox.showinfo("لا متأخّرات",
+                                "لا يوجد حجّاج عليهم مبالغ متبقّية 👍")
+            return
+        self._preview_export(
+            lambda p: export_excel(owe, p),
+            f"كشف المتأخّرات المالية {self.season_year.get()}هـ", "xlsx")
 
     def do_export_excel(self) -> None:
         if not self._require_records():
