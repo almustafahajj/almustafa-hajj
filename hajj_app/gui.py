@@ -4877,7 +4877,7 @@ class WhatsAppDialog(Toplevel):
         self.grab_set()
         self.resizable(False, False)
 
-        from .whatsapp import DEFAULT_TEMPLATE, PLACEHOLDERS
+        from .whatsapp import DEFAULT_TEMPLATE, PLACEHOLDERS, TEMPLATES
 
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill=BOTH, expand=True)
@@ -4886,6 +4886,17 @@ class WhatsAppDialog(Toplevel):
         ttk.Label(outer, foreground=MUTED, font=(_FUI, 9),
                   text="يفتح لكلٍّ محادثة واتساب برسالة جاهزة — تضغط «إرسال» "
                        "بنفسك.").pack(anchor="e", pady=(0, 8))
+
+        # قالب جاهز
+        self._templates = TEMPLATES
+        trow = ttk.Frame(outer)
+        trow.pack(fill=X, pady=(0, 6))
+        ttk.Label(trow, text="قالب جاهز:", foreground=TEXT).pack(side=RIGHT, padx=(6, 0))
+        self.v_tpl = StringVar(value=next(iter(TEMPLATES)))
+        tcb = ttk.Combobox(trow, textvariable=self.v_tpl, state="readonly",
+                           width=22, values=list(TEMPLATES.keys()))
+        tcb.pack(side=RIGHT)
+        tcb.bind("<<ComboboxSelected>>", lambda _e: self._load_template())
 
         top = ttk.Frame(outer)
         top.pack(fill=X, pady=(0, 6))
@@ -4941,6 +4952,13 @@ class WhatsAppDialog(Toplevel):
         x = (self.winfo_screenwidth() - self.winfo_width()) // 2
         y = (self.winfo_screenheight() - self.winfo_height()) // 6
         self.geometry(f"+{x}+{y}")
+
+    def _load_template(self) -> None:
+        """يستبدل نصّ الرسالة بالقالب المختار."""
+        text = self._templates.get(self.v_tpl.get(), "")
+        self.txt.delete("1.0", "end")
+        self.txt.insert("1.0", text)
+        self._rebuild()
 
     def _rebuild(self) -> None:
         from .whatsapp import to_intl

@@ -12,11 +12,29 @@ from urllib.parse import quote
 _AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 
 # العناصر النائبة المدعومة في قالب الرسالة
-PLACEHOLDERS = ("{الاسم}", "{الفندق}", "{البرنامج}", "{الهاتف}")
+PLACEHOLDERS = ("{الاسم}", "{الفندق}", "{البرنامج}", "{الهاتف}", "{المتبقّي}")
 
 DEFAULT_TEMPLATE = ("السلام عليكم {الاسم}،\n"
                     "نودّ تذكيركم بتفاصيل برنامج الحج. للاستفسار تواصلوا معنا.\n"
                     "مع تحيات المصطفى للحج والعمرة.")
+
+# قوالب جاهزة (الاسم المعروض -> نصّ القالب)
+TEMPLATES: dict[str, str] = {
+    "عام (افتراضي)": DEFAULT_TEMPLATE,
+    "تذكير دفعة": (
+        "السلام عليكم {الاسم}،\n"
+        "نذكّركم بوجود مبلغ متبقٍّ على برنامج الحج قدره {المتبقّي} ريال.\n"
+        "نرجو سداده في أقرب وقت. مع تحيات المصطفى للحج والعمرة."),
+    "تعليمات ما قبل السفر": (
+        "السلام عليكم {الاسم}،\n"
+        "اقترب موعد السفر لأداء الحج. يُرجى إحضار الجواز وبطاقة الحاج، "
+        "والالتزام بموعد التجمّع. فندقكم: {الفندق}.\n"
+        "مع تحيات المصطفى للحج والعمرة."),
+    "ترحيب وتأكيد التسجيل": (
+        "السلام عليكم {الاسم}،\n"
+        "نرحّب بكم في برنامج {البرنامج}، ونؤكّد اكتمال تسجيلكم بإذن الله.\n"
+        "للاستفسار تواصلوا معنا. مع تحيات المصطفى للحج والعمرة."),
+}
 
 
 def to_intl(phone, default_cc: str = "971") -> str | None:
@@ -52,11 +70,17 @@ def render_message(template: str, rec) -> str:
     """يملأ العناصر النائبة في القالب من بيانات الحاج."""
     name = (getattr(rec, "full_name_ar", "") or getattr(rec, "full_name_en", "")
             or "").strip()
+    try:
+        from .fields import compute_remaining
+        remaining = compute_remaining(rec)
+    except Exception:                              # noqa: BLE001
+        remaining = str(getattr(rec, "remaining_amount", "") or "")
     repl = {
         "{الاسم}": name,
         "{الفندق}": str(getattr(rec, "hotel", "") or "").strip(),
         "{البرنامج}": str(getattr(rec, "program", "") or "").strip(),
         "{الهاتف}": str(getattr(rec, "phone", "") or "").strip(),
+        "{المتبقّي}": remaining or "0",
     }
     out = str(template or "")
     for key, val in repl.items():

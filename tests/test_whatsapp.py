@@ -79,4 +79,15 @@ assert "wa.me/966501112233" in _opened[0], _opened
 root.destroy()
 print("  OK: يستبعد بلا رقم، يفتح بالترتيب، ويحفظ رمز الدولة")
 
+print("\n=== القوالب الجاهزة + متغيّر المتبقّي ===")
+from hajj_app.whatsapp import TEMPLATES, PLACEHOLDERS
+r = rec(full_name_ar="أحمد", hotel="الصفوة", program="الأول", phone="0501",
+        program_value="10000", paid_amount="7000")
+assert "{المتبقّي}" in PLACEHOLDERS
+msg = render_message(TEMPLATES["تذكير دفعة"], r)
+assert "أحمد" in msg and "3,000" in msg, msg          # 10000 - 7000
+assert "الصفوة" in render_message(TEMPLATES["تعليمات ما قبل السفر"], r)
+assert set(TEMPLATES) >= {"تذكير دفعة", "تعليمات ما قبل السفر", "ترحيب وتأكيد التسجيل"}
+print(f"  OK: {len(TEMPLATES)} قوالب، وتذكير الدفعة يملأ المتبقّي 3,000")
+
 print("\n*** WHATSAPP TESTS PASSED ***")
