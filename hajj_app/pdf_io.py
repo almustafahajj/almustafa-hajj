@@ -155,6 +155,35 @@ def ltr(text) -> str:
     return f"‎{text}‎" if text else ""
 
 
+def _ar_para(text, style, maxw: float) -> "Paragraph":
+    """فقرة عربية بلفٍّ يدوي يحافظ على ترتيب الأسطر رأسياً.
+
+    ``ar`` تطبّق bidi على النص كاملاً فيصير بترتيب بصري معكوس؛ فلو تُرك اللفّ
+    لـ reportlab لَقسّم النص المعكوس فجاءت الأسطر بترتيب رأسي مقلوب (آخر سطر
+    يظهر أولاً). لذا نلفّ الكلمات منطقياً حسب العرض، ثم نطبّق ``ar`` على كل
+    سطر ونصلها بـ ``<br/>`` فلا يعيد reportlab اللفّ ويبقى الترتيب سليماً.
+    """
+    font, size = style.fontName, style.fontSize
+    lines: list[str] = []
+    for para in str(text).split("\n"):
+        words = para.split()
+        if not words:
+            lines.append("")
+            continue
+        cur = ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if not cur or pdfmetrics.stringWidth(ar(trial), font, size) <= maxw:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+    html = "<br/>".join(ar(ln) for ln in lines) or " "
+    return Paragraph(html, style)
+
+
 def _styles() -> dict[str, ParagraphStyle]:
     return {
         "title": ParagraphStyle(
@@ -649,20 +678,26 @@ def export_travel_pdf(path: str | Path, *, program_name: str = "البرنامج
     if itinerary:
         story.append(Paragraph(ar("🗓 برنامج المناسك"), h2))
         heads = ["اليوم", "التاريخ", "النشاط/المنسك", "المكان"]
-        table_data = [[Paragraph(ar(h), st["head"]) for h in reversed(heads)]]
-        for row in itinerary:
-            row = list(row) + ["", "", "", ""]
-            cells = [row[0], row[1], row[2], row[3]]
-            table_data.append([Paragraph(ar(str(v)), st["cell"])
-                               for v in reversed(cells)])
         weights = list(reversed([26, 26, 90, 30]))
         scale = doc.width / sum(weights)
-        t = Table(table_data, colWidths=[w * scale for w in weights], repeatRows=1)
+        colw = [w * scale for w in weights]
+        PAD = 4
+        avail = [w - 2 * PAD - 1 for w in colw]
+        table_data = [[_ar_para(h, st["head"], avail[i])
+                       for i, h in enumerate(reversed(heads))]]
+        for row in itinerary:
+            row = list(row) + ["", "", "", ""]
+            cells = list(reversed([row[0], row[1], row[2], row[3]]))
+            table_data.append([_ar_para(str(v), st["cell"], avail[i])
+                               for i, v in enumerate(cells)])
+        t = Table(table_data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
             ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("LEFTPADDING", (0, 0), (-1, -1), PAD),
+            ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
@@ -698,20 +733,27 @@ def export_itinerary_pdf(path: str | Path, *, rows: list | None = None,
         story.append(Paragraph(ar(sub), st["subtitle"]))
 
     heads = ["اليوم", "التاريخ", "النشاط/المنسك", "المكان", "ملاحظة"]
-    table_data = [[Paragraph(ar(h), st["head"]) for h in reversed(heads)]]
-    for row in rows:
-        row = list(row) + ["", "", "", "", ""]
-        cells = [row[0], row[1], row[2], row[3], row[4]]
-        table_data.append([Paragraph(ar(str(v)), st["cell"])
-                           for v in reversed(cells)])
     weights = list(reversed([28, 24, 78, 26, 40]))
     scale = doc.width / sum(weights)
-    t = Table(table_data, colWidths=[w * scale for w in weights], repeatRows=1)
+    colw = [w * scale for w in weights]
+    PAD = 4
+    # العرض المتاح للنص داخل كل خلية (بعد حشو الجانبين) لِلَفٍّ يدوي سليم
+    avail = [w - 2 * PAD - 1 for w in colw]
+    table_data = [[_ar_para(h, st["head"], avail[i])
+                   for i, h in enumerate(reversed(heads))]]
+    for row in rows:
+        row = list(row) + ["", "", "", "", ""]
+        cells = list(reversed([row[0], row[1], row[2], row[3], row[4]]))
+        table_data.append([_ar_para(str(v), st["cell"], avail[i])
+                           for i, v in enumerate(cells)])
+    t = Table(table_data, colWidths=colw, repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
         ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ("LEFTPADDING", (0, 0), (-1, -1), PAD),
+        ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
