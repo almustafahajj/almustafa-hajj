@@ -7166,7 +7166,11 @@ def _run_session(session, open_mode: bool) -> str | None:
     root.withdraw()                            # نخفيها حتى تجهز، خلف شاشة البداية
     apply_window_icon(root)
     splash = _show_splash(root)
-    app = HajjApp(root, session, open_mode=open_mode)
+    if app_mode.is_umrah():
+        from .umrah_gui import UmrahApp        # واجهة العمرة (استيراد مؤجّل)
+        app = UmrahApp(root, session, open_mode=open_mode)
+    else:
+        app = HajjApp(root, session, open_mode=open_mode)
 
     def _reveal():
         if splash is not None:
