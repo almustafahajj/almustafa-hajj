@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, StringVar, Tk, Toplevel, filedialog, messagebox, ttk
 
+from . import app_mode
 from .excel_io import export_excel, import_excel
 from .fields import (
     DATE_KEYS, DIAG_FIELDS, EDITABLE, FIELDS, MONEY_KEYS, MRZ_FILLED, TIME_KEYS,
@@ -301,7 +302,7 @@ class HajjApp:
             self._accent = "برونزي"
         apply_accent(self._accent)
 
-        root.title("برنامج الحج — إدارة بيانات الحجاج")
+        root.title(app_mode.label("window_title"))
         geom = self._ui.get("geometry")
         root.geometry(geom if isinstance(geom, str) and "x" in geom else "1280x740")
         root.minsize(900, 560)
@@ -444,7 +445,8 @@ class HajjApp:
         from . import i18n
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
-        ttk.Label(titles, text=i18n.tr("برنامج الحج موسم"), font=(_FSB, 17),
+        ttk.Label(titles, text=i18n.tr(app_mode.label("program_season")),
+                  font=(_FSB, 17),
                   foreground=TEXT, background=BG).pack(side=RIGHT)
         year_box = ttk.Combobox(
             titles, textvariable=self.season_year, state="readonly",
@@ -630,6 +632,24 @@ class HajjApp:
         self._exit_action = "logout"
         self.root.destroy()           # ينهي حلقة الأحداث؛ main يعيد شاشة الدخول
 
+    def switch_mode(self) -> None:
+        """يعود إلى شاشة اختيار الوضع (حج/عمرة) مع حفظ البيانات أولاً."""
+        other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
+        if not messagebox.askyesno(
+            "تبديل الوضع",
+            f"الانتقال إلى وضع «{app_mode.mode_label(other)}»؟\n"
+            "تُحفظ بياناتك الحالية، ولكلّ وضع بياناته المستقلّة.",
+            parent=self.root,
+        ):
+            return
+        try:
+            self.save_data()
+        except Exception:
+            pass
+        self._audit("تبديل الوضع", app_mode.mode_label(other))
+        self._exit_action = "switch"
+        self.root.destroy()             # يعيد main إلى شاشة اختيار الوضع
+
     def cycle_accent(self) -> None:
         """يبدّل لون البرنامج (accent) إلى التالي ويعيد البناء بلونه."""
         order = list(ACCENTS)
@@ -757,15 +777,19 @@ class HajjApp:
 
         # 📋 البرامج (إعداد — للمحرّر فأعلى)
         if ce:
-            programs_mb = self._menubutton(bar, "البرامج  ▾", [
+            programs_items = [
                 ("🌙  بدء موسم جديد", self.do_new_season),
                 None,
                 ("🗂  برامج الحملة (الأول/الثاني/الثالث)", self.do_programs),
                 ("👥  المجموعات والمرشدون", self.do_groups),
-                ("🗓  جدول المناسك", self.do_itinerary),
-                ("🧳  مواعيد وتعليمات السفر", self.do_travel_info),
-            ], style="Ghost.TMenubutton", icon=("columns", BRONZE),
-                tip="الموسم والبرامج والمجموعات والمناسك ومواعيد السفر")
+            ]
+            # جدول المناسك خاص بالحج — يُخفى في وضع العمرة
+            if not app_mode.is_umrah():
+                programs_items.append(("🗓  جدول المناسك", self.do_itinerary))
+            programs_items.append(("🧳  مواعيد وتعليمات السفر", self.do_travel_info))
+            programs_mb = self._menubutton(bar, "البرامج  ▾", programs_items,
+                style="Ghost.TMenubutton", icon=("columns", BRONZE),
+                tip="الموسم والبرامج والمجموعات ومواعيد السفر")
             programs_mb.pack(side=RIGHT, padx=3)
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -795,14 +819,18 @@ class HajjApp:
         book_mb.pack(side=RIGHT, padx=3)
 
         # 🏨 إدارة التسكين
-        housing_mb = self._menubutton(bar, "إدارة التسكين  ▾", [
+        housing_items = [
             ("🛏  إشغال الغرف", self.do_occupancy),
             None,
             ("🏨  تسكين إكسل", self.do_rooming_excel),
             ("🏨  تسكين PDF", self.do_rooming_pdf),
-            ("⛺  خيام المخيمات", self.do_camps),
-        ], style="Ghost.TMenubutton", icon=("tent", ORANGE),
-            tip="إشغال الغرف وكشوف التسكين وخيام المخيمات")
+        ]
+        # خيام المشاعر (منى/عرفة) خاصة بالحج — تُخفى في وضع العمرة
+        if not app_mode.is_umrah():
+            housing_items.append(("⛺  خيام المخيمات", self.do_camps))
+        housing_mb = self._menubutton(bar, "إدارة التسكين  ▾", housing_items,
+            style="Ghost.TMenubutton", icon=("tent", ORANGE),
+            tip="إشغال الغرف وكشوف التسكين")
         housing_mb.pack(side=RIGHT, padx=3)
 
         # 💰 المالية والمحاسبة
@@ -847,7 +875,11 @@ class HajjApp:
         if ce:
             admin_items.append(("↩  استعادة نسخة احتياطية", self.do_restore))
         admin_items.append(("📝  سجلّ التدقيق", self.do_audit))
+        # التبديل بين وضعي الحج والعمرة (يعرض الوضع الآخر)
+        _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
+        _switch_label = f"🕋  التبديل إلى {app_mode.mode_label(_other)}"
         admin_items += [None,
+                        (_switch_label, self.switch_mode),
                         ("🧭  معالج الإعداد", self.do_onboarding),
                         ("🏠  شاشة الترحيب", self._show_welcome),
                         (f"🎨  لون البرنامج ({self._accent})", self.cycle_accent),
@@ -2392,13 +2424,15 @@ class HajjApp:
             ("🚌 كشف المواصلات", self.do_transport),
             ("🪪 بطاقات الحجّاج", self.do_badges),
             ("👥 المجموعات والمرشدون", self.do_groups),
-            ("🗓 جدول المناسك", self.do_itinerary),
             ("🌙 بدء موسم جديد", self.do_new_season),
             ("🛡 نسخة احتياطية الآن", self.do_backup_now),
             ("📝 سجلّ التدقيق", self.do_audit),
             ("⌨ الاختصارات", self.do_shortcuts),
             ("ℹ حول البرنامج", self.do_about),
         ]
+        # جدول المناسك خاص بالحج — يُخفى من البحث السريع في وضع العمرة
+        if not app_mode.is_umrah():
+            commands.insert(-6, ("🗓 جدول المناسك", self.do_itinerary))
         CommandPalette(self.root, commands, list(self.records),
                        self._focus_record)
 
@@ -7089,7 +7123,7 @@ def _show_splash(root):
             lbl = tk.Label(frame, image=img, bg=BG)
             lbl.image = img                    # مرجع يمنع جمع القمامة
             lbl.pack()
-        tk.Label(frame, text="برنامج الحج", bg=BG, fg=ACCENT,
+        tk.Label(frame, text=app_mode.label("splash"), bg=BG, fg=ACCENT,
                  font=(_FSB, 16)).pack(pady=(12, 0))
         from . import __release_name__, __version__
         vtext = f"الإصدار {__version__}"
@@ -7144,19 +7178,91 @@ def _run_session(session, open_mode: bool) -> str | None:
     return getattr(app, "_exit_action", None)
 
 
+def _choose_mode() -> str | None:
+    """شاشة اختيار وضع العمل: **الحج** أو **العمرة**.
+
+    تعيد ``'hajj'`` أو ``'umrah'``، أو ``None`` إن أُغلقت النافذة دون اختيار.
+    """
+    win = Tk()
+    apply_window_icon(win)
+    win.title("المصطفى للحج والعمرة — اختيار الوضع")
+    win.configure(bg=BG)
+    win.resizable(False, False)
+    result: dict = {"mode": None}
+
+    outer = tk.Frame(win, bg=BG, padx=48, pady=36)
+    outer.pack()
+    img = logo_image(win, width=190)
+    if img is not None:
+        lb = tk.Label(outer, image=img, bg=BG)
+        lb.image = img                         # مرجع يمنع جمع القمامة
+        lb.pack()
+    tk.Label(outer, text="اختر وضع العمل", bg=BG, fg=ACCENT,
+             font=(_FSB, 18)).pack(pady=(14, 2))
+    tk.Label(outer, text="لكلّ وضع بياناته وإعداداته المستقلّة", bg=BG, fg=MUTED,
+             font=(_FUI, 10)).pack(pady=(0, 22))
+
+    def choose(mode: str) -> None:
+        result["mode"] = mode
+        win.destroy()
+
+    btns = tk.Frame(outer, bg=BG)
+    btns.pack()
+
+    def card(emoji: str, title: str, mode: str, accent: str):
+        btn = tk.Button(
+            btns, text=f"{emoji}\n{title}", font=(_FSB, 19), bg=accent, fg="white",
+            activebackground=accent, activeforeground="white", relief="flat",
+            bd=0, width=9, height=3, cursor="hand2",
+            command=lambda: choose(mode))
+        btn.pack(side=RIGHT, padx=11)
+        return btn
+
+    # الكعبة للحج والهلال للعمرة (تمييز بصري)
+    card("🕋", "الحج", app_mode.HAJJ, BRONZE)
+    card("🌙", "العمرة", app_mode.UMRAH, ACCENT)
+
+    tk.Label(outer, text="🕋 الحج: كل الميزات   ·   🌙 العمرة: بلا المناسك والخيام",
+             bg=BG, fg=MUTED, font=(_FUI, 9)).pack(pady=(20, 0))
+
+    win.bind("<Escape>", lambda _e: win.destroy())
+    win.update_idletasks()
+    w, h = win.winfo_width(), win.winfo_height()
+    sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+    win.geometry(f"+{(sw - w) // 2}+{(sh - h) // 3}")
+    win.mainloop()
+    return result["mode"]
+
+
+def _mode_loop(session, open_mode: bool) -> str | None:
+    """يعرض شاشة اختيار الوضع ثم يشغّل الجلسة، مع دعم التبديل وتبديل اللغة.
+
+    يعيد 'logout' للعودة إلى شاشة الدخول، أو None لإنهاء البرنامج.
+    """
+    mode = _choose_mode()
+    while mode is not None:
+        app_mode.set_mode(mode)
+        action = _run_session(session, open_mode)
+        if action == "restart":
+            continue                           # تبديل اللغة/اللون — نفس الوضع
+        if action == "switch":
+            mode = _choose_mode()              # العودة إلى شاشة اختيار الوضع
+            continue
+        if action == "logout":
+            return "logout"
+        return None                            # إغلاق عادي — إنهاء
+    return None                                # أُغلقت شاشة الاختيار دون اختيار
+
+
 def main() -> None:
     if OPEN_MODE_NO_LOGIN:
-        while _run_session(None, True) == "restart":   # تبديل اللغة يعيد البناء
-            pass
+        _mode_loop(None, True)
         return
 
-    # حلقة الدخول: تسجيل الخروج يعيد شاشة الدخول، وتبديل اللغة يعيد البناء
+    # حلقة الدخول: تسجيل الخروج يعيد شاشة الدخول، والوضع يُختار بعد كل دخول
     while True:
         session = authenticate()               # الدخول أولاً بمفتاح فك التشفير
         if session is None:
             return
-        action = "restart"
-        while action == "restart":
-            action = _run_session(session, False)
-        if action != "logout":
-            return                             # النافذة أُغلقت عادةً — إنهاء
+        if _mode_loop(session, False) != "logout":
+            return                             # إنهاء — أو أُغلقت النوافذ عادةً

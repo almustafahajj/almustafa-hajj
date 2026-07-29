@@ -28,8 +28,12 @@ _FIELD_NAMES = {f.name for f in dataclass_fields(PassportData)}
 
 
 def settings_path() -> Path:
-    """مسار ملف الإعدادات (غير مشفّر — لا يحوي بيانات حسّاسة)."""
-    return default_data_path().parent / "settings.json"
+    """مسار ملف الإعدادات (غير مشفّر — لا يحوي بيانات حسّاسة).
+
+    يعتمد اسم الملف على وضع التشغيل (حج/عمرة) فتُفصل إعدادات كل وضع.
+    """
+    from . import app_mode
+    return default_data_path().parent / app_mode.settings_filename()
 
 
 def load_settings() -> dict:
@@ -58,9 +62,14 @@ def save_settings(settings: dict) -> None:
 
 
 def default_data_path() -> Path:
-    """مسار ملف البيانات الافتراضي: مجلد data الدائم بجوار البرنامج."""
+    """مسار ملف البيانات الافتراضي: مجلد data الدائم بجوار البرنامج.
+
+    اسم الملف يتبع وضع التشغيل (حج ← ``hajjaj.json`` / عمرة ← ``umrah.json``)
+    فتبقى قائمة كل وضع مستقلّة.
+    """
+    from . import app_mode
     from .paths import data_dir
-    return data_dir() / "hajjaj.json"
+    return data_dir() / app_mode.data_filename()
 
 
 def _to_dict(record: PassportData) -> dict:
