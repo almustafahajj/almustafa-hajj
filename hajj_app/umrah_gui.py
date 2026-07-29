@@ -411,35 +411,38 @@ class TripEditorDialog(Toplevel):
 
 
 class BookingDialog(Toplevel):
-    """حاسبة الحجز: عدد الأشخاص + نوع الغرفة + الخدمات → التسعير وإضافة المعتمرين."""
+    """حجز بالتسعير: تضبط الغرفة والخدمات والنقل، ثم تضيف كل شخص بقراءة جوازه
+    أو يدوياً — ويُطبَّق السعر والغرفة والنقل المحسوب على كل معتمر تلقائياً."""
 
     def __init__(self, window: "TripPilgrimsWindow", trip) -> None:
         super().__init__(window)
         self.window = window
+        self.app = window.app
+        self.session = window.session
         self.trip = trip
+        self._added = 0
         self.title(f"إضافة حجز بالتسعير — {trip.name or trip.code}")
         self.configure(bg=G.BG)
         self.transient(window)
         self.grab_set()
         self.resizable(False, False)
+        self._room_by_name = {name: key for key, name, _c in umrah.ROOM_TYPES}
 
         f = ttk.Frame(self, padding=16)
         f.pack(fill=BOTH, expand=True)
 
         top = ttk.Frame(f)
         top.pack(fill=X)
-        ttk.Label(top, text=G.rtl("عدد الأشخاص:"), font=(G._FUI, 10),
+        ttk.Label(top, text=G.rtl("عدد أشخاص الحجز:"), font=(G._FUI, 10),
                   foreground=G.TEXT).pack(side=RIGHT, padx=(8, 4))
         self.persons = StringVar(value="1")
-        sp = ttk.Spinbox(top, from_=1, to=50, width=6, textvariable=self.persons,
-                         justify="center", command=self._recalc)
-        sp.pack(side=RIGHT)
+        ttk.Spinbox(top, from_=1, to=50, width=6, textvariable=self.persons,
+                    justify="center", command=self._recalc).pack(side=RIGHT)
         self.persons.trace_add("write", lambda *_a: self._recalc())
 
         ttk.Label(top, text=G.rtl("نوع الغرفة:"), font=(G._FUI, 10),
                   foreground=G.TEXT).pack(side=RIGHT, padx=(16, 4))
         self.room = StringVar(value=umrah.ROOM_TYPES[1][1])   # ثنائي افتراضاً
-        self._room_by_name = {name: key for key, name, _c in umrah.ROOM_TYPES}
         cb = ttk.Combobox(top, textvariable=self.room, state="readonly", width=10,
                           justify="center",
                           values=[name for _k, name, _c in umrah.ROOM_TYPES])
@@ -475,17 +478,25 @@ class BookingDialog(Toplevel):
 
         self.summary = ttk.Label(f, text="", font=(G._FSB, 12),
                                  foreground=G.BRONZE, background=G.BG)
-        self.summary.pack(anchor="e", pady=(14, 0))
+        self.summary.pack(anchor="e", pady=(14, 2))
+        self.counter = ttk.Label(f, text="", font=(G._FUI, 10),
+                                 foreground=G.MUTED, background=G.BG)
+        self.counter.pack(anchor="e")
 
+        # إضافة كل شخص بقراءة الجواز أو يدوياً (يُطبَّق التسعير تلقائياً)
         btns = ttk.Frame(f)
         btns.pack(fill=X, pady=(12, 0))
-        ttk.Button(btns, text=G.rtl("➕ إضافة الأشخاص"), style="Primary.TButton",
-                   command=self._add).pack(side=RIGHT, padx=3)
-        ttk.Button(btns, text="إلغاء", style="Ghost.TButton",
+        ttk.Button(btns, text=G.rtl("📷 إضافة بقراءة الجواز"),
+                   style="Primary.TButton",
+                   command=self.add_passport).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text=G.rtl("➕ إضافة يدوي"), style="Act.TButton",
+                   command=self.add_manual).pack(side=RIGHT, padx=3)
+        ttk.Button(btns, text="إنهاء", style="Ghost.TButton",
                    command=self.destroy).pack(side=LEFT, padx=3)
         self._recalc()
         _center(self, window)
 
+    # ---- الحساب ----
     def _persons_n(self) -> int:
         try:
             return max(1, int(float(self.persons.get() or 1)))
@@ -499,42 +510,106 @@ class BookingDialog(Toplevel):
         self.transport.set(umrah.suggest_transport(self._persons_n()))
         self._transport_auto = True
 
+    def _per_person_price(self) -> float:
+        key = self._room_by_name.get(self.room.get(), "price_double")
+        return umrah.package_per_person(self.trip, key, self._chosen_services())
+
     def _recalc(self) -> None:
         n = self._persons_n()
-        # النقل يتبع العدد تلقائياً ما لم يُعدّله المستخدم يدوياً
         if getattr(self, "_transport_auto", True):
             self.transport.set(umrah.suggest_transport(n))
-        key = self._room_by_name.get(self.room.get(), "price_double")
-        per = umrah.package_per_person(self.trip, key, self._chosen_services())
-        total = per * n
+        per = self._per_person_price()
+        self._per_person = per
         self.summary.configure(text=(
             f"سعر الفرد: {format_amount(per)}   ·   "
-            f"الإجمالي ({n}): {format_amount(total)}"))
-        self._per_person = per
+            f"الإجمالي ({n}): {format_amount(per * n)}"))
+        self.counter.configure(
+            text=f"أُضيف في هذا الحجز: {self._added} من {n}")
 
-    def _add(self) -> None:
-        n = self._persons_n()
-        key = self._room_by_name.get(self.room.get(), "price_double")
-        room_name = self.room.get()
-        per = umrah.package_per_person(self.trip, key, self._chosen_services())
-        transport = self.transport.get().strip()
+    def _apply_booking(self, rec) -> None:
+        """يطبّق إعدادات الحجز (البرنامج، الغرفة، النقل، السعر، الخدمات) على معتمر."""
+        rec.trip = self.trip.code
+        rec.room_type = self.room.get()
+        rec.transport = self.transport.get().strip()
+        rec.program_value = f"{self._per_person_price():.0f}"
         services = "، ".join(self._chosen_services())
-        for _ in range(n):
-            rec = PassportData()
-            rec.trip = self.trip.code
-            rec.room_type = room_name
-            rec.transport = transport
-            rec.program_value = f"{per:.0f}"
-            if services:
-                rec.notes = f"خدمات: {services}"
-            self.window.app.records.append(rec)
-        self.window.app.save()
+        if services:
+            note = f"خدمات: {services}"
+            rec.notes = note if not rec.notes else f"{rec.notes} | {note}"
+
+    def _commit_person(self, rec) -> None:
+        """يضيف المعتمر للبرنامج ويحفظ ويحدّث العدّادات والجدول."""
+        if rec not in self.app.records:
+            self.app.records.append(rec)
+        self.app.save()
+        self._added += 1
         self.window._reload()
-        self.destroy()
-        messagebox.showinfo(
-            "تمت الإضافة",
-            f"أُضيف {n} معتمراً بسعر فرد {format_amount(per)}.\n"
-            "عدّل أسماءهم وبياناتهم من «تعديل».", parent=self.window)
+        self._recalc()
+
+    # ---- الإضافة يدوياً ----
+    def add_manual(self) -> None:
+        rec = PassportData()
+        self._apply_booking(rec)               # يُعبّئ السعر/الغرفة/النقل مسبقاً
+        self.grab_release()                    # نسلّم القبض لنافذة التعديل
+
+        def on_save(r):
+            r.trip = self.trip.code            # نحفظ ما عدّله المستخدم كما هو
+            self._commit_person(r)
+
+        ed = G.EditDialog(self, rec, on_save, title="إضافة معتمر (حجز)",
+                          save_text="إضافة", session=self.session, umrah=True)
+        # نستعيد القبض عند إغلاق نافذة التعديل نفسها (لا عناصرها الداخلية)
+        ed.bind("<Destroy>",
+                lambda e, w=ed: self._regrab() if e.widget is w else None)
+
+    def _regrab(self) -> None:
+        try:
+            if self.winfo_exists():
+                self.grab_set()
+        except Exception:
+            pass
+
+    # ---- الإضافة بقراءة الجواز ----
+    def add_passport(self) -> None:
+        if not configure_tesseract():
+            messagebox.showerror(
+                "Tesseract غير موجود",
+                "برنامج Tesseract OCR غير مثبّت.\nثبّته ثم أعد المحاولة.",
+                parent=self)
+            return
+        paths = filedialog.askopenfilenames(
+            title="اختر صور أو ملفات PDF للجوازات", parent=self,
+            filetypes=G.SCAN_TYPES)
+        if not paths:
+            return
+        self.configure(cursor="watch")
+        self.update_idletasks()
+        added, fails = 0, []
+        for p in paths:
+            try:
+                if Path(p).suffix.lower() == ".pdf":
+                    recs, _notes = extract_from_pdf(p)
+                else:
+                    recs = [extract_passport(p)]
+            except (MRZError, PDFError, Exception) as exc:   # noqa: BLE001
+                fails.append(f"{Path(p).name}: {exc}")
+                continue
+            for rec in recs:
+                self._apply_booking(rec)
+                if len(recs) == 1:
+                    self.window._attach_image(rec, p)
+                self.app.records.append(rec)
+                added += 1
+                self._added += 1
+        self.configure(cursor="")
+        if added:
+            self.app.save()
+            self.window._reload()
+            self._recalc()
+        msg = f"أُضيف {added} معتمراً بسعر فرد {format_amount(self._per_person_price())}."
+        if fails:
+            msg += "\n\nتعذّرت قراءة:\n- " + "\n- ".join(fails[:8])
+        messagebox.showinfo("قراءة الجوازات", msg, parent=self)
 
 
 class TripPilgrimsWindow(Toplevel):

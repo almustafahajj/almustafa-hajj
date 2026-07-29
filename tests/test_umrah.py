@@ -84,14 +84,21 @@ bd.svc_vars["تأمين طبّي"].set(True)
 bd._recalc()
 assert getattr(bd, "_per_person") == 4200          # 4000 + 200
 assert "جيمس" in bd.transport.get()                # النقل تلقائي (3 أشخاص)
-bd._add()
+# التسعير يُطبَّق على كل معتمر يُضاف (بقراءة الجواز أو يدوياً)
+for nm in ("محمد", "أحمد", "سالم"):
+    r = PassportData(full_name_ar=nm)
+    bd._apply_booking(r)                           # يحاكي ما يجري عند الإضافة
+    assert r.program_value == "4200" and r.room_type == "ثلاثي"
+    assert "جيمس" in r.transport and r.trip == "P1"
+    assert "تأمين طبّي" in r.notes
+    bd._commit_person(r)                           # يضيف ويحفظ ويحدّث العدّاد
+assert bd._added == 3
 recs2, _ = st.load_records()
-assert len(recs2) == 3 and all(r.trip == "P1" for r in recs2)
-assert all(r.program_value == "4200" and r.room_type == "ثلاثي" for r in recs2)
+assert len(recs2) == 3 and all(r.program_value == "4200" for r in recs2)
 fin = win.fin.cget("text")
 assert "العدد: 3" in fin and "الإجمالي: 12,600" in fin
 root.destroy()
-print("  OK: الحجز يضيف الأشخاص بالسعر المحسوب والنقل التلقائي والمالية تُجمَع")
+print("  OK: الحجز يضيف كل شخص بالسعر/الغرفة/النقل المحسوب (جواز أو يدوي)")
 
 print("\n=== نافذة التعديل في وضع العمرة (بلا حقول الحج) ===")
 import hajj_app.gui as _g
