@@ -750,8 +750,6 @@ class TripPilgrimsWindow(Toplevel):
         ttk.Label(head, text=f"👤 المعتمرين — «{trip.name or trip.code}»",
                   font=(G._FSB, 15), foreground=G.TEXT,
                   background=G.BG).pack(side=RIGHT)
-        ttk.Button(head, text="⛶", style="Ghost.TButton", width=3,
-                   command=self._toggle_max).pack(side=LEFT, padx=(0, 8))
         self.fin = ttk.Label(head, text="", font=(G._FUI, 10),
                              foreground=G.BRONZE, background=G.BG)
         self.fin.pack(side=LEFT)
@@ -1034,17 +1032,6 @@ class TripPilgrimsWindow(Toplevel):
         self._reload()
 
     # ---- التصدير ----
-    def _toggle_max(self) -> None:
-        """يكبّر نافذة المعتمرين ملء الشاشة أو يعيدها."""
-        try:
-            self.state("normal" if self.state() == "zoomed" else "zoomed")
-        except Exception:
-            try:
-                self.attributes("-fullscreen",
-                                not self.attributes("-fullscreen"))
-            except Exception:
-                pass
-
     def _prog_label(self) -> str:
         """اسم البرنامج مع رمزه للكشف (يُذكر رمز البرنامج)."""
         return (f"{self.trip.code} — {self.trip.name}"
