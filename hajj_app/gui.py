@@ -6801,6 +6801,29 @@ class EditDialog(Toplevel):
         ("ملاحظات", ("notes", "staff")),
     )
 
+    # تبويبات وضع العمرة — بلا حقول الحج (برنامج الحملة/التأشيرة/التصريح/الهدي)
+    UMRAH_TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("بيانات المعتمر", ("family_number", "reference_number", "full_name_ar",
+                            "full_name_en", "phone", "status",
+                            "mahram_name", "mahram_relation")),
+        ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
+                    "expiry_date")),
+        ("السفر", ("airline", "flight_number", "travel_class", "pnr",
+                   "arrival_date", "arrival_time", "departure_date",
+                   "departure_time", "transport")),
+        ("الإقامة والخدمات", ("hotel", "room_type", "room_number", "wheelchair")),
+        ("الصحة والطوارئ", ("blood_type", "medical_conditions", "medications",
+                            "vaccination", "insurance", "emergency_name",
+                            "emergency_phone", "emergency_relation")),
+        ("المالية", ("program_value", "paid_amount")),
+        ("ملاحظات", ("notes", "staff")),
+    )
+    # حقول خاصة بالحج تُستبعد تماماً من نافذة العمرة (حتى من تبويب «أخرى»)
+    UMRAH_DROP = frozenset({
+        "program", "group", "hady", "executive_service",
+        "visa_number", "visa_status", "permit_status", "masar_number",
+    })
+
     # حقول ذات قيم محدّدة تُعرض قائمةً منسدلة
     CHOICE_FIELDS = {
         "status": ("", "نشط", "ملغى", "قائمة انتظار"),
@@ -6810,11 +6833,12 @@ class EditDialog(Toplevel):
 
     def __init__(self, parent, record: PassportData, on_save, *,
                  title: str = "تعديل بيانات الحاج",
-                 save_text: str = "حفظ", session=None) -> None:
+                 save_text: str = "حفظ", session=None, umrah: bool = False) -> None:
         super().__init__(parent)
         self.record = record
         self.on_save = on_save
         self.session = session
+        self._umrah = umrah
         self.vars: dict[str, StringVar] = {}
         # عمليات الصور المؤجّلة حتى الحفظ: النوع -> مسار جديد أو "DELETE" أو None
         self._pending_images: dict[str, str | None] = {}
@@ -6832,17 +6856,20 @@ class EditDialog(Toplevel):
         notebook = ttk.Notebook(outer)
         notebook.pack(fill=BOTH, expand=True)
 
-        by_key = {f.key: f for f in EDITABLE}
+        tabs = self.UMRAH_TABS if umrah else self.TABS
+        drop = self.UMRAH_DROP if umrah else frozenset()
+        editable = [f for f in EDITABLE if f.key not in drop]
+        by_key = {f.key: f for f in editable}
         placed: set[str] = set()
 
-        for tab_title, keys in self.TABS:
+        for tab_title, keys in tabs:
             fields = [by_key[k] for k in keys if k in by_key]
             if not fields:
                 continue
             placed.update(f.key for f in fields)
             notebook.add(self._make_tab(notebook, fields), text=tab_title)
 
-        leftover = [f for f in EDITABLE if f.key not in placed]
+        leftover = [f for f in editable if f.key not in placed]
         if leftover:
             notebook.add(self._make_tab(notebook, leftover), text="أخرى")
 
@@ -6886,6 +6913,8 @@ class EditDialog(Toplevel):
             self.vars[f.key] = var
 
             label = f.label
+            if self._umrah:            # مسمّيات العمرة بدل الحج
+                label = label.replace("الحاج", "المعتمر").replace("حاج", "معتمر")
             if f.key in MRZ_FILLED:
                 label += " *"          # نجمة: مقروء من الجواز
             ttk.Label(frame, text=label, font=(_FUI, 10)).grid(

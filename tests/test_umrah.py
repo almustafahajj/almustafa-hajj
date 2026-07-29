@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""اختبار برنامج العمرة: نموذج الفوج، الشاشة الرئيسية، ونافذة معتمري الفوج."""
+"""اختبار برنامج العمرة: نموذج البرنامج، التسعير، النقل، الحجز، ونافذة المعتمرين."""
 import sys, io
 import os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
@@ -11,6 +11,12 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 import pathlib
 import tkinter as tk
+from tkinter import messagebox as _mb
+# تعطيل الرسائل المنبثقة الحاجبة أثناء الاختبار (تحاكي ضغط المستخدم)
+_mb.showinfo = lambda *a, **k: "ok"
+_mb.showwarning = lambda *a, **k: "ok"
+_mb.showerror = lambda *a, **k: "ok"
+_mb.askyesno = lambda *a, **k: True
 import hajj_app.storage as st
 from hajj_app import app_mode, umrah
 from hajj_app.mrz import PassportData
@@ -23,57 +29,86 @@ for _f in WORK.glob("*"):
 app_mode.set_mode("umrah")
 st.default_data_path = lambda: WORK / app_mode.data_filename()
 
-print("=== نموذج الفوج والتخزين ===")
+print("=== النموذج والتخزين والترحيل ===")
 s = {}
 assert umrah.load_trips(s) == []
-t1 = umrah.UmrahTrip(code="U1", name="رمضان", makkah_hotel="فندق", capacity="40",
-                     services=["تأشيرة العمرة", "تأمين طبّي"])
-t2 = umrah.UmrahTrip(code="U2", name="شعبان")
-umrah.save_trips(s, [t1, t2])
+t1 = umrah.UmrahTrip(code="U1", name="رمضان", makkah_hotel="فندق",
+                     price_double="4500",
+                     services=[{"name": "تأمين طبّي", "price": "200"}])
+umrah.save_trips(s, [t1, umrah.UmrahTrip(code="U2", name="شعبان")])
 back = umrah.load_trips(s)
 assert [t.code for t in back] == ["U1", "U2"]
-assert back[0].services == ["تأشيرة العمرة", "تأمين طبّي"]
+assert back[0].services == [{"name": "تأمين طبّي", "price": "200"}]
 assert umrah.next_code(back) == "U3"
-print("  OK: حفظ/تحميل الأفواج + اقتراح الرمز التالي")
+# ترحيل الصيغة القديمة: services=list[str] و price المفرد القديم
+old = umrah.trip_from_dict({"code": "X", "price": "3000",
+                            "services": ["زيارة المدينة المنوّرة"]})
+assert old.price_double == "3000"                       # رُحّل السعر القديم
+assert old.services == [{"name": "زيارة المدينة المنوّرة", "price": ""}]
+print("  OK: حفظ/تحميل + ترحيل الأسعار والخدمات القديمة")
 
-print("\n=== ربط المعتمر بالفوج ===")
-recs = [PassportData(full_name_ar="أ", trip="U1"),
-        PassportData(full_name_ar="ب", trip="U2"),
-        PassportData(full_name_ar="ج", trip="U1")]
+print("\n=== التسعير والنقل ===")
+t = umrah.UmrahTrip(code="P1", price_single="6000", price_double="4500",
+                    price_triple="4000", price_quad="3500",
+                    services=[{"name": "تأمين طبّي", "price": "200"},
+                              {"name": "زيارة المدينة المنوّرة", "price": "300"}])
+assert umrah.room_price(t, "price_double") == 4500
+assert umrah.services_map(t)["تأمين طبّي"] == 200
+assert umrah.package_per_person(t, "price_double", ["تأمين طبّي"]) == 4700
+assert umrah.package_per_person(
+    t, "price_single", ["تأمين طبّي", "زيارة المدينة المنوّرة"]) == 6500
+assert "فورد" in umrah.suggest_transport(2)
+assert "جيمس" in umrah.suggest_transport(3) and "جيمس" in umrah.suggest_transport(6)
+assert umrah.suggest_transport(0) == ""
+print("  OK: أسعار الغرف + الخدمات لكل شخص + قاعدة النقل حسب العدد")
+
+print("\n=== ربط المعتمر بالبرنامج ===")
+recs = [PassportData(trip="U1"), PassportData(trip="U2"), PassportData(trip="U1")]
 assert len(umrah.trip_pilgrims(recs, "U1")) == 2
-assert len(umrah.trip_pilgrims(recs, "U2")) == 1
 assert umrah.trip_pilgrims(recs, "U9") == []
-print("  OK: ترشيح معتمري كل فوج حسب الحقل trip")
+print("  OK: ترشيح معتمري كل برنامج")
 
-print("\n=== الشاشة الرئيسية ونافذة المعتمرين ===")
+print("\n=== الواجهة: البرامج، الحجز بالتسعير، والمالية ===")
 import hajj_app.umrah_gui as ug
 root = tk.Tk(); root.withdraw()
 app = ug.UmrahApp(root, session=None)
-assert app.trips == [] and app.records == []
-# إضافة فوج عبر منطق الشاشة
-tt = umrah.UmrahTrip(code="U1", name="رمضان 1", capacity="30")
+tt = umrah.UmrahTrip(code="P1", name="رمضان ١", price_triple="4000",
+                     services=[{"name": "تأمين طبّي", "price": "200"}])
 app._on_trip_saved(tt)
-assert [x.code for x in app.trips] == ["U1"]
-assert app.tree.get_children() == ("U1",)                 # ظهر في الجدول
-# إضافة معتمرين للفوج والحفظ المشفّر
-for nm, val, paid in [("محمد", "5000", "2000"), ("أحمد", "5000", "5000")]:
-    r = PassportData(full_name_ar=nm, program_value=val, paid_amount=paid, trip="U1")
-    app.records.append(r)
-app.save()
-recs2, _ = st.load_records()
-assert len(recs2) == 2 and all(r.trip == "U1" for r in recs2)   # مُخزَّن مع الفوج
-# نافذة معتمري الفوج: العدّ والمالية
+assert app.tree.get_children() == ("P1",)
 win = ug.TripPilgrimsWindow(app, tt)
-assert len(win.tree.get_children()) == 2
+# حجز بالتسعير: 3 أشخاص، غرفة ثلاثية، + خدمة تأمين
+bd = ug.BookingDialog(win, tt)
+bd.persons.set("3"); bd.room.set("ثلاثي")
+bd.svc_vars["تأمين طبّي"].set(True)
+bd._recalc()
+assert getattr(bd, "_per_person") == 4200          # 4000 + 200
+assert "جيمس" in bd.transport.get()                # النقل تلقائي (3 أشخاص)
+bd._add()
+recs2, _ = st.load_records()
+assert len(recs2) == 3 and all(r.trip == "P1" for r in recs2)
+assert all(r.program_value == "4200" and r.room_type == "ثلاثي" for r in recs2)
 fin = win.fin.cget("text")
-assert "العدد: 2" in fin and "الإجمالي: 10,000" in fin and "المتبقّي: 3,000" in fin
-# حذف الفوج يُبقي المعتمرين في البيانات (لا يحذفهم)
-win.destroy()
-app.trips.remove(tt); app.save_trips(); app._reload()
-assert app.tree.get_children() == ()
-assert len(st.load_records()[0]) == 2                      # المعتمرون باقون
+assert "العدد: 3" in fin and "الإجمالي: 12,600" in fin
 root.destroy()
-print("  OK: الأفواج تُدار، المعتمرون يُحفظون مشفّرين، والمالية تُحسب")
+print("  OK: الحجز يضيف الأشخاص بالسعر المحسوب والنقل التلقائي والمالية تُجمَع")
+
+print("\n=== نافذة التعديل في وضع العمرة (بلا حقول الحج) ===")
+import hajj_app.gui as _g
+r2 = tk.Tk(); r2.withdraw()
+dlg = _g.EditDialog(r2, PassportData(), lambda _r: None, umrah=True)
+for hajj_key in ("program", "group", "visa_number", "permit_status", "hady",
+                 "masar_number", "executive_service"):
+    assert hajj_key not in dlg.vars, hajj_key
+for keep in ("full_name_ar", "passport_number", "program_value", "hotel"):
+    assert keep in dlg.vars, keep
+dlg.destroy()
+# وضع الحج يُبقي الحقول
+dlg2 = _g.EditDialog(r2, PassportData(), lambda _r: None)
+assert "visa_number" in dlg2.vars and "program" in dlg2.vars
+dlg2.destroy()
+r2.destroy()
+print("  OK: العمرة تُخفي برنامج الحملة/التأشيرة/التصريح/الهدي، والحج يُبقيها")
 
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")
