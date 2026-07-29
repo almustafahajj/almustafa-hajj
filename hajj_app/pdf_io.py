@@ -184,6 +184,16 @@ def _ar_para(text, style, maxw: float) -> "Paragraph":
     return Paragraph(html, style)
 
 
+def _ar_cells(values, style, colw, pad: float = 2) -> list:
+    """يبني صفّ خلايا عربية بلفٍّ يدوي سليم، كلٌّ حسب عرض عمودها.
+
+    ``colw`` عرض الأعمدة (نقاط)، و``pad`` حشو الجانبين في الجدول. يمنع قلب
+    ترتيب الأسطر رأسياً في أي خلية قد تلتفّ على أكثر من سطر (انظر ``_ar_para``).
+    """
+    return [_ar_para(v, style, colw[i] - 2 * pad - 1)
+            for i, v in enumerate(values)]
+
+
 def _styles() -> dict[str, ParagraphStyle]:
     return {
         "title": ParagraphStyle(
@@ -264,7 +274,8 @@ def _room_legend(grouped: list[tuple[str, int, list]]):
         "legend", fontName=_FONT_BOLD, fontSize=8, textColor=colors.white,
         alignment=1, leading=10,
     )
-    cells = [Paragraph(ar(ROOM_CATEGORIES[cap - 1]), style) for cap in present]
+    cells = _ar_cells([ROOM_CATEGORIES[cap - 1] for cap in present],
+                      style, [58] * len(present), pad=6)
     table = Table([cells], colWidths=[58] * len(present))
     ts = [
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -320,7 +331,10 @@ def export_pdf(
     # ---- الجدول الرئيسي ----
     # الأعمدة معكوسة لأن التخطيط من اليمين لليسار: مسلسل أقصى اليمين
     cols = list(reversed(PDF_FIELDS))
-    table_data = [[Paragraph(ar(f.label), st["head"]) for f in cols]]
+    weights = [_PDF_WIDTHS.get(f.key, f.width * 4) for f in cols]
+    scale = doc.width / sum(weights)
+    col_widths = [w * scale for w in weights]
+    table_data = [_ar_cells([f.label for f in cols], st["head"], col_widths)]
     warn_rows: list[int] = []
     room_rows: list[tuple[int, int]] = []      # (رقم السطر، سعة الغرفة للتلوين)
 
@@ -333,7 +347,8 @@ def export_pdf(
         data = row_dict(rec, serial)
         if data.get("warnings"):
             warn_rows.append(len(table_data))
-        table_data.append([Paragraph(ar(data.get(f.key, "")), st["cell"]) for f in cols])
+        table_data.append(
+            _ar_cells([data.get(f.key, "") for f in cols], st["cell"], col_widths))
 
     grouped = _grouped_rooms(records) if group_by_room else []
     if group_by_room:
@@ -347,7 +362,8 @@ def export_pdf(
         serial = 0
         for label, capacity, occupants in grouped:
             row = ["" for _ in cols]
-            row[0] = Paragraph(ar(label), room_head)
+            # سطر العنوان يمتدّ على كامل عرض الجدول (SPAN)
+            row[0] = _ar_para(label, room_head, sum(col_widths) - 6)
             room_rows.append((len(table_data), capacity))
             table_data.append(row)
             for rec in occupants:
@@ -356,10 +372,6 @@ def export_pdf(
     else:
         for idx, rec in enumerate(records, start=1):
             _add_occupant(rec, idx)
-
-    weights = [_PDF_WIDTHS.get(f.key, f.width * 4) for f in cols]
-    scale = doc.width / sum(weights)
-    col_widths = [w * scale for w in weights]
 
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
@@ -436,18 +448,23 @@ def _card(rec: PassportData, serial: int, st: dict, width: float) -> list:
 
     labels = {f.key: f.label for f in FIELDS}
 
+    # عرض العمودين (القيمة 0.58، العنوان 0.42) لضبط اللفّ اليدوي مسبقاً
+    col_w = (width - 8 * mm) / 2
+    val_w = col_w * 0.58 - 13
+    lbl_w = col_w * 0.42 - 13
+
     # نبني كل مجموعة ككتلة صفوف مستقلة، ثم نوزّعها على عمودين
     blocks: list[list] = []
     for group_title, keys in _CARD_GROUPS:
         present = [k for k in keys if data.get(k)]
         if not present:
             continue
-        block = [(True, [Paragraph(ar(group_title), group_style), ""])]
+        block = [(True, [_ar_para(group_title, group_style, col_w - 13), ""])]
         for k in present:
             # القيمة يساراً والعنوان يميناً (تخطيط RTL)
             block.append((False, [
-                Paragraph(ar(data[k]), st["cell"]),
-                Paragraph(ar(labels.get(k, k)), label_style),
+                _ar_para(data[k], st["cell"], val_w),
+                _ar_para(labels.get(k, k), label_style, lbl_w),
             ]))
         blocks.append(block)
 
@@ -558,14 +575,15 @@ def export_attendance_pdf(records: list, path: str | Path, *,
         row += [ck.get(s, "غائب") for s in stages]
         logical_rows.append(row)
 
-    table_data = []
-    for ridx, lrow in enumerate(logical_rows):
-        style = st["head"] if ridx == 0 else st["cell"]
-        table_data.append([Paragraph(ar(str(v)), style) for v in reversed(lrow)])
-
     weights = list(reversed([22, 90, 55, 55, 45] + [58] * len(stages)))
     scale = doc.width / sum(weights)
     col_widths = [w * scale for w in weights]
+
+    table_data = []
+    for ridx, lrow in enumerate(logical_rows):
+        style = st["head"] if ridx == 0 else st["cell"]
+        table_data.append(
+            _ar_cells([str(v) for v in reversed(lrow)], style, col_widths))
 
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
@@ -632,18 +650,20 @@ def export_travel_pdf(path: str | Path, *, program_name: str = "البرنامج
     # ---- جدول الرحلة (ذهاب/عودة) كأزواج مقروءة ----
     flight = data.get("flight", {}) if isinstance(data.get("flight"), dict) else {}
 
+    kvh = ParagraphStyle("kvh", parent=kv, fontName=_FONT_BOLD)
+    leg_cw = [doc.width * 0.66, doc.width * 0.34]
+
     def leg_block(head, prefix, fields):
         rows = []
         for label, key in fields:
             val = str(flight.get(prefix + key, "") or "").strip()
             if val:
-                rows.append([Paragraph(ar(val), kv),
-                             Paragraph(ar(label), ParagraphStyle(
-                                 "kvh", parent=kv, fontName=_FONT_BOLD))])
+                rows.append([_ar_para(val, kv, leg_cw[0] - 13),
+                             _ar_para(label, kvh, leg_cw[1] - 13)])
         if not rows:
             return
         story.append(Paragraph(ar(head), h2))
-        t = Table(rows, colWidths=[doc.width * 0.66, doc.width * 0.34])
+        t = Table(rows, colWidths=leg_cw)
         t.setStyle(TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
             ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#F3EFE8")),
@@ -860,7 +880,10 @@ def export_camp_pdf(plan, path: str | Path,
     # الأعمدة معكوسة لأن التخطيط من اليمين لليسار: «م» أقصى اليمين
     labels = ["م", "اسم الحاج", "رقم العائلة", "الفندق", "الغرفة", "الجنس", "الهاتف"]
     draw_labels = list(reversed(labels))
-    table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
+    weights = list(reversed([22, 122, 46, 74, 44, 40, 68]))
+    scale = doc.width / sum(weights)
+    col_widths = [w * scale for w in weights]
+    table_data = [_ar_cells(draw_labels, st["head"], col_widths)]
     class_rows: list[tuple[int, str]] = []
 
     tent_head = ParagraphStyle(
@@ -876,7 +899,7 @@ def export_camp_pdf(plan, path: str | Path,
     serial = 0
     for tent in plan.tents:
         row = ["" for _ in labels]
-        row[0] = Paragraph(ar(tent_label(tent)), tent_head)
+        row[0] = _ar_para(tent_label(tent), tent_head, sum(col_widths) - 6)
         class_rows.append((len(table_data), tent.classification))
         table_data.append(row)
         for occ in tent.occupants:
@@ -886,11 +909,8 @@ def export_camp_pdf(plan, path: str | Path,
                 str(occ.record.hotel or "").strip(), ltr(_room_of(occ.record)),
                 occ.sex, ltr(str(occ.record.phone or "").strip()),
             ]
-            table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
-
-    weights = list(reversed([22, 122, 46, 74, 44, 40, 68]))
-    scale = doc.width / sum(weights)
-    col_widths = [w * scale for w in weights]
+            table_data.append(
+                _ar_cells([v for v in reversed(values)], st["cell"], col_widths))
 
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
@@ -962,11 +982,12 @@ def export_tents_pdf(plan, path: str | Path,
         sub += f"  •  العدد: {ltr(tent.count)}"
         story.append(Paragraph(ar(sub), st["subtitle"]))
 
-        table_data = [[Paragraph(ar(lbl), st["head"]) for lbl in draw_labels]]
+        table_data = [_ar_cells(draw_labels, st["head"], col_widths)]
         for position, occ in enumerate(tent.occupants, start=1):
             values = [ltr(position), occ.name, tent.sector,
                       tent.classification, campaign]
-            table_data.append([Paragraph(ar(v), st["cell"]) for v in reversed(values)])
+            table_data.append(
+                _ar_cells([v for v in reversed(values)], st["cell"], col_widths))
 
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
@@ -1025,15 +1046,14 @@ def export_stats_pdf(records: list, path: str | Path, *,
         st["subtitle"]))
 
     def table(header, rows, weights, aligns=None):
-        data = [[Paragraph(ar(h), head) for h in reversed(header)]]
-        for row in rows:
-            cells = []
-            for i, v in enumerate(reversed(list(row))):
-                cells.append(Paragraph(ar(str(v)), cellc))
-            data.append(cells)
         w = list(reversed(weights))
         scale = doc.width / sum(w)
-        t = Table(data, colWidths=[x * scale for x in w], repeatRows=1)
+        cw = [x * scale for x in w]
+        data = [_ar_cells(list(reversed(header)), head, cw, pad=6)]
+        for row in rows:
+            data.append(_ar_cells([str(v) for v in reversed(list(row))],
+                                  cellc, cw, pad=6))
+        t = Table(data, colWidths=cw, repeatRows=1)
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1051,12 +1071,14 @@ def export_stats_pdf(records: list, path: str | Path, *,
     valst = ParagraphStyle("fv", parent=cell, alignment=1)
     colors_by = {"المحصّل": colors.HexColor("#2E6B45"),
                  "المتبقّي": colors.HexColor("#B23A3A")}
+    fin_cw = [doc.width * 0.55, doc.width * 0.45]
     fdata = []
     for label, value in fin.as_rows():
         vs = ParagraphStyle("fx", parent=valst, textColor=colors_by.get(label, _INK),
                             fontName=_FONT_BOLD if label in colors_by else _FONT)
-        fdata.append([Paragraph(ar(value), vs), Paragraph(ar(label), lblst)])
-    ft = Table(fdata, colWidths=[doc.width * 0.55, doc.width * 0.45])
+        fdata.append([_ar_para(value, vs, fin_cw[0] - 13),
+                      _ar_para(label, lblst, fin_cw[1] - 13)])
+    ft = Table(fdata, colWidths=fin_cw)
     ft.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1461,9 +1483,10 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
 
     # بيانات الفاتورة | بيانات الحاج (عمودان)
     def kv(pairs):
-        rows = [[Paragraph(ar(str(v) or "—"), val), Paragraph(ar(k), lbl)]
-                for k, v in pairs]
-        t = Table(rows, colWidths=[doc.width * 0.30, doc.width * 0.20])
+        kv_cw = [doc.width * 0.30, doc.width * 0.20]
+        rows = [[_ar_para(str(v) or "—", val, kv_cw[0] - 13),
+                 _ar_para(k, lbl, kv_cw[1] - 13)] for k, v in pairs]
+        t = Table(rows, colWidths=kv_cw)
         t.setStyle(TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1492,15 +1515,17 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     cell = ParagraphStyle("icl", parent=st["cell"], alignment=1, fontSize=9,
                           leading=12)
     rcell = ParagraphStyle("ircl", parent=cell, alignment=2)
-    items = [[Paragraph(ar("المبلغ (د.إ)"), head), Paragraph(ar("سعر الوحدة"), head),
-              Paragraph(ar("الكمية"), head), Paragraph(ar("البيان"), head),
+    it_cw = [doc.width * 0.17, doc.width * 0.17, doc.width * 0.10,
+             doc.width * 0.50, doc.width * 0.06]
+    items = [[_ar_para("المبلغ (د.إ)", head, it_cw[0] - 13),
+              _ar_para("سعر الوحدة", head, it_cw[1] - 13),
+              _ar_para("الكمية", head, it_cw[2] - 13),
+              _ar_para("البيان", head, it_cw[3] - 13),
               Paragraph("#", head)]]
     items.append([Paragraph(money(net), cell), Paragraph(money(net), cell),
-                  Paragraph("1", cell), Paragraph(ar(item_desc), rcell),
+                  Paragraph("1", cell), _ar_para(item_desc, rcell, it_cw[3] - 13),
                   Paragraph("1", cell)])
-    it = Table(items, colWidths=[doc.width * 0.17, doc.width * 0.17,
-                                 doc.width * 0.10, doc.width * 0.50,
-                                 doc.width * 0.06])
+    it = Table(items, colWidths=it_cw)
     it.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, _GRID),
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
@@ -1536,7 +1561,7 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
                             fontSize=11 if big else 9.5)
         ks = ParagraphStyle("tk", parent=lbl, fontSize=10 if big else 9,
                             textColor=colors.white if big else _ACCENT)
-        trows.append([Paragraph(v, vs), Paragraph(ar(k), ks)])
+        trows.append([Paragraph(v, vs), _ar_para(k, ks, doc.width * 0.34 - 13)])
     tot = Table(trows, colWidths=[doc.width * 0.18, doc.width * 0.34])
     tstyle = [
         ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
@@ -1683,10 +1708,13 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
     story.append(Paragraph(ar("عقد خدمات حج") + "  /  Hajj Services Agreement",
                            ParagraphStyle("ct", parent=st["title"], fontSize=15,
                                           spaceBefore=4, spaceAfter=6)))
-    meta = Table([[Paragraph(date_str, val), Paragraph(ar("التاريخ"), lbl),
-                   Paragraph(number, val), Paragraph(ar("رقم العقد"), lbl)]],
-                 colWidths=[doc.width * 0.25, doc.width * 0.15,
-                            doc.width * 0.35, doc.width * 0.25])
+    meta_cw = [doc.width * 0.25, doc.width * 0.15,
+               doc.width * 0.35, doc.width * 0.25]
+    meta = Table([[Paragraph(date_str, val),
+                   _ar_para("التاريخ", lbl, meta_cw[1] - 13),
+                   Paragraph(number, val),
+                   _ar_para("رقم العقد", lbl, meta_cw[3] - 13)]],
+                 colWidths=meta_cw)
     meta.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, _GRID),
                               ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                               ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -2008,7 +2036,7 @@ def export_transport_pdf(records: list, path: str | Path,
         story.append(title_p)
         story.append(sub_p)
 
-        data = [[Paragraph(ar(lbl), head_style) for lbl in draw_labels]] + body
+        data = [_ar_cells(draw_labels, head_style, col_widths, pad=HPAD)] + body
         row_heights = [HEAD_ROW_H] + [row_h] * n_body
         table = Table(data, colWidths=col_widths, rowHeights=row_heights, repeatRows=1)
         table.setStyle(TableStyle([
