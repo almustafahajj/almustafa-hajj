@@ -786,13 +786,15 @@ def export_itinerary_pdf(path: str | Path, *, rows: list | None = None,
 
 
 def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
-                     title: str = "كشف المعتمرين", manager: str = "") -> Path:
+                     title: str = "كشف المعتمرين", manager: str = "",
+                     depart_date: str = "") -> Path:
     """يصدّر كشف معتمري برنامج عمرة إلى PDF (A4 عرضي) بمسمّيات العمرة.
 
     الأعمدة: التسلسل، الاسم، رقم العائلة، رقم الجواز، تاريخ الانتهاء، الجنسية،
     البرنامج، الفندق، نوع الغرفة، الطيران، القيمة، المدفوع، المتبقّي.
+    الجوازات المنتهية أو التي تنتهي قبل ٦ أشهر تُعلَّم بعلامة ⚠ وخلفية تحذير.
     """
-    from .umrah import REPORT_COLUMNS, report_row
+    from .umrah import REPORT_COLUMNS, passport_flag, report_row
 
     _register_fonts()
     path = Path(path)
@@ -822,12 +824,16 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
     PAD = 3
     avail = [w - 2 * PAD - 1 for w in colw]
     table_data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
+    warn_rows = []
     for i, rec in enumerate(records, start=1):
         row = report_row(rec, i, program_name)
+        if passport_flag(rec, depart_date):        # جواز منتهٍ/قارب الانتهاء
+            row["expiry_date"] = ("! " + row["expiry_date"]).strip()
+            warn_rows.append(len(table_data))
         vals = [row[k] for k, _l in REPORT_COLUMNS]
         table_data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
     t = Table(table_data, colWidths=colw, repeatRows=1)
-    t.setStyle(TableStyle([
+    style = [
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
         ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -836,7 +842,10 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
         ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
+    ]
+    for r in warn_rows:
+        style.append(("BACKGROUND", (0, r), (-1, r), _WARN_ROW))
+    t.setStyle(TableStyle(style))
     story.append(t)
     doc.build(story,
               onFirstPage=lambda c, d: _footer(c, d, full_title),
@@ -847,7 +856,8 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
 def export_umrah_rooming_pdf(records: list, path: str | Path, *,
                              city_label: str = "", hotel: str = "",
                              nights: str = "", program_name: str = "",
-                             room_field: str = "makkah_room") -> Path:
+                             room_field: str = "makkah_room",
+                             manager: str = "") -> Path:
     """كشف تسكين معتمري برنامج في مدينة (مكة/المدينة) — مجموعاً بالغرف."""
     from .umrah import rooming_rooms
 
@@ -873,6 +883,8 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     if nights:
         sub.append(f"الليالي: {ltr(nights)}")
     sub.append(f"المعتمرون: {ltr(len(records))}")
+    if manager:
+        sub.append(f"المسؤول: {manager}")
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     rooms, unassigned = rooming_rooms(records, room_field)
@@ -920,7 +932,7 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
 
 def export_umrah_transport_pdf(records: list, path: str | Path, *,
                                program_name: str = "",
-                               transport_pnr: str = "") -> Path:
+                               transport_pnr: str = "", manager: str = "") -> Path:
     """كشف مواصلات معتمري برنامج — مجموعاً بالمركبات (فورد/جيمس)، مع الفندق."""
     from .umrah import rooming_rooms
 
@@ -943,6 +955,8 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     sub = [f"المعتمرون: {ltr(len(records))}"]
     if transport_pnr:
         sub.append(f"PNR النقل: {ltr(transport_pnr)}")
+    if manager:
+        sub.append(f"المسؤول: {manager}")
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     groups, unassigned = rooming_rooms(records, "vehicle")
@@ -1178,10 +1192,10 @@ def _passport_reader(rec, session):
 def export_umrah_cards_pdf(records: list, path: str | Path, *,
                            program_name: str = "", company=None, session=None,
                            emergency_uae: str = "", emergency_ksa: str = "") -> Path:
-    """بطاقات عمرة بمقاس موحّد ٨سم×٥٫٢سم للطباعة والقصّ لاحقاً.
+    """بطاقات عمرة طولية بمقاس موحّد ٥٫٢سم×٨سم للطباعة والقصّ لاحقاً.
 
-    كل بطاقة: شعار الشركة (خلفية موحّدة)، صورة شخصية من الجواز، الاسم، الهاتف،
-    الفندق، الطيران، وأرقام طوارئ الإمارات والسعودية.
+    كل بطاقة: شعار الشركة (خلفية موحّدة)، أيقونة رجل/امرأة حسب الجنس، الاسم،
+    الهاتف، الفندق، الطيران (بلا رقم رحلة/PNR)، وأرقام طوارئ الإمارات والسعودية.
     """
     from reportlab.pdfgen.canvas import Canvas
 
@@ -1191,31 +1205,28 @@ def export_umrah_cards_pdf(records: list, path: str | Path, *,
     pw, ph = A4
     c = Canvas(str(path), pagesize=A4)
 
-    CW, CH = 80 * mm, 52 * mm                 # مقاس البطاقة الموحّد
-    mx, my = 12 * mm, 12 * mm
-    gx, gy = 6 * mm, 6 * mm
+    CW, CH = 52 * mm, 80 * mm                 # مقاس البطاقة الموحّد (طولي)
+    mx, my = 10 * mm, 10 * mm
+    gx, gy = 5 * mm, 5 * mm
     cols = max(1, int((pw - 2 * mx + gx) // (CW + gx)))
-    rows = max(1, int((ph - 2 * my + gy) // (CH + gy)))
-    per_page = cols * rows
+    per_page = cols * max(1, int((ph - 2 * my + gy) // (CH + gy)))
     wm = _faint_logo_reader()
     red = colors.HexColor("#8A2E2E")
 
     def draw_card(x, y, rec):
         # x,y = الركن السفلي الأيسر للبطاقة
-        # خلفية موحّدة: شعار باهت في وسط البطاقة
         if wm is not None:
             try:
                 iw, ih = wm.getSize()
-                ww = CW * 0.72
+                ww = CW * 0.78
                 hh = ww * ih / iw
-                if hh > CH * 0.72:
-                    hh = CH * 0.72
+                if hh > CH * 0.5:
+                    hh = CH * 0.5
                     ww = hh * iw / ih
                 c.drawImage(wm, x + (CW - ww) / 2, y + (CH - hh) / 2, ww, hh,
                             mask="auto")
             except Exception:
                 pass
-        # الإطار
         c.setStrokeColor(_ACCENT)
         c.setLineWidth(0.9)
         c.roundRect(x, y, CW, CH, 5, stroke=1, fill=0)
@@ -1224,53 +1235,43 @@ def export_umrah_cards_pdf(records: list, path: str | Path, *,
         c.setFillColor(_ACCENT)
         c.rect(x, y + CH - bar_h, CW, bar_h, fill=1, stroke=0)
         c.setFillColor(colors.white)
-        c.setFont(_FONT_BOLD, 8)
+        c.setFont(_FONT_BOLD, 7.5)
         c.drawCentredString(x + CW / 2, y + CH - bar_h + 4,
                             ar(f"{co['name_ar']} — بطاقة عمرة"))
-        # الصورة الشخصية (من الجواز) يساراً
-        pbw, pbh = 20 * mm, 26 * mm
-        px, py = x + 5, y + (CH - bar_h - pbh) / 2 + 2
-        reader = _passport_reader(rec, session)
+        # أيقونة رجل/امرأة حسب الجنس (بدل الصورة)
+        ibw, ibh = 22 * mm, 26 * mm
+        ibx = x + (CW - ibw) / 2
+        iby = y + CH - bar_h - 6 - ibh
+        woman = str(getattr(rec, "sex", "") or "").strip() in (
+            "أنثى", "انثى", "F", "f", "Female", "female")
         c.setStrokeColor(_GRID)
         c.setLineWidth(0.5)
-        if reader is not None:
-            try:
-                c.drawImage(reader, px, py, pbw, pbh, mask="auto",
-                            preserveAspectRatio=True, anchor="c")
-            except Exception:
-                reader = None
-        c.rect(px, py, pbw, pbh, stroke=1, fill=0)
-        if reader is None:
-            c.setFillColor(_GRID)
-            c.setFont(_FONT, 7)
-            c.drawCentredString(px + pbw / 2, py + pbh / 2, ar("صورة الجواز"))
+        c.rect(ibx, iby, ibw, ibh, stroke=1, fill=0)
+        try:
+            _draw_person_icon(c, ibx, iby, ibw, ibh, woman=woman)
+        except Exception:
+            pass
 
-        # النصوص يميناً
-        rx = x + CW - 6
-        ty = y + CH - bar_h - 12
+        cx = x + CW / 2
+        ty = iby - 12
         c.setFillColor(_INK)
         c.setFont(_FONT_BOLD, 9)
-        c.drawRightString(rx, ty, ar(rec.full_name_ar or rec.full_name_en or "—"))
+        c.drawCentredString(cx, ty, ar(rec.full_name_ar or rec.full_name_en or "—"))
 
-        def line(label, value, dy, color=_INK, size=7.5):
+        rx = x + CW - 6
+
+        def line(label, value, yy, color=_INK, size=7.5):
             c.setFillColor(color)
             c.setFont(_FONT, size)
-            c.drawRightString(rx, ty - dy, ar(f"{label}: {ltr(str(value or '—'))}"))
+            c.drawRightString(rx, yy, ar(f"{label}: {ltr(str(value or '—'))}"))
 
-        line("الهاتف", rec.phone, 15)
-        line("الفندق", rec.hotel, 28)
-        flight = " / ".join(x2 for x2 in (rec.airline, rec.flight_number, rec.pnr)
-                            if x2)
-        line("الطيران", flight, 41)
-        # أرقام الطوارئ أسفل البطاقة
+        line("الهاتف", rec.phone, ty - 16)
+        line("الفندق", rec.hotel, ty - 30)
+        line("الطيران", rec.airline, ty - 44)     # الطيران فقط بلا رقم رحلة/PNR
         if emergency_uae:
-            c.setFillColor(red)
-            c.setFont(_FONT, 7)
-            c.drawRightString(rx, y + 15, ar(f"طوارئ الإمارات: {ltr(emergency_uae)}"))
+            line("طوارئ الإمارات", emergency_uae, y + 16, red, 7)
         if emergency_ksa:
-            c.setFillColor(red)
-            c.setFont(_FONT, 7)
-            c.drawRightString(rx, y + 5, ar(f"طوارئ السعودية: {ltr(emergency_ksa)}"))
+            line("طوارئ السعودية", emergency_ksa, y + 6, red, 7)
 
     for i, rec in enumerate(records):
         if i and i % per_page == 0:

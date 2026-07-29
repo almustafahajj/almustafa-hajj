@@ -317,6 +317,18 @@ def passport_expiry_soon(rec, depart_date: str, months: int = 6) -> bool:
     return exp < _add_months(dep, months)
 
 
+def passport_expired(rec) -> bool:
+    """هل انتهت صلاحية الجواز فعلاً (قبل اليوم)؟"""
+    from datetime import date as _date
+    exp = _parse_date(getattr(rec, "expiry_date", ""))
+    return bool(exp) and exp < _date.today()
+
+
+def passport_flag(rec, depart_date: str) -> bool:
+    """علامة تحذير على الجواز: منتهٍ أو تنتهي صلاحيته قبل ٦ أشهر من السفر."""
+    return passport_expired(rec) or passport_expiry_soon(rec, depart_date)
+
+
 def auto_assign_vehicles(records: list, max_per: int = 6) -> int:
     """يوزّع المعتمرين على مركبات النقل (فورد ≤ شخصين، جيمس حتى ٦). يعيد العدد."""
     num = 0

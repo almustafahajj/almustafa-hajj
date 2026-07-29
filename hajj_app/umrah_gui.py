@@ -224,13 +224,16 @@ class UmrahApp:
         shown = self._season_trips()
         for i, t in enumerate(shown):
             pilgrims = umrah.trip_pilgrims(self.records, t.code)
-            remaining = sum((parse_amount(r.program_value) or 0)
-                            - (parse_amount(r.paid_amount) or 0) for r in pilgrims)
+            try:
+                cap = int(float(str(t.capacity or "").strip() or 0))
+            except ValueError:
+                cap = 0
+            seats_left = (cap - len(pilgrims)) if cap else None   # السعة − المعتمرين
             self.tree.insert("", END, iid=t.code, values=(
                 t.code, t.name or "—", t.depart_date or "—", t.return_date or "—",
                 t.makkah_hotel or "—", t.madinah_hotel or "—",
                 len(pilgrims), t.capacity or "—",
-                format_amount(remaining) if remaining else "—"),
+                seats_left if seats_left is not None else "—"),
                 tags=("odd",) if i % 2 else ())
         if not shown:
             self._empty.pack(pady=8)
@@ -746,7 +749,7 @@ class TripPilgrimsWindow(Toplevel):
         ttk.Label(head, text=f"👤 المعتمرين — «{trip.name or trip.code}»",
                   font=(G._FSB, 15), foreground=G.TEXT,
                   background=G.BG).pack(side=RIGHT)
-        ttk.Button(head, text=G.rtl("⛶ تكبير"), style="Ghost.TButton",
+        ttk.Button(head, text="⛶", style="Ghost.TButton", width=3,
                    command=self._toggle_max).pack(side=LEFT, padx=(0, 8))
         self.fin = ttk.Label(head, text="", font=(G._FUI, 10),
                              foreground=G.BRONZE, background=G.BG)
@@ -858,9 +861,32 @@ class TripPilgrimsWindow(Toplevel):
         if cap:
             text += f"   ·   🪑 المقاعد المتبقّية: {self._seats_left()} من {cap}"
         if expiring:
-            text += f"   ·   ⚠ جوازات تنتهي قبل ٦ أشهر: {expiring}"
+            text += f"   ·   ⚠ جوازات تنتهي/قاربت: {expiring}"
+        if cap and len(recs) > cap:
+            text += f"   ·   ⛔ تجاوز سعة الطيران ({cap})"
+        for label, used, avail in self._rooms_over():
+            text += f"   ·   ⛔ تجاوز غرف {label} ({used}/{avail})"
         self.fin.configure(text=text)
         self.app._reload()
+
+    def _rooms_over(self) -> list:
+        """المدن التي تجاوز فيها التوزيع عدد الغرف المتاحة (label, used, avail)."""
+        over = []
+        recs = self._pilgrims()
+        for _k, label, room_field, _hf, _nf, rooms_field in umrah.CITIES:
+            try:
+                avail = int(float(str(getattr(self.trip, rooms_field, "") or "")
+                                  .strip() or 0))
+            except ValueError:
+                avail = 0
+            if not avail:
+                continue
+            used = len({str(getattr(r, room_field, "") or "").strip()
+                        for r in recs
+                        if str(getattr(r, room_field, "") or "").strip()})
+            if used > avail:
+                over.append((label, used, avail))
+        return over
 
     def _selected(self):
         sel = self.tree.selection()
@@ -1047,9 +1073,10 @@ class TripPilgrimsWindow(Toplevel):
             messagebox.showinfo("معاينة", "لا معتمرين في هذا البرنامج.", parent=self)
             return
         mgr = str(getattr(self.trip, "manager", "") or "")
+        dep = str(getattr(self.trip, "depart_date", "") or "")
         G.open_preview(
             self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label(),
-                                             manager=mgr),
+                                             manager=mgr, depart_date=dep),
             f"معتمرو {self.trip.code}", "pdf")
 
     def do_finance(self) -> None:
@@ -1297,7 +1324,8 @@ class RoomingWindow(Toplevel):
             self,
             lambda p: export_umrah_rooming_pdf(
                 recs, p, city_label=label, hotel=hotel, nights=nights,
-                program_name=self._prog_label(), room_field=room_field),
+                program_name=self._prog_label(), room_field=room_field,
+                manager=str(getattr(self.trip, "manager", "") or "")),
             f"تسكين {label} {self.trip.code}", "pdf")
 
 
@@ -1441,5 +1469,6 @@ class TransportWindow(Toplevel):
             self,
             lambda p: export_umrah_transport_pdf(
                 recs, p, program_name=self._prog_label(),
-                transport_pnr=str(getattr(self.trip, "transport_pnr", "") or "")),
+                transport_pnr=str(getattr(self.trip, "transport_pnr", "") or ""),
+                manager=str(getattr(self.trip, "manager", "") or "")),
             f"مواصلات {self.trip.code}", "pdf")

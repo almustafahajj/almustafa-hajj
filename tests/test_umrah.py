@@ -342,12 +342,23 @@ pc = WORK / "cards.pdf"
 export_umrah_cards_pdf(fr, pc, program_name="U1 — رمضان",
                        emergency_uae="+971500000000", emergency_ksa="+966500000000")
 assert pc.read_bytes()[:5] == b"%PDF-" and pc.stat().st_size > 3000
-# تنبيه صلاحية الجواز أقل من ٦ أشهر من تاريخ السفر
+# تنبيه صلاحية الجواز أقل من ٦ أشهر من تاريخ السفر + المنتهي
 assert umrah.passport_expiry_soon(
     PassportData(expiry_date="2026-05-01"), "2026-03-01") is True
 assert umrah.passport_expiry_soon(
     PassportData(expiry_date="2027-01-01"), "2026-03-01") is False
-print("  OK: رابط الدفع + بذر رقم الغرفة + الملخّص المالي + البطاقات + تنبيه الجواز")
+assert umrah.passport_expired(PassportData(expiry_date="2020-01-01")) is True
+assert umrah.passport_expired(PassportData(expiry_date="2030-01-01")) is False
+assert umrah.passport_flag(PassportData(expiry_date="2020-01-01"), "") is True
+# الكشف الرئيسي: المتبقّي = السعة − المعتمرين
+r8 = tk.Tk(); r8.withdraw()
+app8 = _ug.UmrahApp(r8, session=None)
+app8.trips.append(umrah.UmrahTrip(code="SE", name="س", capacity="5"))
+app8.records.extend([PassportData(trip="SE") for _ in range(2)])
+app8._reload()
+assert str(app8.tree.item("SE", "values")[-1]) == "3"      # 5 − 2 مقاعد متبقّية
+r8.destroy()
+print("  OK: رابط الدفع + الغرفة + المالية + البطاقات + تنبيه/انتهاء الجواز + المقاعد")
 
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")
