@@ -14,11 +14,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, fields as _dc_fields
 
 # أنواع الغرف: (مفتاح السعر، الاسم، عدد الأشخاص في الغرفة)
+# الطفل بدون سرير لا يشغل مقعداً في الغرفة (السعة 0).
 ROOM_TYPES = (
     ("price_single", "مفرد", 1),
     ("price_double", "ثنائي", 2),
     ("price_triple", "ثلاثي", 3),
     ("price_quad", "رباعي", 4),
+    ("price_child", "طفل (بدون سرير)", 0),
 )
 
 # باقة الخدمات الإضافية المتاحة (يُدخل لكلٍّ سعرها في البرنامج)
@@ -112,6 +114,7 @@ class UmrahTrip:
     price_double: str = ""
     price_triple: str = ""
     price_quad: str = ""
+    price_child: str = ""          # سعر الطفل (بدون سرير)
     transport: str = ""            # ملاحظة النقل الداخلي الافتراضية
     capacity: str = ""             # السعة (عدد المقاعد)
     # الخدمات المتاحة: قائمة {"name":..., "price":...}
@@ -226,18 +229,19 @@ CITIES = (
      "madinah_nights"),
 )
 
-_ROOM_CAP = {"مفرد": 1, "ثنائي": 2, "ثلاثي": 3, "رباعي": 4}
+_ROOM_CAP = {"مفرد": 1, "ثنائي": 2, "ثلاثي": 3, "رباعي": 4,
+             "طفل (بدون سرير)": 0}
 
 
 def room_capacity_of(room_type: str) -> int:
-    """سعة نوع الغرفة (مفرد=1 … رباعي=4)، أو 0 إن لم يُحدَّد."""
+    """سعة نوع الغرفة (مفرد=1 … رباعي=4، الطفل بدون سرير=0)."""
     return _ROOM_CAP.get(str(room_type or "").strip(), 0)
 
 
 def auto_assign_rooms(records: list, room_field: str) -> int:
     """يوزّع المعتمرين على غرف حسب نوع الغرفة (يملؤها حتى السعة) ويرقّمها.
 
-    يعيد عدد الغرف الموزّعة. الترتيب حسب سعة الغرفة تصاعدياً لثبات النتيجة.
+    الأطفال بدون سرير (سعة 0) لا يُخصَّص لهم رقم غرفة. يعيد عدد الغرف.
     """
     from collections import defaultdict
     groups: dict = defaultdict(list)
@@ -245,13 +249,33 @@ def auto_assign_rooms(records: list, room_field: str) -> int:
         groups[str(r.room_type or "").strip()].append(r)
     num = 0
     for rtype in sorted(groups, key=lambda t: (room_capacity_of(t), t)):
-        cap = room_capacity_of(rtype) or 1
+        cap = room_capacity_of(rtype)
+        if cap <= 0:                       # طفل بدون سرير — بلا غرفة
+            continue
         recs = groups[rtype]
         for i in range(0, len(recs), cap):
             num += 1
             for r in recs[i:i + cap]:
                 setattr(r, room_field, str(num))
     return num
+
+
+def auto_assign_vehicles(records: list, max_per: int = 6) -> int:
+    """يوزّع المعتمرين على مركبات النقل (فورد ≤ شخصين، جيمس حتى ٦). يعيد العدد."""
+    num = 0
+    for i in range(0, len(records), max_per):
+        chunk = records[i:i + max_per]
+        num += 1
+        kind = "فورد" if len(chunk) <= 2 else "جيمس"
+        for r in chunk:
+            r.vehicle = f"{kind} {num}"
+    return num
+
+
+def record_services_total(rec) -> float:
+    """مجموع أسعار خدمات المعتمر."""
+    return sum(_num(s.get("price", "")) for s in (getattr(rec, "umrah_services", None)
+                                                  or []))
 
 
 def rooming_rooms(records: list, room_field: str):

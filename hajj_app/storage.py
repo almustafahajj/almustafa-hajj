@@ -96,6 +96,8 @@ def _from_dict(raw: dict) -> PassportData:
         elif key == "checkins":
             record.checkins = ({str(k): str(v) for k, v in value.items()}
                                if isinstance(value, dict) else {})
+        elif key == "umrah_services":
+            record.umrah_services = _clean_services(value)
         else:
             setattr(record, key, "" if value is None else str(value))
     return record
@@ -112,6 +114,18 @@ def _clean_payments(value) -> list:
     for item in value:
         if isinstance(item, dict):
             out.append({k: str(item.get(k, "") or "") for k in _PAYMENT_KEYS})
+    return out
+
+
+def _clean_services(value) -> list:
+    """يعقّم قائمة خدمات المعتمر (وضع العمرة): عناصر {name, price} نصّية."""
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        if isinstance(item, dict):
+            out.append({"name": str(item.get("name", "") or ""),
+                        "price": str(item.get("price", "") or "")})
     return out
 
 

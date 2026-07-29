@@ -6884,6 +6884,11 @@ class EditDialog(Toplevel):
         if leftover:
             notebook.add(self._make_tab(notebook, leftover), text="أخرى")
 
+        # وضع العمرة: تبويب الخدمات (اختيار وتسعير خدمات المعتمر)
+        self._svc_widgets = {}
+        if umrah and trip is not None and getattr(trip, "services", None):
+            notebook.add(self._build_umrah_services_tab(notebook), text="الخدمات")
+
         notebook.add(self._build_images_tab(notebook), text="الصور")
 
         # المتبقي محسوب تلقائياً، فنعرضه للقراءة فقط
@@ -7038,6 +7043,68 @@ class EditDialog(Toplevel):
                 row=1, column=0, columnspan=2, pady=(10, 0), sticky="e")
         return frame
 
+    def _build_umrah_services_tab(self, parent) -> ttk.Frame:
+        """تبويب خدمات المعتمر (وضع العمرة): اختيار الخدمات وتسعيرها لكل معتمر.
+
+        السعر الأساس = سعر الغرفة، والإجمالي = الأساس + الخدمات المختارة.
+        """
+        frame = ttk.Frame(parent, padding=14)
+        existing = {s.get("name", ""): str(s.get("price", ""))
+                    for s in (self.record.umrah_services or [])}
+        exist_sum = sum(parse_amount(p) or 0 for p in existing.values())
+        pv = parse_amount(self.vars.get("program_value", StringVar()).get()) \
+            if "program_value" in self.vars else parse_amount(self.record.program_value)
+        if str(self.record.room_value or "").strip():
+            base = parse_amount(self.record.room_value) or 0.0
+        else:
+            base = max(0.0, (pv or 0.0) - exist_sum)
+        self._svc_base = base
+
+        ttk.Label(frame, text=rtl(f"سعر الغرفة (الأساس): {format_amount(base)}"),
+                  font=(_FSB, 10), foreground=ACCENT).grid(
+            row=0, column=0, columnspan=3, sticky="e", pady=(0, 2))
+        ttk.Label(frame, text=rtl("اختر خدمات المعتمر وسعّرها (درهم):"),
+                  font=(_FUI, 10), foreground=TEXT).grid(
+            row=1, column=0, columnspan=3, sticky="e", pady=(0, 8))
+
+        catalog = [s.get("name", "") for s in (self._trip.services or [])
+                   if s.get("name")]
+        default_price = {s.get("name", ""): str(s.get("price", ""))
+                         for s in (self._trip.services or [])}
+        for i, name in enumerate(catalog):
+            cb = tk.BooleanVar(value=name in existing)
+            pvar = StringVar(value=existing.get(name, default_price.get(name, "")))
+            self._svc_widgets[name] = (cb, pvar)
+            ttk.Checkbutton(frame, text=rtl(name), variable=cb,
+                            command=self._recalc_services).grid(
+                row=i + 2, column=0, sticky="e", padx=(6, 4), pady=3)
+            ttk.Entry(frame, textvariable=pvar, width=10, justify="center").grid(
+                row=i + 2, column=1, sticky="w", pady=3)
+            pvar.trace_add("write", lambda *_a: self._recalc_services())
+
+        self._svc_total_lbl = ttk.Label(frame, text="", font=(_FSB, 11),
+                                        foreground=ACCENT)
+        self._svc_total_lbl.grid(row=len(catalog) + 2, column=0, columnspan=3,
+                                 sticky="e", pady=(10, 0))
+        self._recalc_services()
+        return frame
+
+    def _recalc_services(self) -> None:
+        """يحدّث إجمالي الخدمات وقيمة البرنامج (الأساس + الخدمات)."""
+        if not getattr(self, "_svc_widgets", None):
+            return
+        total = 0.0
+        for _name, (cb, pvar) in self._svc_widgets.items():
+            if cb.get():
+                total += parse_amount(pvar.get()) or 0.0
+        grand = getattr(self, "_svc_base", 0.0) + total
+        if hasattr(self, "_svc_total_lbl"):
+            self._svc_total_lbl.configure(text=rtl(
+                f"إجمالي الخدمات: {format_amount(total)}    الإجمالي: "
+                f"{format_amount(grand)}"))
+        if "program_value" in self.vars:
+            self.vars["program_value"].set(format_amount(grand))
+
     def _choose_image(self, kind: str) -> None:
         path = filedialog.askopenfilename(
             parent=self, title="اختر صورة", filetypes=self._IMAGE_TYPES,
@@ -7143,6 +7210,16 @@ class EditDialog(Toplevel):
                     transport=self.record.transport)
                 if total:
                     self.record.program_value = _fmt(total)
+
+        # وضع العمرة: خزّن خدمات المعتمر وسعر الغرفة الأساس (القيمة = الأساس + الخدمات)
+        if getattr(self, "_svc_widgets", None):
+            chosen = []
+            for name, (cb, pvar) in self._svc_widgets.items():
+                if cb.get():
+                    chosen.append({"name": name,
+                                   "price": format_amount(parse_amount(pvar.get()) or 0)})
+            self.record.umrah_services = chosen
+            self.record.room_value = format_amount(getattr(self, "_svc_base", 0.0))
 
         # التعديل اليدوي يلغي التحذيرات — المستخدم راجع البيانات
         self.record.warnings = []

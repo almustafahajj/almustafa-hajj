@@ -91,7 +91,9 @@ assert "جيمس" in bd.transport.get()                # النقل تلقائي
 for nm in ("محمد", "أحمد", "سالم"):
     r = PassportData(full_name_ar=nm)
     bd._apply_booking(r)
-    assert r.program_value == "4200" and r.room_type == "ثلاثي"
+    assert r.program_value == "4200" and r.room_type == "ثلاثي"    # 4000 + 200
+    assert r.room_value == "4000"                                   # الأساس
+    assert any(s["name"] == "تأمين طبّي" for s in r.umrah_services)  # خدمة مسعّرة
     assert "جيمس" in r.transport and r.trip == "P1"
     assert r.airline == "الطيران السعودي" and r.hotel == "كونراد"   # من البرنامج
     assert r.reference_number.startswith("P1-")                     # تلقائي
@@ -215,6 +217,58 @@ rw._clear("makkah")                                        # يؤكّد (مُث�
 assert all(not r.makkah_room for r in umrah.trip_pilgrims(app3.records, "R1"))
 r3.destroy()
 print("  OK: توزيع تلقائي مستقل لكل مدينة + كشف الغرف + نافذة التسكين")
+
+print("\n=== سعر الطفل + خدمات المعتمر + المواصلات والطيران ===")
+app_mode.set_mode("umrah")
+# سعر الطفل (بدون سرير) ضمن أنواع الغرف، بلا سعة
+assert ("price_child", "طفل (بدون سرير)", 0) in umrah.ROOM_TYPES
+assert umrah.room_capacity_of("طفل (بدون سرير)") == 0
+kids = [PassportData(room_type="طفل (بدون سرير)"), PassportData(room_type="ثنائي"),
+        PassportData(room_type="ثنائي")]
+umrah.auto_assign_rooms(kids, "makkah_room")
+assert kids[0].makkah_room == "" and kids[1].makkah_room     # الطفل بلا غرفة
+# المركبات: فورد ≤ شخصين، جيمس حتى ٦ — 8 أشخاص = جيمس(٦) + فورد(٢)
+vv = [PassportData() for _ in range(8)]
+assert umrah.auto_assign_vehicles(vv) == 2
+assert vv[0].vehicle == "جيمس 1" and vv[7].vehicle == "فورد 2"
+two = [PassportData(), PassportData()]
+assert umrah.auto_assign_vehicles(two) == 1 and two[0].vehicle.startswith("فورد")
+# خدمات المعتمر في نافذة التعديل: القيمة = الأساس + الخدمات
+import hajj_app.gui as _g
+r4 = tk.Tk(); r4.withdraw()
+trip4 = umrah.UmrahTrip(code="U1", services=[{"name": "تأمين طبّي", "price": "200"},
+                                             {"name": "المطوّف", "price": "150"}])
+rec4 = PassportData(full_name_ar="سعيد", room_value="4000", program_value="4000")
+d4 = _g.EditDialog(r4, rec4, lambda _r: None, umrah=True, trip=trip4)
+d4._svc_widgets["تأمين طبّي"][0].set(True)
+d4._recalc_services()
+assert d4.vars["program_value"].get() == "4,200"            # 4000 + 200 حيّاً
+d4._save()
+assert rec4.program_value == "4,200" and rec4.room_value == "4,000"
+assert len(rec4.umrah_services) == 1
+r4.destroy()
+# كشوف PDF: المواصلات والطيران
+from hajj_app.pdf_io import export_umrah_transport_pdf, export_airline_pdf
+tr = [PassportData(full_name_ar=f"م{i}", passport_number=f"P{i}", vehicle="جيمس 1")
+      for i in range(3)]
+pt = WORK / "trans.pdf"
+export_umrah_transport_pdf(tr, pt, program_name="U1 — رمضان")
+assert pt.read_bytes()[:5] == b"%PDF-" and pt.stat().st_size > 2500
+pf = WORK / "flight.pdf"
+export_airline_pdf(tr, pf, title="Flight Manifest — U1")
+assert pf.read_bytes()[:5] == b"%PDF-"
+# نافذة المواصلات: توزيع تلقائي
+import hajj_app.umrah_gui as _ug
+r5 = tk.Tk(); r5.withdraw()
+app5 = _ug.UmrahApp(r5, session=None)
+t5 = umrah.UmrahTrip(code="U1", name="رمضان")
+app5.trips.append(t5)
+app5.records.extend([PassportData(full_name_ar=f"س{i}", trip="U1") for i in range(4)])
+vw = _ug.TransportWindow(app5, t5)
+vw._auto()
+assert all(r.vehicle for r in umrah.trip_pilgrims(app5.records, "U1"))
+r5.destroy()
+print("  OK: سعر الطفل + خدمات المعتمر المسعّرة + المواصلات (فورد/جيمس) + الطيران")
 
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

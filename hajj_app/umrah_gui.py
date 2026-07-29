@@ -25,7 +25,10 @@ from .fields import format_amount, parse_amount
 from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
-from .pdf_io import export_umrah_pdf, export_umrah_rooming_pdf
+from .pdf_io import (
+    export_airline_pdf, export_umrah_pdf, export_umrah_rooming_pdf,
+    export_umrah_transport_pdf,
+)
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
 
@@ -572,13 +575,16 @@ class BookingDialog(Toplevel):
     def _apply_booking(self, rec) -> None:
         """يطبّق إعدادات الحجز (السفر/الإقامة من البرنامج + الغرفة/النقل/السعر)."""
         self.window._enrich(rec)               # سفر/إقامة من البرنامج + رقم مرجعي
+        key = self._room_by_name.get(self.room.get(), "price_double")
+        base = umrah.room_price(self.trip, key)
+        smap = umrah.services_map(self.trip)
+        chosen = self._chosen_services()
         rec.room_type = self.room.get()
         rec.transport = self.transport.get().strip()
-        rec.program_value = f"{self._per_person_price():.0f}"
-        services = "، ".join(self._chosen_services())
-        if services:
-            note = f"خدمات: {services}"
-            rec.notes = note if not rec.notes else f"{rec.notes} | {note}"
+        rec.room_value = f"{base:.0f}"
+        rec.umrah_services = [{"name": n, "price": f"{smap.get(n, 0):.0f}"}
+                              for n in chosen]
+        rec.program_value = f"{base + sum(smap.get(n, 0) for n in chosen):.0f}"
 
     def _commit_person(self, rec) -> None:
         """يضيف المعتمر للبرنامج ويحفظ ويحدّث العدّادات والجدول."""
@@ -701,6 +707,8 @@ class TripPilgrimsWindow(Toplevel):
             ("✏️  تعديل", self.edit_selected, "Ghost.TButton"),
             ("🗑  حذف", self.delete_selected, "Ghost.TButton"),
             ("🏨  التسكين", self.open_rooming, "Ghost.TButton"),
+            ("🚐  المواصلات", self.open_transport, "Ghost.TButton"),
+            ("✈  كشف الطيران", self.open_flights, "Ghost.TButton"),
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
@@ -821,6 +829,23 @@ class TripPilgrimsWindow(Toplevel):
             messagebox.showinfo("التسكين", "لا معتمرين في هذا البرنامج.", parent=self)
             return
         RoomingWindow(self.app, self.trip)
+
+    def open_transport(self) -> None:
+        if not self._pilgrims():
+            messagebox.showinfo("المواصلات", "لا معتمرين في هذا البرنامج.",
+                                parent=self)
+            return
+        TransportWindow(self.app, self.trip)
+
+    def open_flights(self) -> None:
+        """معاينة كشف الطيران (مانيفست) لمعتمري البرنامج."""
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("الطيران", "لا معتمرين في هذا البرنامج.", parent=self)
+            return
+        title = f"Flight Manifest — {self.trip.code}"
+        G.open_preview(self, lambda p: export_airline_pdf(recs, p, title=title),
+                       f"طيران {self.trip.code}", "pdf")
 
     def add_passport(self) -> None:
         if not self._check_capacity(1):
@@ -1120,3 +1145,146 @@ class RoomingWindow(Toplevel):
                 recs, p, city_label=label, hotel=hotel, nights=nights,
                 program_name=self._prog_label(), room_field=room_field),
             f"تسكين {label} {self.trip.code}", "pdf")
+
+
+class TransportWindow(Toplevel):
+    """المواصلات: توزيع معتمري البرنامج على المركبات (فورد ≤ شخصين، جيمس حتى ٦)."""
+
+    def __init__(self, app: UmrahApp, trip) -> None:
+        super().__init__(app.root)
+        self.app = app
+        self.trip = trip
+        self.session = app.session
+        self.title(f"المواصلات — {trip.name or trip.code}")
+        self.configure(bg=G.BG)
+        self.geometry("900x600")
+        self.minsize(740, 460)
+        self.transient(app.root)
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(12, 10, 12, 4))
+        head.pack(fill=X)
+        ttk.Label(head, text=f"🚐 مواصلات «{trip.name or trip.code}»",
+                  font=(G._FSB, 14), foreground=G.TEXT,
+                  background=G.BG).pack(side=RIGHT)
+        self._sum = ttk.Label(head, text="", font=(G._FUI, 10),
+                              foreground=G.BRONZE, background=G.BG)
+        self._sum.pack(side=LEFT)
+
+        bar = ttk.Frame(self, style="Panel.TFrame", padding=(12, 8))
+        bar.pack(fill=X)
+        ttk.Button(bar, text=G.rtl("🎲 توزيع تلقائي"), style="Primary.TButton",
+                   command=self._auto).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("🧹 مسح التوزيع"), style="Ghost.TButton",
+                   command=self._clear).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("👁 معاينة كشف المواصلات"), style="Ghost.TButton",
+                   command=self._preview).pack(side=LEFT, padx=3)
+        ttk.Label(bar, text=G.rtl("نقرة مزدوجة لتعيين المركبة"), font=(G._FUI, 9),
+                  foreground=G.MUTED, background=G.BG).pack(side=LEFT, padx=10)
+
+        wrap = ttk.Frame(self, style="Toolbar.TFrame", padding=(12, 4, 12, 12))
+        wrap.pack(fill=BOTH, expand=True)
+        cols = ("n", "name", "passport", "phone", "vehicle")
+        heads = {"n": "م", "name": "الاسم", "passport": "رقم الجواز",
+                 "phone": "الهاتف", "vehicle": "المركبة"}
+        widths = {"n": 40, "name": 260, "passport": 130, "phone": 140,
+                  "vehicle": 130}
+        self.tree = ttk.Treeview(wrap, columns=cols, show="headings")
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c], anchor="e" if c == "name"
+                             else "center")
+        self.tree.pack(fill=BOTH, expand=True)
+        self.tree.tag_configure("odd", background=G.PANEL)
+        self.tree.bind("<Double-1>", lambda _e: self._edit())
+
+        self.grab_set()
+        self._reload()
+
+    def _prog_label(self) -> str:
+        return (f"{self.trip.code} — {self.trip.name}"
+                if self.trip.name else self.trip.code)
+
+    def _pilgrims(self) -> list:
+        return umrah.trip_pilgrims(self.app.records, self.trip.code)
+
+    def _reload(self) -> None:
+        self.tree.delete(*self.tree.get_children())
+        recs = self._pilgrims()
+        for i, r in enumerate(recs):
+            self.tree.insert("", END, iid=str(i), values=(
+                i + 1, r.full_name_ar or r.full_name_en or "—",
+                r.passport_number or "—", r.phone or "—", r.vehicle or "—"),
+                tags=("odd",) if i % 2 else ())
+        groups, un = umrah.rooming_rooms(recs, "vehicle")
+        self._sum.configure(
+            text=f"المركبات: {len(groups)}   ·   بلا مركبة: {len(un)}   ·   "
+                 f"العدد: {len(recs)}")
+
+    def _auto(self) -> None:
+        n = umrah.auto_assign_vehicles(self._pilgrims())
+        self.app.save()
+        self._reload()
+        messagebox.showinfo("توزيع تلقائي",
+                            f"وُزّع المعتمرون على {n} مركبة.", parent=self)
+
+    def _clear(self) -> None:
+        if not messagebox.askyesno("مسح التوزيع",
+                                   "مسح تخصيص المركبات لكل المعتمرين؟",
+                                   parent=self):
+            return
+        for r in self._pilgrims():
+            r.vehicle = ""
+        self.app.save()
+        self._reload()
+
+    def _edit(self) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        recs = self._pilgrims()
+        idx = int(sel[0])
+        if not (0 <= idx < len(recs)):
+            return
+        rec = recs[idx]
+        ed = Toplevel(self)
+        ed.title("المركبة")
+        ed.configure(bg=G.BG)
+        ed.transient(self)
+        ed.grab_set()
+        ed.resizable(False, False)
+        frm = ttk.Frame(ed, padding=16)
+        frm.pack()
+        who = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        ttk.Label(frm, text=f"مركبة «{who}»", font=(G._FUI, 10),
+                  foreground=G.TEXT).pack(anchor="e")
+        v = StringVar(value=rec.vehicle or "")
+        entry = ttk.Entry(frm, textvariable=v, width=22, justify="center")
+        entry.pack(pady=8)
+        entry.focus_set()
+
+        def _save():
+            rec.vehicle = v.get().strip()
+            self.app.save()
+            ed.destroy()
+            self._reload()
+
+        row = ttk.Frame(frm)
+        row.pack()
+        ttk.Button(row, text=G.rtl("💾 حفظ"), style="Primary.TButton",
+                   command=_save).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إلغاء", style="Ghost.TButton",
+                   command=ed.destroy).pack(side=LEFT, padx=3)
+        ed.bind("<Return>", lambda _e: _save())
+        ed.bind("<Escape>", lambda _e: ed.destroy())
+        _center(ed, self)
+
+    def _preview(self) -> None:
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("معاينة", "لا معتمرين.", parent=self)
+            return
+        G.open_preview(
+            self,
+            lambda p: export_umrah_transport_pdf(recs, p,
+                                                 program_name=self._prog_label()),
+            f"مواصلات {self.trip.code}", "pdf")

@@ -914,6 +914,69 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     return path
 
 
+def export_umrah_transport_pdf(records: list, path: str | Path, *,
+                               program_name: str = "") -> Path:
+    """كشف مواصلات معتمري برنامج — مجموعاً بالمركبات (فورد/جيمس)."""
+    from .umrah import rooming_rooms
+
+    _register_fonts()
+    path = Path(path)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=13 * mm, leftMargin=13 * mm,
+        topMargin=14 * mm, bottomMargin=16 * mm, title="كشف المواصلات",
+        author="ميسّر العمرة")
+    st = _styles()
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    title = "كشف المواصلات"
+    if program_name:
+        title += f" — {program_name}"
+    story.append(Paragraph(ar(title), st["title"]))
+    story.append(Paragraph(ar(f"المعتمرون: {ltr(len(records))}"), st["subtitle"]))
+
+    groups, unassigned = rooming_rooms(records, "vehicle")
+    heads = ["م", "الاسم", "رقم الجواز", "الهاتف", "نوع الغرفة"]
+    weights = list(reversed([26, 160, 90, 100, 70]))
+    scale = doc.width / sum(weights)
+    colw = [w * scale for w in weights]
+    PAD = 4
+    avail = [w - 2 * PAD - 1 for w in colw]
+
+    def block(label, occ):
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(ar(label), st["subtitle"]))
+        data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
+        for i, r in enumerate(occ, 1):
+            vals = [str(i), r.full_name_ar or r.full_name_en or "",
+                    r.passport_number or "", r.phone or "", r.room_type or ""]
+            data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
+        t = Table(data, colWidths=colw, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("LEFTPADDING", (0, 0), (-1, -1), PAD),
+            ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t)
+
+    for name, occ in groups:
+        block(f"🚐 {name} ({ltr(len(occ))})", occ)
+    if unassigned:
+        block(f"بلا مركبة ({ltr(len(unassigned))})", unassigned)
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, "كشف المواصلات"),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, "كشف المواصلات"))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:

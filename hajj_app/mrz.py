@@ -76,6 +76,10 @@ class PassportData:
     trip: str = ""
     makkah_room: str = ""            # رقم غرفة فندق مكة
     madinah_room: str = ""           # رقم غرفة فندق المدينة
+    vehicle: str = ""                # مركبة النقل الداخلي المخصّصة
+    room_value: str = ""             # سعر الغرفة (الأساس) قبل الخدمات
+    # خدمات المعتمر: قائمة {name, price} — تُسعَّر عند إضافة المعتمر
+    umrah_services: list = field(default_factory=list)
 
     # ---- الإقامة والخدمات ----
     hotel: str = ""
