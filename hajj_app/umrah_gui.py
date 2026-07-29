@@ -333,8 +333,9 @@ class TripEditorDialog(Toplevel):
         self.title(title)
         self.configure(bg=G.BG)
         self.transient(parent)
+        self.resizable(True, True)
         self.grab_set()
-        self.resizable(False, False)
+        G.enable_minmax(self)
         self.vars: dict[str, StringVar] = {}
 
         outer = ttk.Frame(self, padding=14)
@@ -487,8 +488,9 @@ class BookingDialog(Toplevel):
         self.title(f"إضافة حجز بالتسعير — {trip.name or trip.code}")
         self.configure(bg=G.BG)
         self.transient(window)
+        self.resizable(True, True)
         self.grab_set()
-        self.resizable(False, False)
+        G.enable_minmax(self)
         self._room_by_name = {name: key for key, name, _c in umrah.ROOM_TYPES}
 
         f = ttk.Frame(self, padding=16)
@@ -799,6 +801,7 @@ class TripPilgrimsWindow(Toplevel):
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
 
         self.grab_set()
+        G.enable_minmax(self)
         self._reload()
 
     def _pilgrims(self) -> list:
@@ -1141,6 +1144,7 @@ class RoomingWindow(Toplevel):
 
         self._seed_from_room_number()
         self.grab_set()
+        G.enable_minmax(self)
         for key in self._cities:
             self._reload(key)
 
@@ -1269,8 +1273,9 @@ class RoomingWindow(Toplevel):
         ed.title("رقم الغرفة")
         ed.configure(bg=G.BG)
         ed.transient(self)
+        ed.resizable(True, True)
         ed.grab_set()
-        ed.resizable(False, False)
+        G.enable_minmax(ed)
         frm = ttk.Frame(ed, padding=16)
         frm.pack()
         who = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
@@ -1376,6 +1381,7 @@ class TransportWindow(Toplevel):
         self.tree.bind("<Double-1>", lambda _e: self._edit())
 
         self.grab_set()
+        G.enable_minmax(self)
         self._reload()
 
     def _prog_label(self) -> str:
@@ -1428,8 +1434,9 @@ class TransportWindow(Toplevel):
         ed.title("المركبة")
         ed.configure(bg=G.BG)
         ed.transient(self)
+        ed.resizable(True, True)
         ed.grab_set()
-        ed.resizable(False, False)
+        G.enable_minmax(ed)
         frm = ttk.Frame(ed, padding=16)
         frm.pack()
         who = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"

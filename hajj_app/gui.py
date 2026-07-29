@@ -250,6 +250,42 @@ def open_preview(parent, export_fn, base_name: str, ext: str):
     return path
 
 
+def enable_minmax(win) -> None:
+    """يُفعّل أزرار التصغير والتكبير (مع الإغلاق) في نافذة منبثقة على ويندوز.
+
+    النوافذ العابرة (transient) تُظهر زرّ الإغلاق فقط افتراضياً؛ نضيف نمطي
+    WS_MINIMIZE/MAXIMIZE ونزيل نمط «نافذة الأدوات» فتظهر الأزرار الثلاثة.
+    """
+    try:
+        win.resizable(True, True)
+        win.update_idletasks()
+        import ctypes
+
+        u = ctypes.windll.user32
+        hwnd = u.GetParent(win.winfo_id()) or win.winfo_id()
+        GWL_STYLE, GWL_EXSTYLE = -16, -20
+        WS_MINIMIZEBOX, WS_MAXIMIZEBOX = 0x20000, 0x10000
+        WS_EX_TOOLWINDOW, WS_EX_APPWINDOW = 0x80, 0x40000
+        style = u.GetWindowLongW(hwnd, GWL_STYLE)
+        u.SetWindowLongW(hwnd, GWL_STYLE, style | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)
+        ex = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        u.SetWindowLongW(hwnd, GWL_EXSTYLE,
+                         (ex & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW)
+        had_grab = win.grab_current() is win
+        win.withdraw()
+        win.deiconify()
+        if had_grab:
+            try:
+                win.grab_set()
+            except Exception:
+                pass
+    except Exception:
+        try:
+            win.resizable(True, True)
+        except Exception:
+            pass
+
+
 class HajjApp:
     def __init__(self, root: Tk, session=None, open_mode: bool = False) -> None:
         self.root = root
@@ -6855,7 +6891,6 @@ class EditDialog(Toplevel):
         self.configure(bg=BG)
         self.transient(parent)
         self.grab_set()
-        self.resizable(False, False)
 
         outer = ttk.Frame(self, padding=14)
         outer.pack(fill=BOTH, expand=True)
@@ -6916,6 +6951,7 @@ class EditDialog(Toplevel):
 
         self.bind("<Return>", lambda _e: self._save())
         self.bind("<Escape>", lambda _e: self.destroy())
+        enable_minmax(self)              # أزرار تصغير/تكبير للنافذة المنبثقة
 
     def _make_tab(self, parent, fields) -> ttk.Frame:
         """يبني تبويباً بعمودين: العنوان يميناً وحقل الإدخال يساره."""
