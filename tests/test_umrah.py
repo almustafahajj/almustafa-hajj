@@ -80,13 +80,21 @@ tt.capacity = "3"                                  # سعة محدّدة للا�
 tt.airline = "الطيران السعودي"; tt.flight_out = "SV553"
 tt.depart_date = "2026-03-01"; tt.makkah_hotel = "كونراد"
 win = ug.TripPilgrimsWindow(app, tt)
-# حجز بالتسعير: 3 أشخاص، غرفة ثلاثية، + خدمة تأمين
+# حجز بالتسعير: 3 أشخاص، غرفة ثلاثية، + خدمة تأمين (مسعّرة)
 bd = ug.BookingDialog(win, tt)
 bd.persons.set("3"); bd.room.set("ثلاثي")
-bd.svc_vars["تأمين طبّي"].set(True)
+for _r in bd.svc_rows:                              # اختيار خدمة تأمين طبّي
+    if _r["name"] == "تأمين طبّي":
+        _r["on"].set(True)
 bd._recalc()
 assert getattr(bd, "_per_person") == 4200          # 4000 + 200
 assert "جيمس" in bd.transport.get()                # النقل تلقائي (3 أشخاص)
+# إضافة خدمة مخصّصة مسعّرة يدوياً تزيد سعر الفرد
+bd._new_svc.set("خدمة خاصة"); bd._new_price.set("500")
+bd._add_custom_service()
+assert bd._per_person == 4700                       # 4200 + 500
+bd.svc_rows[-1]["on"].set(False); bd._recalc()      # نلغيها لبقية الاختبار
+assert bd._per_person == 4200
 # التسعير + السفر/الإقامة من البرنامج + الرقم المرجعي التلقائي لكل معتمر
 for nm in ("محمد", "أحمد", "سالم"):
     r = PassportData(full_name_ar=nm)

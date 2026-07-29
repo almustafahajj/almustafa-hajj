@@ -363,6 +363,7 @@ class TripEditorDialog(Toplevel):
     def _tab_basic(self, nb) -> ttk.Frame:
         f = ttk.Frame(nb, padding=12)
         rows = [("code", "رمز البرنامج *", 14), ("name", "اسم البرنامج", 32),
+                ("manager", "الشخص المسؤول", 24),
                 ("depart_date", "تاريخ المغادرة", 18),
                 ("return_date", "تاريخ العودة", 18),
                 ("makkah_hotel", "فندق مكة", 30), ("makkah_nights", "ليالي مكة", 12),
@@ -509,21 +510,27 @@ class BookingDialog(Toplevel):
         cb.pack(side=RIGHT)
         cb.bind("<<ComboboxSelected>>", lambda _e: self._recalc())
 
-        # الخدمات المتاحة في البرنامج (اختيار أيّها)
-        smap = umrah.services_map(trip)
-        self.svc_vars: dict[str, BooleanVar] = {}
-        if smap:
-            sf = ttk.LabelFrame(f, text=G.rtl("الخدمات الإضافية (تُطبَّق لكل شخص)"),
-                                padding=8)
-            sf.pack(fill=X, pady=(12, 0))
-            for i, (name, price) in enumerate(smap.items()):
-                bv = BooleanVar(value=False)
-                self.svc_vars[name] = bv
-                ttk.Checkbutton(
-                    sf, variable=bv,
-                    text=G.rtl(f"{name}  ({format_amount(price)})"),
-                    command=self._recalc).grid(row=i // 2, column=i % 2,
-                                               sticky="e", padx=8, pady=2)
+        # الخدمات: اختيار وتسعير يدوي + إمكانية إضافة خدمة مخصّصة
+        self.svc_rows: list = []
+        sf = ttk.LabelFrame(f, text=G.rtl("الخدمات (اختر وسعّر لكل فرد — أو أضِف خدمة)"),
+                            padding=8)
+        sf.pack(fill=X, pady=(12, 0))
+        self._svc_body = ttk.Frame(sf)
+        self._svc_body.pack(fill=X)
+        for name, price in umrah.services_map(trip).items():
+            self._add_service_row(name, f"{price:.0f}" if price else "")
+        addrow = ttk.Frame(sf)
+        addrow.pack(fill=X, pady=(6, 0))
+        self._new_svc = StringVar()
+        self._new_price = StringVar()
+        ttk.Label(addrow, text=G.rtl("خدمة جديدة:"), font=(G._FUI, 9),
+                  foreground=G.TEXT).pack(side=RIGHT)
+        ttk.Entry(addrow, textvariable=self._new_svc, width=20,
+                  justify="right").pack(side=RIGHT, padx=3)
+        ttk.Entry(addrow, textvariable=self._new_price, width=8,
+                  justify="center").pack(side=RIGHT, padx=3)
+        ttk.Button(addrow, text=G.rtl("➕ أضِف"), style="Ghost.TButton",
+                   command=self._add_custom_service).pack(side=RIGHT, padx=3)
 
         tr = ttk.Frame(f)
         tr.pack(fill=X, pady=(12, 0))
@@ -563,8 +570,40 @@ class BookingDialog(Toplevel):
         except ValueError:
             return 1
 
-    def _chosen_services(self) -> list:
-        return [n for n, bv in self.svc_vars.items() if bv.get()]
+    def _add_service_row(self, name: str, price: str = "",
+                         checked: bool = False) -> None:
+        """يضيف صفّ خدمة (اسم + مربّع اختيار + سعر قابل للتعديل)."""
+        row = ttk.Frame(self._svc_body)
+        row.pack(fill=X, pady=1)
+        on = BooleanVar(value=checked)
+        pv = StringVar(value=str(price or ""))
+        ttk.Checkbutton(row, variable=on, text=G.rtl(name),
+                        command=self._recalc).pack(side=RIGHT)
+        ttk.Label(row, text="درهم", font=(G._FUI, 8),
+                  foreground=G.MUTED).pack(side=RIGHT, padx=(2, 8))
+        ttk.Entry(row, textvariable=pv, width=8,
+                  justify="center").pack(side=RIGHT, padx=3)
+        pv.trace_add("write", lambda *_a: self._recalc())
+        self.svc_rows.append({"name": name, "on": on, "price": pv})
+
+    def _add_custom_service(self) -> None:
+        name = self._new_svc.get().strip()
+        if not name:
+            return
+        self._add_service_row(name, self._new_price.get().strip(), checked=True)
+        self._new_svc.set("")
+        self._new_price.set("")
+        self._recalc()
+
+    def _chosen_priced(self) -> list:
+        """الخدمات المختارة بأسعارها المُدخَلة يدوياً."""
+        return [{"name": r["name"],
+                 "price": f"{parse_amount(r['price'].get()) or 0:.0f}"}
+                for r in self.svc_rows if r["on"].get()]
+
+    def _services_total(self) -> float:
+        return sum(parse_amount(r["price"].get()) or 0
+                   for r in self.svc_rows if r["on"].get())
 
     def _auto_transport(self) -> None:
         self.transport.set(umrah.suggest_transport(self._persons_n()))
@@ -572,7 +611,7 @@ class BookingDialog(Toplevel):
 
     def _per_person_price(self) -> float:
         key = self._room_by_name.get(self.room.get(), "price_double")
-        return umrah.package_per_person(self.trip, key, self._chosen_services())
+        return umrah.room_price(self.trip, key) + self._services_total()
 
     def _recalc(self) -> None:
         n = self._persons_n()
@@ -591,14 +630,13 @@ class BookingDialog(Toplevel):
         self.window._enrich(rec)               # سفر/إقامة من البرنامج + رقم مرجعي
         key = self._room_by_name.get(self.room.get(), "price_double")
         base = umrah.room_price(self.trip, key)
-        smap = umrah.services_map(self.trip)
-        chosen = self._chosen_services()
+        chosen = self._chosen_priced()
         rec.room_type = self.room.get()
         rec.transport = self.transport.get().strip()
         rec.room_value = f"{base:.0f}"
-        rec.umrah_services = [{"name": n, "price": f"{smap.get(n, 0):.0f}"}
-                              for n in chosen]
-        rec.program_value = f"{base + sum(smap.get(n, 0) for n in chosen):.0f}"
+        rec.umrah_services = chosen
+        total = base + sum(parse_amount(s["price"]) or 0 for s in chosen)
+        rec.program_value = f"{total:.0f}"
 
     def _commit_person(self, rec) -> None:
         """يضيف المعتمر للبرنامج ويحفظ ويحدّث العدّادات والجدول."""
@@ -708,6 +746,8 @@ class TripPilgrimsWindow(Toplevel):
         ttk.Label(head, text=f"👤 المعتمرين — «{trip.name or trip.code}»",
                   font=(G._FSB, 15), foreground=G.TEXT,
                   background=G.BG).pack(side=RIGHT)
+        ttk.Button(head, text=G.rtl("⛶ تكبير"), style="Ghost.TButton",
+                   command=self._toggle_max).pack(side=LEFT, padx=(0, 8))
         self.fin = ttk.Label(head, text="", font=(G._FUI, 10),
                              foreground=G.BRONZE, background=G.BG)
         self.fin.pack(side=LEFT)
@@ -966,6 +1006,17 @@ class TripPilgrimsWindow(Toplevel):
         self._reload()
 
     # ---- التصدير ----
+    def _toggle_max(self) -> None:
+        """يكبّر نافذة المعتمرين ملء الشاشة أو يعيدها."""
+        try:
+            self.state("normal" if self.state() == "zoomed" else "zoomed")
+        except Exception:
+            try:
+                self.attributes("-fullscreen",
+                                not self.attributes("-fullscreen"))
+            except Exception:
+                pass
+
     def _prog_label(self) -> str:
         """اسم البرنامج مع رمزه للكشف (يُذكر رمز البرنامج)."""
         return (f"{self.trip.code} — {self.trip.name}"
@@ -995,8 +1046,10 @@ class TripPilgrimsWindow(Toplevel):
         if not recs:
             messagebox.showinfo("معاينة", "لا معتمرين في هذا البرنامج.", parent=self)
             return
+        mgr = str(getattr(self.trip, "manager", "") or "")
         G.open_preview(
-            self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label()),
+            self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label(),
+                                             manager=mgr),
             f"معتمرو {self.trip.code}", "pdf")
 
     def do_finance(self) -> None:
@@ -1006,9 +1059,11 @@ class TripPilgrimsWindow(Toplevel):
             messagebox.showinfo("الملخّص المالي", "لا معتمرين في هذا البرنامج.",
                                 parent=self)
             return
+        mgr = str(getattr(self.trip, "manager", "") or "")
         G.open_preview(
             self,
-            lambda p: export_umrah_finance_pdf(recs, p, program_name=self._prog_label()),
+            lambda p: export_umrah_finance_pdf(recs, p, program_name=self._prog_label(),
+                                               manager=mgr),
             f"مالية {self.trip.code}", "pdf")
 
     def do_cards(self) -> None:

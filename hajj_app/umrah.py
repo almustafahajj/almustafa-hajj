@@ -97,6 +97,7 @@ class UmrahTrip:
 
     code: str = ""                 # رمز البرنامج (فريد) — يربط المعتمرين به
     name: str = ""                 # اسم البرنامج
+    manager: str = ""              # الشخص المسؤول عن البرنامج
     depart_date: str = ""
     return_date: str = ""
     makkah_hotel: str = ""
