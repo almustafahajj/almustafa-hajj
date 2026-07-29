@@ -180,5 +180,41 @@ assert not any("حاج" in t for t in cells), "بقيت كلمة حاج في ا�
 assert any("المعتمرين" in t for t in cells)                # عنوان الكشف
 print("  OK: خدمات جديدة + كشف بأعمدته ومسمّيات العمرة (بلا «حاج») + اسم التطبيق")
 
+print("\n=== التسكين (مكة/المدينة) ===")
+app_mode.set_mode("umrah")
+rr = [PassportData(full_name_ar=f"م{i}", passport_number=f"P{i}", room_type=rt,
+                   trip="R1") for i, rt in enumerate(
+                       ["ثنائي", "ثنائي", "ثنائي", "مفرد"])]
+assert umrah.auto_assign_rooms(rr, "makkah_room") == 3      # 3 ثنائي→غرفتان + مفرد
+rooms, un = umrah.rooming_rooms(rr, "makkah_room")
+assert len(rooms) == 3 and not un
+assert all(not r.madinah_room for r in rr)                  # المدينة مستقلة عن مكة
+umrah.auto_assign_rooms(rr, "madinah_room")
+assert all(r.madinah_room and r.makkah_room for r in rr)    # الحقلان مستقلان
+from hajj_app.pdf_io import export_umrah_rooming_pdf
+p = WORK / "rooms.pdf"
+export_umrah_rooming_pdf(rr, p, city_label="مكة المكرّمة", hotel="كونراد",
+                         nights="7", program_name="R1 — رمضان",
+                         room_field="makkah_room")
+assert p.read_bytes()[:5] == b"%PDF-" and p.stat().st_size > 2500
+# نافذة التسكين: توزيع، عرض، ومسح
+r3 = tk.Tk(); r3.withdraw()
+app3 = ug.UmrahApp(r3, session=None)
+t3 = umrah.UmrahTrip(code="R1", name="رمضان", makkah_hotel="كونراد",
+                     madinah_hotel="دار التقوى")
+app3.trips.append(t3)
+app3.records.extend([PassportData(full_name_ar=f"س{i}", room_type="ثنائي",
+                                  trip="R1") for i in range(4)])
+rw = ug.RoomingWindow(app3, t3)
+rw._auto("makkah")
+assert all(r.makkah_room for r in umrah.trip_pilgrims(app3.records, "R1"))
+vals = [rw._trees["makkah"].item(i, "values")
+        for i in rw._trees["makkah"].get_children()]
+assert all(v[4] not in ("", "—") for v in vals)            # رقم الغرفة ظاهر
+rw._clear("makkah")                                        # يؤكّد (مُثبَّت) ويمسح
+assert all(not r.makkah_room for r in umrah.trip_pilgrims(app3.records, "R1"))
+r3.destroy()
+print("  OK: توزيع تلقائي مستقل لكل مدينة + كشف الغرف + نافذة التسكين")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

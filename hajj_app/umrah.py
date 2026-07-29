@@ -219,6 +219,59 @@ def package_per_person(trip: UmrahTrip, room_key: str,
     return room_price(trip, room_key) + extra
 
 
+# مدن التسكين: (المفتاح، الاسم، حقل رقم الغرفة، حقل الفندق، حقل الليالي)
+CITIES = (
+    ("makkah", "مكة المكرّمة", "makkah_room", "makkah_hotel", "makkah_nights"),
+    ("madinah", "المدينة المنوّرة", "madinah_room", "madinah_hotel",
+     "madinah_nights"),
+)
+
+_ROOM_CAP = {"مفرد": 1, "ثنائي": 2, "ثلاثي": 3, "رباعي": 4}
+
+
+def room_capacity_of(room_type: str) -> int:
+    """سعة نوع الغرفة (مفرد=1 … رباعي=4)، أو 0 إن لم يُحدَّد."""
+    return _ROOM_CAP.get(str(room_type or "").strip(), 0)
+
+
+def auto_assign_rooms(records: list, room_field: str) -> int:
+    """يوزّع المعتمرين على غرف حسب نوع الغرفة (يملؤها حتى السعة) ويرقّمها.
+
+    يعيد عدد الغرف الموزّعة. الترتيب حسب سعة الغرفة تصاعدياً لثبات النتيجة.
+    """
+    from collections import defaultdict
+    groups: dict = defaultdict(list)
+    for r in records:
+        groups[str(r.room_type or "").strip()].append(r)
+    num = 0
+    for rtype in sorted(groups, key=lambda t: (room_capacity_of(t), t)):
+        cap = room_capacity_of(rtype) or 1
+        recs = groups[rtype]
+        for i in range(0, len(recs), cap):
+            num += 1
+            for r in recs[i:i + cap]:
+                setattr(r, room_field, str(num))
+    return num
+
+
+def rooming_rooms(records: list, room_field: str):
+    """يجمع المعتمرين حسب رقم الغرفة. يعيد (غرف مرتّبة، بلا غرفة)."""
+    rooms: dict = {}
+    unassigned = []
+    for r in records:
+        no = str(getattr(r, room_field, "") or "").strip()
+        if no:
+            rooms.setdefault(no, []).append(r)
+        else:
+            unassigned.append(r)
+
+    def _key(no: str):
+        return (0, int(no)) if no.isdigit() else (1, no)
+
+    ordered = sorted(rooms.items(), key=lambda kv: _key(kv[0]))
+    return ordered, unassigned
+
+
 def apply_trip_to_record(trip: UmrahTrip, rec) -> None:
     """يأخذ معلومات السفر والإقامة من البرنامج ويضعها في سجلّ المعتمر.
 

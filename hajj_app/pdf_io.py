@@ -841,6 +841,79 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
     return path
 
 
+def export_umrah_rooming_pdf(records: list, path: str | Path, *,
+                             city_label: str = "", hotel: str = "",
+                             nights: str = "", program_name: str = "",
+                             room_field: str = "makkah_room") -> Path:
+    """كشف تسكين معتمري برنامج في مدينة (مكة/المدينة) — مجموعاً بالغرف."""
+    from .umrah import rooming_rooms
+
+    _register_fonts()
+    path = Path(path)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=13 * mm, leftMargin=13 * mm,
+        topMargin=14 * mm, bottomMargin=16 * mm, title="كشف التسكين",
+        author="ميسّر العمرة")
+    st = _styles()
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    title = f"كشف تسكين {city_label}"
+    if program_name:
+        title += f" — {program_name}"
+    story.append(Paragraph(ar(title), st["title"]))
+    sub = []
+    if hotel:
+        sub.append(f"الفندق: {hotel}")
+    if nights:
+        sub.append(f"الليالي: {ltr(nights)}")
+    sub.append(f"المعتمرون: {ltr(len(records))}")
+    story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
+
+    rooms, unassigned = rooming_rooms(records, room_field)
+    heads = ["م", "الاسم", "رقم الجواز", "نوع الغرفة", "الهاتف"]
+    weights = list(reversed([26, 150, 90, 60, 100]))
+    scale = doc.width / sum(weights)
+    colw = [w * scale for w in weights]
+    PAD = 4
+    avail = [w - 2 * PAD - 1 for w in colw]
+
+    def room_block(label, occ):
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(ar(label), st["subtitle"]))
+        data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
+        for i, r in enumerate(occ, 1):
+            vals = [str(i), r.full_name_ar or r.full_name_en or "",
+                    r.passport_number or "", r.room_type or "", r.phone or ""]
+            data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
+        t = Table(data, colWidths=colw, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("LEFTPADDING", (0, 0), (-1, -1), PAD),
+            ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t)
+
+    for no, occ in rooms:
+        cap = occ[0].room_type if occ else ""
+        room_block(f"🛏 غرفة {ltr(no)}"
+                   + (f" — {cap} ({ltr(len(occ))})" if cap else ""), occ)
+    if unassigned:
+        room_block(f"بلا غرفة ({ltr(len(unassigned))})", unassigned)
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, "كشف التسكين"),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, "كشف التسكين"))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:

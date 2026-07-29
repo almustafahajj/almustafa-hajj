@@ -25,7 +25,7 @@ from .fields import format_amount, parse_amount
 from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
-from .pdf_io import export_umrah_pdf
+from .pdf_io import export_umrah_pdf, export_umrah_rooming_pdf
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
 
@@ -700,6 +700,7 @@ class TripPilgrimsWindow(Toplevel):
             ("➕  إضافة يدوي", self.add_manual, "Ghost.TButton"),
             ("✏️  تعديل", self.edit_selected, "Ghost.TButton"),
             ("🗑  حذف", self.delete_selected, "Ghost.TButton"),
+            ("🏨  التسكين", self.open_rooming, "Ghost.TButton"),
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
@@ -814,6 +815,12 @@ class TripPilgrimsWindow(Toplevel):
 
     def add_booking(self) -> None:
         BookingDialog(self, self.trip)
+
+    def open_rooming(self) -> None:
+        if not self._pilgrims():
+            messagebox.showinfo("التسكين", "لا معتمرين في هذا البرنامج.", parent=self)
+            return
+        RoomingWindow(self.app, self.trip)
 
     def add_passport(self) -> None:
         if not self._check_capacity(1):
@@ -939,3 +946,177 @@ class TripPilgrimsWindow(Toplevel):
         G.open_preview(
             self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label()),
             f"معتمرو {self.trip.code}", "pdf")
+
+
+class RoomingWindow(Toplevel):
+    """التسكين: توزيع معتمري البرنامج على غرف مكة والمدينة (تبويب لكل مدينة)."""
+
+    def __init__(self, app: UmrahApp, trip) -> None:
+        super().__init__(app.root)
+        self.app = app
+        self.trip = trip
+        self.session = app.session
+        self.title(f"التسكين — {trip.name or trip.code}")
+        self.configure(bg=G.BG)
+        self.geometry("980x620")
+        self.minsize(760, 460)
+        self.transient(app.root)
+
+        outer = ttk.Frame(self, padding=8)
+        outer.pack(fill=BOTH, expand=True)
+        nb = ttk.Notebook(outer)
+        nb.pack(fill=BOTH, expand=True)
+
+        self._cities: dict = {}      # key -> (label, room_field, hotel, nights)
+        self._trees: dict = {}
+        self._sum: dict = {}
+        for key, label, room_field, hotel_field, nights_field in umrah.CITIES:
+            hotel = str(getattr(trip, hotel_field, "") or "")
+            nights = str(getattr(trip, nights_field, "") or "")
+            self._cities[key] = (label, room_field, hotel, nights)
+            nb.add(self._build_tab(nb, key), text=label)
+
+        self.grab_set()
+        for key in self._cities:
+            self._reload(key)
+
+    def _prog_label(self) -> str:
+        return (f"{self.trip.code} — {self.trip.name}"
+                if self.trip.name else self.trip.code)
+
+    def _pilgrims(self) -> list:
+        return umrah.trip_pilgrims(self.app.records, self.trip.code)
+
+    def _build_tab(self, nb, key: str) -> ttk.Frame:
+        label, room_field, hotel, nights = self._cities[key]
+        f = ttk.Frame(nb, padding=8)
+        head = ttk.Frame(f, style="Toolbar.TFrame")
+        head.pack(fill=X)
+        cap = f"🏨 {label} — {hotel or '—'}"
+        if nights:
+            cap += f"  ({nights} ليالٍ)"
+        ttk.Label(head, text=cap, font=(G._FSB, 13), foreground=G.TEXT,
+                  background=G.BG).pack(side=RIGHT)
+        sumlbl = ttk.Label(head, text="", font=(G._FUI, 10), foreground=G.BRONZE,
+                           background=G.BG)
+        sumlbl.pack(side=LEFT)
+        self._sum[key] = sumlbl
+
+        bar = ttk.Frame(f, style="Panel.TFrame", padding=(8, 6))
+        bar.pack(fill=X, pady=(6, 6))
+        ttk.Button(bar, text=G.rtl("🎲 توزيع تلقائي"), style="Primary.TButton",
+                   command=lambda k=key: self._auto(k)).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("🧹 مسح التوزيع"), style="Ghost.TButton",
+                   command=lambda k=key: self._clear(k)).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("👁 معاينة كشف الغرف"), style="Ghost.TButton",
+                   command=lambda k=key: self._preview(k)).pack(side=LEFT, padx=3)
+        ttk.Label(bar, text=G.rtl("نقرة مزدوجة لتعيين رقم الغرفة"),
+                  font=(G._FUI, 9), foreground=G.MUTED,
+                  background=G.BG).pack(side=LEFT, padx=10)
+
+        cols = ("n", "name", "passport", "room_type", "room")
+        heads = {"n": "م", "name": "الاسم", "passport": "رقم الجواز",
+                 "room_type": "نوع الغرفة", "room": "رقم الغرفة"}
+        widths = {"n": 40, "name": 250, "passport": 130, "room_type": 100,
+                  "room": 100}
+        tree = ttk.Treeview(f, columns=cols, show="headings")
+        for c in cols:
+            tree.heading(c, text=heads[c])
+            tree.column(c, width=widths[c], anchor="e" if c == "name" else "center")
+        tree.pack(fill=BOTH, expand=True)
+        tree.tag_configure("odd", background=G.PANEL)
+        tree.bind("<Double-1>", lambda _e, k=key: self._edit_room(k))
+        self._trees[key] = tree
+        return f
+
+    def _reload(self, key: str) -> None:
+        label, room_field, _hotel, _nights = self._cities[key]
+        tree = self._trees[key]
+        tree.delete(*tree.get_children())
+        recs = self._pilgrims()
+        for i, r in enumerate(recs):
+            tree.insert("", END, iid=str(i), values=(
+                i + 1, r.full_name_ar or r.full_name_en or "—",
+                r.passport_number or "—", r.room_type or "—",
+                getattr(r, room_field, "") or "—"),
+                tags=("odd",) if i % 2 else ())
+        rooms, un = umrah.rooming_rooms(recs, room_field)
+        self._sum[key].configure(
+            text=f"الغرف: {len(rooms)}   ·   بلا غرفة: {len(un)}   ·   "
+                 f"العدد: {len(recs)}")
+
+    def _auto(self, key: str) -> None:
+        room_field = self._cities[key][1]
+        n = umrah.auto_assign_rooms(self._pilgrims(), room_field)
+        self.app.save()
+        self._reload(key)
+        messagebox.showinfo("توزيع تلقائي",
+                            f"وُزّع المعتمرون على {n} غرفة حسب نوع الغرفة.",
+                            parent=self)
+
+    def _clear(self, key: str) -> None:
+        room_field = self._cities[key][1]
+        if not messagebox.askyesno("مسح التوزيع",
+                                   "مسح أرقام غرف هذه المدينة لكل المعتمرين؟",
+                                   parent=self):
+            return
+        for r in self._pilgrims():
+            setattr(r, room_field, "")
+        self.app.save()
+        self._reload(key)
+
+    def _edit_room(self, key: str) -> None:
+        room_field = self._cities[key][1]
+        tree = self._trees[key]
+        sel = tree.selection()
+        if not sel:
+            return
+        recs = self._pilgrims()
+        idx = int(sel[0])
+        if not (0 <= idx < len(recs)):
+            return
+        rec = recs[idx]
+        ed = Toplevel(self)
+        ed.title("رقم الغرفة")
+        ed.configure(bg=G.BG)
+        ed.transient(self)
+        ed.grab_set()
+        ed.resizable(False, False)
+        frm = ttk.Frame(ed, padding=16)
+        frm.pack()
+        who = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        ttk.Label(frm, text=f"رقم غرفة «{who}»", font=(G._FUI, 10),
+                  foreground=G.TEXT).pack(anchor="e")
+        v = StringVar(value=getattr(rec, room_field, "") or "")
+        entry = ttk.Entry(frm, textvariable=v, width=18, justify="center")
+        entry.pack(pady=8)
+        entry.focus_set()
+
+        def _save():
+            setattr(rec, room_field, v.get().strip())
+            self.app.save()
+            ed.destroy()
+            self._reload(key)
+
+        row = ttk.Frame(frm)
+        row.pack()
+        ttk.Button(row, text=G.rtl("💾 حفظ"), style="Primary.TButton",
+                   command=_save).pack(side=RIGHT, padx=3)
+        ttk.Button(row, text="إلغاء", style="Ghost.TButton",
+                   command=ed.destroy).pack(side=LEFT, padx=3)
+        ed.bind("<Return>", lambda _e: _save())
+        ed.bind("<Escape>", lambda _e: ed.destroy())
+        _center(ed, self)
+
+    def _preview(self, key: str) -> None:
+        label, room_field, hotel, nights = self._cities[key]
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("معاينة", "لا معتمرين.", parent=self)
+            return
+        G.open_preview(
+            self,
+            lambda p: export_umrah_rooming_pdf(
+                recs, p, city_label=label, hotel=hotel, nights=nights,
+                program_name=self._prog_label(), room_field=room_field),
+            f"تسكين {label} {self.trip.code}", "pdf")
