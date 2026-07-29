@@ -26,8 +26,8 @@ from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
 from .pdf_io import (
-    export_airline_pdf, export_umrah_pdf, export_umrah_rooming_pdf,
-    export_umrah_transport_pdf,
+    export_airline_pdf, export_umrah_cards_pdf, export_umrah_finance_pdf,
+    export_umrah_pdf, export_umrah_rooming_pdf, export_umrah_transport_pdf,
 )
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
@@ -716,6 +716,10 @@ class TripPilgrimsWindow(Toplevel):
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("💰  الملخّص المالي"), style="Ghost.TButton",
+                   command=self.do_finance).pack(side=LEFT, padx=3)
+        ttk.Button(bar, text=G.rtl("🪪  بطاقات العمرة"), style="Ghost.TButton",
+                   command=self.do_cards).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("👁  معاينة PDF"), style="Ghost.TButton",
                    command=self.export_pdf).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("📊  تصدير إكسل"), style="Ghost.TButton",
@@ -976,6 +980,33 @@ class TripPilgrimsWindow(Toplevel):
             self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label()),
             f"معتمرو {self.trip.code}", "pdf")
 
+    def do_finance(self) -> None:
+        """معاينة الملخّص المالي للبرنامج (إجماليات، طرق الدفع، المتأخّرات)."""
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("الملخّص المالي", "لا معتمرين في هذا البرنامج.",
+                                parent=self)
+            return
+        G.open_preview(
+            self,
+            lambda p: export_umrah_finance_pdf(recs, p, program_name=self._prog_label()),
+            f"مالية {self.trip.code}", "pdf")
+
+    def do_cards(self) -> None:
+        """معاينة بطاقات العمرة (بطاقة لكل معتمر)."""
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("بطاقات العمرة", "لا معتمرين في هذا البرنامج.",
+                                parent=self)
+            return
+        company = self.app._settings.get("company") if isinstance(
+            self.app._settings.get("company"), dict) else None
+        G.open_preview(
+            self,
+            lambda p: export_umrah_cards_pdf(recs, p, program_name=self._prog_label(),
+                                             company=company),
+            f"بطاقات {self.trip.code}", "pdf")
+
 
 class RoomingWindow(Toplevel):
     """التسكين: توزيع معتمري البرنامج على غرف مكة والمدينة (تبويب لكل مدينة)."""
@@ -1007,9 +1038,22 @@ class RoomingWindow(Toplevel):
             self._cities[key] = (label, room_field, hotel, nights, rooms)
             nb.add(self._build_tab(nb, key), text=label)
 
+        self._seed_from_room_number()
         self.grab_set()
         for key in self._cities:
             self._reload(key)
+
+    def _seed_from_room_number(self) -> None:
+        """يأخذ رقم الغرفة من «الإقامة والحجز» إن وُجد ولم يُحدَّد لهذه المدينة."""
+        seeded = False
+        for _k, _l, room_field, *_rest in umrah.CITIES:
+            for r in self._pilgrims():
+                if (not str(getattr(r, room_field, "") or "").strip()
+                        and str(r.room_number or "").strip()):
+                    setattr(r, room_field, str(r.room_number).strip())
+                    seeded = True
+        if seeded:
+            self.app.save()
 
     def _prog_label(self) -> str:
         return (f"{self.trip.code} — {self.trip.name}"

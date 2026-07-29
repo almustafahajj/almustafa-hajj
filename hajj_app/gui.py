@@ -6833,7 +6833,7 @@ class EditDialog(Toplevel):
         "status": ("", "نشط", "ملغى", "قائمة انتظار"),
         "sex": ("", "ذكر", "أنثى"),
         "wheelchair": ("", "نعم"),
-        "payment_method": ("", "نقدي", "تحويل بنكي", "بطاقة", "شيك"),
+        "payment_method": ("", "نقدي", "تحويل بنكي", "بطاقة", "شيك", "رابط دفع"),
     }
 
     def __init__(self, parent, record: PassportData, on_save, *,

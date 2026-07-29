@@ -302,5 +302,35 @@ export_umrah_transport_pdf(shared, pv6, program_name="U1", transport_pnr="TR9")
 assert pv6.read_bytes()[:5] == b"%PDF-" and pv6.stat().st_size > 2500
 print("  OK: الرضيع + توريث PNR + تنبيه سعة الغرف + كشف مواصلات بالفندق")
 
+print("\n=== رابط الدفع + بذر رقم الغرفة + المالية والبطاقات ===")
+app_mode.set_mode("umrah")
+# «رابط دفع» ضمن طرق الدفع
+import hajj_app.gui as _g2
+assert "رابط دفع" in _g2.EditDialog.CHOICE_FIELDS["payment_method"]
+# التسكين يأخذ رقم الغرفة من «الإقامة والحجز» إن وُجد
+r7 = tk.Tk(); r7.withdraw()
+app7 = _ug.UmrahApp(r7, session=None)
+t7 = umrah.UmrahTrip(code="SD", name="رمضان", makkah_hotel="كونراد")
+app7.trips.append(t7)
+app7.records.append(PassportData(full_name_ar="سعيد", room_number="512", trip="SD"))
+_ug.RoomingWindow(app7, t7)
+rec7 = umrah.trip_pilgrims(app7.records, "SD")[0]
+assert rec7.makkah_room == "512" and rec7.madinah_room == "512"   # مأخوذ تلقائياً
+r7.destroy()
+# الملخّص المالي + بطاقات العمرة PDF
+from hajj_app.pdf_io import export_umrah_finance_pdf, export_umrah_cards_pdf
+fr = [PassportData(full_name_ar=f"م{i}", passport_number=f"A{i}",
+                   nationality_ar="الإمارات", hotel="كونراد", room_type="ثنائي",
+                   airline="السعودية", pnr="P1", reference_number=f"U1-00{i}",
+                   program_value="5000", paid_amount=str(2000 * (i % 3)),
+                   payment_method="رابط دفع") for i in range(1, 5)]
+pf = WORK / "fin.pdf"
+export_umrah_finance_pdf(fr, pf, program_name="U1 — رمضان")
+assert pf.read_bytes()[:5] == b"%PDF-" and pf.stat().st_size > 3000
+pc = WORK / "cards.pdf"
+export_umrah_cards_pdf(fr, pc, program_name="U1 — رمضان")
+assert pc.read_bytes()[:5] == b"%PDF-" and pc.stat().st_size > 3000
+print("  OK: رابط الدفع + بذر رقم الغرفة + الملخّص المالي + بطاقات العمرة")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

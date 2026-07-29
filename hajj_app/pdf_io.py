@@ -983,6 +983,200 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     return path
 
 
+def export_umrah_finance_pdf(records: list, path: str | Path, *,
+                             program_name: str = "") -> Path:
+    """الملخّص المالي لبرنامج عمرة: الإجماليات، توزيع طرق الدفع، والمتأخّرات."""
+    from .fields import format_amount, parse_amount
+
+    _register_fonts()
+    path = Path(path)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=14 * mm, leftMargin=14 * mm,
+        topMargin=13 * mm, bottomMargin=16 * mm, title="الملخّص المالي",
+        author="ميسّر العمرة")
+    st = _styles()
+    story = []
+    logo = _logo_flowable(max_width_pt=120)
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    title = "الملخّص المالي" + (f" — {program_name}" if program_name else "")
+    story.append(Paragraph(ar(title), st["title"]))
+    story.append(Paragraph(ar(
+        f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
+        st["subtitle"]))
+
+    total = sum(parse_amount(r.program_value) or 0 for r in records)
+    paid = sum(parse_amount(r.paid_amount) or 0 for r in records)
+    remaining = total - paid
+    pct = f"{(paid / total * 100):.0f}%" if total else "0%"
+
+    sect = ParagraphStyle("uf", fontName=_FONT_BOLD, fontSize=12, alignment=2,
+                          textColor=_ACCENT, spaceBefore=10, spaceAfter=5)
+    lbl = ParagraphStyle("ufl", parent=st["cell"], fontName=_FONT_BOLD,
+                         textColor=_ACCENT, alignment=2)
+    val = ParagraphStyle("ufv", parent=st["cell"], alignment=1)
+
+    story.append(Paragraph(ar("الإجماليات"), sect))
+    rows = [("عدد المعتمرين", ltr(len(records))),
+            ("إجمالي قيمة البرامج", format_amount(total)),
+            ("المحصّل", format_amount(paid)),
+            ("المتبقّي", format_amount(remaining)),
+            ("نسبة التحصيل", pct)]
+    fin_cw = [doc.width * 0.55, doc.width * 0.45]
+    fdata = [[_ar_para(v, val, fin_cw[0] - 13), _ar_para(k, lbl, fin_cw[1] - 13)]
+             for k, v in rows]
+    ft = Table(fdata, colWidths=fin_cw)
+    ft.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
+    ]))
+    story.append(ft)
+
+    # توزيع طرق الدفع
+    methods: dict = {}
+    for r in records:
+        if parse_amount(r.paid_amount):
+            m = str(getattr(r, "payment_method", "") or "").strip() or "غير محدّد"
+            methods[m] = methods.get(m, 0) + 1
+    if methods:
+        story.append(Paragraph(ar("توزيع طرق الدفع"), sect))
+        mrows = [(m, ltr(c)) for m, c in methods.items()]
+        mdata = [[_ar_para(str(c), val, fin_cw[0] - 13),
+                  _ar_para(m, lbl, fin_cw[1] - 13)] for m, c in mrows]
+        mt = Table(mdata, colWidths=fin_cw)
+        mt.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
+        ]))
+        story.append(mt)
+
+    # المتأخّرات
+    owe = [(r, (parse_amount(r.program_value) or 0) - (parse_amount(r.paid_amount) or 0))
+           for r in records]
+    owe = [(r, a) for r, a in owe if a > 0]
+    story.append(Paragraph(
+        ar(f"المتأخّرات ({ltr(len(owe))})"), sect))
+    if owe:
+        heads = ["م", "اسم المعتمر", "الهاتف", "القيمة", "المدفوع", "المتبقّي"]
+        weights = list(reversed([24, 150, 90, 70, 70, 70]))
+        scale = doc.width / sum(weights)
+        colw = [w * scale for w in weights]
+        avail = [w - 9 for w in colw]
+        data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
+        for i, (r, a) in enumerate(owe, 1):
+            vals = [str(i), r.full_name_ar or r.full_name_en or "—",
+                    r.phone or "—", format_amount(parse_amount(r.program_value) or 0),
+                    format_amount(parse_amount(r.paid_amount) or 0),
+                    format_amount(a)]
+            data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
+        t = Table(data, colWidths=colw, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(t)
+    else:
+        story.append(Paragraph(ar("لا متأخّرات — كل المبالغ محصّلة ✓"),
+                               st["subtitle"]))
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, "الملخّص المالي"),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, "الملخّص المالي"))
+    return path
+
+
+def export_umrah_cards_pdf(records: list, path: str | Path, *,
+                           program_name: str = "", company=None) -> Path:
+    """بطاقات عمرة — بطاقة لكل معتمر ببيانات البرنامج والسفر والإقامة (بطاقتان بالصف)."""
+    from .fields import format_amount, parse_amount
+
+    _register_fonts()
+    path = Path(path)
+    co = company_info(company)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=10 * mm, leftMargin=10 * mm,
+        topMargin=12 * mm, bottomMargin=14 * mm, title="بطاقات العمرة",
+        author="ميسّر العمرة")
+    st = _styles()
+    hstyle = ParagraphStyle("uch", parent=st["cell"], fontName=_FONT_BOLD,
+                            textColor=colors.white, alignment=1, fontSize=9.5)
+    name_st = ParagraphStyle("ucn", parent=st["cell"], fontName=_FONT_BOLD,
+                             alignment=2, fontSize=11)
+    kv = ParagraphStyle("uckv", parent=st["cell"], alignment=2, fontSize=8)
+    kvb = ParagraphStyle("uckvb", parent=kv, fontName=_FONT_BOLD, textColor=_ACCENT)
+
+    card_w = (doc.width - 8 * mm) / 2
+
+    def card(rec):
+        val = parse_amount(rec.program_value) or 0
+        paid = parse_amount(rec.paid_amount) or 0
+        rows = [[Paragraph(ar(f"{co['name_ar']} — بطاقة عمرة"), hstyle)]]
+        rows.append([Paragraph(ar(rec.full_name_ar or rec.full_name_en or "—"),
+                               name_st)])
+
+        def kvrow(k, v):
+            inner = Table([[_ar_para(str(v or "—"), kv, card_w * 0.62 - 10),
+                            _ar_para(k, kvb, card_w * 0.38 - 10)]],
+                          colWidths=[card_w * 0.62, card_w * 0.38])
+            inner.setStyle(TableStyle([
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+            rows.append([inner])
+
+        kvrow("البرنامج", program_name)
+        kvrow("الرقم المرجعي", rec.reference_number)
+        kvrow("رقم الجواز", rec.passport_number)
+        kvrow("الجنسية", rec.nationality_ar)
+        kvrow("الفندق", rec.hotel)
+        kvrow("نوع الغرفة", rec.room_type)
+        kvrow("الطيران / PNR",
+              " / ".join(x for x in (rec.airline, rec.pnr) if x))
+        kvrow("القيمة / المتبقّي",
+              f"{format_amount(val)} / {format_amount(val - paid)}")
+        card_t = Table(rows, colWidths=[card_w])
+        card_t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (0, 0), _ACCENT),
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("LINEBELOW", (0, 1), (0, 1), 0.4, _GRID),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        return card_t
+
+    story = []
+    pairs = [records[i:i + 2] for i in range(0, len(records), 2)]
+    for pair in pairs:
+        left = card(pair[1]) if len(pair) > 1 else ""
+        right = card(pair[0])
+        row = Table([[left, right]], colWidths=[card_w, card_w])
+        row.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(row)
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, "بطاقات العمرة"),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, "بطاقات العمرة"))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:
