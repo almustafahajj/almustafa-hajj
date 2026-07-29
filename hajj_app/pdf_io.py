@@ -227,15 +227,6 @@ def _footer(canvas, doc, title_text: str) -> None:
     canvas.restoreState()
 
 
-def _manager_line(manager: str, st: dict):
-    """سطر بارز باسم الموظف المسؤول لكشوفات العمرة (أو None إن لم يُحدَّد)."""
-    if not manager:
-        return None
-    return Paragraph(ar(f"الموظف المسؤول: {manager}"), ParagraphStyle(
-        "umgr", parent=st["subtitle"], fontName=_FONT_BOLD, textColor=_ACCENT,
-        spaceBefore=0, spaceAfter=8))
-
-
 def _footer_portrait(canvas, doc, title_text: str) -> None:
     """ترويسة سفلية لصفحات A4 العمودية (عرض مختلف عن العرضية)."""
     canvas.saveState()
@@ -795,8 +786,7 @@ def export_itinerary_pdf(path: str | Path, *, rows: list | None = None,
 
 
 def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
-                     title: str = "كشف المعتمرين", manager: str = "",
-                     depart_date: str = "") -> Path:
+                     title: str = "كشف المعتمرين", depart_date: str = "") -> Path:
     """يصدّر كشف معتمري برنامج عمرة إلى PDF (A4 عرضي) بمسمّيات العمرة.
 
     الأعمدة: التسلسل، الاسم، رقم العائلة، رقم الجواز، تاريخ الانتهاء، الجنسية،
@@ -821,14 +811,11 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
     story.append(Paragraph(ar(
         f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
         st["subtitle"]))
-    _ml = _manager_line(manager, st)
-    if _ml is not None:
-        story.append(_ml)
 
     heads = [lbl for _k, lbl in REPORT_COLUMNS]
     # أوزان الأعمدة (بالترتيب المنطقي) ثم تُعكس للعرض من اليمين لليسار
     weights = list(reversed(
-        [40, 78, 46, 58, 56, 50, 66, 74, 44, 54, 48, 52, 52]))
+        [34, 68, 42, 52, 52, 46, 60, 64, 42, 50, 44, 46, 46, 62]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 3
@@ -866,8 +853,7 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
 def export_umrah_rooming_pdf(records: list, path: str | Path, *,
                              city_label: str = "", hotel: str = "",
                              nights: str = "", program_name: str = "",
-                             room_field: str = "makkah_room",
-                             manager: str = "") -> Path:
+                             room_field: str = "makkah_room") -> Path:
     """كشف تسكين معتمري برنامج في مدينة (مكة/المدينة) — مجموعاً بالغرف."""
     from .umrah import rooming_rooms
 
@@ -894,13 +880,11 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
         sub.append(f"الليالي: {ltr(nights)}")
     sub.append(f"المعتمرون: {ltr(len(records))}")
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
-    _ml = _manager_line(manager, st)
-    if _ml is not None:
-        story.append(_ml)
 
     rooms, unassigned = rooming_rooms(records, room_field)
-    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "نوع الغرفة", "الهاتف"]
-    weights = list(reversed([24, 140, 66, 84, 58, 92]))
+    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "نوع الغرفة", "الهاتف",
+             "الموظف المسؤول"]
+    weights = list(reversed([22, 122, 58, 78, 52, 82, 66]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -913,7 +897,7 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
                     r.family_number or "", r.passport_number or "",
-                    r.room_type or "", r.phone or ""]
+                    r.room_type or "", r.phone or "", r.staff or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -943,7 +927,7 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
 
 def export_umrah_transport_pdf(records: list, path: str | Path, *,
                                program_name: str = "",
-                               transport_pnr: str = "", manager: str = "") -> Path:
+                               transport_pnr: str = "") -> Path:
     """كشف مواصلات معتمري برنامج — مجموعاً بالمركبات (فورد/جيمس)، مع الفندق."""
     from .umrah import rooming_rooms
 
@@ -967,13 +951,11 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     if transport_pnr:
         sub.append(f"PNR النقل: {ltr(transport_pnr)}")
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
-    _ml = _manager_line(manager, st)
-    if _ml is not None:
-        story.append(_ml)
 
     groups, unassigned = rooming_rooms(records, "vehicle")
-    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "الهاتف", "الفندق"]
-    weights = list(reversed([24, 138, 64, 84, 92, 104]))
+    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "الهاتف", "الفندق",
+             "الموظف المسؤول"]
+    weights = list(reversed([22, 120, 56, 78, 84, 92, 66]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -986,7 +968,7 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
                     r.family_number or "", r.passport_number or "", r.phone or "",
-                    r.hotel or ""]
+                    r.hotel or "", r.staff or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -1015,7 +997,7 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
 
 
 def export_umrah_finance_pdf(records: list, path: str | Path, *,
-                             program_name: str = "", manager: str = "") -> Path:
+                             program_name: str = "") -> Path:
     """الملخّص المالي لبرنامج عمرة: الإجماليات، توزيع طرق الدفع، والمتأخّرات."""
     from .fields import format_amount, parse_amount
 
@@ -1036,9 +1018,6 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
     story.append(Paragraph(ar(
         f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
         st["subtitle"]))
-    _ml = _manager_line(manager, st)
-    if _ml is not None:
-        story.append(_ml)
 
     total = sum(parse_amount(r.program_value) or 0 for r in records)
     paid = sum(parse_amount(r.paid_amount) or 0 for r in records)
@@ -1090,11 +1069,11 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
         ]))
         story.append(mt)
 
-    # تفاصيل الدفع لكل معتمر (كم دفع ونوع الغرفة وطريقة الدفع)
+    # تفاصيل الدفع لكل معتمر (كم دفع ونوع الغرفة وطريقة الدفع والموظف المسؤول)
     story.append(Paragraph(ar("تفاصيل الدفع"), sect))
     dheads = ["م", "اسم المعتمر", "رقم العائلة", "نوع الغرفة", "القيمة",
-              "المدفوع", "المتبقّي", "طريقة الدفع"]
-    dweights = list(reversed([22, 116, 52, 60, 56, 56, 56, 66]))
+              "المدفوع", "المتبقّي", "طريقة الدفع", "الموظف المسؤول"]
+    dweights = list(reversed([20, 104, 48, 54, 50, 50, 50, 58, 62]))
     dscale = doc.width / sum(dweights)
     dcolw = [w * dscale for w in dweights]
     davail = [w - 9 for w in dcolw]
@@ -1105,7 +1084,7 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
         vals = [str(i), r.full_name_ar or r.full_name_en or "—",
                 r.family_number or "—", r.room_type or "—", format_amount(v),
                 format_amount(p), format_amount(v - p),
-                str(getattr(r, "payment_method", "") or "—")]
+                str(getattr(r, "payment_method", "") or "—"), r.staff or "—"]
         ddata.append(_ar_cells(list(reversed(vals)), st["cell"], davail))
     dt = Table(ddata, colWidths=dcolw, repeatRows=1)
     dt.setStyle(TableStyle([

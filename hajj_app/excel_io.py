@@ -128,7 +128,7 @@ def export_excel(records: list[PassportData], path: str | Path) -> Path:
 
 
 def export_umrah_excel(records: list[PassportData], path: str | Path, *,
-                       program_name: str = "", manager: str = "") -> Path:
+                       program_name: str = "") -> Path:
     """يصدّر كشف معتمري برنامج عمرة إلى إكسل بمسمّيات العمرة والأعمدة المطلوبة."""
     from .umrah import REPORT_COLUMNS, REPORT_MONEY_KEYS, report_row
 
@@ -140,8 +140,6 @@ def export_umrah_excel(records: list[PassportData], path: str | Path, *,
     ncols = len(REPORT_COLUMNS)
 
     heading = f"كشف المعتمرين — {program_name}" if program_name else "كشف المعتمرين"
-    if manager:
-        heading += f" — المسؤول: {manager}"
     ws.append([f"{heading} — {date.today().isoformat()}"])
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
     title = ws.cell(row=1, column=1)
@@ -173,7 +171,7 @@ def export_umrah_excel(records: list[PassportData], path: str | Path, *,
                     cell.value = amount
                     cell.number_format = "#,##0"
 
-    widths = (10, 26, 12, 15, 16, 13, 18, 20, 12, 15, 12, 14, 12)
+    widths = (10, 26, 12, 15, 16, 13, 18, 20, 12, 15, 12, 14, 12, 18)
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = "C3"

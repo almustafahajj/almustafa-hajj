@@ -56,6 +56,7 @@ REPORT_COLUMNS = (
     ("program_value", "القيمة"),
     ("paid_amount", "المبلغ المدفوع"),
     ("remaining", "المتبقّي"),
+    ("staff", "الموظف المسؤول"),      # من خانة «الموظف المسؤول» في بيانات المعتمر
 )
 # أعمدة المبالغ في الكشف (تُعامَل أرقاماً في إكسل)
 REPORT_MONEY_KEYS = frozenset({"program_value", "paid_amount", "remaining"})
@@ -80,6 +81,7 @@ def report_row(rec, serial: int, program_name: str = "") -> dict:
         "program_value": format_amount(val) if val else "",
         "paid_amount": format_amount(paid) if paid else "",
         "remaining": format_amount(val - paid) if val else "",
+        "staff": rec.staff or "",
     }
 
 

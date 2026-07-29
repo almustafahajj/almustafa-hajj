@@ -159,16 +159,18 @@ for extra in ("المطوّف", "خدمة التنفيذي في الاستقبا
               "خدمة التنفيذي في المغادرة", "خدمة مُرافق"):
     assert extra in umrah.DEFAULT_SERVICES, extra
 assert app_mode.label("release_name") == "ميسّر العمرة"      # اسم التطبيق
-# صفّ الكشف بالأعمدة المطلوبة
+# صفّ الكشف بالأعمدة المطلوبة (الموظف المسؤول من خانة staff، آخر عمود)
 rec = PassportData(full_name_ar="سعيد", passport_number="A9",
                    expiry_date="2030-01-01", nationality_ar="الإمارات",
                    hotel="كونراد", room_type="ثنائي", airline="السعودية",
-                   program_value="5000", paid_amount="2000")
+                   program_value="5000", paid_amount="2000", staff="أيمن الشهابي")
 row = umrah.report_row(rec, 1, "رمضان")
 assert [k for k, _l in umrah.REPORT_COLUMNS] == [
     "serial", "full_name_ar", "family_number", "passport_number", "expiry_date",
     "nationality_ar", "program", "hotel", "room_type", "airline",
-    "program_value", "paid_amount", "remaining"]
+    "program_value", "paid_amount", "remaining", "staff"]
+assert [k for k, _l in umrah.REPORT_COLUMNS][-1] == "staff"   # آخر عمود
+assert row["staff"] == "أيمن الشهابي"                          # من بيانات المعتمر
 # الجنسية قبل البرنامج، ورقم العائلة مذكور
 _keys = [k for k, _l in umrah.REPORT_COLUMNS]
 assert _keys.index("nationality_ar") < _keys.index("program")
@@ -181,7 +183,7 @@ pdf = WORK / "kashf.pdf"
 export_umrah_pdf([rec], pdf, program_name="رمضان")
 assert pdf.read_bytes()[:5] == b"%PDF-" and pdf.stat().st_size > 3000
 xlsx = WORK / "kashf.xlsx"
-export_umrah_excel([rec], xlsx, program_name="رمضان", manager="أيمن الشهابي")
+export_umrah_excel([rec], xlsx, program_name="رمضان")
 from openpyxl import load_workbook
 ws = load_workbook(xlsx).active
 _ncols = len(umrah.REPORT_COLUMNS)

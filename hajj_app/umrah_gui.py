@@ -366,7 +366,6 @@ class TripEditorDialog(Toplevel):
     def _tab_basic(self, nb) -> ttk.Frame:
         f = ttk.Frame(nb, padding=12)
         rows = [("code", "رمز البرنامج *", 14), ("name", "اسم البرنامج", 32),
-                ("manager", "الموظف المسؤول", 24),
                 ("depart_date", "تاريخ المغادرة", 18),
                 ("return_date", "تاريخ العودة", 18),
                 ("makkah_hotel", "فندق مكة", 30), ("makkah_nights", "ليالي مكة", 12),
@@ -1060,8 +1059,7 @@ class TripPilgrimsWindow(Toplevel):
         if not path:
             return
         try:
-            export_umrah_excel(recs, path, program_name=self._prog_label(),
-                               manager=str(getattr(self.trip, "manager", "") or ""))
+            export_umrah_excel(recs, path, program_name=self._prog_label())
         except Exception as exc:                           # noqa: BLE001
             messagebox.showerror("تعذّر التصدير", str(exc), parent=self)
             return
@@ -1073,11 +1071,10 @@ class TripPilgrimsWindow(Toplevel):
         if not recs:
             messagebox.showinfo("معاينة", "لا معتمرين في هذا البرنامج.", parent=self)
             return
-        mgr = str(getattr(self.trip, "manager", "") or "")
         dep = str(getattr(self.trip, "depart_date", "") or "")
         G.open_preview(
             self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label(),
-                                             manager=mgr, depart_date=dep),
+                                             depart_date=dep),
             f"معتمرو {self.trip.code}", "pdf")
 
     def do_finance(self) -> None:
@@ -1087,11 +1084,10 @@ class TripPilgrimsWindow(Toplevel):
             messagebox.showinfo("الملخّص المالي", "لا معتمرين في هذا البرنامج.",
                                 parent=self)
             return
-        mgr = str(getattr(self.trip, "manager", "") or "")
         G.open_preview(
             self,
-            lambda p: export_umrah_finance_pdf(recs, p, program_name=self._prog_label(),
-                                               manager=mgr),
+            lambda p: export_umrah_finance_pdf(recs, p,
+                                               program_name=self._prog_label()),
             f"مالية {self.trip.code}", "pdf")
 
     def do_cards(self) -> None:
@@ -1325,8 +1321,7 @@ class RoomingWindow(Toplevel):
             self,
             lambda p: export_umrah_rooming_pdf(
                 recs, p, city_label=label, hotel=hotel, nights=nights,
-                program_name=self._prog_label(), room_field=room_field,
-                manager=str(getattr(self.trip, "manager", "") or "")),
+                program_name=self._prog_label(), room_field=room_field),
             f"تسكين {label} {self.trip.code}", "pdf")
 
 
@@ -1470,6 +1465,5 @@ class TransportWindow(Toplevel):
             self,
             lambda p: export_umrah_transport_pdf(
                 recs, p, program_name=self._prog_label(),
-                transport_pnr=str(getattr(self.trip, "transport_pnr", "") or ""),
-                manager=str(getattr(self.trip, "manager", "") or "")),
+                transport_pnr=str(getattr(self.trip, "transport_pnr", "") or "")),
             f"مواصلات {self.trip.code}", "pdf")
