@@ -915,8 +915,9 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
 
 
 def export_umrah_transport_pdf(records: list, path: str | Path, *,
-                               program_name: str = "") -> Path:
-    """كشف مواصلات معتمري برنامج — مجموعاً بالمركبات (فورد/جيمس)."""
+                               program_name: str = "",
+                               transport_pnr: str = "") -> Path:
+    """كشف مواصلات معتمري برنامج — مجموعاً بالمركبات (فورد/جيمس)، مع الفندق."""
     from .umrah import rooming_rooms
 
     _register_fonts()
@@ -935,11 +936,14 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     if program_name:
         title += f" — {program_name}"
     story.append(Paragraph(ar(title), st["title"]))
-    story.append(Paragraph(ar(f"المعتمرون: {ltr(len(records))}"), st["subtitle"]))
+    sub = [f"المعتمرون: {ltr(len(records))}"]
+    if transport_pnr:
+        sub.append(f"PNR النقل: {ltr(transport_pnr)}")
+    story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     groups, unassigned = rooming_rooms(records, "vehicle")
-    heads = ["م", "الاسم", "رقم الجواز", "الهاتف", "نوع الغرفة"]
-    weights = list(reversed([26, 160, 90, 100, 70]))
+    heads = ["م", "الاسم", "رقم الجواز", "الهاتف", "الفندق"]
+    weights = list(reversed([26, 150, 88, 96, 110]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -951,7 +955,7 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
         data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
-                    r.passport_number or "", r.phone or "", r.room_type or ""]
+                    r.passport_number or "", r.phone or "", r.hotel or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -966,8 +970,10 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
         ]))
         story.append(t)
 
+    # نوع السيارة يُذكر في العنوان، ويوضَّح الاشتراك عند وجود أكثر من راكب
     for name, occ in groups:
-        block(f"🚐 {name} ({ltr(len(occ))})", occ)
+        shared = "  —  مشتركة" if len(occ) > 1 else ""
+        block(f"🚐 {name}  ({ltr(len(occ))} راكب){shared}", occ)
     if unassigned:
         block(f"بلا مركبة ({ltr(len(unassigned))})", unassigned)
 

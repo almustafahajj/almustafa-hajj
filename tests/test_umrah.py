@@ -270,5 +270,37 @@ assert all(r.vehicle for r in umrah.trip_pilgrims(app5.records, "U1"))
 r5.destroy()
 print("  OK: سعر الطفل + خدمات المعتمر المسعّرة + المواصلات (فورد/جيمس) + الطيران")
 
+print("\n=== الرضيع + PNR + سعة الغرف + كشف المواصلات بالفندق ===")
+# الرضيع ضمن أنواع الغرف بلا سعة
+assert ("price_infant", "رضيع", 0) in umrah.ROOM_TYPES
+assert umrah.room_capacity_of("رضيع") == 0
+# PNR الطيران يُورَّث للمعتمر من البرنامج
+tp = umrah.UmrahTrip(code="U1", flight_pnr="ABC123", makkah_hotel="كونراد")
+rp = PassportData()
+umrah.apply_trip_to_record(tp, rp)
+assert rp.pnr == "ABC123"
+# سعة الغرف: التوزيع يتجاوز عدد الغرف المتاحة → تنبيه (n > available)
+r6 = tk.Tk(); r6.withdraw()
+app6 = _ug.UmrahApp(r6, session=None)
+t6 = umrah.UmrahTrip(code="RM", name="رمضان", makkah_hotel="كونراد",
+                     makkah_rooms="1", madinah_hotel="دار التقوى")
+app6.trips.append(t6)
+app6.records.extend([PassportData(full_name_ar=f"م{i}", room_type="مفرد",
+                                  trip="RM") for i in range(3)])
+rw6 = _ug.RoomingWindow(app6, t6)
+assert rw6._available("makkah") == 1
+n_rooms = umrah.auto_assign_rooms(umrah.trip_pilgrims(app6.records, "RM"),
+                                  "makkah_room")
+assert n_rooms == 3 and n_rooms > rw6._available("makkah")   # تجاوز السعة المتاحة
+r6.destroy()
+# كشف المواصلات: يعرض الفندق ويوضّح الاشتراك (أكثر من راكب)
+from hajj_app.pdf_io import export_umrah_transport_pdf
+shared = [PassportData(full_name_ar=f"س{i}", passport_number=f"P{i}",
+                       hotel="كونراد", vehicle="جيمس 1") for i in range(3)]
+pv6 = WORK / "trans2.pdf"
+export_umrah_transport_pdf(shared, pv6, program_name="U1", transport_pnr="TR9")
+assert pv6.read_bytes()[:5] == b"%PDF-" and pv6.stat().st_size > 2500
+print("  OK: الرضيع + توريث PNR + تنبيه سعة الغرف + كشف مواصلات بالفندق")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

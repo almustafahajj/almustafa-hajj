@@ -14,13 +14,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, fields as _dc_fields
 
 # أنواع الغرف: (مفتاح السعر، الاسم، عدد الأشخاص في الغرفة)
-# الطفل بدون سرير لا يشغل مقعداً في الغرفة (السعة 0).
+# الطفل بدون سرير والرضيع لا يشغلان مقعداً في الغرفة (السعة 0).
 ROOM_TYPES = (
     ("price_single", "مفرد", 1),
     ("price_double", "ثنائي", 2),
     ("price_triple", "ثلاثي", 3),
     ("price_quad", "رباعي", 4),
     ("price_child", "طفل (بدون سرير)", 0),
+    ("price_infant", "رضيع", 0),
 )
 
 # باقة الخدمات الإضافية المتاحة (يُدخل لكلٍّ سعرها في البرنامج)
@@ -98,8 +99,10 @@ class UmrahTrip:
     return_date: str = ""
     makkah_hotel: str = ""
     makkah_nights: str = ""
+    makkah_rooms: str = ""         # عدد الغرف المتاحة في فندق مكة
     madinah_hotel: str = ""
     madinah_nights: str = ""
+    madinah_rooms: str = ""        # عدد الغرف المتاحة في فندق المدينة
     airline: str = ""
     # رحلة الذهاب: رقم الرحلة ووقت المغادرة ووقت الوصول
     flight_out: str = ""
@@ -109,14 +112,17 @@ class UmrahTrip:
     flight_ret: str = ""
     ret_depart_time: str = ""
     ret_arrive_time: str = ""
+    flight_pnr: str = ""           # رمز حجز الطيران (PNR)
+    transport_pnr: str = ""        # رمز حجز النقل (PNR)
     # أسعار الفرد حسب نوع الغرفة
     price_single: str = ""
     price_double: str = ""
     price_triple: str = ""
     price_quad: str = ""
     price_child: str = ""          # سعر الطفل (بدون سرير)
+    price_infant: str = ""         # سعر الرضيع
     transport: str = ""            # ملاحظة النقل الداخلي الافتراضية
-    capacity: str = ""             # السعة (عدد المقاعد)
+    capacity: str = ""             # سعة الطيران (عدد المقاعد)
     # الخدمات المتاحة: قائمة {"name":..., "price":...}
     services: list = field(default_factory=list)
     notes: str = ""
@@ -222,15 +228,17 @@ def package_per_person(trip: UmrahTrip, room_key: str,
     return room_price(trip, room_key) + extra
 
 
-# مدن التسكين: (المفتاح، الاسم، حقل رقم الغرفة، حقل الفندق، حقل الليالي)
+# مدن التسكين: (المفتاح، الاسم، حقل رقم الغرفة، حقل الفندق، حقل الليالي،
+# حقل عدد الغرف المتاحة)
 CITIES = (
-    ("makkah", "مكة المكرّمة", "makkah_room", "makkah_hotel", "makkah_nights"),
+    ("makkah", "مكة المكرّمة", "makkah_room", "makkah_hotel", "makkah_nights",
+     "makkah_rooms"),
     ("madinah", "المدينة المنوّرة", "madinah_room", "madinah_hotel",
-     "madinah_nights"),
+     "madinah_nights", "madinah_rooms"),
 )
 
 _ROOM_CAP = {"مفرد": 1, "ثنائي": 2, "ثلاثي": 3, "رباعي": 4,
-             "طفل (بدون سرير)": 0}
+             "طفل (بدون سرير)": 0, "رضيع": 0}
 
 
 def room_capacity_of(room_type: str) -> int:
@@ -310,6 +318,8 @@ def apply_trip_to_record(trip: UmrahTrip, rec) -> None:
     rec.arrival_time = trip.out_arrive_time
     rec.departure_date = trip.return_date      # العودة إلى الوطن
     rec.departure_time = trip.ret_depart_time
+    if trip.flight_pnr:
+        rec.pnr = trip.flight_pnr              # رمز حجز الطيران للفوج
     hotels = " / ".join(h for h in (trip.makkah_hotel, trip.madinah_hotel) if h)
     if hotels:
         rec.hotel = hotels

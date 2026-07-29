@@ -157,7 +157,7 @@ class UmrahApp:
         bar.pack(fill=X)
         for text, cmd, style in (
             ("➕  برنامج جديد", self.new_trip, "Primary.TButton"),
-            ("👤  معتمرو البرنامج", self.open_pilgrims, "Act.TButton"),
+            ("👤  المعتمرين", self.open_pilgrims, "Act.TButton"),
             ("✏️  تعديل البرنامج", self.edit_trip, "Ghost.TButton"),
             ("🗑  حذف البرنامج", self.delete_trip, "Ghost.TButton"),
         ):
@@ -362,9 +362,10 @@ class TripEditorDialog(Toplevel):
                 ("depart_date", "تاريخ المغادرة", 18),
                 ("return_date", "تاريخ العودة", 18),
                 ("makkah_hotel", "فندق مكة", 30), ("makkah_nights", "ليالي مكة", 12),
+                ("makkah_rooms", "عدد غرف مكة", 12),
                 ("madinah_hotel", "فندق المدينة", 30),
                 ("madinah_nights", "ليالي المدينة", 12),
-                ("capacity", "السعة (مقاعد)", 12)]
+                ("madinah_rooms", "عدد غرف المدينة", 12)]
         for i, (key, label, width) in enumerate(rows):
             r, c = divmod(i, 2)
             self._field(f, key, label, width, r, c)
@@ -374,28 +375,31 @@ class TripEditorDialog(Toplevel):
         pf.grid(row=(len(rows) + 1) // 2 + 1, column=0, columnspan=2,
                 sticky="ew", pady=(10, 0), padx=6)
         for i, (key, name, _cap) in enumerate(umrah.ROOM_TYPES):
-            self._field(pf, key, name, 12, i // 2, i % 2)
+            self._field(pf, key, name, 12, i // 3, i % 3)
         return f
 
     def _tab_flight(self, nb) -> ttk.Frame:
         f = ttk.Frame(nb, padding=12)
         self._field(f, "airline", "شركة الطيران", 26, 0, 0)
+        self._field(f, "capacity", "سعة الطيران (مقاعد)", 12, 0, 1)
+        self._field(f, "flight_pnr", "PNR الطيران", 16, 1, 0)
 
         out = ttk.LabelFrame(f, text=G.rtl("رحلة الذهاب"), padding=8)
-        out.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
+        out.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
         self._field(out, "flight_out", "رقم الرحلة", 16, 0, 0)
         self._field(out, "out_depart_time", "وقت المغادرة", 14, 0, 1)
         self._field(out, "out_arrive_time", "وقت الوصول", 14, 1, 0)
 
         ret = ttk.LabelFrame(f, text=G.rtl("رحلة العودة"), padding=8)
-        ret.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
+        ret.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
         self._field(ret, "flight_ret", "رقم الرحلة", 16, 0, 0)
         self._field(ret, "ret_depart_time", "وقت المغادرة", 14, 0, 1)
         self._field(ret, "ret_arrive_time", "وقت الوصول", 14, 1, 0)
 
         tr = ttk.LabelFrame(f, text=G.rtl("النقل الداخلي (سيارة خاصة)"), padding=8)
-        tr.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
-        self._field(tr, "transport", "الافتراضي", 30, 0, 0)
+        tr.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
+        self._field(tr, "transport", "الافتراضي", 26, 0, 0)
+        self._field(tr, "transport_pnr", "PNR النقل", 16, 0, 1)
         ttk.Label(tr, text=G.rtl("يُحدَّد آلياً حسب العدد: شخصان ← فورد، "
                                  "٣ فأكثر ← جيمس (٦ كحدّ أقصى) — قابل للتعديل يدوياً"),
                   font=(G._FUI, 9), foreground=G.MUTED).grid(
@@ -683,15 +687,15 @@ class TripPilgrimsWindow(Toplevel):
         self.app = app
         self.trip = trip
         self.session = app.session
-        self.title(f"معتمرو البرنامج — {trip.name or trip.code}")
+        self.title(f"المعتمرين — {trip.name or trip.code}")
         self.configure(bg=G.BG)
-        self.geometry("1080x640")
-        self.minsize(820, 480)
+        self.geometry("1320x760")
+        self.minsize(960, 560)
         self.transient(app.root)
 
         head = ttk.Frame(self, style="Toolbar.TFrame", padding=(14, 10, 14, 4))
         head.pack(fill=X)
-        ttk.Label(head, text=f"👤 معتمرو «{trip.name or trip.code}»",
+        ttk.Label(head, text=f"👤 المعتمرين — «{trip.name or trip.code}»",
                   font=(G._FSB, 15), foreground=G.TEXT,
                   background=G.BG).pack(side=RIGHT)
         self.fin = ttk.Label(head, text="", font=(G._FUI, 10),
@@ -995,10 +999,12 @@ class RoomingWindow(Toplevel):
         self._cities: dict = {}      # key -> (label, room_field, hotel, nights)
         self._trees: dict = {}
         self._sum: dict = {}
-        for key, label, room_field, hotel_field, nights_field in umrah.CITIES:
+        for (key, label, room_field, hotel_field, nights_field,
+             rooms_field) in umrah.CITIES:
             hotel = str(getattr(trip, hotel_field, "") or "")
             nights = str(getattr(trip, nights_field, "") or "")
-            self._cities[key] = (label, room_field, hotel, nights)
+            rooms = str(getattr(trip, rooms_field, "") or "")
+            self._cities[key] = (label, room_field, hotel, nights, rooms)
             nb.add(self._build_tab(nb, key), text=label)
 
         self.grab_set()
@@ -1013,7 +1019,7 @@ class RoomingWindow(Toplevel):
         return umrah.trip_pilgrims(self.app.records, self.trip.code)
 
     def _build_tab(self, nb, key: str) -> ttk.Frame:
-        label, room_field, hotel, nights = self._cities[key]
+        label, room_field, hotel, nights, _rooms = self._cities[key]
         f = ttk.Frame(nb, padding=8)
         head = ttk.Frame(f, style="Toolbar.TFrame")
         head.pack(fill=X)
@@ -1054,8 +1060,15 @@ class RoomingWindow(Toplevel):
         self._trees[key] = tree
         return f
 
+    def _available(self, key: str) -> int:
+        """عدد الغرف المتاحة في فندق هذه المدينة (0 = غير محدَّد)."""
+        try:
+            return int(float(str(self._cities[key][4] or "").strip() or 0))
+        except ValueError:
+            return 0
+
     def _reload(self, key: str) -> None:
-        label, room_field, _hotel, _nights = self._cities[key]
+        label, room_field, _hotel, _nights, _rooms = self._cities[key]
         tree = self._trees[key]
         tree.delete(*tree.get_children())
         recs = self._pilgrims()
@@ -1066,8 +1079,10 @@ class RoomingWindow(Toplevel):
                 getattr(r, room_field, "") or "—"),
                 tags=("odd",) if i % 2 else ())
         rooms, un = umrah.rooming_rooms(recs, room_field)
+        avail = self._available(key)
+        used = f"{len(rooms)} من {avail}" if avail else str(len(rooms))
         self._sum[key].configure(
-            text=f"الغرف: {len(rooms)}   ·   بلا غرفة: {len(un)}   ·   "
+            text=f"الغرف: {used}   ·   بلا غرفة: {len(un)}   ·   "
                  f"العدد: {len(recs)}")
 
     def _auto(self, key: str) -> None:
@@ -1075,9 +1090,12 @@ class RoomingWindow(Toplevel):
         n = umrah.auto_assign_rooms(self._pilgrims(), room_field)
         self.app.save()
         self._reload(key)
-        messagebox.showinfo("توزيع تلقائي",
-                            f"وُزّع المعتمرون على {n} غرفة حسب نوع الغرفة.",
-                            parent=self)
+        avail = self._available(key)
+        msg = f"وُزّع المعتمرون على {n} غرفة حسب نوع الغرفة."
+        if avail and n > avail:
+            msg += (f"\n\n⚠ تجاوزٌ للسعة: الغرف المتاحة في الفندق {avail} فقط. "
+                    "راجع البيع/التوزيع.")
+        messagebox.showinfo("توزيع تلقائي", msg, parent=self)
 
     def _clear(self, key: str) -> None:
         room_field = self._cities[key][1]
@@ -1134,7 +1152,7 @@ class RoomingWindow(Toplevel):
         _center(ed, self)
 
     def _preview(self, key: str) -> None:
-        label, room_field, hotel, nights = self._cities[key]
+        label, room_field, hotel, nights, _rooms = self._cities[key]
         recs = self._pilgrims()
         if not recs:
             messagebox.showinfo("معاينة", "لا معتمرين.", parent=self)
@@ -1285,6 +1303,7 @@ class TransportWindow(Toplevel):
             return
         G.open_preview(
             self,
-            lambda p: export_umrah_transport_pdf(recs, p,
-                                                 program_name=self._prog_label()),
+            lambda p: export_umrah_transport_pdf(
+                recs, p, program_name=self._prog_label(),
+                transport_pnr=str(getattr(self.trip, "transport_pnr", "") or "")),
             f"مواصلات {self.trip.code}", "pdf")
