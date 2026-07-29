@@ -45,6 +45,7 @@ DEFAULT_SERVICES = (
 REPORT_COLUMNS = (
     ("serial", "التسلسل"),
     ("full_name_ar", "الاسم"),
+    ("family_number", "رقم العائلة"),
     ("passport_number", "رقم الجواز"),
     ("expiry_date", "تاريخ انتهاء الجواز"),
     ("nationality_ar", "الجنسية"),
@@ -68,6 +69,7 @@ def report_row(rec, serial: int, program_name: str = "") -> dict:
     return {
         "serial": str(serial),
         "full_name_ar": rec.full_name_ar or rec.full_name_en or "",
+        "family_number": rec.family_number or "",
         "passport_number": rec.passport_number or "",
         "expiry_date": rec.expiry_date or "",
         "program": program_name or str(getattr(rec, "trip", "") or ""),
@@ -123,6 +125,8 @@ class UmrahTrip:
     price_infant: str = ""         # سعر الرضيع
     transport: str = ""            # ملاحظة النقل الداخلي الافتراضية
     capacity: str = ""             # سعة الطيران (عدد المقاعد)
+    emergency_uae: str = ""        # هاتف الطوارئ في الإمارات
+    emergency_ksa: str = ""        # هاتف الطوارئ في السعودية
     # الخدمات المتاحة: قائمة {"name":..., "price":...}
     services: list = field(default_factory=list)
     notes: str = ""
@@ -246,26 +250,70 @@ def room_capacity_of(room_type: str) -> int:
     return _ROOM_CAP.get(str(room_type or "").strip(), 0)
 
 
-def auto_assign_rooms(records: list, room_field: str) -> int:
+def auto_assign_rooms(records: list, room_field: str, max_rooms: int = 0):
     """يوزّع المعتمرين على غرف حسب نوع الغرفة (يملؤها حتى السعة) ويرقّمها.
 
-    الأطفال بدون سرير (سعة 0) لا يُخصَّص لهم رقم غرفة. يعيد عدد الغرف.
+    الأطفال والرضّع (سعة 0) لا يُخصَّص لهم رقم غرفة. عند تحديد ``max_rooms``
+    لا يُتجاوز عدد الغرف المتاحة، ويبقى الفائض بلا غرفة (منع تجاوز السعة).
+    يعيد (عدد الغرف الموزّعة، عدد المعتمرين بلا غرفة بسبب امتلاء الفندق).
     """
     from collections import defaultdict
+    for r in records:                      # تصفير قبل إعادة التوزيع
+        setattr(r, room_field, "")
     groups: dict = defaultdict(list)
     for r in records:
         groups[str(r.room_type or "").strip()].append(r)
     num = 0
+    overflow = 0
     for rtype in sorted(groups, key=lambda t: (room_capacity_of(t), t)):
         cap = room_capacity_of(rtype)
-        if cap <= 0:                       # طفل بدون سرير — بلا غرفة
+        if cap <= 0:                       # طفل/رضيع بلا سرير — بلا غرفة
             continue
         recs = groups[rtype]
         for i in range(0, len(recs), cap):
+            chunk = recs[i:i + cap]
+            if max_rooms and num >= max_rooms:
+                overflow += len(chunk)     # الفندق ممتلئ — يبقى بلا غرفة
+                continue
             num += 1
-            for r in recs[i:i + cap]:
+            for r in chunk:
                 setattr(r, room_field, str(num))
-    return num
+    return num, overflow
+
+
+def _parse_date(text: str):
+    """يحلّل تاريخاً بصيغة YYYY-M-D (يتجاهل ما بعد اليوم). يعيد date أو None."""
+    import re
+    from datetime import date as _date
+    m = re.search(r"(\d{4})\D+(\d{1,2})\D+(\d{1,2})", str(text or ""))
+    if not m:
+        return None
+    try:
+        return _date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def _add_months(d, months: int):
+    """يضيف عدداً من الأشهر إلى تاريخ (مع ضبط نهاية الشهر)."""
+    import calendar
+    from datetime import date as _date
+    y = d.year + (d.month - 1 + months) // 12
+    mo = (d.month - 1 + months) % 12 + 1
+    day = min(d.day, calendar.monthrange(y, mo)[1])
+    return _date(y, mo, day)
+
+
+def passport_expiry_soon(rec, depart_date: str, months: int = 6) -> bool:
+    """هل تنتهي صلاحية الجواز قبل ``months`` أشهر من تاريخ السفر؟
+
+    شرط دخول العمرة: صلاحية الجواز ≥ ٦ أشهر من تاريخ السفر.
+    """
+    exp = _parse_date(getattr(rec, "expiry_date", ""))
+    dep = _parse_date(depart_date)
+    if not exp or not dep:
+        return False
+    return exp < _add_months(dep, months)
 
 
 def auto_assign_vehicles(records: list, max_per: int = 6) -> int:

@@ -158,12 +158,13 @@ rec = PassportData(full_name_ar="سعيد", passport_number="A9",
                    program_value="5000", paid_amount="2000")
 row = umrah.report_row(rec, 1, "رمضان")
 assert [k for k, _l in umrah.REPORT_COLUMNS] == [
-    "serial", "full_name_ar", "passport_number", "expiry_date", "nationality_ar",
-    "program", "hotel", "room_type", "airline", "program_value",
-    "paid_amount", "remaining"]
-# الجنسية قبل البرنامج
+    "serial", "full_name_ar", "family_number", "passport_number", "expiry_date",
+    "nationality_ar", "program", "hotel", "room_type", "airline",
+    "program_value", "paid_amount", "remaining"]
+# الجنسية قبل البرنامج، ورقم العائلة مذكور
 _keys = [k for k, _l in umrah.REPORT_COLUMNS]
 assert _keys.index("nationality_ar") < _keys.index("program")
+assert "family_number" in _keys
 assert row["program"] == "رمضان" and row["remaining"] == "3,000"
 # تصدير PDF + إكسل بمسمّيات العمرة (لا «حاج» في الكشف)
 from hajj_app.pdf_io import export_umrah_pdf
@@ -175,7 +176,8 @@ xlsx = WORK / "kashf.xlsx"
 export_umrah_excel([rec], xlsx, program_name="رمضان")
 from openpyxl import load_workbook
 ws = load_workbook(xlsx).active
-assert [ws.cell(row=2, column=c).value for c in range(1, 13)] == \
+_ncols = len(umrah.REPORT_COLUMNS)
+assert [ws.cell(row=2, column=c).value for c in range(1, _ncols + 1)] == \
     [lbl for _k, lbl in umrah.REPORT_COLUMNS]
 cells = [str(c.value) for r in ws.iter_rows() for c in r if c.value is not None]
 assert not any("حاج" in t for t in cells), "بقيت كلمة حاج في الكشف"
@@ -187,7 +189,7 @@ app_mode.set_mode("umrah")
 rr = [PassportData(full_name_ar=f"م{i}", passport_number=f"P{i}", room_type=rt,
                    trip="R1") for i, rt in enumerate(
                        ["ثنائي", "ثنائي", "ثنائي", "مفرد"])]
-assert umrah.auto_assign_rooms(rr, "makkah_room") == 3      # 3 ثنائي→غرفتان + مفرد
+assert umrah.auto_assign_rooms(rr, "makkah_room") == (3, 0)  # 3 ثنائي→غرفتان + مفرد
 rooms, un = umrah.rooming_rooms(rr, "makkah_room")
 assert len(rooms) == 3 and not un
 assert all(not r.madinah_room for r in rr)                  # المدينة مستقلة عن مكة
@@ -289,9 +291,10 @@ app6.records.extend([PassportData(full_name_ar=f"م{i}", room_type="مفرد",
                                   trip="RM") for i in range(3)])
 rw6 = _ug.RoomingWindow(app6, t6)
 assert rw6._available("makkah") == 1
-n_rooms = umrah.auto_assign_rooms(umrah.trip_pilgrims(app6.records, "RM"),
-                                  "makkah_room")
-assert n_rooms == 3 and n_rooms > rw6._available("makkah")   # تجاوز السعة المتاحة
+# مع تحديد السعة: لا يُتجاوز عدد الغرف؛ يبقى فائض بلا غرفة
+n_rooms, overflow = umrah.auto_assign_rooms(
+    umrah.trip_pilgrims(app6.records, "RM"), "makkah_room", max_rooms=1)
+assert n_rooms == 1 and overflow == 2       # غرفة واحدة فقط، واثنان بلا غرفة
 r6.destroy()
 # كشف المواصلات: يعرض الفندق ويوضّح الاشتراك (أكثر من راكب)
 from hajj_app.pdf_io import export_umrah_transport_pdf
@@ -328,9 +331,15 @@ pf = WORK / "fin.pdf"
 export_umrah_finance_pdf(fr, pf, program_name="U1 — رمضان")
 assert pf.read_bytes()[:5] == b"%PDF-" and pf.stat().st_size > 3000
 pc = WORK / "cards.pdf"
-export_umrah_cards_pdf(fr, pc, program_name="U1 — رمضان")
+export_umrah_cards_pdf(fr, pc, program_name="U1 — رمضان",
+                       emergency_uae="+971500000000", emergency_ksa="+966500000000")
 assert pc.read_bytes()[:5] == b"%PDF-" and pc.stat().st_size > 3000
-print("  OK: رابط الدفع + بذر رقم الغرفة + الملخّص المالي + بطاقات العمرة")
+# تنبيه صلاحية الجواز أقل من ٦ أشهر من تاريخ السفر
+assert umrah.passport_expiry_soon(
+    PassportData(expiry_date="2026-05-01"), "2026-03-01") is True
+assert umrah.passport_expiry_soon(
+    PassportData(expiry_date="2027-01-01"), "2026-03-01") is False
+print("  OK: رابط الدفع + بذر رقم الغرفة + الملخّص المالي + البطاقات + تنبيه الجواز")
 
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

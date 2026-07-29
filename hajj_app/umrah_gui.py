@@ -174,13 +174,14 @@ class UmrahApp:
         wrap = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 4, 16, 14))
         wrap.pack(fill=BOTH, expand=True)
         cols = ("code", "name", "depart", "return", "makkah", "madinah",
-                "count", "capacity")
+                "count", "capacity", "remaining")
         heads = {"code": "الرمز", "name": "اسم البرنامج", "depart": "المغادرة",
                  "return": "العودة", "makkah": "فندق مكة",
                  "madinah": "فندق المدينة", "count": "المعتمرون",
-                 "capacity": "السعة"}
-        widths = {"code": 60, "name": 220, "depart": 100, "return": 100,
-                  "makkah": 170, "madinah": 170, "count": 90, "capacity": 70}
+                 "capacity": "السعة", "remaining": "المتبقّي"}
+        widths = {"code": 56, "name": 200, "depart": 96, "return": 96,
+                  "makkah": 150, "madinah": 150, "count": 84, "capacity": 62,
+                  "remaining": 96}
         self.tree = ttk.Treeview(wrap, columns=cols, show="headings",
                                  selectmode="browse")
         for c in cols:
@@ -222,11 +223,14 @@ class UmrahApp:
         self.tree.delete(*self.tree.get_children())
         shown = self._season_trips()
         for i, t in enumerate(shown):
-            count = len(umrah.trip_pilgrims(self.records, t.code))
+            pilgrims = umrah.trip_pilgrims(self.records, t.code)
+            remaining = sum((parse_amount(r.program_value) or 0)
+                            - (parse_amount(r.paid_amount) or 0) for r in pilgrims)
             self.tree.insert("", END, iid=t.code, values=(
                 t.code, t.name or "—", t.depart_date or "—", t.return_date or "—",
                 t.makkah_hotel or "—", t.madinah_hotel or "—",
-                count, t.capacity or "—"),
+                len(pilgrims), t.capacity or "—",
+                format_amount(remaining) if remaining else "—"),
                 tags=("odd",) if i % 2 else ())
         if not shown:
             self._empty.pack(pady=8)
@@ -404,6 +408,12 @@ class TripEditorDialog(Toplevel):
                                  "٣ فأكثر ← جيمس (٦ كحدّ أقصى) — قابل للتعديل يدوياً"),
                   font=(G._FUI, 9), foreground=G.MUTED).grid(
             row=1, column=0, columnspan=2, sticky="e", pady=(6, 0))
+
+        em = ttk.LabelFrame(f, text=G.rtl("أرقام الطوارئ (تظهر في بطاقة العمرة)"),
+                            padding=8)
+        em.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0), padx=6)
+        self._field(em, "emergency_uae", "الإمارات", 20, 0, 0)
+        self._field(em, "emergency_ksa", "السعودية", 20, 0, 1)
         return f
 
     def _tab_services(self, nb) -> ttk.Frame:
@@ -743,6 +753,7 @@ class TripPilgrimsWindow(Toplevel):
         self.tree.pack(side=LEFT, fill=BOTH, expand=True)
         vs.pack(side=RIGHT, fill="y")
         self.tree.tag_configure("odd", background=G.PANEL)
+        self.tree.tag_configure("expire", background="#F6D9D0")   # جواز قارب الانتهاء
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
 
         self.grab_set()
@@ -783,23 +794,31 @@ class TripPilgrimsWindow(Toplevel):
         self.tree.delete(*self.tree.get_children())
         recs = self._pilgrims()
         total = paid = 0.0
+        expiring = 0
+        depart = str(getattr(self.trip, "depart_date", "") or "")
         for i, r in enumerate(recs):
             val = parse_amount(r.program_value) or 0.0
             pd = parse_amount(r.paid_amount) or 0.0
             total += val
             paid += pd
             name = r.full_name_ar or r.full_name_en or "—"
+            tags = ["odd"] if i % 2 else []
+            if umrah.passport_expiry_soon(r, depart):   # جواز ينتهي قبل ٦ أشهر
+                tags.append("expire")
+                expiring += 1
             self.tree.insert("", END, iid=str(i), values=(
                 i + 1, name, r.passport_number or "—", r.room_type or "—",
                 r.phone or "—", r.status or "نشط",
                 format_amount(val - pd) if val else "—"),
-                tags=("odd",) if i % 2 else ())
+                tags=tuple(tags))
         text = (f"العدد: {len(recs)}   ·   الإجمالي: {format_amount(total)}   ·   "
                 f"المحصّل: {format_amount(paid)}   ·   "
                 f"المتبقّي: {format_amount(total - paid)}")
         cap = self._capacity()
         if cap:
             text += f"   ·   🪑 المقاعد المتبقّية: {self._seats_left()} من {cap}"
+        if expiring:
+            text += f"   ·   ⚠ جوازات تنتهي قبل ٦ أشهر: {expiring}"
         self.fin.configure(text=text)
         self.app._reload()
 
@@ -1003,8 +1022,11 @@ class TripPilgrimsWindow(Toplevel):
             self.app._settings.get("company"), dict) else None
         G.open_preview(
             self,
-            lambda p: export_umrah_cards_pdf(recs, p, program_name=self._prog_label(),
-                                             company=company),
+            lambda p: export_umrah_cards_pdf(
+                recs, p, program_name=self._prog_label(), company=company,
+                session=self.session,
+                emergency_uae=str(getattr(self.trip, "emergency_uae", "") or ""),
+                emergency_ksa=str(getattr(self.trip, "emergency_ksa", "") or "")),
             f"بطاقات {self.trip.code}", "pdf")
 
 
@@ -1131,14 +1153,15 @@ class RoomingWindow(Toplevel):
 
     def _auto(self, key: str) -> None:
         room_field = self._cities[key][1]
-        n = umrah.auto_assign_rooms(self._pilgrims(), room_field)
+        avail = self._available(key)
+        n, overflow = umrah.auto_assign_rooms(self._pilgrims(), room_field,
+                                              max_rooms=avail)
         self.app.save()
         self._reload(key)
-        avail = self._available(key)
         msg = f"وُزّع المعتمرون على {n} غرفة حسب نوع الغرفة."
-        if avail and n > avail:
-            msg += (f"\n\n⚠ تجاوزٌ للسعة: الغرف المتاحة في الفندق {avail} فقط. "
-                    "راجع البيع/التوزيع.")
+        if overflow:
+            msg += (f"\n\n⛔ لا يمكن تجاوز عدد الغرف المتاحة ({avail}). بقي "
+                    f"{overflow} معتمراً بلا غرفة — قلّل البيع أو زد الغرف.")
         messagebox.showinfo("توزيع تلقائي", msg, parent=self)
 
     def _clear(self, key: str) -> None:
@@ -1180,7 +1203,21 @@ class RoomingWindow(Toplevel):
         entry.focus_set()
 
         def _save():
-            setattr(rec, room_field, v.get().strip())
+            newval = v.get().strip()
+            avail = self._available(key)
+            if avail and newval:
+                # لا يُسمح بإنشاء غرفة جديدة تتجاوز عدد الغرف المتاحة
+                current = {str(getattr(r, room_field, "") or "").strip()
+                           for r in self._pilgrims()
+                           if str(getattr(r, room_field, "") or "").strip()}
+                current.discard(str(getattr(rec, room_field, "") or "").strip())
+                if newval not in current and len(current) + 1 > avail:
+                    messagebox.showwarning(
+                        "تجاوز السعة",
+                        f"عدد الغرف المتاحة في الفندق {avail} فقط. "
+                        "لا يمكن إضافة غرفة جديدة.", parent=ed)
+                    return
+            setattr(rec, room_field, newval)
             self.app.save()
             ed.destroy()
             self._reload(key)

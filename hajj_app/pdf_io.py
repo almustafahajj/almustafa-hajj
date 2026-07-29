@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import io
 from datetime import date
 from pathlib import Path
 
@@ -813,7 +814,7 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
     heads = [lbl for _k, lbl in REPORT_COLUMNS]
     # أوزان الأعمدة (بالترتيب المنطقي) ثم تُعكس للعرض من اليمين لليسار
     weights = list(reversed(
-        [46, 86, 60, 58, 52, 70, 78, 46, 56, 50, 54, 54]))
+        [40, 78, 46, 58, 56, 50, 66, 74, 44, 54, 48, 52, 52]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 3
@@ -873,8 +874,8 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     rooms, unassigned = rooming_rooms(records, room_field)
-    heads = ["م", "الاسم", "رقم الجواز", "نوع الغرفة", "الهاتف"]
-    weights = list(reversed([26, 150, 90, 60, 100]))
+    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "نوع الغرفة", "الهاتف"]
+    weights = list(reversed([24, 140, 66, 84, 58, 92]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -886,7 +887,8 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
         data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
-                    r.passport_number or "", r.room_type or "", r.phone or ""]
+                    r.family_number or "", r.passport_number or "",
+                    r.room_type or "", r.phone or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -942,8 +944,8 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     groups, unassigned = rooming_rooms(records, "vehicle")
-    heads = ["م", "الاسم", "رقم الجواز", "الهاتف", "الفندق"]
-    weights = list(reversed([26, 150, 88, 96, 110]))
+    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "الهاتف", "الفندق"]
+    weights = list(reversed([24, 138, 64, 84, 92, 104]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -955,7 +957,8 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
         data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
-                    r.passport_number or "", r.phone or "", r.hotel or ""]
+                    r.family_number or "", r.passport_number or "", r.phone or "",
+                    r.hotel or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -1056,6 +1059,34 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
         ]))
         story.append(mt)
 
+    # تفاصيل الدفع لكل معتمر (كم دفع ونوع الغرفة وطريقة الدفع)
+    story.append(Paragraph(ar("تفاصيل الدفع"), sect))
+    dheads = ["م", "اسم المعتمر", "رقم العائلة", "نوع الغرفة", "القيمة",
+              "المدفوع", "المتبقّي", "طريقة الدفع"]
+    dweights = list(reversed([22, 116, 52, 60, 56, 56, 56, 66]))
+    dscale = doc.width / sum(dweights)
+    dcolw = [w * dscale for w in dweights]
+    davail = [w - 9 for w in dcolw]
+    ddata = [_ar_cells(list(reversed(dheads)), st["head"], davail)]
+    for i, r in enumerate(records, 1):
+        v = parse_amount(r.program_value) or 0
+        p = parse_amount(r.paid_amount) or 0
+        vals = [str(i), r.full_name_ar or r.full_name_en or "—",
+                r.family_number or "—", r.room_type or "—", format_amount(v),
+                format_amount(p), format_amount(v - p),
+                str(getattr(r, "payment_method", "") or "—")]
+        ddata.append(_ar_cells(list(reversed(vals)), st["cell"], davail))
+    dt = Table(ddata, colWidths=dcolw, repeatRows=1)
+    dt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(dt)
+
     # المتأخّرات
     owe = [(r, (parse_amount(r.program_value) or 0) - (parse_amount(r.paid_amount) or 0))
            for r in records]
@@ -1063,15 +1094,17 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
     story.append(Paragraph(
         ar(f"المتأخّرات ({ltr(len(owe))})"), sect))
     if owe:
-        heads = ["م", "اسم المعتمر", "الهاتف", "القيمة", "المدفوع", "المتبقّي"]
-        weights = list(reversed([24, 150, 90, 70, 70, 70]))
+        heads = ["م", "اسم المعتمر", "رقم العائلة", "الهاتف", "القيمة",
+                 "المدفوع", "المتبقّي"]
+        weights = list(reversed([22, 128, 56, 80, 62, 62, 62]))
         scale = doc.width / sum(weights)
         colw = [w * scale for w in weights]
         avail = [w - 9 for w in colw]
         data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for i, (r, a) in enumerate(owe, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "—",
-                    r.phone or "—", format_amount(parse_amount(r.program_value) or 0),
+                    r.family_number or "—", r.phone or "—",
+                    format_amount(parse_amount(r.program_value) or 0),
                     format_amount(parse_amount(r.paid_amount) or 0),
                     format_amount(a)]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
@@ -1095,9 +1128,37 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
     return path
 
 
+_FAINT_LOGO_CACHE: dict = {}
+
+
+def _faint_logo_reader():
+    """نسخة باهتة من الشعار (على خلفية بيضاء) للاستعمال كعلامة مائية."""
+    if "r" in _FAINT_LOGO_CACHE:
+        return _FAINT_LOGO_CACHE["r"]
+    reader = None
+    try:
+        if _LOGO_PATH.is_file():
+            from PIL import Image as _PImage
+            im = _PImage.open(str(_LOGO_PATH)).convert("RGBA")
+            white = _PImage.new("RGBA", im.size, (255, 255, 255, 255))
+            comp = _PImage.alpha_composite(white, im).convert("RGB")
+            faded = _PImage.blend(white.convert("RGB"), comp, 0.08)
+            bio = io.BytesIO()
+            faded.save(bio, format="PNG")
+            bio.seek(0)
+            reader = ImageReader(bio)
+    except Exception:
+        reader = None
+    _FAINT_LOGO_CACHE["r"] = reader
+    return reader
+
+
 def export_umrah_cards_pdf(records: list, path: str | Path, *,
-                           program_name: str = "", company=None) -> Path:
-    """بطاقات عمرة — بطاقة لكل معتمر ببيانات البرنامج والسفر والإقامة (بطاقتان بالصف)."""
+                           program_name: str = "", company=None, session=None,
+                           emergency_uae: str = "", emergency_ksa: str = "") -> Path:
+    """بطاقات عمرة — بطاقة لكل معتمر: شعار الشركة، صورة شخصية (من الجواز)،
+    الاسم والهاتف والفندق والطيران، وأرقام طوارئ الإمارات والسعودية،
+    وخلفية موحّدة بشعار الشركة."""
     from .fields import format_amount, parse_amount
 
     _register_fonts()
@@ -1114,20 +1175,51 @@ def export_umrah_cards_pdf(records: list, path: str | Path, *,
                              alignment=2, fontSize=11)
     kv = ParagraphStyle("uckv", parent=st["cell"], alignment=2, fontSize=8)
     kvb = ParagraphStyle("uckvb", parent=kv, fontName=_FONT_BOLD, textColor=_ACCENT)
+    emg = ParagraphStyle("ucemg", parent=kv, fontSize=7.5,
+                         textColor=colors.HexColor("#8A2E2E"))
 
     card_w = (doc.width - 8 * mm) / 2
+    logo_top = _logo_flowable(max_width_pt=70)
+
+    def _photo(rec):
+        """صورة الجواز (كصورة شخصية) مصغّرة، أو None."""
+        if session is None or not getattr(rec, "image_id", ""):
+            return None
+        try:
+            from . import images as imgmod
+            raw = imgmod.load_image(rec.image_id, imgmod.PASSPORT, session)
+            img = imgmod.to_pil_image(raw) if raw else None
+            if img is None:
+                return None
+            img.thumbnail((150, 150))
+            bio = io.BytesIO()
+            img.convert("RGB").save(bio, format="PNG")
+            bio.seek(0)
+            w = 48
+            return RLImage(bio, width=w, height=w * img.height / img.width)
+        except Exception:
+            return None
 
     def card(rec):
-        val = parse_amount(rec.program_value) or 0
-        paid = parse_amount(rec.paid_amount) or 0
-        rows = [[Paragraph(ar(f"{co['name_ar']} — بطاقة عمرة"), hstyle)]]
-        rows.append([Paragraph(ar(rec.full_name_ar or rec.full_name_en or "—"),
-                               name_st)])
+        rows = []
+        logo_cell = ""
+        if logo_top is not None:
+            logo_cell = RLImage(str(_LOGO_PATH), width=54,
+                                height=54 * ImageReader(str(_LOGO_PATH)).getSize()[1]
+                                / ImageReader(str(_LOGO_PATH)).getSize()[0])
+        rows.append([Paragraph(ar(f"{co['name_ar']} — بطاقة عمرة"), hstyle)])
+        # صف الصورة والاسم
+        photo = _photo(rec) or Paragraph(ar("صورة\nالجواز"), kv)
+        name_p = Paragraph(ar(rec.full_name_ar or rec.full_name_en or "—"), name_st)
+        head = Table([[photo, name_p]], colWidths=[card_w * 0.30, card_w * 0.70])
+        head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                  ("ALIGN", (0, 0), (0, 0), "CENTER")]))
+        rows.append([head])
 
-        def kvrow(k, v):
-            inner = Table([[_ar_para(str(v or "—"), kv, card_w * 0.62 - 10),
-                            _ar_para(k, kvb, card_w * 0.38 - 10)]],
-                          colWidths=[card_w * 0.62, card_w * 0.38])
+        def kvrow(k, v, style=kv):
+            inner = Table([[_ar_para(str(v or "—"), style, card_w * 0.64 - 10),
+                            _ar_para(k, kvb, card_w * 0.36 - 10)]],
+                          colWidths=[card_w * 0.64, card_w * 0.36])
             inner.setStyle(TableStyle([
                 ("LEFTPADDING", (0, 0), (-1, -1), 2),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 2),
@@ -1136,15 +1228,14 @@ def export_umrah_cards_pdf(records: list, path: str | Path, *,
             rows.append([inner])
 
         kvrow("البرنامج", program_name)
-        kvrow("الرقم المرجعي", rec.reference_number)
-        kvrow("رقم الجواز", rec.passport_number)
-        kvrow("الجنسية", rec.nationality_ar)
+        kvrow("رقم الهاتف", rec.phone)
         kvrow("الفندق", rec.hotel)
-        kvrow("نوع الغرفة", rec.room_type)
-        kvrow("الطيران / PNR",
-              " / ".join(x for x in (rec.airline, rec.pnr) if x))
-        kvrow("القيمة / المتبقّي",
-              f"{format_amount(val)} / {format_amount(val - paid)}")
+        flight = " / ".join(x for x in (rec.airline, rec.flight_number, rec.pnr) if x)
+        kvrow("الطيران", flight)
+        if emergency_uae:
+            kvrow("طوارئ الإمارات", ltr(emergency_uae), emg)
+        if emergency_ksa:
+            kvrow("طوارئ السعودية", ltr(emergency_ksa), emg)
         card_t = Table(rows, colWidths=[card_w])
         card_t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (0, 0), _ACCENT),
@@ -1171,9 +1262,21 @@ def export_umrah_cards_pdf(records: list, path: str | Path, *,
         ]))
         story.append(row)
 
-    doc.build(story,
-              onFirstPage=lambda c, d: _footer_portrait(c, d, "بطاقات العمرة"),
-              onLaterPages=lambda c, d: _footer_portrait(c, d, "بطاقات العمرة"))
+    def _page(canvas, docu):
+        # خلفية موحّدة: شعار الشركة باهتاً في وسط الصفحة
+        wm = _faint_logo_reader()
+        if wm is not None:
+            try:
+                iw, ih = wm.getSize()
+                w = 320
+                h = w * ih / iw
+                pw, ph = A4
+                canvas.drawImage(wm, (pw - w) / 2, (ph - h) / 2, w, h, mask="auto")
+            except Exception:
+                pass
+        _footer_portrait(canvas, docu, "بطاقات العمرة")
+
+    doc.build(story, onFirstPage=_page, onLaterPages=_page)
     return path
 
 
