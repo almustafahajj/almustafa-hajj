@@ -227,6 +227,15 @@ def _footer(canvas, doc, title_text: str) -> None:
     canvas.restoreState()
 
 
+def _manager_line(manager: str, st: dict):
+    """سطر بارز باسم الموظف المسؤول لكشوفات العمرة (أو None إن لم يُحدَّد)."""
+    if not manager:
+        return None
+    return Paragraph(ar(f"الموظف المسؤول: {manager}"), ParagraphStyle(
+        "umgr", parent=st["subtitle"], fontName=_FONT_BOLD, textColor=_ACCENT,
+        spaceBefore=0, spaceAfter=8))
+
+
 def _footer_portrait(canvas, doc, title_text: str) -> None:
     """ترويسة سفلية لصفحات A4 العمودية (عرض مختلف عن العرضية)."""
     canvas.saveState()
@@ -809,11 +818,12 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
         story.append(Spacer(1, 4))
     full_title = f"{title} — {program_name}" if program_name else title
     story.append(Paragraph(ar(full_title), st["title"]))
-    sub = [f"عدد المعتمرين: {ltr(len(records))}"]
-    if manager:
-        sub.append(f"المسؤول: {manager}")
-    sub.append(ltr(date.today().isoformat()))
-    story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
+    story.append(Paragraph(ar(
+        f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
+        st["subtitle"]))
+    _ml = _manager_line(manager, st)
+    if _ml is not None:
+        story.append(_ml)
 
     heads = [lbl for _k, lbl in REPORT_COLUMNS]
     # أوزان الأعمدة (بالترتيب المنطقي) ثم تُعكس للعرض من اليمين لليسار
@@ -883,9 +893,10 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     if nights:
         sub.append(f"الليالي: {ltr(nights)}")
     sub.append(f"المعتمرون: {ltr(len(records))}")
-    if manager:
-        sub.append(f"المسؤول: {manager}")
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
+    _ml = _manager_line(manager, st)
+    if _ml is not None:
+        story.append(_ml)
 
     rooms, unassigned = rooming_rooms(records, room_field)
     heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "نوع الغرفة", "الهاتف"]
@@ -955,9 +966,10 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     sub = [f"المعتمرون: {ltr(len(records))}"]
     if transport_pnr:
         sub.append(f"PNR النقل: {ltr(transport_pnr)}")
-    if manager:
-        sub.append(f"المسؤول: {manager}")
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
+    _ml = _manager_line(manager, st)
+    if _ml is not None:
+        story.append(_ml)
 
     groups, unassigned = rooming_rooms(records, "vehicle")
     heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "الهاتف", "الفندق"]
@@ -1021,11 +1033,12 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
         story.append(Spacer(1, 4))
     title = "الملخّص المالي" + (f" — {program_name}" if program_name else "")
     story.append(Paragraph(ar(title), st["title"]))
-    sub = [f"عدد المعتمرين: {ltr(len(records))}"]
-    if manager:
-        sub.append(f"المسؤول: {manager}")
-    sub.append(ltr(date.today().isoformat()))
-    story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
+    story.append(Paragraph(ar(
+        f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
+        st["subtitle"]))
+    _ml = _manager_line(manager, st)
+    if _ml is not None:
+        story.append(_ml)
 
     total = sum(parse_amount(r.program_value) or 0 for r in records)
     paid = sum(parse_amount(r.paid_amount) or 0 for r in records)

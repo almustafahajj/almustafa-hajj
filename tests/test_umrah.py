@@ -181,7 +181,7 @@ pdf = WORK / "kashf.pdf"
 export_umrah_pdf([rec], pdf, program_name="رمضان")
 assert pdf.read_bytes()[:5] == b"%PDF-" and pdf.stat().st_size > 3000
 xlsx = WORK / "kashf.xlsx"
-export_umrah_excel([rec], xlsx, program_name="رمضان")
+export_umrah_excel([rec], xlsx, program_name="رمضان", manager="أيمن الشهابي")
 from openpyxl import load_workbook
 ws = load_workbook(xlsx).active
 _ncols = len(umrah.REPORT_COLUMNS)
@@ -190,6 +190,7 @@ assert [ws.cell(row=2, column=c).value for c in range(1, _ncols + 1)] == \
 cells = [str(c.value) for r in ws.iter_rows() for c in r if c.value is not None]
 assert not any("حاج" in t for t in cells), "بقيت كلمة حاج في الكشف"
 assert any("المعتمرين" in t for t in cells)                # عنوان الكشف
+assert any("أيمن الشهابي" in t for t in cells)             # الموظف المسؤول
 print("  OK: خدمات جديدة + كشف بأعمدته ومسمّيات العمرة (بلا «حاج») + اسم التطبيق")
 
 print("\n=== التسكين (مكة/المدينة) ===")

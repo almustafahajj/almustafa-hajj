@@ -366,7 +366,7 @@ class TripEditorDialog(Toplevel):
     def _tab_basic(self, nb) -> ttk.Frame:
         f = ttk.Frame(nb, padding=12)
         rows = [("code", "رمز البرنامج *", 14), ("name", "اسم البرنامج", 32),
-                ("manager", "الشخص المسؤول", 24),
+                ("manager", "الموظف المسؤول", 24),
                 ("depart_date", "تاريخ المغادرة", 18),
                 ("return_date", "تاريخ العودة", 18),
                 ("makkah_hotel", "فندق مكة", 30), ("makkah_nights", "ليالي مكة", 12),
@@ -1060,7 +1060,8 @@ class TripPilgrimsWindow(Toplevel):
         if not path:
             return
         try:
-            export_umrah_excel(recs, path, program_name=self._prog_label())
+            export_umrah_excel(recs, path, program_name=self._prog_label(),
+                               manager=str(getattr(self.trip, "manager", "") or ""))
         except Exception as exc:                           # noqa: BLE001
             messagebox.showerror("تعذّر التصدير", str(exc), parent=self)
             return
