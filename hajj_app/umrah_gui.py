@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from tkinter import (
     BOTH, BooleanVar, END, LEFT, RIGHT, StringVar, Text, Toplevel, X, filedialog,
@@ -85,6 +86,14 @@ class UmrahApp:
             self.records = []
         self.trips = umrah.load_trips(self._settings)
 
+        # الموسم = سنة ميلادية كاملة (١ يناير – ٣١ ديسمبر)
+        self._season_years = [str(y) for y in range(2024, 2036)]
+        saved = str(self._settings.get("umrah_season", "") or "")
+        season = saved or str(date.today().year)
+        if season not in self._season_years:
+            self._season_years = sorted(set(self._season_years) | {season})
+        self._season = StringVar(master=root, value=season)
+
         self._build_header()
         self._build_toolbar()
         self._build_table()
@@ -114,10 +123,18 @@ class UmrahApp:
                 side=RIGHT, padx=(0, 14))
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
-        ttk.Label(titles, text="برنامج العمرة — البرامج", font=(G._FSB, 17),
-                  foreground=G.TEXT, background=G.BG).pack(anchor="e")
-        ttk.Label(titles, text="إدارة برامج ومعتمري العمرة", font=(G._FUI, 10),
-                  foreground=G.MUTED, background=G.BG).pack(anchor="e")
+        row1 = ttk.Frame(titles, style="Toolbar.TFrame")
+        row1.pack(anchor="e")
+        ttk.Label(row1, text="إدارة موسم العمرة", font=(G._FSB, 17),
+                  foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
+        year_box = ttk.Combobox(row1, textvariable=self._season, state="readonly",
+                                width=7, font=(G._FSB, 14), values=self._season_years)
+        year_box.pack(side=RIGHT, padx=(8, 0))
+        year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
+        self._subtitle = ttk.Label(titles, text=self._season_text(),
+                                    font=(G._FUI, 10), foreground=G.MUTED,
+                                    background=G.BG)
+        self._subtitle.pack(anchor="e")
 
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
@@ -178,16 +195,37 @@ class UmrahApp:
             self.root, text=G.rtl("لا برامج بعد — ابدأ بـ «➕ برنامج جديد»."),
             font=(G._FUI, 11), foreground=G.MUTED, background=G.BG)
 
+    def _season_text(self) -> str:
+        y = self._season.get()
+        return f"موسم العمرة {y} — من ١ يناير إلى ٣١ ديسمبر {y}"
+
+    def _on_season_change(self) -> None:
+        self._settings["umrah_season"] = self._season.get()
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        if hasattr(self, "_subtitle"):
+            self._subtitle.configure(text=self._season_text())
+        self._reload()
+
+    def _season_trips(self) -> list:
+        """برامج الموسم المختار (البرنامج بلا تاريخ يظهر في كل المواسم)."""
+        season = self._season.get()
+        return [t for t in self.trips
+                if not umrah.trip_year(t) or umrah.trip_year(t) == season]
+
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
-        for i, t in enumerate(self.trips):
+        shown = self._season_trips()
+        for i, t in enumerate(shown):
             count = len(umrah.trip_pilgrims(self.records, t.code))
             self.tree.insert("", END, iid=t.code, values=(
                 t.code, t.name or "—", t.depart_date or "—", t.return_date or "—",
                 t.makkah_hotel or "—", t.madinah_hotel or "—",
                 count, t.capacity or "—"),
                 tags=("odd",) if i % 2 else ())
-        if not self.trips:
+        if not shown:
             self._empty.pack(pady=8)
         else:
             self._empty.pack_forget()
@@ -217,6 +255,11 @@ class UmrahApp:
         if trip not in self.trips:
             self.trips.append(trip)
         self.save_trips()
+        # ابقِ البرنامج ظاهراً: انتقل إلى موسم سنته إن اختلف
+        yr = umrah.trip_year(trip)
+        if yr and yr != self._season.get() and yr in self._season_years:
+            self._season.set(yr)
+            self._on_season_change()
         self._reload()
         try:
             self.tree.selection_set(trip.code)
@@ -864,6 +907,11 @@ class TripPilgrimsWindow(Toplevel):
         self._reload()
 
     # ---- التصدير ----
+    def _prog_label(self) -> str:
+        """اسم البرنامج مع رمزه للكشف (يُذكر رمز البرنامج)."""
+        return (f"{self.trip.code} — {self.trip.name}"
+                if self.trip.name else self.trip.code)
+
     def export_excel(self) -> None:
         recs = self._pilgrims()
         if not recs:
@@ -875,9 +923,8 @@ class TripPilgrimsWindow(Toplevel):
             filetypes=[("إكسل", "*.xlsx")])
         if not path:
             return
-        prog = self.trip.name or self.trip.code
         try:
-            export_umrah_excel(recs, path, program_name=prog)
+            export_umrah_excel(recs, path, program_name=self._prog_label())
         except Exception as exc:                           # noqa: BLE001
             messagebox.showerror("تعذّر التصدير", str(exc), parent=self)
             return
@@ -889,6 +936,6 @@ class TripPilgrimsWindow(Toplevel):
         if not recs:
             messagebox.showinfo("معاينة", "لا معتمرين في هذا البرنامج.", parent=self)
             return
-        prog = self.trip.name or self.trip.code
-        G.open_preview(self, lambda p: export_umrah_pdf(recs, p, program_name=prog),
-                       f"معتمرو {self.trip.code}", "pdf")
+        G.open_preview(
+            self, lambda p: export_umrah_pdf(recs, p, program_name=self._prog_label()),
+            f"معتمرو {self.trip.code}", "pdf")

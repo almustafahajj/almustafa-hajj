@@ -171,7 +171,7 @@ def export_umrah_excel(records: list[PassportData], path: str | Path, *,
                     cell.value = amount
                     cell.number_format = "#,##0"
 
-    widths = (10, 26, 15, 16, 18, 13, 20, 12, 15, 12, 14, 12)
+    widths = (10, 26, 15, 16, 13, 18, 20, 12, 15, 12, 14, 12)
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = "C3"

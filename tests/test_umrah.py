@@ -105,8 +105,21 @@ fin = win.fin.cget("text")
 assert "العدد: 3" in fin and "المقاعد المتبقّية: 0 من 3" in fin
 # السعة: لا تقبل أكثر من المحدَّد
 assert win._seats_left() == 0 and win._check_capacity(1) is False
+# رمز البرنامج يُذكر في الكشف
+assert win._prog_label() == "P1 — رمضان ١"
+# الموسم = سنة ميلادية: تصفية البرامج حسب سنة المغادرة
+app._season.set("2026")
+app.trips += [umrah.UmrahTrip(code="A", name="أ", depart_date="2026-03-01"),
+              umrah.UmrahTrip(code="B", name="ب", depart_date="2027-04-01")]
+app._reload()
+c26 = set(app.tree.get_children())
+assert "A" in c26 and "B" not in c26 and "P1" in c26      # P1 مغادرته 2026
+app._season.set("2027"); app._reload()
+c27 = set(app.tree.get_children())
+assert "B" in c27 and "A" not in c27 and "P1" not in c27
+assert "١ يناير" in app._season_text() and "2027" in app._season_text()
 root.destroy()
-print("  OK: الحجز يطبّق التسعير والسفر من البرنامج ورقماً مرجعياً، ويحترم السعة")
+print("  OK: التسعير والسفر والرقم المرجعي، السعة، رمز البرنامج، وموسم السنة")
 
 print("\n=== نافذة التعديل في وضع العمرة ===")
 import hajj_app.gui as _g
@@ -143,9 +156,12 @@ rec = PassportData(full_name_ar="سعيد", passport_number="A9",
                    program_value="5000", paid_amount="2000")
 row = umrah.report_row(rec, 1, "رمضان")
 assert [k for k, _l in umrah.REPORT_COLUMNS] == [
-    "serial", "full_name_ar", "passport_number", "expiry_date", "program",
-    "nationality_ar", "hotel", "room_type", "airline", "program_value",
+    "serial", "full_name_ar", "passport_number", "expiry_date", "nationality_ar",
+    "program", "hotel", "room_type", "airline", "program_value",
     "paid_amount", "remaining"]
+# الجنسية قبل البرنامج
+_keys = [k for k, _l in umrah.REPORT_COLUMNS]
+assert _keys.index("nationality_ar") < _keys.index("program")
 assert row["program"] == "رمضان" and row["remaining"] == "3,000"
 # تصدير PDF + إكسل بمسمّيات العمرة (لا «حاج» في الكشف)
 from hajj_app.pdf_io import export_umrah_pdf

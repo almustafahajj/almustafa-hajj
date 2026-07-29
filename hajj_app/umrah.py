@@ -38,13 +38,14 @@ DEFAULT_SERVICES = (
 )
 
 # أعمدة كشف المعتمرين (بمسمّيات العمرة): (المفتاح، العنوان)
+# الجنسية قبل البرنامج، والبرنامج يذكر رمزه.
 REPORT_COLUMNS = (
     ("serial", "التسلسل"),
     ("full_name_ar", "الاسم"),
     ("passport_number", "رقم الجواز"),
     ("expiry_date", "تاريخ انتهاء الجواز"),
-    ("program", "البرنامج"),
     ("nationality_ar", "الجنسية"),
+    ("program", "البرنامج"),
     ("hotel", "الفندق"),
     ("room_type", "نوع الغرفة"),
     ("airline", "الطيران"),
@@ -172,6 +173,17 @@ def next_code(trips: list[UmrahTrip]) -> str:
 def trip_pilgrims(records: list, code: str) -> list:
     """يرشّح المعتمرين المنتمين لبرنامجٍ معيّن (حسب الحقل ``trip``)."""
     return [r for r in records if str(getattr(r, "trip", "") or "") == code]
+
+
+def trip_year(trip: UmrahTrip) -> str:
+    """سنة البرنامج الميلادية (من تاريخ المغادرة)، أو "" إن لم تُحدَّد.
+
+    الموسم في العمرة سنة ميلادية كاملة (١ يناير – ٣١ ديسمبر)، فالبرنامج
+    ينتمي لموسمِ سنةِ مغادرته.
+    """
+    import re
+    m = re.search(r"(20\d\d)", str(trip.depart_date or ""))
+    return m.group(1) if m else ""
 
 
 # ---- التسعير والنقل ----

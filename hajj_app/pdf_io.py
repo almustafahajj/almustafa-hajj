@@ -813,7 +813,7 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
     heads = [lbl for _k, lbl in REPORT_COLUMNS]
     # أوزان الأعمدة (بالترتيب المنطقي) ثم تُعكس للعرض من اليمين لليسار
     weights = list(reversed(
-        [46, 86, 60, 58, 70, 52, 78, 46, 56, 50, 54, 54]))
+        [46, 86, 60, 58, 52, 70, 78, 46, 56, 50, 54, 54]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 3
