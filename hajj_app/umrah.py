@@ -162,3 +162,31 @@ def package_per_person(trip: UmrahTrip, room_key: str,
     smap = services_map(trip)
     extra = sum(smap.get(n, 0.0) for n in (service_names or []))
     return room_price(trip, room_key) + extra
+
+
+def apply_trip_to_record(trip: UmrahTrip, rec) -> None:
+    """يأخذ معلومات السفر والإقامة من البرنامج ويضعها في سجلّ المعتمر.
+
+    فهذه المعلومات مشتركة لكل معتمري البرنامج، فتُملأ منه بدل إدخالها يدوياً
+    لكل شخص (شركة الطيران، رقم الرحلة، تواريخ وأوقات السفر، والفندق).
+    """
+    if trip is None:
+        return
+    rec.airline = trip.airline
+    rec.flight_number = trip.flight_out
+    rec.arrival_date = trip.depart_date        # الوصول إلى مكة (المغادرة من الوطن)
+    rec.arrival_time = trip.out_arrive_time
+    rec.departure_date = trip.return_date      # العودة إلى الوطن
+    rec.departure_time = trip.ret_depart_time
+    hotels = " / ".join(h for h in (trip.makkah_hotel, trip.madinah_hotel) if h)
+    if hotels:
+        rec.hotel = hotels
+
+
+def next_reference(trip: UmrahTrip, records: list) -> str:
+    """يبني رقماً مرجعياً تلقائياً فريداً للمعتمر (رمز البرنامج + تسلسل)."""
+    used = {str(getattr(r, "reference_number", "") or "") for r in records}
+    i = 1
+    while f"{trip.code}-{i:03d}" in used:
+        i += 1
+    return f"{trip.code}-{i:03d}"

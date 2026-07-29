@@ -527,8 +527,8 @@ class BookingDialog(Toplevel):
             text=f"أُضيف في هذا الحجز: {self._added} من {n}")
 
     def _apply_booking(self, rec) -> None:
-        """يطبّق إعدادات الحجز (البرنامج، الغرفة، النقل، السعر، الخدمات) على معتمر."""
-        rec.trip = self.trip.code
+        """يطبّق إعدادات الحجز (السفر/الإقامة من البرنامج + الغرفة/النقل/السعر)."""
+        self.window._enrich(rec)               # سفر/إقامة من البرنامج + رقم مرجعي
         rec.room_type = self.room.get()
         rec.transport = self.transport.get().strip()
         rec.program_value = f"{self._per_person_price():.0f}"
@@ -548,6 +548,8 @@ class BookingDialog(Toplevel):
 
     # ---- الإضافة يدوياً ----
     def add_manual(self) -> None:
+        if not self.window._check_capacity(1):
+            return
         rec = PassportData()
         self._apply_booking(rec)               # يُعبّئ السعر/الغرفة/النقل مسبقاً
         self.grab_release()                    # نسلّم القبض لنافذة التعديل
@@ -557,7 +559,8 @@ class BookingDialog(Toplevel):
             self._commit_person(r)
 
         ed = G.EditDialog(self, rec, on_save, title="إضافة معتمر (حجز)",
-                          save_text="إضافة", session=self.session, umrah=True)
+                          save_text="إضافة", session=self.session, umrah=True,
+                          trip=self.trip)
         # نستعيد القبض عند إغلاق نافذة التعديل نفسها (لا عناصرها الداخلية)
         ed.bind("<Destroy>",
                 lambda e, w=ed: self._regrab() if e.widget is w else None)
@@ -571,6 +574,8 @@ class BookingDialog(Toplevel):
 
     # ---- الإضافة بقراءة الجواز ----
     def add_passport(self) -> None:
+        if not self.window._check_capacity(1):
+            return
         if not configure_tesseract():
             messagebox.showerror(
                 "Tesseract غير موجود",
@@ -582,19 +587,26 @@ class BookingDialog(Toplevel):
             filetypes=G.SCAN_TYPES)
         if not paths:
             return
+        cap = self.window._capacity()
         self.configure(cursor="watch")
         self.update_idletasks()
-        added, fails = 0, []
+        added, fails, full = 0, [], False
         for p in paths:
+            if cap and len(self.window._pilgrims()) >= cap:
+                full = True
+                break
             try:
                 if Path(p).suffix.lower() == ".pdf":
                     recs, _notes = extract_from_pdf(p)
                 else:
                     recs = [extract_passport(p)]
-            except (MRZError, PDFError, Exception) as exc:   # noqa: BLE001
+            except Exception as exc:                       # noqa: BLE001
                 fails.append(f"{Path(p).name}: {exc}")
                 continue
             for rec in recs:
+                if cap and len(self.window._pilgrims()) >= cap:
+                    full = True
+                    break
                 self._apply_booking(rec)
                 if len(recs) == 1:
                     self.window._attach_image(rec, p)
@@ -607,6 +619,8 @@ class BookingDialog(Toplevel):
             self.window._reload()
             self._recalc()
         msg = f"أُضيف {added} معتمراً بسعر فرد {format_amount(self._per_person_price())}."
+        if full:
+            msg += f"\n\nتوقّفت الإضافة: اكتملت سعة البرنامج ({cap})."
         if fails:
             msg += "\n\nتعذّرت قراءة:\n- " + "\n- ".join(fails[:8])
         messagebox.showinfo("قراءة الجوازات", msg, parent=self)
@@ -646,7 +660,7 @@ class TripPilgrimsWindow(Toplevel):
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
-        ttk.Button(bar, text=G.rtl("📄  تصدير PDF"), style="Ghost.TButton",
+        ttk.Button(bar, text=G.rtl("👁  معاينة PDF"), style="Ghost.TButton",
                    command=self.export_pdf).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("📊  تصدير إكسل"), style="Ghost.TButton",
                    command=self.export_excel).pack(side=LEFT, padx=3)
@@ -677,6 +691,34 @@ class TripPilgrimsWindow(Toplevel):
     def _pilgrims(self) -> list:
         return umrah.trip_pilgrims(self.app.records, self.trip.code)
 
+    def _capacity(self) -> int:
+        try:
+            return int(float(str(self.trip.capacity or "").strip() or 0))
+        except ValueError:
+            return 0
+
+    def _seats_left(self) -> int:
+        cap = self._capacity()
+        return max(0, cap - len(self._pilgrims())) if cap else 0
+
+    def _check_capacity(self, adding: int = 1) -> bool:
+        """يمنع تجاوز السعة المحدّدة للبرنامج."""
+        cap = self._capacity()
+        if cap and len(self._pilgrims()) + adding > cap:
+            messagebox.showwarning(
+                "السعة مكتملة",
+                f"سعة البرنامج {cap} مقعداً، والمتبقّي {self._seats_left()}.\n"
+                "لا يمكن إضافة أكثر من السعة المحدّدة.", parent=self)
+            return False
+        return True
+
+    def _enrich(self, rec) -> None:
+        """يأخذ السفر والإقامة من البرنامج ويبني الرقم المرجعي تلقائياً."""
+        umrah.apply_trip_to_record(self.trip, rec)
+        rec.trip = self.trip.code
+        if not str(rec.reference_number or "").strip():
+            rec.reference_number = umrah.next_reference(self.trip, self.app.records)
+
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
         recs = self._pilgrims()
@@ -692,9 +734,13 @@ class TripPilgrimsWindow(Toplevel):
                 r.phone or "—", r.status or "نشط",
                 format_amount(val - pd) if val else "—"),
                 tags=("odd",) if i % 2 else ())
-        self.fin.configure(text=(
-            f"العدد: {len(recs)}   ·   الإجمالي: {format_amount(total)}   ·   "
-            f"المحصّل: {format_amount(paid)}   ·   المتبقّي: {format_amount(total - paid)}"))
+        text = (f"العدد: {len(recs)}   ·   الإجمالي: {format_amount(total)}   ·   "
+                f"المحصّل: {format_amount(paid)}   ·   "
+                f"المتبقّي: {format_amount(total - paid)}")
+        cap = self._capacity()
+        if cap:
+            text += f"   ·   🪑 المقاعد المتبقّية: {self._seats_left()} من {cap}"
+        self.fin.configure(text=text)
         self.app._reload()
 
     def _selected(self):
@@ -707,8 +753,10 @@ class TripPilgrimsWindow(Toplevel):
 
     # ---- الإضافة ----
     def add_manual(self) -> None:
+        if not self._check_capacity(1):
+            return
         rec = PassportData()
-        rec.trip = self.trip.code
+        self._enrich(rec)                      # سفر/إقامة من البرنامج + رقم مرجعي
 
         def on_save(r):
             r.trip = self.trip.code
@@ -718,12 +766,15 @@ class TripPilgrimsWindow(Toplevel):
             self._reload()
 
         G.EditDialog(self, rec, on_save, title="إضافة معتمر",
-                     save_text="إضافة", session=self.session, umrah=True)
+                     save_text="إضافة", session=self.session, umrah=True,
+                     trip=self.trip)
 
     def add_booking(self) -> None:
         BookingDialog(self, self.trip)
 
     def add_passport(self) -> None:
+        if not self._check_capacity(1):
+            return
         if not configure_tesseract():
             messagebox.showerror(
                 "Tesseract غير موجود",
@@ -735,10 +786,14 @@ class TripPilgrimsWindow(Toplevel):
             filetypes=G.SCAN_TYPES)
         if not paths:
             return
+        cap = self._capacity()
         self.configure(cursor="watch")
         self.update_idletasks()
-        added, fails = 0, []
+        added, fails, full = 0, [], False
         for p in paths:
+            if cap and len(self._pilgrims()) >= cap:
+                full = True
+                break
             try:
                 if Path(p).suffix.lower() == ".pdf":
                     recs, _notes = extract_from_pdf(p)
@@ -751,7 +806,10 @@ class TripPilgrimsWindow(Toplevel):
                 fails.append(f"{Path(p).name}: {exc}")
                 continue
             for rec in recs:
-                rec.trip = self.trip.code
+                if cap and len(self._pilgrims()) >= cap:
+                    full = True
+                    break
+                self._enrich(rec)
                 if len(recs) == 1:
                     self._attach_image(rec, p)
                 self.app.records.append(rec)
@@ -761,6 +819,8 @@ class TripPilgrimsWindow(Toplevel):
             self.app.save()
             self._reload()
         msg = f"أُضيف {added} معتمراً."
+        if full:
+            msg += f"\n\nتوقّفت الإضافة: اكتملت سعة البرنامج ({cap})."
         if fails:
             msg += "\n\nتعذّرت قراءة:\n- " + "\n- ".join(fails[:8])
         messagebox.showinfo("قراءة الجوازات", msg, parent=self)
@@ -786,7 +846,7 @@ class TripPilgrimsWindow(Toplevel):
             self._reload()
 
         G.EditDialog(self, rec, on_save, title="تعديل بيانات المعتمر",
-                     session=self.session, umrah=True)
+                     session=self.session, umrah=True, trip=self.trip)
 
     def delete_selected(self) -> None:
         rec = self._selected()
@@ -804,28 +864,30 @@ class TripPilgrimsWindow(Toplevel):
         self._reload()
 
     # ---- التصدير ----
-    def _export(self, fn, ext, label) -> None:
+    def export_excel(self) -> None:
         recs = self._pilgrims()
         if not recs:
             messagebox.showinfo("تصدير", "لا معتمرين في هذا البرنامج.", parent=self)
             return
         path = filedialog.asksaveasfilename(
-            parent=self, defaultextension=ext,
-            initialfile=f"معتمرو {self.trip.code}{ext}",
-            filetypes=[(label, f"*{ext}")])
+            parent=self, defaultextension=".xlsx",
+            initialfile=f"معتمرو {self.trip.code}.xlsx",
+            filetypes=[("إكسل", "*.xlsx")])
         if not path:
             return
         try:
-            fn(recs, path)
+            export_excel(recs, path)
         except Exception as exc:                           # noqa: BLE001
             messagebox.showerror("تعذّر التصدير", str(exc), parent=self)
             return
         messagebox.showinfo("تم", f"حُفظ الملف:\n{path}", parent=self)
 
-    def export_excel(self) -> None:
-        self._export(lambda recs, p: export_excel(recs, p), ".xlsx", "إكسل")
-
     def export_pdf(self) -> None:
+        """معاينة PDF لكشف معتمري البرنامج (طباعة أو حفظ من العارض)."""
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("معاينة", "لا معتمرين في هذا البرنامج.", parent=self)
+            return
         title = f"معتمرو العمرة — {self.trip.name or self.trip.code}"
-        self._export(lambda recs, p: export_pdf(recs, p, title=title),
-                     ".pdf", "PDF")
+        G.open_preview(self, lambda p: export_pdf(recs, p, title=title),
+                       f"معتمرو {self.trip.code}", "pdf")

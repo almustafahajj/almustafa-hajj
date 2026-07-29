@@ -97,6 +97,8 @@ class PassportData:
     # ---- المالية ----
     program_value: str = ""
     paid_amount: str = ""
+    payment_date: str = ""           # تاريخ الدفع (مع المبلغ المدفوع)
+    payment_method: str = ""         # طريقة الدفع (نقدي/تحويل/بطاقة/شيك)
 
     notes: str = ""
     staff: str = ""

@@ -6801,44 +6801,51 @@ class EditDialog(Toplevel):
         ("ملاحظات", ("notes", "staff")),
     )
 
-    # تبويبات وضع العمرة — بلا حقول الحج (برنامج الحملة/التأشيرة/التصريح/الهدي)
+    # تبويبات وضع العمرة — السفر والإقامة والخدمات تؤخذ من البرنامج (لا تُعرض)،
+    # ولا حقول للحج ولا للصحة والطوارئ.
     UMRAH_TABS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("بيانات المعتمر", ("family_number", "reference_number", "full_name_ar",
                             "full_name_en", "phone", "status",
                             "mahram_name", "mahram_relation")),
         ("الجواز", ("passport_number", "nationality_ar", "sex", "birth_date",
                     "expiry_date")),
-        ("السفر", ("airline", "flight_number", "travel_class", "pnr",
-                   "arrival_date", "arrival_time", "departure_date",
-                   "departure_time", "transport")),
-        ("الإقامة والخدمات", ("hotel", "room_type", "room_number", "wheelchair")),
-        ("الصحة والطوارئ", ("blood_type", "medical_conditions", "medications",
-                            "vaccination", "insurance", "emergency_name",
-                            "emergency_phone", "emergency_relation")),
-        ("المالية", ("program_value", "paid_amount")),
+        ("الإقامة والحجز", ("room_type", "room_number", "transport")),
+        ("المالية", ("program_value", "paid_amount", "payment_date",
+                     "payment_method")),
         ("ملاحظات", ("notes", "staff")),
     )
-    # حقول خاصة بالحج تُستبعد تماماً من نافذة العمرة (حتى من تبويب «أخرى»)
+    # حقول تُستبعد تماماً من نافذة العمرة: حقول الحج + السفر/الفندق (تؤخذ من
+    # البرنامج) + الصحة والطوارئ (أُلغيت).
     UMRAH_DROP = frozenset({
-        "program", "group", "hady", "executive_service",
+        "program", "group", "hady", "executive_service", "wheelchair",
         "visa_number", "visa_status", "permit_status", "masar_number",
+        "airline", "flight_number", "travel_class", "pnr",
+        "arrival_date", "arrival_time", "departure_date", "departure_time",
+        "hotel",
+        "blood_type", "medical_conditions", "medications", "vaccination",
+        "insurance", "emergency_name", "emergency_phone", "emergency_relation",
     })
+    # حقول العمرة الإضافية (ليست في FIELDS) تُبنى كحقول اصطناعية عند اللزوم
+    UMRAH_EXTRA = (("payment_date", "تاريخ الدفع"), ("payment_method", "طريقة الدفع"))
 
     # حقول ذات قيم محدّدة تُعرض قائمةً منسدلة
     CHOICE_FIELDS = {
         "status": ("", "نشط", "ملغى", "قائمة انتظار"),
         "sex": ("", "ذكر", "أنثى"),
         "wheelchair": ("", "نعم"),
+        "payment_method": ("", "نقدي", "تحويل بنكي", "بطاقة", "شيك"),
     }
 
     def __init__(self, parent, record: PassportData, on_save, *,
                  title: str = "تعديل بيانات الحاج",
-                 save_text: str = "حفظ", session=None, umrah: bool = False) -> None:
+                 save_text: str = "حفظ", session=None, umrah: bool = False,
+                 trip=None) -> None:
         super().__init__(parent)
         self.record = record
         self.on_save = on_save
         self.session = session
         self._umrah = umrah
+        self._trip = trip
         self.vars: dict[str, StringVar] = {}
         # عمليات الصور المؤجّلة حتى الحفظ: النوع -> مسار جديد أو "DELETE" أو None
         self._pending_images: dict[str, str | None] = {}
@@ -6859,6 +6866,10 @@ class EditDialog(Toplevel):
         tabs = self.UMRAH_TABS if umrah else self.TABS
         drop = self.UMRAH_DROP if umrah else frozenset()
         editable = [f for f in EDITABLE if f.key not in drop]
+        if umrah:
+            from .fields import Field as _Field
+            editable += [_Field(k, lbl, 13, True, False)
+                         for k, lbl in self.UMRAH_EXTRA]
         by_key = {f.key: f for f in editable}
         placed: set[str] = set()
 
@@ -7000,8 +7011,10 @@ class EditDialog(Toplevel):
         """تبويب الصور: الجواز والشخصية والهوية والتصريح — تُحفظ مشفّرة (شبكة 2×2)."""
         frame = ttk.Frame(parent, padding=12)
         self._img_preview: dict[str, ttk.Label] = {}
-        from .images import KINDS, KIND_LABELS
-        for index, kind in enumerate(KINDS):
+        from .images import KINDS, KIND_LABELS, PASSPORT
+        # العمرة: صورة الجواز فقط (الصورة الشخصية تؤخذ منه، ولا تصريح سعودي)
+        kinds = (PASSPORT,) if self._umrah else KINDS
+        for index, kind in enumerate(kinds):
             row, base = divmod(index, 2)
             col = 1 - base                    # RTL: أول صورة أقصى اليمين
             box = ttk.Frame(frame, padding=6)
@@ -7019,6 +7032,10 @@ class EditDialog(Toplevel):
             ttk.Button(btns, text="حذف", style="Act.TButton",
                        command=lambda k=kind: self._remove_image(k)).pack(side=RIGHT)
             self._render_preview(kind)
+        if self._umrah:
+            ttk.Label(frame, text=rtl("الصورة الشخصية تُؤخذ من الجواز تلقائياً."),
+                      font=(_FUI, 9), foreground=MUTED).grid(
+                row=1, column=0, columnspan=2, pady=(10, 0), sticky="e")
         return frame
 
     def _choose_image(self, kind: str) -> None:
