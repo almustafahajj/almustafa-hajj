@@ -793,7 +793,10 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
     البرنامج، الفندق، نوع الغرفة، الطيران، القيمة، المدفوع، المتبقّي.
     الجوازات المنتهية أو التي تنتهي قبل ٦ أشهر تُعلَّم بعلامة ⚠ وخلفية تحذير.
     """
-    from .umrah import REPORT_COLUMNS, passport_flag, report_row
+    from .umrah import (REPORT_COLUMNS, REPORT_STAFF_COLUMN, passport_flag,
+                        report_row)
+    # المعاينة تُظهر «الموظف المسؤول» عموداً أخيراً (من بيانات المعتمر)
+    columns = list(REPORT_COLUMNS) + [REPORT_STAFF_COLUMN]
 
     _register_fonts()
     path = Path(path)
@@ -812,7 +815,7 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
         f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
         st["subtitle"]))
 
-    heads = [lbl for _k, lbl in REPORT_COLUMNS]
+    heads = [lbl for _k, lbl in columns]
     # أوزان الأعمدة (بالترتيب المنطقي) ثم تُعكس للعرض من اليمين لليسار
     weights = list(reversed(
         [34, 68, 42, 52, 52, 46, 60, 64, 42, 50, 44, 46, 46, 62]))
@@ -827,7 +830,7 @@ def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
         if passport_flag(rec, depart_date):        # جواز منتهٍ/قارب الانتهاء
             row["expiry_date"] = ("! " + row["expiry_date"]).strip()
             warn_rows.append(len(table_data))
-        vals = [row[k] for k, _l in REPORT_COLUMNS]
+        vals = [row[k] for k, _l in columns]
         table_data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
     t = Table(table_data, colWidths=colw, repeatRows=1)
     style = [
@@ -882,9 +885,8 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     rooms, unassigned = rooming_rooms(records, room_field)
-    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "نوع الغرفة", "الهاتف",
-             "الموظف المسؤول"]
-    weights = list(reversed([22, 122, 58, 78, 52, 82, 66]))
+    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "نوع الغرفة", "الهاتف"]
+    weights = list(reversed([24, 140, 66, 84, 58, 92]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -897,7 +899,7 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
                     r.family_number or "", r.passport_number or "",
-                    r.room_type or "", r.phone or "", r.staff or ""]
+                    r.room_type or "", r.phone or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -953,9 +955,8 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     story.append(Paragraph(ar("  •  ".join(sub)), st["subtitle"]))
 
     groups, unassigned = rooming_rooms(records, "vehicle")
-    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "الهاتف", "الفندق",
-             "الموظف المسؤول"]
-    weights = list(reversed([22, 120, 56, 78, 84, 92, 66]))
+    heads = ["م", "الاسم", "رقم العائلة", "رقم الجواز", "الهاتف", "الفندق"]
+    weights = list(reversed([24, 138, 64, 84, 92, 104]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     PAD = 4
@@ -968,7 +969,7 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
         for i, r in enumerate(occ, 1):
             vals = [str(i), r.full_name_ar or r.full_name_en or "",
                     r.family_number or "", r.passport_number or "", r.phone or "",
-                    r.hotel or "", r.staff or ""]
+                    r.hotel or ""]
             data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
         t = Table(data, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([

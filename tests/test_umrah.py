@@ -168,8 +168,9 @@ row = umrah.report_row(rec, 1, "رمضان")
 assert [k for k, _l in umrah.REPORT_COLUMNS] == [
     "serial", "full_name_ar", "family_number", "passport_number", "expiry_date",
     "nationality_ar", "program", "hotel", "room_type", "airline",
-    "program_value", "paid_amount", "remaining", "staff"]
-assert [k for k, _l in umrah.REPORT_COLUMNS][-1] == "staff"   # آخر عمود
+    "program_value", "paid_amount", "remaining"]              # بلا staff (لا إكسل/غرف)
+# الموظف المسؤول عمود إضافي للمعاينة والملخّص المالي فقط
+assert umrah.REPORT_STAFF_COLUMN == ("staff", "الموظف المسؤول")
 assert row["staff"] == "أيمن الشهابي"                          # من بيانات المعتمر
 # الجنسية قبل البرنامج، ورقم العائلة مذكور
 _keys = [k for k, _l in umrah.REPORT_COLUMNS]
@@ -192,7 +193,9 @@ assert [ws.cell(row=2, column=c).value for c in range(1, _ncols + 1)] == \
 cells = [str(c.value) for r in ws.iter_rows() for c in r if c.value is not None]
 assert not any("حاج" in t for t in cells), "بقيت كلمة حاج في الكشف"
 assert any("المعتمرين" in t for t in cells)                # عنوان الكشف
-assert any("أيمن الشهابي" in t for t in cells)             # الموظف المسؤول
+# الموظف المسؤول لا يظهر في إكسل (المعاينة والملخّص المالي فقط)
+assert not any("أيمن الشهابي" in t for t in cells)
+assert "الموظف المسؤول" not in [lbl for _k, lbl in umrah.REPORT_COLUMNS]
 print("  OK: خدمات جديدة + كشف بأعمدته ومسمّيات العمرة (بلا «حاج») + اسم التطبيق")
 
 print("\n=== التسكين (مكة/المدينة) ===")
