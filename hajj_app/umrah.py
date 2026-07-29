@@ -31,7 +31,50 @@ DEFAULT_SERVICES = (
     "عربة كهربائية / كرسي متحرّك",
     "باقة الإحرام والهدايا",
     "شريحة اتصال / إنترنت",
+    "المطوّف",
+    "خدمة التنفيذي في الاستقبال",
+    "خدمة التنفيذي في المغادرة",
+    "خدمة مُرافق",
 )
+
+# أعمدة كشف المعتمرين (بمسمّيات العمرة): (المفتاح، العنوان)
+REPORT_COLUMNS = (
+    ("serial", "التسلسل"),
+    ("full_name_ar", "الاسم"),
+    ("passport_number", "رقم الجواز"),
+    ("expiry_date", "تاريخ انتهاء الجواز"),
+    ("program", "البرنامج"),
+    ("nationality_ar", "الجنسية"),
+    ("hotel", "الفندق"),
+    ("room_type", "نوع الغرفة"),
+    ("airline", "الطيران"),
+    ("program_value", "القيمة"),
+    ("paid_amount", "المبلغ المدفوع"),
+    ("remaining", "المتبقّي"),
+)
+# أعمدة المبالغ في الكشف (تُعامَل أرقاماً في إكسل)
+REPORT_MONEY_KEYS = frozenset({"program_value", "paid_amount", "remaining"})
+
+
+def report_row(rec, serial: int, program_name: str = "") -> dict:
+    """يبني صفّ كشف معتمر واحد (المفتاح ← القيمة المعروضة)."""
+    from .fields import format_amount, parse_amount
+    val = parse_amount(rec.program_value) or 0.0
+    paid = parse_amount(rec.paid_amount) or 0.0
+    return {
+        "serial": str(serial),
+        "full_name_ar": rec.full_name_ar or rec.full_name_en or "",
+        "passport_number": rec.passport_number or "",
+        "expiry_date": rec.expiry_date or "",
+        "program": program_name or str(getattr(rec, "trip", "") or ""),
+        "nationality_ar": rec.nationality_ar or "",
+        "hotel": rec.hotel or "",
+        "room_type": rec.room_type or "",
+        "airline": rec.airline or "",
+        "program_value": format_amount(val) if val else "",
+        "paid_amount": format_amount(paid) if paid else "",
+        "remaining": format_amount(val - paid) if val else "",
+    }
 
 
 def _num(value) -> float:

@@ -127,6 +127,61 @@ def export_excel(records: list[PassportData], path: str | Path) -> Path:
     return path
 
 
+def export_umrah_excel(records: list[PassportData], path: str | Path, *,
+                       program_name: str = "") -> Path:
+    """يصدّر كشف معتمري برنامج عمرة إلى إكسل بمسمّيات العمرة والأعمدة المطلوبة."""
+    from .umrah import REPORT_COLUMNS, REPORT_MONEY_KEYS, report_row
+
+    path = Path(path)
+    wb = Workbook()
+    ws: Worksheet = wb.active
+    ws.title = "المعتمرون"
+    ws.sheet_view.rightToLeft = True
+    ncols = len(REPORT_COLUMNS)
+
+    heading = f"كشف المعتمرين — {program_name}" if program_name else "كشف المعتمرين"
+    ws.append([f"{heading} — {date.today().isoformat()}"])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+    title = ws.cell(row=1, column=1)
+    title.font = Font(bold=True, size=14, color="1F6F4A")
+    title.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 26
+
+    ws.append([lbl for _k, lbl in REPORT_COLUMNS])
+    for col in range(1, ncols + 1):
+        cell = ws.cell(row=2, column=col)
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center",
+                                   wrap_text=True)
+        cell.border = _BORDER
+    ws.row_dimensions[2].height = 32
+
+    for idx, rec in enumerate(records, start=1):
+        row = report_row(rec, idx, program_name)
+        ws.append([row[k] for k, _l in REPORT_COLUMNS])
+        r = ws.max_row
+        for col, (key, _lbl) in enumerate(REPORT_COLUMNS, start=1):
+            cell = ws.cell(row=r, column=col)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = _BORDER
+            if key in REPORT_MONEY_KEYS:
+                amount = parse_amount(cell.value)
+                if amount is not None:
+                    cell.value = amount
+                    cell.number_format = "#,##0"
+
+    widths = (10, 26, 15, 16, 18, 13, 20, 12, 15, 12, 14, 12)
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.freeze_panes = "C3"
+    if records:
+        ws.auto_filter.ref = f"A2:{get_column_letter(ncols)}{ws.max_row}"
+
+    wb.save(path)
+    return path
+
+
 # الحقول التي تُعرّف الحاج. صف بلا أيٍّ منها ليس سجل حاج مهما امتلأت بقية
 # خاناته — وقوائم كثيرة تحوي صفوف ترقيم فارغة أو صفوف مجاميع.
 _IDENTITY_KEYS = (

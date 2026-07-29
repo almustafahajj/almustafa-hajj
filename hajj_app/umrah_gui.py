@@ -19,12 +19,12 @@ from tkinter import (
 
 from . import app_mode, images as imgmod, umrah
 from . import gui as G
-from .excel_io import export_excel
+from .excel_io import export_umrah_excel
 from .fields import format_amount, parse_amount
 from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
-from .pdf_io import export_pdf
+from .pdf_io import export_umrah_pdf
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
 
@@ -875,8 +875,9 @@ class TripPilgrimsWindow(Toplevel):
             filetypes=[("إكسل", "*.xlsx")])
         if not path:
             return
+        prog = self.trip.name or self.trip.code
         try:
-            export_excel(recs, path)
+            export_umrah_excel(recs, path, program_name=prog)
         except Exception as exc:                           # noqa: BLE001
             messagebox.showerror("تعذّر التصدير", str(exc), parent=self)
             return
@@ -888,6 +889,6 @@ class TripPilgrimsWindow(Toplevel):
         if not recs:
             messagebox.showinfo("معاينة", "لا معتمرين في هذا البرنامج.", parent=self)
             return
-        title = f"معتمرو العمرة — {self.trip.name or self.trip.code}"
-        G.open_preview(self, lambda p: export_pdf(recs, p, title=title),
+        prog = self.trip.name or self.trip.code
+        G.open_preview(self, lambda p: export_umrah_pdf(recs, p, program_name=prog),
                        f"معتمرو {self.trip.code}", "pdf")

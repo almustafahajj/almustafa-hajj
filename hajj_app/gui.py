@@ -7171,10 +7171,11 @@ def _show_splash(root):
             lbl.pack()
         tk.Label(frame, text=app_mode.label("splash"), bg=BG, fg=ACCENT,
                  font=(_FSB, 16)).pack(pady=(12, 0))
-        from . import __release_name__, __version__
+        from . import __version__
+        release = app_mode.label("release_name")   # ميسّر الحج / ميسّر العمرة
         vtext = f"الإصدار {__version__}"
-        if __release_name__:
-            vtext += f"  «{__release_name__}»"
+        if release:
+            vtext += f"  «{release}»"
         tk.Label(frame, text=vtext, bg=BG, fg=BRONZE,
                  font=(_FUI, 9)).pack(pady=(3, 0))
         import random

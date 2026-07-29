@@ -130,5 +130,39 @@ dlg2.destroy()
 r2.destroy()
 print("  OK: العمرة تُلغي الحج/السفر/الصحة، وتضيف تاريخ/طريقة الدفع، والحج يُبقيها")
 
+print("\n=== الخدمات الجديدة وكشف المعتمرين ومسمّياته ===")
+app_mode.set_mode("umrah")
+for extra in ("المطوّف", "خدمة التنفيذي في الاستقبال",
+              "خدمة التنفيذي في المغادرة", "خدمة مُرافق"):
+    assert extra in umrah.DEFAULT_SERVICES, extra
+assert app_mode.label("release_name") == "ميسّر العمرة"      # اسم التطبيق
+# صفّ الكشف بالأعمدة المطلوبة
+rec = PassportData(full_name_ar="سعيد", passport_number="A9",
+                   expiry_date="2030-01-01", nationality_ar="الإمارات",
+                   hotel="كونراد", room_type="ثنائي", airline="السعودية",
+                   program_value="5000", paid_amount="2000")
+row = umrah.report_row(rec, 1, "رمضان")
+assert [k for k, _l in umrah.REPORT_COLUMNS] == [
+    "serial", "full_name_ar", "passport_number", "expiry_date", "program",
+    "nationality_ar", "hotel", "room_type", "airline", "program_value",
+    "paid_amount", "remaining"]
+assert row["program"] == "رمضان" and row["remaining"] == "3,000"
+# تصدير PDF + إكسل بمسمّيات العمرة (لا «حاج» في الكشف)
+from hajj_app.pdf_io import export_umrah_pdf
+from hajj_app.excel_io import export_umrah_excel
+pdf = WORK / "kashf.pdf"
+export_umrah_pdf([rec], pdf, program_name="رمضان")
+assert pdf.read_bytes()[:5] == b"%PDF-" and pdf.stat().st_size > 3000
+xlsx = WORK / "kashf.xlsx"
+export_umrah_excel([rec], xlsx, program_name="رمضان")
+from openpyxl import load_workbook
+ws = load_workbook(xlsx).active
+assert [ws.cell(row=2, column=c).value for c in range(1, 13)] == \
+    [lbl for _k, lbl in umrah.REPORT_COLUMNS]
+cells = [str(c.value) for r in ws.iter_rows() for c in r if c.value is not None]
+assert not any("حاج" in t for t in cells), "بقيت كلمة حاج في الكشف"
+assert any("المعتمرين" in t for t in cells)                # عنوان الكشف
+print("  OK: خدمات جديدة + كشف بأعمدته ومسمّيات العمرة (بلا «حاج») + اسم التطبيق")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

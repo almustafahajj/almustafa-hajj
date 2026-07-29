@@ -784,6 +784,63 @@ def export_itinerary_pdf(path: str | Path, *, rows: list | None = None,
     return path
 
 
+def export_umrah_pdf(records: list, path: str | Path, *, program_name: str = "",
+                     title: str = "كشف المعتمرين") -> Path:
+    """يصدّر كشف معتمري برنامج عمرة إلى PDF (A4 عرضي) بمسمّيات العمرة.
+
+    الأعمدة: التسلسل، الاسم، رقم الجواز، تاريخ الانتهاء، البرنامج، الجنسية،
+    الفندق، نوع الغرفة، الطيران، القيمة، المدفوع، المتبقّي.
+    """
+    from .umrah import REPORT_COLUMNS, report_row
+
+    _register_fonts()
+    path = Path(path)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=landscape(A4), rightMargin=10 * mm, leftMargin=10 * mm,
+        topMargin=12 * mm, bottomMargin=16 * mm, title=title, author="ميسّر العمرة")
+    st = _styles()
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 4))
+    full_title = f"{title} — {program_name}" if program_name else title
+    story.append(Paragraph(ar(full_title), st["title"]))
+    story.append(Paragraph(ar(
+        f"عدد المعتمرين: {ltr(len(records))}  •  {ltr(date.today().isoformat())}"),
+        st["subtitle"]))
+
+    heads = [lbl for _k, lbl in REPORT_COLUMNS]
+    # أوزان الأعمدة (بالترتيب المنطقي) ثم تُعكس للعرض من اليمين لليسار
+    weights = list(reversed(
+        [46, 86, 60, 58, 70, 52, 78, 46, 56, 50, 54, 54]))
+    scale = doc.width / sum(weights)
+    colw = [w * scale for w in weights]
+    PAD = 3
+    avail = [w - 2 * PAD - 1 for w in colw]
+    table_data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
+    for i, rec in enumerate(records, start=1):
+        row = report_row(rec, i, program_name)
+        vals = [row[k] for k, _l in REPORT_COLUMNS]
+        table_data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
+    t = Table(table_data, colWidths=colw, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ("LEFTPADDING", (0, 0), (-1, -1), PAD),
+        ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(t)
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer(c, d, full_title),
+              onLaterPages=lambda c, d: _footer(c, d, full_title))
+    return path
+
+
 def export_airline_pdf(
     records: list, path: str | Path, *, title: str = "Flight Manifest"
 ) -> Path:
