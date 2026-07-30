@@ -2439,18 +2439,17 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
                       fmt(ci), fmt(cout), str(n or ""), "إفطار (B.B.)"])
         cur = cout or cur
 
-    transport = str(getattr(rec, "vehicle", "") or "")
-    if not transport and trip:
-        transport = str(getattr(trip, "transport", "") or "")
-    if not transport:
-        transport = ("سيارة خاصة — استقبال من مطار جدة، والتنقّل بين الفنادق "
-                     "والحرمين، والتوصيل إلى مطار المغادرة")
+    # خطة النقل المفصّلة: كل صف [نوع السيارة، الموديل، الوجهة]
+    car = str(getattr(rec, "vehicle", "") or "")
+    if not car and trip:
+        car = str(getattr(trip, "transport", "") or "")
+    transport_rows = [[car or "GMC", "",
+                       "استقبال من مطار جدة والتنقّل بين الحرمين والفنادق ثم "
+                       "التوصيل إلى مطار المغادرة"]]
 
     terms = [t.format(company=co["name_ar"]) for t in _VOUCHER_TERMS]
 
     return {
-        "title_ar": "فاوتشر الفندق",
-        "title_en": "Hotel Voucher",
         "number": number,
         "date": date_str,
         "guest_ar": rec.full_name_ar or "",
@@ -2460,7 +2459,8 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
         # كل صف: [المدينة، الفندق، نوع الغرفة، الإطلالة، الدخول، المغادرة،
         #          الليالي، الوجبات]
         "stays": stays,
-        "transport": transport,
+        # كل صف نقل: [نوع السيارة، الموديل، الوجهة]
+        "transport_rows": transport_rows,
         "status": "مؤكّد / CONFIRMED",
         # كل جهة: [الصفة، الاسم، الهاتف]
         "contacts": [["مدير المكتب", office_manager, office_phone],
@@ -2471,6 +2471,16 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
 
 VOUCHER_STAY_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "الإطلالة", "الدخول",
                       "المغادرة", "الليالي", "الوجبات")
+VOUCHER_TRANSPORT_HEADS = ("نوع السيارة", "الموديل", "الوجهة")
+# خيارات القوائم المنسدلة في محرّر الفاوتشر
+VOUCHER_VIEW_OPTIONS = ("", "City", "Haram", "P. Haram", "Kaaba", "P. Kaaba")
+VOUCHER_CAR_TYPES = ("FORD", "GMC", "BMW")
+
+
+def voucher_car_models() -> list:
+    """موديلات السيارة: من 2025 وما فوق (حتى السنة القادمة)."""
+    top = max(2027, date.today().year + 1)
+    return [str(y) for y in range(top, 2024, -1)]
 
 
 def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
@@ -2499,12 +2509,14 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     number = str(data.get("number") or "MA0001")
     date_str = str(data.get("date") or date.today().isoformat())
 
+    co = company_info(company)
     doc = SimpleDocTemplate(
         str(path), pagesize=A4, rightMargin=12 * mm, leftMargin=12 * mm,
-        topMargin=12 * mm, bottomMargin=15 * mm, title="فاوتشر الفندق",
+        topMargin=10 * mm, bottomMargin=16 * mm, title="Hotel Voucher",
         author="ميسّر العمرة")
     st = _styles()
     story = []
+    _DEEP = colors.HexColor("#6E543A")          # بنّي غامق للتدرّج والحدود
 
     def _logo_cell(pathobj, h):
         """شعار بارتفاع موحّد (للتناسق بين الشعارين)."""
@@ -2516,9 +2528,9 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         except Exception:
             return ""
 
-    # الشعاران بارتفاع موحّد: Nirvana (يسار) والمصطفى (يمين)
-    al = _logo_cell(_LOGO_PATH, 62)
-    nv = _logo_cell(_NIRVANA_PATH, 62)
+    # ترويسة: الشعاران بارتفاع موحّد (Nirvana يسار، المصطفى يمين)
+    al = _logo_cell(_LOGO_PATH, 58)
+    nv = _logo_cell(_NIRVANA_PATH, 58)
     header = Table([[nv, al]], colWidths=[doc.width / 2, doc.width / 2])
     header.setStyle(TableStyle([
         ("ALIGN", (0, 0), (0, 0), "LEFT"),
@@ -2528,13 +2540,29 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(header)
-    story.append(Spacer(1, 4))
-    title_ar = str(data.get("title_ar") or "فاوتشر الفندق")
-    title_en = str(data.get("title_en") or "")
-    title_txt = ar(title_ar) + (("  /  " + title_en) if title_en else "")
-    story.append(Paragraph(title_txt,
-                           ParagraphStyle("vt", parent=st["title"], fontSize=16,
-                                          spaceAfter=4)))
+    story.append(Spacer(1, 6))
+
+    # شريط العنوان بالإنجليزية فقط (احترافي، بلون الهوية)
+    band_title = ParagraphStyle("vbt", fontName=_FONT_BOLD, fontSize=21,
+                                alignment=1, textColor=colors.white, leading=25)
+    band_sub = ParagraphStyle("vbs", fontName=_FONT, fontSize=9, alignment=1,
+                              textColor=colors.HexColor("#EFE6D8"), leading=13,
+                              spaceBefore=1)
+    band = Table([[Paragraph("HOTEL VOUCHER", band_title)],
+                  [Paragraph(co["name_en"].upper(), band_sub)]],
+                 colWidths=[doc.width])
+    band.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.4, _DEEP),
+        ("LINEBELOW", (0, -1), (-1, -1), 2.4, _DEEP),
+        ("TOPPADDING", (0, 0), (-1, 0), 9),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+        ("TOPPADDING", (0, 1), (-1, 1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
+    ]))
+    story.append(band)
+    story.append(Spacer(1, 10))
+
     lbl = ParagraphStyle("vlbl", parent=st["cell"], fontName=_FONT_BOLD,
                          textColor=_ACCENT, alignment=2, fontSize=9)
     val = ParagraphStyle("vval", parent=st["cell"], alignment=2, fontSize=9)
@@ -2559,16 +2587,33 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
           _ar_para("البرنامج", lbl, cw[3] - 12)]],
         colWidths=cw)
     meta.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
         ("BACKGROUND", (3, 0), (3, -1), _ALT_ROW),
     ]))
     story.append(meta)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 10))
 
-    # جدول الإقامات — القيَم من data["stays"] (قابلة للتعديل يدوياً)
+    def section(title_ar, title_en):
+        """عنوان قسم أنيق: عربي/إنجليزي بخطّ بارز وخطّ سفلي بلون الهوية."""
+        p = Paragraph(ar(title_ar) + f"  /  {title_en}", ParagraphStyle(
+            "vsec", fontName=_FONT_BOLD, fontSize=10.5, alignment=2,
+            textColor=_DEEP, leading=14))
+        t = Table([[p]], colWidths=[doc.width])
+        t.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        return t
+
+    # ---- الإقامة ----
+    story.append(section("تفاصيل الإقامة", "Accommodation"))
+    story.append(Spacer(1, 4))
     heads = list(VOUCHER_STAY_HEADS)
     weights = list(reversed([62, 108, 56, 52, 52, 52, 34, 46]))
     scale = doc.width / sum(weights)
@@ -2587,58 +2632,125 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     stay_t = Table(rows, colWidths=colw)
     stay_t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
-        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(stay_t)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 10))
 
-    # خطة النقل والحالة (قابلة للتعديل من محرّر الفاوتشر)
-    transport = str(data.get("transport") or "")
-    info = ParagraphStyle("vinfo", parent=st["cell"], alignment=2, fontSize=9.5,
-                          leading=15)
-    if transport:
-        story.append(_ar_para(f"خطة النقل / Transportation: {transport}",
-                              info, doc.width - 12))
+    # ---- خطة النقل (مفصّلة: نوع السيارة/الموديل/الوجهة) ----
+    story.append(section("خطة النقل", "Transportation"))
+    story.append(Spacer(1, 4))
+    theads = list(VOUCHER_TRANSPORT_HEADS)
+    tweights = list(reversed([78, 58, 250]))     # الوجهة أعرض عمود
+    tscale = doc.width / sum(tweights)
+    tcolw = [w * tscale for w in tweights]
+    tavail = [w - 9 for w in tcolw]
+    transport_rows = [r for r in data.get("transport_rows", [])
+                      if any(str(x or "").strip() for x in r)]
+    if not transport_rows and str(data.get("transport") or "").strip():
+        transport_rows = [["", "", str(data["transport"])]]   # توافق خلفي
+    trows = [_ar_cells(list(reversed(theads)), st["head"], tavail)]
+    for r in transport_rows or [["", "", ""]]:
+        vals = [str(x or "—") for x in list(r)[:3]]
+        vals += ["—"] * (3 - len(vals))
+        trows.append(_ar_cells(list(reversed(vals)), st["cell"], tavail))
+    tr_t = Table(trows, colWidths=tcolw)
+    tr_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(tr_t)
+
     status = str(data.get("status") or "")
     if status:
+        story.append(Spacer(1, 4))
         story.append(_ar_para(
-            f"حالة الحجز: {status}",
-            ParagraphStyle("vconf", parent=info, fontName=_FONT_BOLD,
+            f"حالة الحجز / Booking status: {status}",
+            ParagraphStyle("vconf", parent=st["cell"], alignment=2, fontSize=9.5,
+                           fontName=_FONT_BOLD, leading=14,
                            textColor=colors.HexColor("#2E6B45")),
             doc.width - 12))
+    story.append(Spacer(1, 10))
 
-    # جهات التواصل (قابلة للإضافة/الحذف/التعديل)
+    # ---- جهات التواصل ----
+    val_num = ParagraphStyle("vnum", parent=val_l, fontName=_FONT_BOLD)
     ccw = [doc.width * 0.30, doc.width * 0.42, doc.width * 0.28]
 
     def contact_row(role, name, phone):
-        return [_ar_para(ltr(phone), val_l, ccw[0] - 10),
+        return [_ar_para(ltr(phone), val_num, ccw[0] - 10),
                 _ar_para(name, val, ccw[1] - 10),
                 _ar_para(role, lbl, ccw[2] - 10)]
 
     contact_data = [c for c in data.get("contacts", [])
                     if any(str(x or "").strip() for x in c)]
     if contact_data:
-        story.append(Spacer(1, 6))
+        story.append(section("للتواصل والاستفسار", "Contact"))
+        story.append(Spacer(1, 4))
         contacts = Table([contact_row(str(c[0]), str(c[1]), str(c[2]))
                           for c in contact_data], colWidths=ccw)
         contacts.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("BACKGROUND", (2, 0), (2, -1), _ALT_ROW),
         ]))
         story.append(contacts)
+        story.append(Spacer(1, 10))
 
+    # ---- التوقيع وختم الشركة ----
+    sign_c = ParagraphStyle("vsg", parent=st["cell"], alignment=1, fontSize=8.5,
+                            textColor=colors.HexColor("#666666"), leading=12)
+    sign_b = ParagraphStyle("vsgb", parent=sign_c, fontName=_FONT_BOLD,
+                            textColor=_DEEP, fontSize=9.5)
+    stamp_logo = _logo_cell(_LOGO_PATH, 40)
+    stamp_cell = Table([[stamp_logo],
+                        [Paragraph(ar("ختم الشركة / Company Stamp"), sign_c)]],
+                       colWidths=[doc.width * 0.5 - 8])
+    stamp_cell.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 2),
+        ("TOPPADDING", (0, 1), (-1, 1), 2),
+    ]))
+    sign_cell = Table([[Paragraph(ar("التوقيع المعتمد / Authorized Signature"),
+                                  sign_b)],
+                       [Spacer(1, 22)],
+                       [Paragraph("____________________________", sign_c)]],
+                      colWidths=[doc.width * 0.5 - 8])
+    sign_cell.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    signrow = Table([[sign_cell, stamp_cell]],
+                    colWidths=[doc.width * 0.5, doc.width * 0.5])
+    signrow.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("LINEBEFORE", (1, 0), (1, 0), 0.4, _GRID),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(signrow)
+    story.append(Spacer(1, 10))
+
+    # ---- الشروط والأحكام (ثابتة) ----
     terms = [t for t in data.get("terms", []) if str(t or "").strip()]
     if terms:
-        story.append(Spacer(1, 8))
-        story.append(Paragraph(ar("الشروط والأحكام"), ParagraphStyle(
-            "vth", parent=st["title"], fontSize=12, alignment=2,
-            textColor=_ACCENT, spaceAfter=4)))
+        story.append(section("الشروط والأحكام", "Terms & Conditions"))
+        story.append(Spacer(1, 3))
         term = ParagraphStyle("vterm", parent=st["cell"], alignment=2,
                               fontSize=8.5, leading=13, spaceAfter=3)
         for i, t in enumerate(terms, 1):
@@ -2648,8 +2760,8 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
             story.append(_ar_para(f"{i}- " + str(t), term, doc.width - 12))
 
     doc.build(story,
-              onFirstPage=lambda c, d: _footer_portrait(c, d, "فاوتشر الفندق"),
-              onLaterPages=lambda c, d: _footer_portrait(c, d, "فاوتشر الفندق"))
+              onFirstPage=lambda c, d: _footer_portrait(c, d, "Hotel Voucher"),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, "Hotel Voucher"))
     return path
 
 

@@ -179,6 +179,18 @@ def save_trips(settings: dict, trips: list[UmrahTrip]) -> None:
     settings["umrah_trips"] = [t.to_dict() for t in trips]
 
 
+def next_voucher_number(settings: dict) -> str:
+    """يخصّص رقم فاوتشر تسلسلياً (MA0001, MA0002…) ويحدّث العدّاد في الإعدادات.
+    كل استدعاء يُرجع رقماً جديداً، فيأخذ كل فاوتشر رقمه الفريد تلقائياً."""
+    try:
+        seq = int(settings.get("voucher_seq", 0) or 0)
+    except (TypeError, ValueError):
+        seq = 0
+    seq += 1
+    settings["voucher_seq"] = seq
+    return f"MA{seq:04d}"
+
+
 def next_code(trips: list[UmrahTrip]) -> str:
     """يقترح رمزاً جديداً غير مستعمل للبرنامج (U1، U2…)."""
     used = {t.code for t in trips}
