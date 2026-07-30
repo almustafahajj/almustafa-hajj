@@ -501,7 +501,7 @@ _ocrmod.read_amadeus_text = lambda p: (
     "2 EY 632 Q 10AUG 1 MEDAUH DK1 1525 1855")
 _ug.filedialog.askopenfilename = lambda **k: "dummy.png"
 _ug.messagebox.showinfo = lambda *a, **k: None
-_qe._read_amadeus()
+_qe._amadeus_file()
 assert len(_qe._flight_rows) == 2
 # التوقيع: خانة قابلة للتعديل بهاتف، وخانة المكتب ثابتة
 assert "office_name" not in _qe._fields and "gm_phone" in _qe._fields
@@ -514,6 +514,8 @@ _qe._visas_on.set(True)                        # إضافة بند التأشي�
 _qe._visas.set("عدد (2) تأشيرة عمرة")
 _qe._addr_on.set(True)
 _qe._addr.set("خالد الشامسي")                  # توجيه باسم الضيف
+_qe._vl_on.set(True); _qe._vl.set("2026-07-29"); _qe._vl_time.set("17:00")
+_qe._note.insert("1.0", "الأسعار قابلة للتغيير حسب التوفّر.")
 _qe._stay_rows[0][1][5].set("مطلّة كعبة")
 # التكلفة تُحسب تلقائياً: 2×5700 = 11,400
 assert _qe._total_var.get().replace(",", "") == "11400", _qe._total_var.get()
@@ -527,6 +529,7 @@ assert _qdc["guests"] == [["2", "كبار"], ["1", "أطفال"]]
 assert _qdc["train_tickets"] == "2" and _qdc["visas"]
 assert _qdc["train_date"] == "2026-09-07" and _qdc["train_dep"] == "14:30"
 assert _qdc["addressed_to"] == "خالد الشامسي"     # توجيه باسم الضيف
+assert _qdc["validity_time"] == "17:00" and _qdc["note"]   # وقت الصلاحية + ملاحظة
 assert _qdc["car_type"] and _qdc["car_model"] and _qdc["car_count"]
 assert _qdc["stays"][0][5] == "مطلّة كعبة"
 assert len(_qdc["pricing"]) == 2 and _qdc["currency"]

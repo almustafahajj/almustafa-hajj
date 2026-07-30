@@ -205,30 +205,41 @@ _AMADEUS_MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
                    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11,
                    "DEC": 12}
 # سطر رحلة أماديوس: EY 611 M 04AUG 2 AUHJED DK1 1405 1610 …
+# متسامح: الدرجة قد تُدمج/تُفقد في OCR، وزوج المدينتين قد يُفصل بمسافة.
 _AMADEUS_RE = re.compile(
-    r"\b([A-Z0-9]{2})\s+(\d{2,4})\s+[A-Z]\s+(\d{2})([A-Z]{3})\s+\d?\s*"
-    r"([A-Z]{6})\s+[A-Z0-9]{2,4}\s+(\d{3,4})\s+(\d{3,4})")
+    r"([A-Z][A-Z0-9])\s*(\d{2,4})\s+[A-Z0-9]{0,2}\s*(\d{1,2})([A-Z]{3})"
+    r"\s+\d?\s*([A-Z]{3})\s*([A-Z]{3})\s+[A-Z0-9]{2,4}\s+(\d{3,4})\s+(\d{3,4})")
 
 
 def _hhmm(t: str) -> str:
-    t = str(t).zfill(4)
+    t = str(t).zfill(4)[-4:]
     return f"{t[:2]}:{t[2:]}"
 
 
 def parse_amadeus_flights(text: str, year: int | None = None) -> list:
     """يحلّل نصّ حجز أماديوس ويعيد صفوف رحلات جاهزة لجدول الطيران في عرض السعر:
-    ``[التاريخ ISO، الناقل، الإقلاع، من، الوصول، إلى]`` لكل رحلة."""
+    ``[التاريخ ISO، الناقل، الإقلاع، من، الوصول، إلى]`` لكل رحلة.
+
+    متسامح مع أخطاء الـ OCR ويُزيل التكرار (نمرّر عدّة نسخ من النصّ عادةً)."""
     from datetime import date as _date
 
     if year is None:
         year = _date.today().year
-    rows = []
+    rows, seen = [], set()
     for m in _AMADEUS_RE.finditer((text or "").upper()):
-        carrier, _flight, day, mon, pair, dep, arr = m.groups()
+        carrier, _flight, day, mon, frm3, to3, dep, arr = m.groups()
         mnum = _AMADEUS_MONTHS.get(mon, 0)
-        iso = f"{year:04d}-{mnum:02d}-{int(day):02d}" if mnum else ""
-        frm = _AMADEUS_AIRPORTS.get(pair[:3], pair[:3])
-        to = _AMADEUS_AIRPORTS.get(pair[3:], pair[3:])
+        if not mnum or not (1 <= int(day) <= 31):
+            continue
+        if int(dep[-2:]) >= 60 or int(arr[-2:]) >= 60:
+            continue
+        iso = f"{year:04d}-{mnum:02d}-{int(day):02d}"
+        key = (iso, carrier, frm3, to3, dep, arr)
+        if key in seen:
+            continue
+        seen.add(key)
+        frm = _AMADEUS_AIRPORTS.get(frm3, frm3)
+        to = _AMADEUS_AIRPORTS.get(to3, to3)
         carrier_name = _AMADEUS_CARRIERS.get(carrier, carrier)
         rows.append([iso, carrier_name, _hhmm(dep), frm, _hhmm(arr), to])
     return rows

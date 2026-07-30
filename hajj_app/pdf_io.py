@@ -3015,6 +3015,8 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "pricing": pricing,
         "currency": "درهم",
         "validity": "",
+        "validity_time": "",
+        "note": "",
         "closing": QUOTE_CLOSING,
         # الخانة القابلة للتعديل (الصفة/الاسم/الهاتف)
         "gm_title": "المدير العام",
@@ -3305,12 +3307,26 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     story.append(Spacer(1, 4))
     validity = str(data.get("validity") or "")
     if validity:
-        story.append(_ar_para(f"هذا العرض صالح حتى نهاية يوم {ltr(validity)}.",
+        vtxt = f"هذا العرض صالح حتى نهاية يوم {ltr(validity)}"
+        vtime = str(data.get("validity_time") or "").strip()
+        if vtime:
+            vtxt += f" الساعة {ltr(vtime)}"
+        story.append(_ar_para(vtxt + ".",
                               ParagraphStyle("qvld", parent=val,
                                              fontName=_FONT_BOLD,
                                              textColor=colors.HexColor("#B23B3B")),
                               W - 8))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
+
+    # ملاحظات (اختيارية)
+    note = str(data.get("note") or "").strip()
+    if note:
+        story.append(section("ملاحظات"))
+        story.append(Spacer(1, 3))
+        story.append(_ar_para(note, ParagraphStyle("qnote", parent=val,
+                                                   fontSize=9.5, leading=14),
+                              W - 8))
+        story.append(Spacer(1, 8))
 
     closing = str(data.get("closing") or "")
     if closing:

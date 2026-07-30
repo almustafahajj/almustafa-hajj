@@ -1889,10 +1889,12 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         lf = self._section("الطيران")
         self._combo(lf, "الدرجة", "flight_class", data, QUOTE_FLIGHT_CLASSES,
                     0, 0, width=14)
-        ttk.Button(lf, text="📷 قراءة من صورة أماديوس",
-                   command=self._read_amadeus).grid(row=0, column=2,
-                                                    columnspan=2, sticky="w",
-                                                    padx=6)
+        amz = ttk.Frame(lf)
+        amz.grid(row=0, column=2, columnspan=2, sticky="w", padx=6)
+        for text, cmd in (("📷 من صورة", self._amadeus_file),
+                          ("📋 من الحافظة", self._amadeus_clipboard),
+                          ("📸 لقطة شاشة", self._amadeus_screen)):
+            ttk.Button(amz, text=text, command=cmd).pack(side=LEFT, padx=2)
         lf.columnconfigure(1, weight=1)
         self._flight_box = ttk.Frame(lf)
         self._flight_box.grid(row=1, column=0, columnspan=4, sticky="we",
@@ -1903,33 +1905,30 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                    command=lambda: self._add_flight_row()).grid(
             row=2, column=0, columnspan=4, sticky="e", pady=(4, 0))
 
-    def _read_amadeus(self):
-        """يقرأ رحلات من صورة حجز أماديوس ويملأ جدول الطيران تلقائياً."""
-        path = filedialog.askopenfilename(
-            parent=self, title="صورة حجز أماديوس",
-            filetypes=[("صور", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
-                       ("كل الملفّات", "*.*")])
-        if not path:
-            return
-        try:
-            from .ocr import read_amadeus_text
-            text = read_amadeus_text(path)
-        except Exception as exc:
-            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
-            return
-        year = None
+    # ---- قراءة رحلات أماديوس (صورة / حافظة / لقطة شاشة) ----
+    def _amadeus_year(self):
         for src in (self._pf.get(), self._d.get()):
             if src and "-" in src:
                 try:
-                    year = int(src.split("-")[0])
-                    break
+                    return int(src.split("-")[0])
                 except ValueError:
                     pass
-        rows = umrah.parse_amadeus_flights(text, year=year)
+        return None
+
+    def _apply_amadeus(self, image_path):
+        """يشغّل OCR على الصورة ويملأ جدول الطيران بالرحلات المقروءة."""
+        try:
+            from .ocr import read_amadeus_text
+            text = read_amadeus_text(image_path)
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        rows = umrah.parse_amadeus_flights(text, year=self._amadeus_year())
         if not rows:
             messagebox.showinfo(
                 "قراءة أماديوس",
-                "تعذّر التعرّف على رحلات في الصورة. تأكّد من وضوح اللقطة.",
+                "تعذّر التعرّف على رحلات في الصورة. تأكّد من وضوح اللقطة "
+                "وأنّ أسطر الرحلات ظاهرة كاملةً.",
                 parent=self)
             return
         for entry in list(self._flight_rows):
@@ -1939,6 +1938,64 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
             self._add_flight_row(r)
         messagebox.showinfo("قراءة أماديوس", f"تمّت قراءة {len(rows)} رحلة.",
                             parent=self)
+
+    def _amadeus_file(self):
+        path = filedialog.askopenfilename(
+            parent=self, title="صورة حجز أماديوس",
+            filetypes=[("صور", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
+                       ("كل الملفّات", "*.*")])
+        if path:
+            self._apply_amadeus(path)
+
+    def _save_temp_image(self, img):
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".png")
+        import os
+        os.close(fd)
+        img.save(path)
+        return path
+
+    def _amadeus_clipboard(self):
+        """يقرأ صورة أماديوس ملصوقة في الحافظة (بعد Win+Shift+S مثلاً)."""
+        try:
+            from PIL import Image, ImageGrab
+            grabbed = ImageGrab.grabclipboard()
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس",
+                                 f"تعذّر قراءة الحافظة: {exc}", parent=self)
+            return
+        img = None
+        if isinstance(grabbed, list) and grabbed:
+            img = Image.open(grabbed[0])
+        elif grabbed is not None and hasattr(grabbed, "save"):
+            img = grabbed
+        if img is None:
+            messagebox.showinfo(
+                "قراءة أماديوس",
+                "لا توجد صورة في الحافظة. التقط لقطة (Win+Shift+S) ثم أعد "
+                "المحاولة.", parent=self)
+            return
+        self._apply_amadeus(self._save_temp_image(img))
+
+    def _amadeus_screen(self):
+        """يلتقط لقطة شاشة كاملة ويقرأ منها رحلات أماديوس."""
+        try:
+            from PIL import ImageGrab
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        self.withdraw()
+        self.after(400, lambda: self._grab_screen(ImageGrab))
+
+    def _grab_screen(self, ImageGrab):
+        try:
+            img = ImageGrab.grab()
+        except Exception as exc:
+            self.deiconify()
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        self.deiconify()
+        self._apply_amadeus(self._save_temp_image(img))
 
     def _add_flight_row(self, values=None):
         values = list(values or []) + [""] * 6
@@ -2079,18 +2136,31 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         ttk.Label(tot, text="العملة:").pack(side=LEFT)
         self._recalc_total()
 
-        # الصلاحية والخاتمة
-        lf2 = self._section("الصلاحية والخاتمة")
+        # الصلاحية والملاحظات والخاتمة
+        lf2 = self._section("الصلاحية والملاحظات والخاتمة")
         ttk.Label(lf2, text="صالح حتى").grid(row=0, column=0, sticky="e",
                                              padx=(8, 4), pady=3)
         self._build_date_picker(lf2, data.get("validity"), row=0, col=1,
                                 prefix="_vl")
+        # وقت نهاية الصلاحية
+        ttk.Label(lf2, text="الساعة").grid(row=0, column=2, sticky="e",
+                                           padx=(8, 4), pady=3)
+        self._vl_time = StringVar(value=str(data.get("validity_time") or ""))
+        ttk.Combobox(lf2, textvariable=self._vl_time, values=quote_times(),
+                     width=8).grid(row=0, column=3, sticky="w", pady=3)
         self._vl_on = BooleanVar(value=bool(str(data.get("validity") or
                                                "").strip()))
         ttk.Checkbutton(lf2, text="إظهار الصلاحية",
-                        variable=self._vl_on).grid(row=0, column=2,
-                                                   columnspan=2, sticky="w")
-        self._field(lf2, "خاتمة العرض", "closing", data, 1, 0, width=60)
+                        variable=self._vl_on).grid(row=1, column=0, sticky="w",
+                                                   padx=(8, 0))
+        # ملاحظة على العرض
+        ttk.Label(lf2, text="ملاحظة").grid(row=2, column=0, sticky="ne",
+                                           padx=(8, 4), pady=3)
+        self._note = Text(lf2, height=2, wrap="word", font=(G._FUI, 10))
+        self._note.insert("1.0", str(data.get("note") or ""))
+        self._note.grid(row=2, column=1, columnspan=3, sticky="we", padx=(0, 8),
+                        pady=3)
+        self._field(lf2, "خاتمة العرض", "closing", data, 3, 0, width=60)
         lf2.columnconfigure(1, weight=1)
         lf2.columnconfigure(3, weight=1)
 
@@ -2162,6 +2232,9 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         data["period_from"] = self._pf.get()
         data["period_to"] = self._pt.get()
         data["validity"] = self._vl.get() if self._vl_on.get() else ""
+        data["validity_time"] = (self._vl_time.get().strip()
+                                 if self._vl_on.get() else "")
+        data["note"] = self._note.get("1.0", "end").strip()
         data["guests"] = [[c.get().strip(), t.get().strip()]
                           for _fr, c, t in self._guests
                           if c.get().strip() or t.get().strip()]

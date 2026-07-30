@@ -98,21 +98,29 @@ _AMADEUS_CONFIG = f"--psm 6 --oem 3 -c tessedit_char_whitelist={_AMADEUS_CHARS}"
 
 
 def read_amadeus_text(path: str | Path) -> str:
-    """يقرأ نصّ حجز أماديوس من صورة (لقطة شاشة) ويعيد النص الخام لتحليل الرحلات."""
+    """يقرأ نصّ حجز أماديوس من صورة (لقطة شاشة) ويعيد النص الخام لتحليل الرحلات.
+
+    لقطات الأماديوس غالباً بنصّ ملوّن على خلفية فاتحة، فنجرّب عدّة معالجات
+    (تدرّج رمادي، Otsu، معكوس، وعتبة تكيّفية) وعدّة أوضاع تقسيم (PSM)، ونعيد
+    اتّحاد النصوص كلّها ليختار المحلّل منها أكثر الرحلات وضوحاً."""
     ensure_tesseract()
     img = _load_image(path)
-    gray = _upscale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 2000)
+    gray = _upscale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 2400)
     _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    best = ""
-    for variant in (otsu, gray):
-        try:
-            txt = pytesseract.image_to_string(Image.fromarray(variant),
-                                              config=_AMADEUS_CONFIG)
-        except Exception:
-            continue
-        if len(txt) > len(best):
-            best = txt
-    return best
+    inv = cv2.bitwise_not(otsu)
+    adaptive = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15)
+    texts = []
+    for variant in (gray, otsu, inv, adaptive):
+        for psm in (6, 4, 11):
+            cfg = (f"--psm {psm} --oem 3 "
+                   f"-c tessedit_char_whitelist={_AMADEUS_CHARS}")
+            try:
+                texts.append(pytesseract.image_to_string(
+                    Image.fromarray(variant), config=cfg))
+            except Exception:
+                continue
+    return "\n".join(texts)
 
 
 def ensure_tesseract() -> None:
