@@ -26,8 +26,9 @@ from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
 from .pdf_io import (
-    export_airline_pdf, export_umrah_cards_pdf, export_umrah_finance_pdf,
-    export_umrah_pdf, export_umrah_rooming_pdf, export_umrah_transport_pdf,
+    export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
+    export_umrah_finance_pdf, export_umrah_invoice_pdf, export_umrah_pdf,
+    export_umrah_receipt_pdf, export_umrah_rooming_pdf, export_umrah_transport_pdf,
 )
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
@@ -772,6 +773,11 @@ class TripPilgrimsWindow(Toplevel):
                    command=self.do_finance).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("🪪  بطاقات العمرة"), style="Ghost.TButton",
                    command=self.do_cards).pack(side=LEFT, padx=3)
+        for text, cmd in (("🧾  سند قبض", self.do_receipt),
+                          ("🧾  فاتورة", self.do_invoice),
+                          ("📜  عقد", self.do_contract)):
+            ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",
+                       command=cmd).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("👁  معاينة PDF"), style="Ghost.TButton",
                    command=self.export_pdf).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("📊  تصدير إكسل"), style="Ghost.TButton",
@@ -1087,8 +1093,7 @@ class TripPilgrimsWindow(Toplevel):
             messagebox.showinfo("بطاقات العمرة", "لا معتمرين في هذا البرنامج.",
                                 parent=self)
             return
-        company = self.app._settings.get("company") if isinstance(
-            self.app._settings.get("company"), dict) else None
+        company = self._company()
         G.open_preview(
             self,
             lambda p: export_umrah_cards_pdf(
@@ -1097,6 +1102,34 @@ class TripPilgrimsWindow(Toplevel):
                 emergency_uae=str(getattr(self.trip, "emergency_uae", "") or ""),
                 emergency_ksa=str(getattr(self.trip, "emergency_ksa", "") or "")),
             f"بطاقات {self.trip.code}", "pdf")
+
+    def _company(self):
+        co = self.app._settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def _doc_for_selected(self, export_fn, base) -> None:
+        """يعاين مستند العمرة (سند/فاتورة/عقد) للمعتمر المحدّد."""
+        rec = self._selected()
+        if rec is None:
+            messagebox.showinfo("مستند", "اختر معتمراً أولاً.", parent=self)
+            return
+        company = self._company()
+        prog = self.trip.name or self.trip.code
+        G.open_preview(
+            self, lambda p: export_fn(rec, p, program_name=prog, company=company),
+            f"{base} {self.trip.code}", "pdf")
+
+    def do_receipt(self) -> None:
+        """معاينة سند قبض العمرة للمعتمر المحدّد."""
+        self._doc_for_selected(export_umrah_receipt_pdf, "سند")
+
+    def do_invoice(self) -> None:
+        """معاينة فاتورة العمرة للمعتمر المحدّد."""
+        self._doc_for_selected(export_umrah_invoice_pdf, "فاتورة")
+
+    def do_contract(self) -> None:
+        """معاينة عقد خدمات العمرة للمعتمر المحدّد."""
+        self._doc_for_selected(export_umrah_contract_pdf, "عقد")
 
 
 class RoomingWindow(Toplevel):

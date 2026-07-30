@@ -366,5 +366,34 @@ assert str(app8.tree.item("SE", "values")[-1]) == "3"      # 5 − 2 مقاعد 
 r8.destroy()
 print("  OK: رابط الدفع + الغرفة + المالية + البطاقات + تنبيه/انتهاء الجواز + المقاعد")
 
+print("\n=== مستندات العمرة: سند قبض، فاتورة، وعقد ===")
+app_mode.set_mode("umrah")
+from hajj_app.pdf_io import (export_umrah_receipt_pdf, export_umrah_invoice_pdf,
+                             export_umrah_contract_pdf)
+recd = PassportData(full_name_ar="عبدالرحمن", passport_number="A1", hotel="كونراد",
+                    room_type="مفرد", program_value="7400", paid_amount="5000",
+                    umrah_services=[{"name": "تأمين طبّي", "price": "200"}])
+for _fn, _nm in [(export_umrah_receipt_pdf, "r"), (export_umrah_invoice_pdf, "i"),
+                 (export_umrah_contract_pdf, "c")]:
+    _pp = WORK / f"doc_{_nm}.pdf"
+    _fn(recd, _pp, program_name="ديسمبر")
+    assert _pp.read_bytes()[:5] == b"%PDF-" and _pp.stat().st_size > 3000
+# أزرار المستندات للمعتمر المحدّد في نافذة المعتمرين
+import hajj_app.gui as _g3
+_g3.open_preview = lambda parent, fn, name, ext: (fn(str(WORK / "sel.pdf")), "x")[1]
+r9 = tk.Tk(); r9.withdraw()
+app9 = _ug.UmrahApp(r9, session=None)
+t9 = umrah.UmrahTrip(code="D1", name="ديسمبر")
+app9.trips.append(t9)
+app9.records.append(PassportData(full_name_ar="محمد", trip="D1",
+                                 program_value="5000", paid_amount="2000"))
+w9 = _ug.TripPilgrimsWindow(app9, t9)
+w9.tree.selection_set("0")
+for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract):
+    _do()
+    assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+r9.destroy()
+print("  OK: سند قبض وفاتورة وعقد عمرة لكل معتمر بمسمّيات العمرة")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

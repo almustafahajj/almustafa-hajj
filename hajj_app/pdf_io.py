@@ -2162,8 +2162,13 @@ def build_contract_body(rec, *, company=None, season: str = "",
 def export_contract_pdf(rec, path: str | Path, *, company=None,
                         number: str = "CON-0001", date_str: str = "",
                         season: str = "", body: str = "",
-                        vat_mode: str = "none") -> Path:
-    """يبني **عقد خدمات حج** بين الشركة (الطرف الأول) والحاج (الطرف الثاني)
+                        vat_mode: str = "none",
+                        title_ar: str = "عقد خدمات حج",
+                        title_en: str = "Hajj Services Agreement",
+                        preamble: str = ("تمهيد: رغبةً من الطرف الثاني في أداء "
+                                         "فريضة الحج، اتّفق الطرفان — وهما بكامل "
+                                         "الأهلية — على ما يلي:")) -> Path:
+    """يبني **عقد خدمات** بين الشركة (الطرف الأول) والمستفيد (الطرف الثاني)
     على صفحة A4 عمودية، مع بنود قابلة للتحرير وتوقيعَي الطرفين."""
     _register_fonts()
     path = Path(path)
@@ -2179,7 +2184,7 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
         str(path), pagesize=A4,
         rightMargin=17 * mm, leftMargin=17 * mm,
         topMargin=13 * mm, bottomMargin=18 * mm,
-        title="عقد خدمات حج", author="برنامج الحج",
+        title=title_ar, author="المصطفى للحج والعمرة",
     )
 
     comp = ParagraphStyle("ccomp", parent=st["subtitle"], fontSize=9,
@@ -2200,7 +2205,7 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
         story.append(Spacer(1, 3))
     story.append(Paragraph(ar(co["name_ar"]), ParagraphStyle(
         "ccn", parent=st["title"], fontSize=13, spaceAfter=1)))
-    story.append(Paragraph(ar("عقد خدمات حج") + "  /  Hajj Services Agreement",
+    story.append(Paragraph(ar(title_ar) + f"  /  {title_en}",
                            ParagraphStyle("ct", parent=st["title"], fontSize=15,
                                           spaceBefore=4, spaceAfter=6)))
     meta_cw = [doc.width * 0.25, doc.width * 0.15,
@@ -2229,9 +2234,7 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
           + (f" — هاتف {rec.phone}" if rec.phone else "") + ".")
     story.append(Paragraph(ar(p1), pbody))
     story.append(Paragraph(ar(p2), pbody))
-    story.append(Paragraph(ar("تمهيد: رغبةً من الطرف الثاني في أداء فريضة الحج، "
-                              "اتّفق الطرفان — وهما بكامل الأهلية — على ما يلي:"),
-                           pbody))
+    story.append(Paragraph(ar(preamble), pbody))
     story.append(Spacer(1, 4))
 
     for para in body.split("\n\n"):
@@ -2260,9 +2263,107 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
     story.append(srow)
 
     doc.build(story,
-              onFirstPage=lambda c, dd: _footer_portrait(c, dd, "عقد خدمات حج"),
-              onLaterPages=lambda c, dd: _footer_portrait(c, dd, "عقد خدمات حج"))
+              onFirstPage=lambda c, dd: _footer_portrait(c, dd, title_ar),
+              onLaterPages=lambda c, dd: _footer_portrait(c, dd, title_ar))
     return path
+
+
+# ======================================================================
+#  مستندات العمرة لكل معتمر: سند قبض، فاتورة، وعقد
+# ======================================================================
+
+def _umrah_services_text(rec) -> str:
+    names = [s.get("name", "") for s in (getattr(rec, "umrah_services", None) or [])
+             if s.get("name")]
+    return "، ".join(names)
+
+
+def export_umrah_receipt_pdf(rec, path: str | Path, *, program_name: str = "",
+                             company=None, number: str = "",
+                             date_str: str = "") -> Path:
+    """سند قبض عمرة لمعتمر واحد (بمسمّيات العمرة وبيانات البرنامج)."""
+    from .fields import format_amount, parse_amount
+
+    co = company_info(company)
+    amount = parse_amount(rec.paid_amount)
+    if amount is None:
+        amount = parse_amount(rec.program_value)
+    amount = float(amount or 0.0)
+    parts = [f"وذلك عن: برنامج {program_name}".strip()]
+    if rec.hotel:
+        hp = f"الإقامة في {rec.hotel}"
+        if rec.room_type:
+            hp += f" في غرفة {rec.room_type}"
+        parts.append(hp)
+    svc = _umrah_services_text(rec)
+    if svc:
+        parts.append(f"الخدمات: {svc}")
+    if amount:
+        parts.append(f"والبالغ قيمته: {format_amount(amount)}")
+    parts.append("والدفعات غير مستردّة لاستخدامها في تأكيد الحجوزات.")
+    return export_receipt_pdf(
+        rec, path, company=co["name_ar"], company_en=co["name_en"],
+        number=number or "0001", date_str=date_str, amount=amount,
+        description="، ".join(parts))
+
+
+def export_umrah_invoice_pdf(rec, path: str | Path, *, program_name: str = "",
+                             company=None, number: str = "INV-0001") -> Path:
+    """فاتورة عمرة لمعتمر واحد (بند البرنامج والخدمات والقيمة/المدفوع/المتبقّي)."""
+    desc = f"برنامج {program_name}".strip()
+    extra = []
+    if rec.hotel:
+        h = f"الإقامة في {rec.hotel}"
+        if rec.room_type:
+            h += f" - غرفة {rec.room_type}"
+        extra.append(h)
+    svc = _umrah_services_text(rec)
+    if svc:
+        extra.append(f"خدمات: {svc}")
+    if extra:
+        desc += " (" + "، ".join(extra) + ")"
+    return export_invoice_pdf(rec, path, company=company, number=number,
+                              item_desc=desc, vat_mode="none")
+
+
+def export_umrah_contract_pdf(rec, path: str | Path, *, program_name: str = "",
+                              company=None, number: str = "CON-0001") -> Path:
+    """عقد خدمات عمرة بين الشركة والمعتمر (بنود العمرة والقيمة والدفعات)."""
+    from .fields import format_amount, parse_amount
+
+    total = parse_amount(rec.program_value) or parse_amount(rec.paid_amount) or 0.0
+    paid = parse_amount(rec.paid_amount) or 0.0
+    remaining = max(0.0, total - paid)
+    hotel = rec.hotel or "—"
+    room = f" في غرفة {rec.room_type}" if rec.room_type else ""
+    svc = _umrah_services_text(rec)
+    svc_part = f" والخدمات ({svc})" if svc else ""
+    clauses = [
+        ("البند الأول: موضوع العقد",
+         f"يقدّم الطرف الأول للطرف الثاني برنامج {program_name}، ويشمل "
+         f"الإقامة في {hotel}{room} والتنقّلات الداخلية وتذاكر الطيران{svc_part} "
+         "وفق البرنامج المعتمد."),
+        ("البند الثاني: قيمة العقد",
+         f"القيمة الإجمالية {format_amount(total)} درهماً. المدفوع "
+         f"{format_amount(paid)} درهماً، والمتبقّي {format_amount(remaining)} درهماً."),
+        ("البند الثالث: الدفعات",
+         "جميع الدفعات المسدّدة غير مستردّة وتُستخدَم في تأكيد الحجوزات والخدمات."),
+        ("البند الرابع: التزامات الطرف الثاني",
+         "يلتزم الطرف الثاني بصحّة بياناته وصلاحية جوازه (٦ أشهر فأكثر من تاريخ "
+         "السفر)، وبالمواعيد والتعليمات المنظّمة للرحلة، وبالأنظمة المعمول بها في "
+         "المملكة العربية السعودية."),
+        ("البند الخامس: القوة القاهرة",
+         "لا يُسأل أيّ طرف عن الإخلال الناتج عن ظروف قاهرة خارجة عن الإرادة."),
+        ("البند السادس: القانون والاختصاص",
+         "يخضع هذا العقد لأنظمة دولة الإمارات العربية المتحدة، وتختصّ محاكمها "
+         "المختصّة بالفصل في أيّ نزاع ينشأ عنه."),
+    ]
+    body = "\n\n".join(f"{t}\n{b}" for t, b in clauses)
+    return export_contract_pdf(
+        rec, path, company=company, number=number, body=body, vat_mode="none",
+        title_ar="عقد خدمات عمرة", title_en="Umrah Services Agreement",
+        preamble=("تمهيد: رغبةً من الطرف الثاني في أداء العمرة، اتّفق الطرفان "
+                  "— وهما بكامل الأهلية — على ما يلي:"))
 
 
 # ======================================================================
