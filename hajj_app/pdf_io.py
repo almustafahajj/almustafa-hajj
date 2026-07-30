@@ -2873,8 +2873,9 @@ QUOTE_CLOSING = ("آملين أن تنال برامجنا رضاكم وكريم 
 
 
 def quote_times() -> list:
-    """أوقات بفواصل نصف ساعة (00:00 … 23:30) للقوائم المنسدلة."""
-    return [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
+    """أوقات بفواصل خمس دقائق (00:00 … 23:55) لقوائم الطيران — والحقل قابل
+    للكتابة اليدوية لأي دقيقة."""
+    return [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
 
 
 def build_quotation_data(rec, *, trip=None, company=None, number: str = "",

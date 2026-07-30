@@ -1873,9 +1873,9 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         dp = DatePicker(wrap, iso=values[0], width=9)
         dp.pack()
         specs = [("الناقل", QUOTE_CARRIERS, 10, True),
-                 ("الإقلاع", quote_times(), 6, True),
+                 ("الإقلاع", quote_times(), 7, False),
                  ("من", QUOTE_AIRPORT_CITIES, 8, True),
-                 ("الوصول", quote_times(), 6, True),
+                 ("الوصول", quote_times(), 7, False),
                  ("إلى", QUOTE_AIRPORT_CITIES, 8, True)]
         cells = []
         for i, (label, opts, w, ro) in enumerate(specs, start=1):
