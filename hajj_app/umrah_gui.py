@@ -14,8 +14,8 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 from tkinter import (
-    BOTH, BooleanVar, Canvas, END, LEFT, RIGHT, StringVar, Text, Toplevel, X, Y,
-    filedialog, messagebox, ttk,
+    BOTH, BooleanVar, Canvas, END, LEFT, Menu, RIGHT, StringVar, Text, Toplevel,
+    X, Y, filedialog, messagebox, ttk,
 )
 
 from . import app_mode, images as imgmod, umrah
@@ -1190,6 +1190,7 @@ class VoucherEditorDialog(Toplevel):
         self._build_transport(data)
         self._build_contacts(data)
         self._build_terms(data)
+        self._attach_clipboard(self.body)
 
         bar = ttk.Frame(self, padding=(10, 6))
         bar.pack(fill=X)
@@ -1212,7 +1213,9 @@ class VoucherEditorDialog(Toplevel):
 
     def _build_meta(self, data: dict) -> None:
         lf = self._section("البيانات الأساسية")
-        fields = [("رقم الفاوتشر", "number"), ("التاريخ", "date"),
+        fields = [("عنوان الفاوتشر (عربي)", "title_ar"),
+                  ("العنوان (إنجليزي)", "title_en"),
+                  ("رقم الفاوتشر", "number"), ("التاريخ", "date"),
                   ("اسم الضيف (عربي)", "guest_ar"),
                   ("اسم الضيف (إنجليزي)", "guest_en"),
                   ("رقم الحجز", "booking_no"), ("البرنامج", "program")]
@@ -1261,6 +1264,7 @@ class VoucherEditorDialog(Toplevel):
                    command=lambda: self._del_row(self._stay_rows, entry)).pack(
             side=RIGHT, padx=(4, 1))
         self._stay_rows.append(entry)
+        self._attach_clipboard(fr)
 
     def _build_transport(self, data: dict) -> None:
         lf = self._section("النقل والحالة")
@@ -1302,6 +1306,7 @@ class VoucherEditorDialog(Toplevel):
                                                  entry)).pack(side=RIGHT,
                                                               padx=(4, 1))
         self._contact_rows.append(entry)
+        self._attach_clipboard(fr)
 
     def _build_terms(self, data: dict) -> None:
         lf = self._section("الشروط والأحكام")
@@ -1323,6 +1328,61 @@ class VoucherEditorDialog(Toplevel):
         box.insert("1.0", text)
         box.pack(side=RIGHT, fill=X, expand=True)
         self._term_rows.append(box)
+        self._attach_clipboard(fr)
+
+    # ---- النسخ واللصق -------------------------------------------------
+    def _attach_clipboard(self, widget) -> None:
+        """يفعّل النسخ/اللصق/القص/تحديد الكل (قائمة يمين + اختصارات تعمل حتى
+        مع لوحة مفاتيح عربية) على كل حقول الإدخال داخل ``widget``."""
+        cls = widget.winfo_class()
+        if cls in ("TEntry", "Entry", "Text"):
+            widget.bind("<Button-3>", self._clip_menu)
+            widget.bind("<Control-KeyPress>", self._clip_key)
+        for child in widget.winfo_children():
+            self._attach_clipboard(child)
+
+    @staticmethod
+    def _select_all(w) -> None:
+        try:
+            if w.winfo_class() == "Text":
+                w.tag_add("sel", "1.0", "end-1c")
+            else:
+                w.select_range(0, "end")
+                w.icursor("end")
+        except Exception:
+            pass
+
+    def _clip_key(self, event):
+        """يترجم Ctrl+C/V/X/A حسب رمز المفتاح الفعلي (مستقل عن لغة اللوحة)."""
+        w = event.widget
+        actions = {67: "<<Copy>>", 86: "<<Paste>>", 88: "<<Cut>>"}
+        if event.keycode in actions:
+            w.event_generate(actions[event.keycode])
+            return "break"
+        if event.keycode == 65:            # A → تحديد الكل
+            self._select_all(w)
+            return "break"
+        return None
+
+    def _clip_menu(self, event) -> None:
+        w = event.widget
+        try:
+            w.focus_set()
+        except Exception:
+            pass
+        m = Menu(self, tearoff=0)
+        m.add_command(label="قص",
+                      command=lambda: w.event_generate("<<Cut>>"))
+        m.add_command(label="نسخ",
+                      command=lambda: w.event_generate("<<Copy>>"))
+        m.add_command(label="لصق",
+                      command=lambda: w.event_generate("<<Paste>>"))
+        m.add_separator()
+        m.add_command(label="تحديد الكل", command=lambda: self._select_all(w))
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
 
     def _del_row(self, store: list, entry) -> None:
         entry[0].destroy()

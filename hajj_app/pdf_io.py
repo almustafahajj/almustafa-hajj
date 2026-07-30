@@ -2449,6 +2449,8 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
     terms = [t.format(company=co["name_ar"]) for t in _VOUCHER_TERMS]
 
     return {
+        "title_ar": "فاوتشر الفندق",
+        "title_en": "Hotel Voucher",
         "number": number,
         "date": date_str,
         "guest_ar": rec.full_name_ar or "",
@@ -2527,7 +2529,10 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     ]))
     story.append(header)
     story.append(Spacer(1, 4))
-    story.append(Paragraph(ar("فاوتشر الفندق") + "  /  Hotel Voucher",
+    title_ar = str(data.get("title_ar") or "فاوتشر الفندق")
+    title_en = str(data.get("title_en") or "")
+    title_txt = ar(title_ar) + (("  /  " + title_en) if title_en else "")
+    story.append(Paragraph(title_txt,
                            ParagraphStyle("vt", parent=st["title"], fontSize=16,
                                           spaceAfter=4)))
     lbl = ParagraphStyle("vlbl", parent=st["cell"], fontName=_FONT_BOLD,
