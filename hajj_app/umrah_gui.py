@@ -338,7 +338,7 @@ class UmrahApp:
             pass
         rec = PassportData()
         data = build_quotation_data(rec, trip=None, company=co, number=number)
-        QuotationEditorDialog(self.root, rec, None, data)
+        QuotationEditorDialog(self.root, rec, None, data, app=self)
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:
@@ -817,6 +817,7 @@ class TripPilgrimsWindow(Toplevel):
                           ("🧾  فاتورة", self.do_invoice),
                           ("📜  عقد", self.do_contract),
                           ("💲  عرض سعر", self.do_quotation),
+                          ("📋  عروض الأسعار", self.do_quotes_list),
                           ("🏨  فاوتشر الفندق", self.do_voucher)):
             ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",
                        command=cmd).pack(side=LEFT, padx=3)
@@ -1202,7 +1203,11 @@ class TripPilgrimsWindow(Toplevel):
             pass
         data = build_quotation_data(rec, trip=self.trip, company=self._company(),
                                     number=number)
-        QuotationEditorDialog(self, rec, self.trip, data)
+        QuotationEditorDialog(self, rec, self.trip, data, app=self.app)
+
+    def do_quotes_list(self) -> None:
+        """فتح قائمة «عروض الأسعار» المحفوظة لهذا البرنامج."""
+        QuotesListWindow(self, self.app, self.trip)
 
 
 _MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
@@ -1680,11 +1685,14 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
     """محرّر عرض السعر: قوائم منسدلة للضيوف والإقامة والطيران والمواصلات،
     تقويم منبثق للتواريخ، وبنود قطار الحرمين والتأشيرات — قبل المعاينة."""
 
-    def __init__(self, parent, rec, trip, data: dict) -> None:
+    def __init__(self, parent, rec, trip, data: dict, *, app=None,
+                 on_saved=None) -> None:
         super().__init__(parent)
         self.parent = parent
         self.rec = rec
         self.trip = trip
+        self._app = app
+        self._on_saved = on_saved
         self.title("محرّر عرض السعر")
         self.configure(bg=G.BG)
         self.geometry("1000x720")
@@ -1714,6 +1722,9 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         bar.pack(fill=X)
         ttk.Button(bar, text="🖨  معاينة PDF",
                    command=self._preview).pack(side=RIGHT)
+        if self._app is not None:
+            ttk.Button(bar, text="💾  حفظ في عروض الأسعار",
+                       command=self._save).pack(side=RIGHT, padx=6)
         ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
                                                                  padx=6)
         try:
@@ -1721,6 +1732,22 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         except Exception:
             pass
         self.grab_set()
+
+    def _save(self):
+        """يحفظ العرض في قائمة «عروض الأسعار» للبرنامج (أو اليدوية)."""
+        if self._app is None:
+            return
+        data = self._collect()
+        code = getattr(self.trip, "code", "") or ""
+        umrah.save_quote(self._app._settings, code, data)
+        try:
+            save_settings(self._app._settings)
+        except OSError:
+            pass
+        messagebox.showinfo("عروض الأسعار",
+                            f"تم حفظ العرض {self._number}.", parent=self)
+        if callable(self._on_saved):
+            self._on_saved()
 
     # ---- عناصر مساعدة ----
     def _field(self, parent, label, key, data, r, c, width=26):
@@ -1771,6 +1798,14 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                                        padx=(8, 4), pady=3)
         self._build_date_picker(lf, data.get("period_to"), row=2, col=3,
                                 prefix="_pt")
+        # توجيه العرض باسم الضيف (اختياري)
+        self._addr_on = BooleanVar(
+            value=bool(str(data.get("addressed_to") or "").strip()))
+        ttk.Checkbutton(lf, text="توجيه باسم الضيف", variable=self._addr_on).grid(
+            row=3, column=0, sticky="e", padx=(8, 4), pady=3)
+        self._addr = StringVar(value=str(data.get("addressed_to") or ""))
+        ttk.Entry(lf, textvariable=self._addr, width=28, justify="right").grid(
+            row=3, column=1, columnspan=3, sticky="we", padx=(0, 8), pady=3)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
@@ -1987,7 +2022,26 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                     width=10, readonly=False)
         self._combo(lf, "إلى", "train_to", data, ("المدينة", "مكة"), 1, 1,
                     width=10, readonly=False)
-        self._field(lf, "التأشيرات", "visas", data, 2, 0, width=44)
+        # تاريخ وتوقيتات القطار
+        ttk.Label(lf, text="تاريخ القطار").grid(row=2, column=0, sticky="e",
+                                                padx=(8, 4), pady=3)
+        self._build_date_picker(lf, data.get("train_date"), row=2, col=1,
+                                prefix="_trd")
+        self._combo(lf, "الإقلاع", "train_dep", data, quote_times(), 3, 0,
+                    width=8, readonly=False)
+        self._combo(lf, "الوصول", "train_arr", data, quote_times(), 3, 1,
+                    width=8, readonly=False)
+        # التأشيرات مع إمكانية الإضافة/الإلغاء
+        self._visas_on = BooleanVar(
+            value=bool(str(data.get("visas") or "").strip()))
+        ttk.Checkbutton(lf, text="إضافة بند التأشيرات",
+                        variable=self._visas_on).grid(row=4, column=0,
+                                                      sticky="e", padx=(8, 4),
+                                                      pady=3)
+        self._visas = StringVar(value=str(data.get("visas") or ""))
+        ttk.Entry(lf, textvariable=self._visas, width=44,
+                  justify="right").grid(row=4, column=1, columnspan=3,
+                                        sticky="we", padx=(0, 8), pady=3)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
@@ -2119,6 +2173,10 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                            for _fr, dp, cells in self._flight_rows
                            if dp.get().strip() or
                            any(c.get().strip() for c in cells)]
+        data["addressed_to"] = (self._addr.get().strip()
+                                if self._addr_on.get() else "")
+        data["train_date"] = self._trd.get()
+        data["visas"] = self._visas.get().strip() if self._visas_on.get() else ""
         data["car_type"] = self._car_type.get().strip()
         data["car_model"] = self._car_model.get().strip()
         data["car_count"] = self._car_count.get().strip()
@@ -2140,6 +2198,102 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
             self,
             lambda p: export_umrah_quotation_pdf(self.rec, p, data=data),
             f"عرض سعر {code}", "pdf")
+
+
+class QuotesListWindow(Toplevel):
+    """قائمة «عروض الأسعار» المحفوظة لبرنامج: فتح/تعديل، معاينة، حذف."""
+
+    def __init__(self, parent, app, trip) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.trip = trip
+        name = getattr(trip, "name", "") or getattr(trip, "code", "")
+        self.title(f"عروض الأسعار — {name}")
+        self.configure(bg=G.BG)
+        self.geometry("760x430")
+        self.transient(parent)
+        outer = ttk.Frame(self, padding=8)
+        outer.pack(fill=BOTH, expand=True)
+        cols = ("number", "date", "to", "total")
+        heads = {"number": "رقم العرض", "date": "التاريخ",
+                 "to": "موجّه إلى", "total": "الإجمالي"}
+        widths = {"number": 120, "date": 100, "to": 280, "total": 130}
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings",
+                                 selectmode="browse")
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c],
+                             anchor="e" if c == "to" else "center")
+        vs = ttk.Scrollbar(outer, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vs.set)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        vs.pack(side=RIGHT, fill="y")
+        bar = ttk.Frame(self, padding=(8, 6))
+        bar.pack(fill=X)
+        for text, cmd in (("✏ فتح/تعديل", self.open_sel),
+                          ("👁 معاينة", self.preview_sel),
+                          ("🗑 حذف", self.delete_sel),
+                          ("↻ تحديث", self.refresh)):
+            ttk.Button(bar, text=G.rtl(text), command=cmd).pack(side=RIGHT,
+                                                                padx=3)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=LEFT,
+                                                                 padx=3)
+        self.tree.bind("<Double-1>", lambda e: self.open_sel())
+        self._quotes: list = []
+        self.refresh()
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    def refresh(self) -> None:
+        code = getattr(self.trip, "code", "") or ""
+        self._quotes = umrah.load_quotes(self.app._settings, code)
+        self.tree.delete(*self.tree.get_children())
+        for i, q in enumerate(self._quotes):
+            _rows, total = quotation_pricing(q.get("pricing", []))
+            cur = q.get("currency", "درهم")
+            self.tree.insert("", "end", iid=str(i), values=(
+                q.get("number", ""), q.get("date", ""),
+                q.get("addressed_to", "") or "—", f"{fmt_money(total)} {cur}"))
+
+    def _sel(self):
+        s = self.tree.selection()
+        return self._quotes[int(s[0])] if s else None
+
+    def open_sel(self) -> None:
+        q = self._sel()
+        if q is None:
+            messagebox.showinfo("عروض الأسعار", "اختر عرضاً أولاً.", parent=self)
+            return
+        QuotationEditorDialog(self, PassportData(), self.trip, dict(q),
+                              app=self.app, on_saved=self.refresh)
+
+    def preview_sel(self) -> None:
+        q = self._sel()
+        if q is None:
+            return
+        G.open_preview(
+            self,
+            lambda p: export_umrah_quotation_pdf(PassportData(), p, data=q),
+            f"عرض {q.get('number', '')}", "pdf")
+
+    def delete_sel(self) -> None:
+        q = self._sel()
+        if q is None:
+            return
+        if not messagebox.askyesno("حذف",
+                                   f"حذف العرض {q.get('number', '')}؟",
+                                   parent=self):
+            return
+        umrah.delete_quote(self.app._settings, getattr(self.trip, "code", "")
+                           or "", q.get("number", ""))
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.refresh()
 
 
 class RoomingWindow(Toplevel):

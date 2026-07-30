@@ -234,6 +234,46 @@ def parse_amadeus_flights(text: str, year: int | None = None) -> list:
     return rows
 
 
+def load_quotes(settings: dict, code: str) -> list:
+    """يعيد عروض الأسعار المحفوظة لبرنامجٍ معيّن (بحسب رمزه)."""
+    store = settings.get("umrah_quotes")
+    if not isinstance(store, dict):
+        return []
+    lst = store.get(str(code or "_manual"))
+    return list(lst) if isinstance(lst, list) else []
+
+
+def save_quote(settings: dict, code: str, quote: dict) -> None:
+    """يحفظ عرض سعر ضمن قائمة «عروض الأسعار» للبرنامج؛ يحدّث الموجود بنفس الرقم."""
+    store = settings.get("umrah_quotes")
+    if not isinstance(store, dict):
+        store = {}
+        settings["umrah_quotes"] = store
+    key = str(code or "_manual")
+    lst = store.get(key)
+    if not isinstance(lst, list):
+        lst = []
+        store[key] = lst
+    num = str(quote.get("number") or "")
+    for i, q in enumerate(lst):
+        if str(q.get("number") or "") == num and num:
+            lst[i] = dict(quote)
+            return
+    lst.append(dict(quote))
+
+
+def delete_quote(settings: dict, code: str, number: str) -> None:
+    """يحذف عرض سعر من قائمة البرنامج بحسب رقمه."""
+    store = settings.get("umrah_quotes")
+    if not isinstance(store, dict):
+        return
+    key = str(code or "_manual")
+    lst = store.get(key)
+    if isinstance(lst, list):
+        store[key] = [q for q in lst
+                      if str(q.get("number") or "") != str(number)]
+
+
 def next_quote_number(settings: dict) -> str:
     """يخصّص رقم عرض سعر تسلسلياً (MA-Q0001…) ويحدّث العدّاد في الإعدادات."""
     try:

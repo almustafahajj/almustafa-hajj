@@ -2985,6 +2985,8 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "date": date_str,
         "title": "عرض سعر رحلة عمرة",
         "greeting": QUOTE_GREETING,
+        # توجيه العرض باسم الضيف (فارغ = بدون توجيه)
+        "addressed_to": str(getattr(rec, "full_name_ar", "") or ""),
         # الضيوف: كل عنصر [العدد، النوع]
         "guests": guests_default,
         "period_from": dep,
@@ -2999,11 +3001,14 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "car_count": "1",
         # كل بند تنقّل: [التاريخ، من، إلى]
         "transport_lines": transport_lines,
-        # قطار الحرمين
+        # قطار الحرمين (مع تاريخ وتوقيتات اختيارية)
         "train_tickets": "",
         "train_class": "سياحية",
         "train_from": "المدينة",
         "train_to": "مكة",
+        "train_date": "",
+        "train_dep": "",
+        "train_arr": "",
         # التأشيرات
         "visas": "",
         # التسعير: [[نوع الشخص، نوع الغرفة، العدد، سعر الفرد], …] والإجمالي تلقائي
@@ -3085,6 +3090,13 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     ]))
     story.append(meta)
     story.append(_ar_para(str(data.get("greeting") or ""), val, W - 8))
+    # توجيه العرض باسم الضيف (اختياري)
+    addressed = str(data.get("addressed_to") or "").strip()
+    if addressed:
+        story.append(_ar_para(
+            f"عناية السيّد/ {addressed} المحترم،",
+            ParagraphStyle("qaddr", parent=val, fontName=_FONT_BOLD,
+                           textColor=_DEEP), W - 8))
     story.append(Spacer(1, 6))
 
     # شريط العنوان بلون الهوية
@@ -3156,14 +3168,34 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(bullet(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
     story.append(Spacer(1, 6))
 
-    # الإقامة
-    stays = [list(r)[:7] + [""] * (7 - len(r)) for r in data.get("stays", [])
-             if any(str(x or "").strip() for x in r)]
-    if stays:
+    # الإقامة — مع تاريخ الإقامة (من – إلى) لكل مدينة، محسوباً من الفترة والليالي
+    from datetime import timedelta as _td
+
+    from .umrah import _parse_date as _pd
+    stays_raw = [list(r)[:7] + [""] * (7 - len(r)) for r in data.get("stays", [])
+                 if any(str(x or "").strip() for x in r)]
+    if stays_raw:
+        cur = _pd(pf)
+
+        def _sh(d):
+            return f"{d.month:02d}/{d.day:02d}" if d else ""
+
+        disp = []
+        for city, nights, hotel, room, rooms, view, meals in stays_raw:
+            try:
+                n = int(float(str(nights).strip() or 0))
+            except ValueError:
+                n = 0
+            cin = cur
+            cout = (cur + _td(days=n)) if (cur and n) else None
+            rng = f"{_sh(cin)} – {_sh(cout)}" if cin else ""
+            cur = cout or cur
+            disp.append([city, rng, nights, hotel, room, rooms, view, meals])
+        heads = ["المدينة", "من – إلى", "الليالي", "الفندق", "نوع الغرفة",
+                 "عدد الغرف", "الإطلالة", "الوجبات"]
         story.append(section("تفاصيل الإقامة"))
         story.append(Spacer(1, 4))
-        story.append(data_table(list(QUOTE_STAY_HEADS),
-                                [70, 34, 130, 84, 44, 66, 56], stays))
+        story.append(data_table(heads, [58, 72, 28, 112, 78, 40, 60, 48], disp))
         story.append(Spacer(1, 8))
 
     # الطيران
@@ -3205,7 +3237,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             parts.append(f"إلى {to}")
         story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
             "qsub", parent=val, fontSize=9, leading=13), W - 24))
-    # قطار الحرمين
+    # قطار الحرمين (مع تاريخ وتوقيتات اختيارية)
     tk_n = str(data.get("train_tickets") or "").strip()
     if tk_n:
         tc = str(data.get("train_class") or "")
@@ -3214,6 +3246,18 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         line = f"عدد ({ltr(tk_n)}) تذاكر قطار الحرمين على الدرجة {tc}"
         if tf or tt:
             line += f" ({tf} – {tt})"
+        tdate = str(data.get("train_date") or "").strip()
+        tdep = str(data.get("train_dep") or "").strip()
+        tarr = str(data.get("train_arr") or "").strip()
+        if tdate:
+            line += f"، يوم {ltr(tdate)}"
+        if tdep or tarr:
+            times = []
+            if tdep:
+                times.append(f"الإقلاع {ltr(tdep)}")
+            if tarr:
+                times.append(f"الوصول {ltr(tarr)}")
+            line += " (" + " - ".join(times) + ")"
         story.append(bullet(line))
     # التأشيرات
     visas = str(data.get("visas") or "").strip()

@@ -508,7 +508,12 @@ assert "office_name" not in _qe._fields and "gm_phone" in _qe._fields
 _qe._fields["gm_phone"].set("0501234567")
 _qe._add_line_row(["2026-09-07", "محطة قطار مكة", "فندق مكة"])
 _qe._fields["train_tickets"].set("2")
-_qe._fields["visas"].set("عدد (2) تأشيرة عمرة")
+_qe._trd.set("2026-09-07")                     # تاريخ القطار
+_qe._fields["train_dep"].set("14:30")
+_qe._visas_on.set(True)                        # إضافة بند التأشيرات
+_qe._visas.set("عدد (2) تأشيرة عمرة")
+_qe._addr_on.set(True)
+_qe._addr.set("خالد الشامسي")                  # توجيه باسم الضيف
 _qe._stay_rows[0][1][5].set("مطلّة كعبة")
 # التكلفة تُحسب تلقائياً: 2×5700 = 11,400
 assert _qe._total_var.get().replace(",", "") == "11400", _qe._total_var.get()
@@ -520,12 +525,27 @@ _qdc = _qe._collect()
 assert _qdc["number"] == _qe._number and _qdc["flights"] and _qdc["stays"]
 assert _qdc["guests"] == [["2", "كبار"], ["1", "أطفال"]]
 assert _qdc["train_tickets"] == "2" and _qdc["visas"]
+assert _qdc["train_date"] == "2026-09-07" and _qdc["train_dep"] == "14:30"
+assert _qdc["addressed_to"] == "خالد الشامسي"     # توجيه باسم الضيف
 assert _qdc["car_type"] and _qdc["car_model"] and _qdc["car_count"]
 assert _qdc["stays"][0][5] == "مطلّة كعبة"
 assert len(_qdc["pricing"]) == 2 and _qdc["currency"]
 # التحقّق من الحساب عبر الدالّة المشتركة
 from hajj_app.pdf_io import quotation_pricing as _qpr
 assert _qpr(_qdc["pricing"])[1] == 19100.0
+# حفظ العرض في «عروض الأسعار» ثم قراءته
+_ug.messagebox.showinfo = lambda *a, **k: None
+_qe._save()
+_saved = umrah.load_quotes(appq._settings, "Q1")
+assert len(_saved) == 1 and _saved[0]["number"] == _qe._number
+# نافذة عروض الأسعار تعرض العرض المحفوظ
+wq.do_quotes_list()
+_qlw = [w for w in wq.winfo_children()
+        if isinstance(w, _ug.QuotesListWindow)][-1]
+assert len(_qlw.tree.get_children()) == 1
+umrah.delete_quote(appq._settings, "Q1", _qe._number)
+assert umrah.load_quotes(appq._settings, "Q1") == []
+_qlw.destroy()
 _qe._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _qe.destroy()
