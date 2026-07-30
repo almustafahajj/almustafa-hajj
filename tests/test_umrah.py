@@ -394,10 +394,20 @@ tripv = umrah.UmrahTrip(code="U1", name="ديسمبر", makkah_hotel="جميرا
                         madinah_nights="3", depart_date="2026-08-07",
                         transport="جيمس")
 pv = WORK / "voucher.pdf"
-export_umrah_voucher_pdf(PassportData(full_name_ar="خالد", passport_number="A1",
-                                      room_type="ثنائي"), pv, trip=tripv,
-                         program_name="ديسمبر")
+_recv = PassportData(full_name_ar="خالد", full_name_en="Khalid",
+                     passport_number="A1", room_type="ثنائي")
+export_umrah_voucher_pdf(_recv, pv, trip=tripv, program_name="ديسمبر")
 assert pv.read_bytes()[:5] == b"%PDF-" and pv.stat().st_size > 3000
+# صفحة عرضية (Landscape) تتّسع في صفحة واحدة، بالعربية والإنجليزية
+import fitz as _fitz
+for _lg in ("ar", "en"):
+    _pl = WORK / f"voucher_{_lg}.pdf"
+    export_umrah_voucher_pdf(_recv, _pl, trip=tripv, program_name="ديسمبر",
+                             lang=_lg)
+    _pd = _fitz.open(str(_pl))
+    assert _pd.page_count == 1, f"الفاوتشر ({_lg}) تجاوز صفحة واحدة"
+    assert _pd[0].rect.width > _pd[0].rect.height, "الصفحة ليست عرضية"
+    _pd.close()
 w9 = _ug.TripPilgrimsWindow(app9, t9)
 w9.tree.selection_set("0")
 for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract):

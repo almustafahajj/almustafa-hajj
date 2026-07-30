@@ -894,7 +894,7 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     avail = [w - 2 * PAD - 1 for w in colw]
 
     def room_block(label, occ):
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         story.append(Paragraph(ar(label), st["subtitle"]))
         data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for i, r in enumerate(occ, 1):
@@ -964,7 +964,7 @@ def export_umrah_transport_pdf(records: list, path: str | Path, *,
     avail = [w - 2 * PAD - 1 for w in colw]
 
     def block(label, occ):
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         story.append(Paragraph(ar(label), st["subtitle"]))
         data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for i, r in enumerate(occ, 1):
@@ -2397,17 +2397,51 @@ _VOUCHER_TERMS = (
     "الإمكانية المتاحة في الفندق.",
 )
 
+# النسخة الإنجليزية من الشروط والأحكام (للفاوتشر باللغة الإنجليزية)
+_VOUCHER_TERMS_EN = (
+    "By receiving the trip itinerary, the guest acknowledges and agrees to all "
+    "the terms and conditions stated herein.",
+    "The guest must arrive at the airport at least two and a half hours before "
+    "the flight and comply with the baggage rules set by the airline. Any delay "
+    "or cancellation of flights is the responsibility of the airline and its "
+    "management; {company} bears no responsibility in this regard.",
+    "In case of ticket modification or cancellation, modification/cancellation "
+    "fees apply according to the airlines' rules and any resulting change in the "
+    "flight class. For group flights (Groups), the ticket is non-refundable and "
+    "non-changeable, and its full value is charged.",
+    "Some airlines (such as Air Arabia and flydubai) do not cancel the ticket "
+    "or refund its value in cash. In some cases the booking may be modified no "
+    "later than 24 hours before departure, provided the ticket value remains in "
+    "the guest's account for use within one year from the issue date, with "
+    "modification fees applied; this does not apply to group flights.",
+    "Hotel check-in time is 5:00 PM and check-out time is 12:00 noon.",
+    "In case of cancellation during high seasons (weekends, Ramadan, holidays) "
+    "the full hotel booking value is charged; during the rest of the year one "
+    "night is charged, provided cancellation is made at least 72 hours before "
+    "the travel date.",
+    "Any change in room types is subject to availability at the hotel and to a "
+    "new price.",
+    "Double rooms consist of one large bed or two separate beds; triple rooms "
+    "consist of two separate beds and an extra small (rollaway) bed or a sofa "
+    "bed, according to the hotel's system.",
+    "Adjacent and connecting rooms are requested from the hotel reception upon "
+    "check-in, subject to availability at the hotel.",
+)
+
 
 def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
                        number: str = "", date_str: str = "",
-                       booking_no: str = "",
+                       booking_no: str = "", lang: str = "ar",
                        office_manager: str = "أيمن الشهابي",
                        office_phone: str = "+971 54 996 4801",
                        makkah_ops: str = "خالد",
                        makkah_phone: str = "+966 54 300 3388") -> dict:
     """يبني بيانات فاوتشر الفندق (قاموس قابل للتعديل) من بيانات المعتمر والبرنامج.
     يُستخدم كقيَم افتراضية في محرّر الفاوتشر، ثم يُمرَّر إلى
-    :func:`export_umrah_voucher_pdf` عبر الوسيط ``data``."""
+    :func:`export_umrah_voucher_pdf` عبر الوسيط ``data``.
+
+    ``lang`` يحدّد لغة القيَم الافتراضية (المدن، الوجبات، الحالة، صفات جهات
+    التواصل، والشروط): ``"ar"`` عربي أو ``"en"`` إنجليزي."""
     from datetime import timedelta
 
     from .umrah import _parse_date
@@ -2416,16 +2450,21 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
     number = str(number or "MA0001")
     if not date_str:
         date_str = date.today().isoformat()
+    en = lang == "en"
 
     def fmt(d):
         return d.isoformat() if d else ""
 
+    cities = (("Makkah", "makkah_hotel", "makkah_nights"),
+              ("Madinah", "madinah_hotel", "madinah_nights")) if en else \
+             (("مكة المكرّمة", "makkah_hotel", "makkah_nights"),
+              ("المدينة المنوّرة", "madinah_hotel", "madinah_nights"))
+    meals = "Breakfast (B.B.)" if en else "إفطار (B.B.)"
+
     # الإقامات: الدخول/المغادرة محسوبة تسلسلياً من تاريخ مغادرة البرنامج
     stays: list[list[str]] = []
     cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
-    for label, hotel_f, nights_f in (
-            ("مكة المكرّمة", "makkah_hotel", "makkah_nights"),
-            ("المدينة المنوّرة", "madinah_hotel", "madinah_nights")):
+    for label, hotel_f, nights_f in cities:
         hotel = str(getattr(trip, hotel_f, "") or "") if trip else ""
         if not hotel:            # لا تسكين في هذه المدينة → تُلغى تلقائياً
             continue
@@ -2436,20 +2475,31 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
         ci = cur
         cout = (cur + timedelta(days=n)) if (cur and n) else None
         stays.append([label, hotel, rec.room_type or "", "",
-                      fmt(ci), fmt(cout), str(n or ""), "إفطار (B.B.)"])
+                      fmt(ci), fmt(cout), str(n or ""), meals])
         cur = cout or cur
 
     # خطة النقل المفصّلة: كل صف [نوع السيارة، الموديل، الوجهة]
     car = str(getattr(rec, "vehicle", "") or "")
     if not car and trip:
         car = str(getattr(trip, "transport", "") or "")
-    transport_rows = [[car or "GMC", "",
-                       "استقبال من مطار جدة والتنقّل بين الحرمين والفنادق ثم "
-                       "التوصيل إلى مطار المغادرة"]]
+    dest = ("Airport pickup at Jeddah, transfers between the two holy mosques "
+            "and the hotels, then drop-off at the departure airport") if en else \
+           ("استقبال من مطار جدة والتنقّل بين الحرمين والفنادق ثم التوصيل إلى "
+            "مطار المغادرة")
+    transport_rows = [[car or "GMC", "", dest]]
 
-    terms = [t.format(company=co["name_ar"]) for t in _VOUCHER_TERMS]
+    terms_src = _VOUCHER_TERMS_EN if en else _VOUCHER_TERMS
+    cname = co["name_en"] if en else co["name_ar"]
+    terms = [t.format(company=cname) for t in terms_src]
+
+    contacts = ([["Office Manager", office_manager, office_phone],
+                 ["Makkah Operations Manager", makkah_ops, makkah_phone]]
+                if en else
+                [["مدير المكتب", office_manager, office_phone],
+                 ["مدير العمليات في مكة", makkah_ops, makkah_phone]])
 
     return {
+        "lang": lang,
         "number": number,
         "date": date_str,
         "guest_ar": rec.full_name_ar or "",
@@ -2461,17 +2511,19 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
         "stays": stays,
         # كل صف نقل: [نوع السيارة، الموديل، الوجهة]
         "transport_rows": transport_rows,
-        "status": "مؤكّد / CONFIRMED",
+        "status": "CONFIRMED" if en else "مؤكّد / CONFIRMED",
         # كل جهة: [الصفة، الاسم، الهاتف]
-        "contacts": [["مدير المكتب", office_manager, office_phone],
-                     ["مدير العمليات في مكة", makkah_ops, makkah_phone]],
+        "contacts": contacts,
         "terms": terms,
     }
 
 
 VOUCHER_STAY_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "الإطلالة", "الدخول",
                       "المغادرة", "الليالي", "الوجبات")
+VOUCHER_STAY_HEADS_EN = ("City", "Hotel", "Room Type", "View", "Check-in",
+                         "Check-out", "Nights", "Meals")
 VOUCHER_TRANSPORT_HEADS = ("نوع السيارة", "الموديل", "الوجهة")
+VOUCHER_TRANSPORT_HEADS_EN = ("Car Type", "Model", "Destination")
 # خيارات القوائم المنسدلة في محرّر الفاوتشر
 VOUCHER_VIEW_OPTIONS = ("", "City", "Haram", "P. Haram", "Kaaba", "P. Kaaba")
 VOUCHER_CAR_TYPES = ("FORD", "GMC", "BMW")
@@ -2486,15 +2538,15 @@ def voucher_car_models() -> list:
 def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                              program_name: str = "", company=None,
                              number: str = "", date_str: str = "",
-                             booking_no: str = "",
+                             booking_no: str = "", lang: str = "ar",
                              office_manager: str = "أيمن الشهابي",
                              office_phone: str = "+971 54 996 4801",
                              makkah_ops: str = "خالد",
                              makkah_phone: str = "+966 54 300 3388",
                              data: dict | None = None) -> Path:
-    """فاوتشر فندق عمرة لمعتمر واحد بشعارَي الحملة، بيانات الضيف، إقامات
-    مكة/المدينة (فندق، نوع الغرفة، الإطلالة، الدخول/المغادرة، الليالي، الوجبات)،
-    خطة النقل، جهات التواصل، والشروط والأحكام.
+    """فاوتشر فندق عمرة لمعتمر واحد على صفحة **عرضية** (Landscape) بشعارَي
+    الحملة، بيانات الضيف، إقامات مكة/المدينة، خطة النقل المفصّلة، جهات التواصل،
+    الختم الرسمي، والشروط والأحكام. يدعم اللغتين العربية والإنجليزية (``lang``).
 
     عند تمرير ``data`` (قاموس من :func:`build_voucher_data`، وقد عُدِّل يدوياً)
     يُبنى المستند من محتواه بالكامل؛ وإلّا يُبنى تلقائياً من ``rec`` و``trip``."""
@@ -2503,23 +2555,31 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     if data is None:
         data = build_voucher_data(
             rec, trip=trip, program_name=program_name, company=company,
-            number=number, date_str=date_str, booking_no=booking_no,
+            number=number, date_str=date_str, booking_no=booking_no, lang=lang,
             office_manager=office_manager, office_phone=office_phone,
             makkah_ops=makkah_ops, makkah_phone=makkah_phone)
     number = str(data.get("number") or "MA0001")
     date_str = str(data.get("date") or date.today().isoformat())
+    lang = str(data.get("lang") or "ar")
+    L = lang == "en"                 # إنجليزي ⇒ اتجاه من اليسار لليمين
+    ALN = 0 if L else 2              # محاذاة القيَم/العناوين حسب اتجاه القراءة
+
+    def rev(seq):
+        """ترتيب الأعمدة بصرياً: كما هو للإنجليزية، ومعكوس للعربية (RTL)."""
+        return list(seq) if L else list(reversed(seq))
 
     co = company_info(company)
     doc = SimpleDocTemplate(
-        str(path), pagesize=A4, rightMargin=12 * mm, leftMargin=12 * mm,
-        topMargin=10 * mm, bottomMargin=16 * mm, title="Hotel Voucher",
-        author="ميسّر العمرة")
+        str(path), pagesize=landscape(A4), rightMargin=13 * mm,
+        leftMargin=13 * mm, topMargin=7 * mm, bottomMargin=10 * mm,
+        title="Hotel Voucher", author="ميسّر العمرة")
     st = _styles()
     story = []
+    W = doc.width
     _DEEP = colors.HexColor("#6E543A")          # بنّي غامق للتدرّج والحدود
 
     def _logo_cell(pathobj, h):
-        """شعار بارتفاع موحّد (للتناسق بين الشعارين)."""
+        """شعار بارتفاع محدّد."""
         if not pathobj.is_file():
             return ""
         try:
@@ -2528,10 +2588,10 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         except Exception:
             return ""
 
-    # ترويسة: الشعاران بارتفاع موحّد (Nirvana يسار، المصطفى يمين)
-    al = _logo_cell(_LOGO_PATH, 58)
+    # ترويسة: شعار نيرفانا أكبر قليلاً ليتناسب بصرياً مع شعار المصطفى
+    al = _logo_cell(_LOGO_PATH, 46)
     nv = _logo_cell(_NIRVANA_PATH, 58)
-    header = Table([[nv, al]], colWidths=[doc.width / 2, doc.width / 2])
+    header = Table([[nv, al]], colWidths=[W / 2, W / 2])
     header.setStyle(TableStyle([
         ("ALIGN", (0, 0), (0, 0), "LEFT"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
@@ -2540,228 +2600,239 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(header)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
 
     # شريط العنوان بالإنجليزية فقط (احترافي، بلون الهوية)
-    band_title = ParagraphStyle("vbt", fontName=_FONT_BOLD, fontSize=21,
-                                alignment=1, textColor=colors.white, leading=25)
-    band_sub = ParagraphStyle("vbs", fontName=_FONT, fontSize=9, alignment=1,
-                              textColor=colors.HexColor("#EFE6D8"), leading=13,
+    band_title = ParagraphStyle("vbt", fontName=_FONT_BOLD, fontSize=18,
+                                alignment=1, textColor=colors.white, leading=21)
+    band_sub = ParagraphStyle("vbs", fontName=_FONT, fontSize=8.5, alignment=1,
+                              textColor=colors.HexColor("#EFE6D8"), leading=12,
                               spaceBefore=1)
     band = Table([[Paragraph("HOTEL VOUCHER", band_title)],
                   [Paragraph(co["name_en"].upper(), band_sub)]],
-                 colWidths=[doc.width])
+                 colWidths=[W])
     band.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
-        ("LINEABOVE", (0, 0), (-1, 0), 2.4, _DEEP),
-        ("LINEBELOW", (0, -1), (-1, -1), 2.4, _DEEP),
-        ("TOPPADDING", (0, 0), (-1, 0), 9),
-        ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.0, _DEEP),
+        ("LINEBELOW", (0, -1), (-1, -1), 2.0, _DEEP),
+        ("TOPPADDING", (0, 0), (-1, 0), 5),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 5),
         ("TOPPADDING", (0, 1), (-1, 1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
     ]))
     story.append(band)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 4))
 
     lbl = ParagraphStyle("vlbl", parent=st["cell"], fontName=_FONT_BOLD,
-                         textColor=_ACCENT, alignment=2, fontSize=9)
-    val = ParagraphStyle("vval", parent=st["cell"], alignment=2, fontSize=9)
-    val_l = ParagraphStyle("vvall", parent=val, alignment=0)     # يسار (إنجليزي)
+                         textColor=_ACCENT, alignment=ALN, fontSize=9)
+    val = ParagraphStyle("vval", parent=st["cell"], alignment=ALN, fontSize=9)
 
-    guest = data.get("guest_ar") or "—"
+    # ---- بطاقة البيانات: أزواج (عنوان، قيمة) بترتيب القراءة ----
+    guest_ar = data.get("guest_ar") or "—"
     guest_en = data.get("guest_en") or "—"
-    cw = [doc.width * 0.28, doc.width * 0.22, doc.width * 0.28, doc.width * 0.22]
-    meta = Table(
-        [[_ar_para(number, val, cw[0] - 12),
-          _ar_para("رقم الفاوتشر / Voucher No.", lbl, cw[1] - 12),
-          _ar_para(ltr(date_str), val, cw[2] - 12),
-          _ar_para("التاريخ / Date", lbl, cw[3] - 12)],
-         # اسم الضيف: العربي يميناً والإنجليزي يساراً
-         [_ar_para(guest_en, val_l, cw[0] - 12),
-          _ar_para("Guest name", lbl, cw[1] - 12),
-          _ar_para(guest, val, cw[2] - 12),
-          _ar_para("اسم الضيف", lbl, cw[3] - 12)],
-         [_ar_para(data.get("booking_no") or "—", val, cw[0] - 12),
-          _ar_para("رقم الحجز", lbl, cw[1] - 12),
-          _ar_para(data.get("program") or "—", val, cw[2] - 12),
-          _ar_para("البرنامج", lbl, cw[3] - 12)]],
-        colWidths=cw)
+    if L:
+        LB = {"vno": "Voucher No.", "date": "Date", "guest": "Guest Name",
+              "booking": "Booking No.", "program": "Program", "name2": "الاسم"}
+        g_main, g_second = guest_en, guest_ar
+    else:
+        LB = {"vno": "رقم الفاوتشر", "date": "التاريخ", "guest": "اسم الضيف",
+              "booking": "رقم الحجز", "program": "البرنامج", "name2": "Guest name"}
+        g_main, g_second = guest_ar, guest_en
+    meta_rows = [
+        [(LB["vno"], number), (LB["date"], ltr(date_str))],
+        [(LB["guest"], g_main), (LB["booking"], data.get("booking_no") or "—")],
+        [(LB["program"], data.get("program") or "—"), (LB["name2"], g_second)],
+    ]
+    lw = [W * 0.16, W * 0.34, W * 0.16, W * 0.34]     # عرض منطقي (عنوان/قيمة)
+    mcw = rev(lw)
+    meta_data = []
+    for pairs in meta_rows:
+        flat = []
+        for label, value in pairs:
+            flat.append((label, lbl))
+            flat.append((str(value), val))
+        flat = rev(flat)
+        meta_data.append([_ar_para(t, s, mcw[i] - 12)
+                          for i, (t, s) in enumerate(flat)])
+    meta = Table(meta_data, colWidths=mcw)
     meta.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
-        ("BACKGROUND", (3, 0), (3, -1), _ALT_ROW),
+        ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(meta)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 4))
 
     def section(title_ar, title_en):
-        """عنوان قسم أنيق: عربي/إنجليزي بخطّ بارز وخطّ سفلي بلون الهوية."""
-        p = Paragraph(ar(title_ar) + f"  /  {title_en}", ParagraphStyle(
-            "vsec", fontName=_FONT_BOLD, fontSize=10.5, alignment=2,
-            textColor=_DEEP, leading=14))
-        t = Table([[p]], colWidths=[doc.width])
+        """عنوان قسم: إنجليزي فقط في الوضع الإنجليزي، وثنائي اللغة في العربي."""
+        txt = title_en if L else (ar(title_ar) + f"  /  {title_en}")
+        p = Paragraph(txt, ParagraphStyle(
+            "vsec", fontName=_FONT_BOLD, fontSize=9.5, alignment=ALN,
+            textColor=_DEEP, leading=12))
+        t = Table([[p]], colWidths=[W])
         t.setStyle(TableStyle([
             ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ("TOPPADDING", (0, 0), (-1, -1), 1),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        return t
+
+    def data_table(heads, weights, rows_vals, num_cols=()):
+        """يبني جدولاً بترويسة بلون الهوية، مع ترتيب أعمدة حسب اتجاه اللغة.
+        ``num_cols`` فهارس منطقية لأعمدة أرقام تُلفّ بـ LTR."""
+        vw = rev(weights)
+        scale = W / sum(vw)
+        cw = [w * scale for w in vw]
+        av = [w - 9 for w in cw]
+        table = [_ar_cells(rev(heads), st["head"], av)]
+        for row in rows_vals:
+            vals = [str(x if x not in (None, "") else "—") for x in row]
+            vals = [ltr(v) if i in num_cols else v for i, v in enumerate(vals)]
+            table.append(_ar_cells(rev(vals), st["cell"], av))
+        if len(table) == 1:
+            table.append(_ar_cells([""] * len(heads), st["cell"], av))
+        t = Table(table, colWidths=cw)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
         ]))
         return t
 
     # ---- الإقامة ----
     story.append(section("تفاصيل الإقامة", "Accommodation"))
     story.append(Spacer(1, 4))
-    heads = list(VOUCHER_STAY_HEADS)
-    weights = list(reversed([62, 108, 56, 52, 52, 52, 34, 46]))
-    scale = doc.width / sum(weights)
-    colw = [w * scale for w in weights]
-    avail = [w - 9 for w in colw]
-    rows = [_ar_cells(list(reversed(heads)), st["head"], avail)]
-    for row in data.get("stays", []):
-        vals = [str(x or "—") for x in list(row)[:8]]
-        vals += ["—"] * (8 - len(vals))
-        # الأرقام (الدخول/المغادرة/الليالي) تُلفّ بعلامات LTR
-        vals = [vals[0], vals[1], vals[2], vals[3],
-                ltr(vals[4]), ltr(vals[5]), ltr(vals[6]), vals[7]]
-        rows.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
-    if len(rows) == 1:
-        rows.append(_ar_cells([""] * len(heads), st["cell"], avail))
-    stay_t = Table(rows, colWidths=colw)
-    stay_t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
-        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(stay_t)
-    story.append(Spacer(1, 10))
+    stay_heads = list(VOUCHER_STAY_HEADS_EN if L else VOUCHER_STAY_HEADS)
+    stay_vals = [[str(x or "") for x in list(r)[:8]] + [""] * (8 - len(r))
+                 for r in data.get("stays", [])]
+    story.append(data_table(stay_heads, [62, 118, 56, 54, 56, 56, 34, 50],
+                            stay_vals, num_cols=(4, 5, 6)))
+    story.append(Spacer(1, 4))
 
     # ---- خطة النقل (مفصّلة: نوع السيارة/الموديل/الوجهة) ----
     story.append(section("خطة النقل", "Transportation"))
     story.append(Spacer(1, 4))
-    theads = list(VOUCHER_TRANSPORT_HEADS)
-    tweights = list(reversed([78, 58, 250]))     # الوجهة أعرض عمود
-    tscale = doc.width / sum(tweights)
-    tcolw = [w * tscale for w in tweights]
-    tavail = [w - 9 for w in tcolw]
-    transport_rows = [r for r in data.get("transport_rows", [])
+    transport_rows = [list(r)[:3] + [""] * (3 - len(r))
+                      for r in data.get("transport_rows", [])
                       if any(str(x or "").strip() for x in r)]
     if not transport_rows and str(data.get("transport") or "").strip():
         transport_rows = [["", "", str(data["transport"])]]   # توافق خلفي
-    trows = [_ar_cells(list(reversed(theads)), st["head"], tavail)]
-    for r in transport_rows or [["", "", ""]]:
-        vals = [str(x or "—") for x in list(r)[:3]]
-        vals += ["—"] * (3 - len(vals))
-        trows.append(_ar_cells(list(reversed(vals)), st["cell"], tavail))
-    tr_t = Table(trows, colWidths=tcolw)
-    tr_t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
-        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(tr_t)
+    tr_heads = list(VOUCHER_TRANSPORT_HEADS_EN if L else VOUCHER_TRANSPORT_HEADS)
+    story.append(data_table(tr_heads, [80, 60, 320],
+                            transport_rows or [["", "", ""]]))
 
     status = str(data.get("status") or "")
     if status:
         story.append(Spacer(1, 4))
+        label = "Booking status" if L else "حالة الحجز / Booking status"
         story.append(_ar_para(
-            f"حالة الحجز / Booking status: {status}",
-            ParagraphStyle("vconf", parent=st["cell"], alignment=2, fontSize=9.5,
-                           fontName=_FONT_BOLD, leading=14,
+            f"{label}: {status}",
+            ParagraphStyle("vconf", parent=st["cell"], alignment=ALN,
+                           fontSize=9.5, fontName=_FONT_BOLD, leading=14,
                            textColor=colors.HexColor("#2E6B45")),
-            doc.width - 12))
-    story.append(Spacer(1, 10))
+            W - 12))
+    story.append(Spacer(1, 4))
 
-    # ---- جهات التواصل ----
-    val_num = ParagraphStyle("vnum", parent=val_l, fontName=_FONT_BOLD)
-    ccw = [doc.width * 0.30, doc.width * 0.42, doc.width * 0.28]
-
-    def contact_row(role, name, phone):
-        return [_ar_para(ltr(phone), val_num, ccw[0] - 10),
-                _ar_para(name, val, ccw[1] - 10),
-                _ar_para(role, lbl, ccw[2] - 10)]
+    # ---- جهات التواصل + الختم الرسمي جنباً إلى جنب (لتوفير الارتفاع) ----
+    sign_c = ParagraphStyle("vsg", parent=st["cell"], alignment=1, fontSize=8.5,
+                            textColor=_DEEP, fontName=_FONT_BOLD, leading=12)
+    stamp_caption = "Company Stamp" if L else "ختم الشركة / Company Stamp"
+    stamp_logo = _logo_cell(_LOGO_PATH, 44)
+    stamp_box = Table([[stamp_logo],
+                       [Paragraph(ar(stamp_caption) if not L
+                                  else stamp_caption, sign_c)]],
+                      colWidths=[W * 0.30])
+    stamp_box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 4),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
+    ]))
 
     contact_data = [c for c in data.get("contacts", [])
                     if any(str(x or "").strip() for x in c)]
     if contact_data:
-        story.append(section("للتواصل والاستفسار", "Contact"))
+        story.append(section("للتواصل والاستفسار / الختم", "Contact & Stamp"))
         story.append(Spacer(1, 4))
+        cwv = 0.66      # عرض جدول التواصل، والباقي للختم
+        cw_logic = [cwv * W * 0.26, cwv * W * 0.40, cwv * W * 0.34]
+        ccw = rev(cw_logic)
+        val_num = ParagraphStyle("vnum", parent=val, fontName=_FONT_BOLD,
+                                 alignment=ALN)
+
+        def contact_row(role, name, phone):
+            cells = [(role, lbl), (name, val), (ltr(phone), val_num)]
+            cells = rev(cells)
+            return [_ar_para(t, s, ccw[i] - 10)
+                    for i, (t, s) in enumerate(cells)]
+
         contacts = Table([contact_row(str(c[0]), str(c[1]), str(c[2]))
                           for c in contact_data], colWidths=ccw)
         contacts.setStyle(TableStyle([
             ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
             ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("BACKGROUND", (2, 0), (2, -1), _ALT_ROW),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
-        story.append(contacts)
-        story.append(Spacer(1, 10))
+        # التواصل في جهة البداية، الختم في جهة النهاية
+        combo = Table([rev([contacts, stamp_box])],
+                      colWidths=rev([cwv * W, (1 - cwv) * W]))
+        combo.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(combo)
+        story.append(Spacer(1, 4))
 
-    # ---- التوقيع وختم الشركة ----
-    sign_c = ParagraphStyle("vsg", parent=st["cell"], alignment=1, fontSize=8.5,
-                            textColor=colors.HexColor("#666666"), leading=12)
-    sign_b = ParagraphStyle("vsgb", parent=sign_c, fontName=_FONT_BOLD,
-                            textColor=_DEEP, fontSize=9.5)
-    stamp_logo = _logo_cell(_LOGO_PATH, 40)
-    stamp_cell = Table([[stamp_logo],
-                        [Paragraph(ar("ختم الشركة / Company Stamp"), sign_c)]],
-                       colWidths=[doc.width * 0.5 - 8])
-    stamp_cell.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, 0), 2),
-        ("TOPPADDING", (0, 1), (-1, 1), 2),
-    ]))
-    sign_cell = Table([[Paragraph(ar("التوقيع المعتمد / Authorized Signature"),
-                                  sign_b)],
-                       [Spacer(1, 22)],
-                       [Paragraph("____________________________", sign_c)]],
-                      colWidths=[doc.width * 0.5 - 8])
-    sign_cell.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
-    signrow = Table([[sign_cell, stamp_cell]],
-                    colWidths=[doc.width * 0.5, doc.width * 0.5])
-    signrow.setStyle(TableStyle([
-        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
-        ("LINEBEFORE", (1, 0), (1, 0), 0.4, _GRID),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.append(signrow)
-    story.append(Spacer(1, 10))
-
-    # ---- الشروط والأحكام (ثابتة) ----
+    # ---- الشروط والأحكام (ثابتة) — عمودان لتوفير الارتفاع (صفحة واحدة) ----
     terms = [t for t in data.get("terms", []) if str(t or "").strip()]
     if terms:
         story.append(section("الشروط والأحكام", "Terms & Conditions"))
         story.append(Spacer(1, 3))
-        term = ParagraphStyle("vterm", parent=st["cell"], alignment=2,
-                              fontSize=8.5, leading=13, spaceAfter=3)
-        for i, t in enumerate(terms, 1):
-            # لفٌّ يدوي قبل bidi كي تبقى الأسطر مرتّبة رأسياً (لا يعيد
-            # reportlab لفّ النص المعكوس فيخلط ترتيب السطور). نترك هامش أمان
-            # كافياً في العرض حتى لا يعيد reportlab لفّ أطول سطر.
-            story.append(_ar_para(f"{i}- " + str(t), term, doc.width - 12))
+        term = ParagraphStyle("vterm", parent=st["cell"], alignment=ALN,
+                              fontSize=7.3, leading=9.6, spaceAfter=3)
+        ncols = 3
+        colw = W / ncols
+        # لفٌّ يدوي قبل bidi كي تبقى الأسطر مرتّبة رأسياً داخل كل عمود
+        flow = [_ar_para(f"{i}- " + str(t), term, colw - 12)
+                for i, t in enumerate(terms, 1)]
+        per = (len(flow) + ncols - 1) // ncols
+        cols = [flow[i * per:(i + 1) * per] for i in range(ncols)]
+        cols = rev([c or [""] for c in cols])        # ترتيب بصري حسب اللغة
+        tt = Table([cols], colWidths=[colw] * ncols)
+        tt.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(tt)
 
-    doc.build(story,
-              onFirstPage=lambda c, d: _footer_portrait(c, d, "Hotel Voucher"),
-              onLaterPages=lambda c, d: _footer_portrait(c, d, "Hotel Voucher"))
+    def _vfooter(canvas, d):
+        canvas.saveState()
+        canvas.setFont(_FONT, 7.5)
+        canvas.setFillColor(colors.HexColor("#888888"))
+        pw = landscape(A4)[0]
+        page_lbl = f"Page {d.page}" if L else ar(f"صفحة {d.page}")
+        canvas.drawCentredString(pw / 2, 8 * mm, page_lbl)
+        canvas.drawRightString(pw - 13 * mm, 8 * mm, "Hotel Voucher")
+        canvas.drawString(13 * mm, 8 * mm, date.today().isoformat())
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_vfooter, onLaterPages=_vfooter)
     return path
 
 
@@ -3289,7 +3360,7 @@ def export_passports_pdf(
         if index:
             story.append(PageBreak())
         story.append(Paragraph(ar(caption or "—"), st["title"]))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 4))
         try:
             iw, ih = ImageReader(image_path).getSize()
             width = doc.width

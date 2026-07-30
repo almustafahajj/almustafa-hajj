@@ -316,7 +316,8 @@ class UmrahApp:
         rec = PassportData()
         data = build_voucher_data(rec, trip=None, program_name="",
                                   company=co, number=number)
-        VoucherEditorDialog(self.root, rec, None, data)
+        VoucherEditorDialog(self.root, rec, None, data, program="",
+                            company=co)
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:
@@ -1163,25 +1164,43 @@ class TripPilgrimsWindow(Toplevel):
             save_settings(self.app._settings)
         except OSError:
             pass
+        company = self._company()
         data = build_voucher_data(rec, trip=self.trip, program_name=prog,
-                                  company=self._company(), number=number)
-        VoucherEditorDialog(self, rec, self.trip, data)
+                                  company=company, number=number)
+        VoucherEditorDialog(self, rec, self.trip, data, program=prog,
+                            company=company)
 
 
 class VoucherEditorDialog(Toplevel):
     """محرّر فاوتشر الفندق: تعديل كل الخلايا، وإضافة/حذف صفوف الإقامات وجهات
     التواصل وبنود الشروط، قبل المعاينة."""
 
-    def __init__(self, parent, rec, trip, data: dict) -> None:
+    def __init__(self, parent, rec, trip, data: dict, *, program: str = "",
+                 company=None) -> None:
         super().__init__(parent)
         self.parent = parent
         self.rec = rec
         self.trip = trip
+        self._program = program
+        self._company_dict = company
+        self._lang = str(data.get("lang") or "ar")
         self.title("محرّر فاوتشر الفندق")
         self.configure(bg=G.BG)
         self.geometry("920x680")
         self.minsize(720, 480)
         self.transient(parent)
+
+        # شريط اختيار اللغة (عربي/إنجليزي) أعلى النافذة
+        top = ttk.Frame(self, padding=(12, 8, 12, 0))
+        top.pack(fill=X)
+        ttk.Label(top, text="لغة الفاوتشر:",
+                  font=("Segoe UI", 10, "bold")).pack(side=RIGHT, padx=(0, 6))
+        self._lang_var = StringVar(
+            value="English" if self._lang == "en" else "عربي")
+        lang_cb = ttk.Combobox(top, textvariable=self._lang_var, width=10,
+                               state="readonly", values=["عربي", "English"])
+        lang_cb.pack(side=RIGHT)
+        lang_cb.bind("<<ComboboxSelected>>", self._on_lang_change)
 
         # حاوية قابلة للتمرير
         outer = ttk.Frame(self, padding=(10, 10, 10, 4))
@@ -1234,6 +1253,23 @@ class VoucherEditorDialog(Toplevel):
         lf = ttk.LabelFrame(self.body, text=title, padding=8)
         lf.pack(fill=X, pady=(0, 8))
         return lf
+
+    def _on_lang_change(self, _event=None) -> None:
+        """تبديل لغة الفاوتشر: يعيد بناء المحرّر بالقيَم الافتراضية للّغة
+        الجديدة (المدن، الوجبات، الصفات، الشروط) مع الحفاظ على الرقم."""
+        new = "en" if self._lang_var.get() == "English" else "ar"
+        if new == self._lang:
+            return
+        data = build_voucher_data(self.rec, trip=self.trip,
+                                  program_name=self._program,
+                                  company=self._company_dict,
+                                  number=self._number, lang=new)
+        parent = self.parent
+        rec, trip = self.rec, self.trip
+        program, company = self._program, self._company_dict
+        self.destroy()
+        VoucherEditorDialog(parent, rec, trip, data, program=program,
+                            company=company)
 
     def _build_meta(self, data: dict) -> None:
         lf = self._section("البيانات الأساسية")
@@ -1478,6 +1514,7 @@ class VoucherEditorDialog(Toplevel):
 
     def _collect(self) -> dict:
         data = {k: v.get().strip() for k, v in self._meta.items()}
+        data["lang"] = self._lang
         data["number"] = self._number
         data["date"] = self._iso_date()
         data["terms"] = self._terms          # ثابتة (غير قابلة للتعديل)
