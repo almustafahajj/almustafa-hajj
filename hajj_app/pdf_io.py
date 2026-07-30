@@ -2600,14 +2600,15 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     info = ParagraphStyle("vinfo", parent=st["cell"], alignment=2, fontSize=9.5,
                           leading=15)
     if transport:
-        story.append(Paragraph(ar(f"خطة النقل / Transportation: {transport}"),
-                               info))
+        story.append(_ar_para(f"خطة النقل / Transportation: {transport}",
+                              info, doc.width - 12))
     status = str(data.get("status") or "")
     if status:
-        story.append(Paragraph(ar(f"حالة الحجز: {status}"),
-                               ParagraphStyle("vconf", parent=info,
-                                              fontName=_FONT_BOLD,
-                                              textColor=colors.HexColor("#2E6B45"))))
+        story.append(_ar_para(
+            f"حالة الحجز: {status}",
+            ParagraphStyle("vconf", parent=info, fontName=_FONT_BOLD,
+                           textColor=colors.HexColor("#2E6B45")),
+            doc.width - 12))
 
     # جهات التواصل (قابلة للإضافة/الحذف/التعديل)
     ccw = [doc.width * 0.30, doc.width * 0.42, doc.width * 0.28]
@@ -2639,9 +2640,12 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
             "vth", parent=st["title"], fontSize=12, alignment=2,
             textColor=_ACCENT, spaceAfter=4)))
         term = ParagraphStyle("vterm", parent=st["cell"], alignment=2,
-                              fontSize=8.5, leading=13, spaceAfter=2)
+                              fontSize=8.5, leading=13, spaceAfter=3)
         for i, t in enumerate(terms, 1):
-            story.append(Paragraph(ar(f"{i}- " + str(t)), term))
+            # لفٌّ يدوي قبل bidi كي تبقى الأسطر مرتّبة رأسياً (لا يعيد
+            # reportlab لفّ النص المعكوس فيخلط ترتيب السطور). نترك هامش أمان
+            # كافياً في العرض حتى لا يعيد reportlab لفّ أطول سطر.
+            story.append(_ar_para(f"{i}- " + str(t), term, doc.width - 12))
 
     doc.build(story,
               onFirstPage=lambda c, d: _footer_portrait(c, d, "فاوتشر الفندق"),
