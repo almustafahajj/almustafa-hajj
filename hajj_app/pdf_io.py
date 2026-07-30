@@ -2837,6 +2837,331 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
 
 
 # ======================================================================
+#  عرض السعر (Quotation)
+# ======================================================================
+
+QUOTE_STAY_HEADS = ("المدينة", "الليالي", "من – إلى", "الفندق والوصف")
+QUOTE_FLIGHT_HEADS = ("اليوم", "الناقل", "الإقلاع", "من", "الوصول", "إلى")
+
+
+def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
+                         date_str: str = "", pax: str = "") -> dict:
+    """يبني بيانات عرض السعر (قاموس قابل للتعديل) من بيانات البرنامج/المعتمر،
+    على غرار نموذج العرض المعتمد. يُمرَّر إلى :func:`export_umrah_quotation_pdf`
+    عبر الوسيط ``data``."""
+    from datetime import timedelta
+
+    from .umrah import _parse_date
+
+    company_info(company)
+    if not date_str:
+        date_str = date.today().isoformat()
+
+    def short(d):
+        return f"{d.month:02d}/{d.day:02d}" if d else ""
+
+    room = str(getattr(rec, "room_type", "") or "غرفة")
+    # الإقامات: [المدينة، الليالي، «من – إلى»، وصف الفندق]
+    stays: list[list[str]] = []
+    cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
+    for label, hotel_f, nights_f in (
+            ("المدينة المنوّرة", "madinah_hotel", "madinah_nights"),
+            ("مكة المكرّمة", "makkah_hotel", "makkah_nights")):
+        hotel = str(getattr(trip, hotel_f, "") or "") if trip else ""
+        if not hotel:
+            continue
+        try:
+            n = int(float(str(getattr(trip, nights_f, "") or "").strip() or 0))
+        except ValueError:
+            n = 0
+        cout = (cur + timedelta(days=n)) if (cur and n) else None
+        rng = f"{short(cur)} – {short(cout)}" if cur else ""
+        desc = f"{hotel} — عدد (1) غرفة {room} غير مطلّة شامل الإفطار"
+        stays.append([label, str(n or ""), rng, desc])
+        cur = cout or cur
+
+    # الطيران: رحلتا الذهاب والعودة من بيانات البرنامج (المطارات تُملأ يدوياً)
+    airline = str(getattr(trip, "airline", "") or "") if trip else ""
+    dep = str(getattr(trip, "depart_date", "") or "") if trip else ""
+    ret = str(getattr(trip, "return_date", "") or "") if trip else ""
+    flights = [
+        [dep, airline, str(getattr(trip, "out_depart_time", "") or ""), "",
+         str(getattr(trip, "out_arrive_time", "") or ""), ""],
+        [ret, airline, str(getattr(trip, "ret_depart_time", "") or ""), "",
+         str(getattr(trip, "ret_arrive_time", "") or ""), ""],
+    ] if trip else []
+
+    car = str(getattr(trip, "transport", "") or "") if trip else ""
+    transport_note = f"عدد (1) {car or 'سيارة خاصّة'}"
+    transport_lines = [
+        "الاستقبال من المطار والتوصيل إلى الفندق.",
+        "التنقّل بين الفنادق ومحطّات قطار الحرمين.",
+        "التوصيل إلى مطار المغادرة في نهاية الرحلة.",
+    ]
+
+    per_person = str(getattr(trip, "price_double", "") or "") if trip else ""
+
+    return {
+        "number": str(number or ""),
+        "date": date_str,
+        "title": "عرض سعر رحلة عمرة",
+        "greeting": "السلام عليكم ورحمة الله وبركاته،",
+        "pax": pax or "",
+        "period_from": dep,
+        "period_to": ret,
+        # كل صف: [المدينة، الليالي، «من – إلى»، وصف الفندق]
+        "stays": stays,
+        "flight_class": "درجة سياحية",
+        # كل صف: [اليوم، الناقل، الإقلاع، من، الوصول، إلى]
+        "flights": flights,
+        "transport_note": transport_note,
+        "transport_lines": transport_lines,
+        "total_cost": "",
+        "per_person": per_person,
+        "validity": "",
+        "closing": ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
+                    "ردّكم الكريم."),
+        "gm_title": "المدير العام",
+        "gm_name": "محمد شعّار",
+        "office_title": "مدير المكتب",
+        "office_name": "أيمن الشهابي",
+    }
+
+
+def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None,
+                               number: str = "", date_str: str = "",
+                               pax: str = "", data: dict | None = None) -> Path:
+    """عرض سعر رحلة عمرة (Quotation) على صفحة A4 عمودية، بشعارَي الحملة،
+    التحيّة، تفاصيل الإقامة والطيران والمواصلات، والتكلفة وصلاحية العرض،
+    وتوقيعَي المدير العام ومدير المكتب — على غرار النموذج المعتمد.
+
+    عند تمرير ``data`` (من :func:`build_quotation_data`، وقد عُدّل يدوياً) يُبنى
+    المستند من محتواه؛ وإلّا يُبنى تلقائياً من ``rec`` و``trip``."""
+    _register_fonts()
+    path = Path(path)
+    if data is None:
+        data = build_quotation_data(rec, trip=trip, company=company,
+                                    number=number, date_str=date_str, pax=pax)
+    number = str(data.get("number") or "")
+    date_str = str(data.get("date") or date.today().isoformat())
+
+    co = company_info(company)
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=14 * mm, leftMargin=14 * mm,
+        topMargin=10 * mm, bottomMargin=15 * mm, title="عرض سعر",
+        author="ميسّر العمرة")
+    st = _styles()
+    story = []
+    W = doc.width
+    _DEEP = colors.HexColor("#6E543A")
+
+    def _logo_cell(pathobj, h):
+        if not pathobj.is_file():
+            return ""
+        try:
+            iw, ih = ImageReader(str(pathobj)).getSize()
+            return RLImage(str(pathobj), width=h * iw / ih, height=h)
+        except Exception:
+            return ""
+
+    al = _logo_cell(_LOGO_PATH, 52)
+    nv = _logo_cell(_NIRVANA_PATH, 62)
+    header = Table([[nv, al]], colWidths=[W / 2, W / 2])
+    header.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (0, 0), "LEFT"), ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 6))
+
+    lbl = ParagraphStyle("qlbl", parent=st["cell"], fontName=_FONT_BOLD,
+                         textColor=_ACCENT, alignment=2, fontSize=9.5)
+    val = ParagraphStyle("qval", parent=st["cell"], alignment=2, fontSize=9.5,
+                         leading=14)
+    val_l = ParagraphStyle("qvall", parent=val, alignment=0)
+
+    # التاريخ (يمين) ورقم العرض (يسار)
+    meta = Table([[_ar_para(ltr(number), val_l, W * 0.5 - 6),
+                   _ar_para(f"التاريخ: {ltr(date_str)}", val, W * 0.5 - 6)]],
+                 colWidths=[W * 0.5, W * 0.5])
+    meta.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(meta)
+    story.append(_ar_para(str(data.get("greeting") or ""), val, W - 8))
+    story.append(Spacer(1, 6))
+
+    # شريط العنوان بلون الهوية
+    band = Table([[Paragraph(ar(str(data.get("title") or "عرض سعر")),
+                             ParagraphStyle("qbt", fontName=_FONT_BOLD,
+                                            fontSize=16, alignment=1,
+                                            textColor=colors.white,
+                                            leading=20))]], colWidths=[W])
+    band.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.0, _DEEP),
+        ("LINEBELOW", (0, -1), (-1, -1), 2.0, _DEEP),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(band)
+    story.append(Spacer(1, 8))
+
+    def bullet(text, bold=False):
+        style = ParagraphStyle("qbul", parent=val, fontName=(
+            _FONT_BOLD if bold else _FONT))
+        return _ar_para("• " + text, style, W - 16)
+
+    def section(title):
+        p = Paragraph(ar(title), ParagraphStyle(
+            "qsec", fontName=_FONT_BOLD, fontSize=11, alignment=2,
+            textColor=_DEEP, leading=15))
+        t = Table([[p]], colWidths=[W])
+        t.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        return t
+
+    def data_table(heads, weights, rows_vals):
+        vw = list(reversed(weights))
+        scale = W / sum(vw)
+        cw = [w * scale for w in vw]
+        av = [w - 9 for w in cw]
+        table = [_ar_cells(list(reversed(heads)), st["head"], av)]
+        for row in rows_vals:
+            vals = [str(x if x not in (None, "") else "—") for x in row]
+            table.append(_ar_cells(list(reversed(vals)), st["cell"], av))
+        if len(table) == 1:
+            table.append(_ar_cells([""] * len(heads), st["cell"], av))
+        t = Table(table, colWidths=cw)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return t
+
+    # العدد والفترة
+    pax = str(data.get("pax") or "")
+    if pax:
+        story.append(bullet(f"العدد: {pax}", bold=True))
+    pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
+    if pf or pt:
+        story.append(bullet(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
+    story.append(Spacer(1, 6))
+
+    # الإقامة
+    stays = [list(r)[:4] + [""] * (4 - len(r)) for r in data.get("stays", [])
+             if any(str(x or "").strip() for x in r)]
+    if stays:
+        story.append(section("تفاصيل الإقامة"))
+        story.append(Spacer(1, 4))
+        story.append(data_table(list(QUOTE_STAY_HEADS), [70, 40, 78, 220], stays))
+        story.append(Spacer(1, 8))
+
+    # الطيران
+    story.append(section("الطيران"))
+    story.append(Spacer(1, 3))
+    fclass = str(data.get("flight_class") or "")
+    if fclass:
+        story.append(bullet(f"الدرجة: {fclass}"))
+        story.append(Spacer(1, 3))
+    flights = [list(r)[:6] + [""] * (6 - len(r)) for r in data.get("flights", [])
+               if any(str(x or "").strip() for x in r)]
+    story.append(data_table(list(QUOTE_FLIGHT_HEADS), [70, 70, 50, 60, 50, 60],
+                            flights))
+    story.append(Spacer(1, 8))
+
+    # المواصلات
+    story.append(section("المواصلات والتنقّلات"))
+    story.append(Spacer(1, 3))
+    note = str(data.get("transport_note") or "")
+    if note:
+        story.append(bullet(note, bold=True))
+    for line in data.get("transport_lines", []):
+        if str(line or "").strip():
+            story.append(_ar_para("– " + str(line), ParagraphStyle(
+                "qsub", parent=val, fontSize=9, leading=13), W - 24))
+    story.append(Spacer(1, 8))
+
+    # التكلفة
+    story.append(section("التكلفة"))
+    story.append(Spacer(1, 4))
+    cost_rows = []
+    if str(data.get("total_cost") or "").strip():
+        cost_rows.append(["التكلفة الإجمالية", str(data["total_cost"])])
+    if str(data.get("per_person") or "").strip():
+        cost_rows.append(["التكلفة للفرد", str(data["per_person"])])
+    if cost_rows:
+        cc = [W * 0.5, W * 0.5]
+        cost = Table([[_ar_para(ltr(v), ParagraphStyle(
+            "qcv", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=11),
+            cc[0] - 10),
+            _ar_para(k, ParagraphStyle("qck", parent=lbl, alignment=1,
+                                       fontSize=11), cc[1] - 10)]
+            for k, v in cost_rows], colWidths=cc)
+        cost.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(cost)
+        story.append(Spacer(1, 4))
+    validity = str(data.get("validity") or "")
+    if validity:
+        story.append(_ar_para(f"هذا العرض صالح حتى نهاية يوم {ltr(validity)}.",
+                              ParagraphStyle("qvld", parent=val,
+                                             fontName=_FONT_BOLD,
+                                             textColor=colors.HexColor("#B23B3B")),
+                              W - 8))
+    story.append(Spacer(1, 8))
+
+    closing = str(data.get("closing") or "")
+    if closing:
+        story.append(_ar_para(closing, val, W - 8))
+        story.append(Spacer(1, 12))
+
+    # التوقيعات: المدير العام (يمين) ومدير المكتب (يسار)
+    sig_t = ParagraphStyle("qst", parent=lbl, alignment=1, fontSize=10)
+    sig_n = ParagraphStyle("qsn", parent=val, alignment=1, fontName=_FONT_BOLD)
+    gm = Table([[_ar_para(str(data.get("gm_title") or ""), sig_t, W * 0.5 - 12)],
+                [_ar_para(str(data.get("gm_name") or ""), sig_n, W * 0.5 - 12)]],
+               colWidths=[W * 0.5])
+    office = Table(
+        [[_ar_para(str(data.get("office_title") or ""), sig_t, W * 0.5 - 12)],
+         [_ar_para(str(data.get("office_name") or ""), sig_n, W * 0.5 - 12)]],
+        colWidths=[W * 0.5])
+    for tb in (gm, office):
+        tb.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("TOPPADDING", (0, 0), (-1, -1), 2)]))
+    sig = Table([[office, gm]], colWidths=[W * 0.5, W * 0.5])
+    sig.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEABOVE", (0, 0), (-1, 0), 0.4, _GRID),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(sig)
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _footer_portrait(c, d, "عرض سعر"),
+        onLaterPages=lambda c, d: _footer_portrait(c, d, "عرض سعر"))
+    return path
+
+
+# ======================================================================
 #  الاستيكرات (للحقائب / للغرف / للأظرف)
 # ======================================================================
 

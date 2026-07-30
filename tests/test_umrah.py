@@ -451,5 +451,53 @@ _mv.destroy()
 r9.destroy()
 print("  OK: سند وفاتورة وعقد وفاوتشر الفندق لكل معتمر بمسمّيات العمرة")
 
+# === عرض السعر (Quotation) ===
+from hajj_app.pdf_io import build_quotation_data, export_umrah_quotation_pdf
+_tripq = umrah.UmrahTrip(code="Q1", name="سبتمبر", depart_date="2026-09-04",
+                         return_date="2026-09-11", makkah_hotel="جميرا مكة",
+                         makkah_nights="4", madinah_hotel="دار الإيمان",
+                         madinah_nights="3", airline="FLYDUBAI",
+                         out_depart_time="14:25", ret_depart_time="17:45",
+                         transport="سيارة (FORD)", price_double="5700")
+_qd = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائية"),
+                           trip=_tripq, number="MA-Q0001", pax="2 كبار")
+assert _qd["stays"] and _qd["flights"], "بيانات عرض السعر غير مكتملة"
+_qp = WORK / "quote.pdf"
+export_umrah_quotation_pdf(PassportData(full_name_ar="خالد"), _qp, data=_qd)
+assert _qp.read_bytes()[:5] == b"%PDF-" and _qp.stat().st_size > 3000
+# محرّر عرض السعر: إضافة/حذف صفوف، رقم تسلسلي، معاينة
+rq = tk.Tk(); rq.withdraw()
+appq = _ug.UmrahApp(rq, session=None)
+appq.trips.append(_tripq)
+appq.records.append(PassportData(full_name_ar="خالد", trip="Q1",
+                                 room_type="ثنائية"))
+wq = _ug.TripPilgrimsWindow(appq, _tripq)
+wq.tree.selection_set("0")
+wq.do_quotation()
+_qe = [w for w in wq.winfo_children()
+       if isinstance(w, _ug.QuotationEditorDialog)][-1]
+assert _qe._number.startswith("MA-Q") and _qe._stay_rows and _qe._flight_rows
+_nf = len(_qe._flight_rows)
+_qe._add_flight_row(["2026-09-11", "FLYDUBAI", "17:45", "جدة", "21:45", "دبي"])
+assert len(_qe._flight_rows) == _nf + 1
+_qe._add_line_row("عدد (2) تذاكر قطار الحرمين.")
+_qe._fields["total_cost"].set("11,400 درهم")
+_qdc = _qe._collect()
+assert _qdc["number"] == _qe._number and _qdc["flights"] and _qdc["stays"]
+_qe._preview()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_qe.destroy()
+# عرض سعر يدوي خارج البرامج
+appq.new_manual_quotation()
+_qm = [w for w in rq.winfo_children()
+       if isinstance(w, _ug.QuotationEditorDialog)][-1]
+assert _qm.trip is None and _qm._number.startswith("MA-Q")
+_qm._add_stay_row(["مكة المكرّمة", "4", "09/07 – 09/11", "فندق"])
+_qm._preview()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_qm.destroy()
+rq.destroy()
+print("  OK: عرض السعر (Quotation) — مستند ومحرّر ونسخة يدوية")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

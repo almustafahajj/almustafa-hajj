@@ -26,10 +26,11 @@ from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
 from .pdf_io import (
-    VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
-    VOUCHER_VIEW_OPTIONS, build_voucher_data, export_airline_pdf,
-    export_umrah_cards_pdf, export_umrah_contract_pdf, export_umrah_finance_pdf,
-    export_umrah_invoice_pdf, export_umrah_pdf, export_umrah_receipt_pdf,
+    QUOTE_FLIGHT_HEADS, QUOTE_STAY_HEADS, VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS,
+    VOUCHER_TRANSPORT_HEADS, VOUCHER_VIEW_OPTIONS, build_quotation_data,
+    build_voucher_data, export_airline_pdf, export_umrah_cards_pdf,
+    export_umrah_contract_pdf, export_umrah_finance_pdf, export_umrah_invoice_pdf,
+    export_umrah_pdf, export_umrah_quotation_pdf, export_umrah_receipt_pdf,
     export_umrah_rooming_pdf, export_umrah_transport_pdf, export_umrah_voucher_pdf,
     voucher_car_models,
 )
@@ -165,6 +166,7 @@ class UmrahApp:
             ("✏️  تعديل البرنامج", self.edit_trip, "Ghost.TButton"),
             ("🗑  حذف البرنامج", self.delete_trip, "Ghost.TButton"),
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher, "Ghost.TButton"),
+            ("💲  عرض سعر يدوي", self.new_manual_quotation, "Ghost.TButton"),
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
@@ -318,6 +320,19 @@ class UmrahApp:
                                   company=co, number=number)
         VoucherEditorDialog(self.root, rec, None, data, program="",
                             company=co)
+
+    def new_manual_quotation(self) -> None:
+        """عرض سعر لأي رحلة — حتى خارج البرامج — يُملأ يدوياً بالكامل."""
+        co = self._settings.get("company")
+        co = co if isinstance(co, dict) else None
+        number = umrah.next_quote_number(self._settings)
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        rec = PassportData()
+        data = build_quotation_data(rec, trip=None, company=co, number=number)
+        QuotationEditorDialog(self.root, rec, None, data)
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:
@@ -795,6 +810,7 @@ class TripPilgrimsWindow(Toplevel):
         for text, cmd in (("🧾  سند قبض", self.do_receipt),
                           ("🧾  فاتورة", self.do_invoice),
                           ("📜  عقد", self.do_contract),
+                          ("💲  عرض سعر", self.do_quotation),
                           ("🏨  فاوتشر الفندق", self.do_voucher)):
             ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",
                        command=cmd).pack(side=LEFT, padx=3)
@@ -1170,8 +1186,139 @@ class TripPilgrimsWindow(Toplevel):
         VoucherEditorDialog(self, rec, self.trip, data, program=prog,
                             company=company)
 
+    def do_quotation(self) -> None:
+        """فتح محرّر عرض السعر للبرنامج (يأخذ نوع غرفة المعتمر المحدّد إن وُجد)."""
+        rec = self._selected() or PassportData()
+        number = umrah.next_quote_number(self.app._settings)
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        data = build_quotation_data(rec, trip=self.trip, company=self._company(),
+                                    number=number)
+        QuotationEditorDialog(self, rec, self.trip, data)
 
-class VoucherEditorDialog(Toplevel):
+
+class _EditorMixin:
+    """أدوات مشتركة لمحرّرات المستندات (فاوتشر/عرض سعر): حاوية قابلة للتمرير،
+    نسخ/لصق يعمل مع اللوحة العربية، قائمة تاريخ منسدلة، وحذف الصفوف."""
+
+    def _scroll_body(self):
+        """ينشئ حاوية قابلة للتمرير ويضبط ``self.body``؛ يعيد إطار المحتوى."""
+        outer = ttk.Frame(self, padding=(10, 10, 10, 4))
+        outer.pack(fill=BOTH, expand=True)
+        canvas = Canvas(outer, bg=G.BG, highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        self.body = ttk.Frame(canvas, padding=2)
+        self.body.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win = canvas.create_window((0, 0), window=self.body, anchor="nw")
+        canvas.bind(
+            "<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        sb.pack(side=RIGHT, fill=Y)
+        canvas.bind_all(
+            "<MouseWheel>",
+            lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        return self.body
+
+    def _section(self, title: str) -> ttk.LabelFrame:
+        lf = ttk.LabelFrame(self.body, text=title, padding=8)
+        lf.pack(fill=X, pady=(0, 8))
+        return lf
+
+    # ---- التاريخ المنسدل ----
+    def _build_date_picker(self, parent, iso, row, col, prefix="_d") -> None:
+        """قوائم منسدلة لليوم والشهر والسنة، مضبوطة على ``iso`` أو اليوم."""
+        today = date.today()
+        y, m, d = today.year, today.month, today.day
+        try:
+            parts = str(iso or "").split("-")
+            if len(parts) == 3:
+                y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        except (ValueError, TypeError):
+            pass
+        box = ttk.Frame(parent)
+        box.grid(row=row, column=col, sticky="w", pady=3)
+        v_day, v_month, v_year = StringVar(value=str(d)), StringVar(
+            value=str(m)), StringVar(value=str(y))
+        setattr(self, prefix + "_day", v_day)
+        setattr(self, prefix + "_month", v_month)
+        setattr(self, prefix + "_year", v_year)
+        years = [str(yr) for yr in range(today.year - 1, today.year + 3)]
+        ttk.Combobox(box, textvariable=v_day, width=3, state="readonly",
+                     values=[str(i) for i in range(1, 32)]).pack(side=LEFT)
+        ttk.Label(box, text="/").pack(side=LEFT, padx=1)
+        ttk.Combobox(box, textvariable=v_month, width=3, state="readonly",
+                     values=[str(i) for i in range(1, 13)]).pack(side=LEFT)
+        ttk.Label(box, text="/").pack(side=LEFT, padx=1)
+        ttk.Combobox(box, textvariable=v_year, width=6, state="readonly",
+                     values=years).pack(side=LEFT)
+
+    @staticmethod
+    def _iso_from(v_year, v_month, v_day) -> str:
+        try:
+            return (f"{int(v_year.get()):04d}-{int(v_month.get()):02d}-"
+                    f"{int(v_day.get()):02d}")
+        except (ValueError, TypeError):
+            return date.today().isoformat()
+
+    def _del_row(self, store: list, entry) -> None:
+        entry[0].destroy()
+        if entry in store:
+            store.remove(entry)
+
+    # ---- النسخ واللصق (يعمل مع اللوحة العربية) ----
+    def _attach_clipboard(self, widget) -> None:
+        if widget.winfo_class() in ("TEntry", "Entry", "Text", "TCombobox"):
+            widget.bind("<Button-3>", self._clip_menu)
+            widget.bind("<Control-KeyPress>", self._clip_key)
+        for child in widget.winfo_children():
+            self._attach_clipboard(child)
+
+    @staticmethod
+    def _select_all(w) -> None:
+        try:
+            if w.winfo_class() == "Text":
+                w.tag_add("sel", "1.0", "end-1c")
+            else:
+                w.select_range(0, "end")
+                w.icursor("end")
+        except Exception:
+            pass
+
+    def _clip_key(self, event):
+        w = event.widget
+        actions = {67: "<<Copy>>", 86: "<<Paste>>", 88: "<<Cut>>"}
+        if event.keycode in actions:
+            w.event_generate(actions[event.keycode])
+            return "break"
+        if event.keycode == 65:
+            self._select_all(w)
+            return "break"
+        return None
+
+    def _clip_menu(self, event) -> None:
+        w = event.widget
+        try:
+            w.focus_set()
+        except Exception:
+            pass
+        m = Menu(self, tearoff=0)
+        m.add_command(label="قص", command=lambda: w.event_generate("<<Cut>>"))
+        m.add_command(label="نسخ", command=lambda: w.event_generate("<<Copy>>"))
+        m.add_command(label="لصق", command=lambda: w.event_generate("<<Paste>>"))
+        m.add_separator()
+        m.add_command(label="تحديد الكل", command=lambda: self._select_all(w))
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+
+
+class VoucherEditorDialog(Toplevel, _EditorMixin):
     """محرّر فاوتشر الفندق: تعديل كل الخلايا، وإضافة/حذف صفوف الإقامات وجهات
     التواصل وبنود الشروط، قبل المعاينة."""
 
@@ -1202,24 +1349,7 @@ class VoucherEditorDialog(Toplevel):
         lang_cb.pack(side=RIGHT)
         lang_cb.bind("<<ComboboxSelected>>", self._on_lang_change)
 
-        # حاوية قابلة للتمرير
-        outer = ttk.Frame(self, padding=(10, 10, 10, 4))
-        outer.pack(fill=BOTH, expand=True)
-        canvas = Canvas(outer, bg=G.BG, highlightthickness=0)
-        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        self.body = ttk.Frame(canvas, padding=2)
-        self.body.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        win = canvas.create_window((0, 0), window=self.body, anchor="nw")
-        canvas.bind(
-            "<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
-        canvas.configure(yscrollcommand=sb.set)
-        canvas.pack(side=LEFT, fill=BOTH, expand=True)
-        sb.pack(side=RIGHT, fill=Y)
-        canvas.bind_all(
-            "<MouseWheel>",
-            lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        self._scroll_body()
 
         self._meta: dict[str, StringVar] = {}
         self._stay_rows: list[list] = []
@@ -1249,11 +1379,6 @@ class VoucherEditorDialog(Toplevel):
         self.grab_set()
 
     # ---- أقسام النموذج -------------------------------------------------
-    def _section(self, title: str) -> ttk.LabelFrame:
-        lf = ttk.LabelFrame(self.body, text=title, padding=8)
-        lf.pack(fill=X, pady=(0, 8))
-        return lf
-
     def _on_lang_change(self, _event=None) -> None:
         """تبديل لغة الفاوتشر: يعيد بناء المحرّر بالقيَم الافتراضية للّغة
         الجديدة (المدن، الوجبات، الصفات، الشروط) مع الحفاظ على الرقم."""
@@ -1298,31 +1423,6 @@ class VoucherEditorDialog(Toplevel):
                 row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
-
-    def _build_date_picker(self, parent, iso, row, col) -> None:
-        """قوائم منسدلة لليوم والشهر والسنة، مضبوطة على تاريخ ``iso`` أو اليوم."""
-        today = date.today()
-        y, m, d = today.year, today.month, today.day
-        try:
-            parts = str(iso or "").split("-")
-            if len(parts) == 3:
-                y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
-        except (ValueError, TypeError):
-            pass
-        box = ttk.Frame(parent)
-        box.grid(row=row, column=col, sticky="w", pady=3)
-        self._d_day = StringVar(value=str(d))
-        self._d_month = StringVar(value=str(m))
-        self._d_year = StringVar(value=str(y))
-        years = [str(yr) for yr in range(today.year - 1, today.year + 3)]
-        ttk.Combobox(box, textvariable=self._d_day, width=3, state="readonly",
-                     values=[str(i) for i in range(1, 32)]).pack(side=LEFT)
-        ttk.Label(box, text="/").pack(side=LEFT, padx=1)
-        ttk.Combobox(box, textvariable=self._d_month, width=3, state="readonly",
-                     values=[str(i) for i in range(1, 13)]).pack(side=LEFT)
-        ttk.Label(box, text="/").pack(side=LEFT, padx=1)
-        ttk.Combobox(box, textvariable=self._d_year, width=6, state="readonly",
-                     values=years).pack(side=LEFT)
 
     def _build_stays(self, data: dict) -> None:
         lf = self._section("الإقامات (المدينة / الفندق / الغرفة / الإطلالة / "
@@ -1444,73 +1544,9 @@ class VoucherEditorDialog(Toplevel):
         self._contact_rows.append(entry)
         self._attach_clipboard(fr)
 
-    # ---- النسخ واللصق -------------------------------------------------
-    def _attach_clipboard(self, widget) -> None:
-        """يفعّل النسخ/اللصق/القص/تحديد الكل (قائمة يمين + اختصارات تعمل حتى
-        مع لوحة مفاتيح عربية) على كل حقول الإدخال داخل ``widget``."""
-        cls = widget.winfo_class()
-        if cls in ("TEntry", "Entry", "Text", "TCombobox"):
-            widget.bind("<Button-3>", self._clip_menu)
-            widget.bind("<Control-KeyPress>", self._clip_key)
-        for child in widget.winfo_children():
-            self._attach_clipboard(child)
-
-    @staticmethod
-    def _select_all(w) -> None:
-        try:
-            if w.winfo_class() == "Text":
-                w.tag_add("sel", "1.0", "end-1c")
-            else:
-                w.select_range(0, "end")
-                w.icursor("end")
-        except Exception:
-            pass
-
-    def _clip_key(self, event):
-        """يترجم Ctrl+C/V/X/A حسب رمز المفتاح الفعلي (مستقل عن لغة اللوحة)."""
-        w = event.widget
-        actions = {67: "<<Copy>>", 86: "<<Paste>>", 88: "<<Cut>>"}
-        if event.keycode in actions:
-            w.event_generate(actions[event.keycode])
-            return "break"
-        if event.keycode == 65:            # A → تحديد الكل
-            self._select_all(w)
-            return "break"
-        return None
-
-    def _clip_menu(self, event) -> None:
-        w = event.widget
-        try:
-            w.focus_set()
-        except Exception:
-            pass
-        m = Menu(self, tearoff=0)
-        m.add_command(label="قص",
-                      command=lambda: w.event_generate("<<Cut>>"))
-        m.add_command(label="نسخ",
-                      command=lambda: w.event_generate("<<Copy>>"))
-        m.add_command(label="لصق",
-                      command=lambda: w.event_generate("<<Paste>>"))
-        m.add_separator()
-        m.add_command(label="تحديد الكل", command=lambda: self._select_all(w))
-        try:
-            m.tk_popup(event.x_root, event.y_root)
-        finally:
-            m.grab_release()
-
-    def _del_row(self, store: list, entry) -> None:
-        entry[0].destroy()
-        if entry in store:
-            store.remove(entry)
-
     # ---- المعاينة ------------------------------------------------------
     def _iso_date(self) -> str:
-        try:
-            return (f"{int(self._d_year.get()):04d}-"
-                    f"{int(self._d_month.get()):02d}-"
-                    f"{int(self._d_day.get()):02d}")
-        except (ValueError, TypeError):
-            return date.today().isoformat()
+        return self._iso_from(self._d_year, self._d_month, self._d_day)
 
     def _collect(self) -> dict:
         data = {k: v.get().strip() for k, v in self._meta.items()}
@@ -1537,6 +1573,236 @@ class VoucherEditorDialog(Toplevel):
             self,
             lambda p: export_umrah_voucher_pdf(self.rec, p, data=data),
             f"فاوتشر {code}", "pdf")
+
+
+class QuotationEditorDialog(Toplevel, _EditorMixin):
+    """محرّر عرض السعر: تعديل كل الحقول، وإضافة/حذف صفوف الإقامة والطيران
+    وبنود المواصلات، قبل المعاينة."""
+
+    def __init__(self, parent, rec, trip, data: dict) -> None:
+        super().__init__(parent)
+        self.parent = parent
+        self.rec = rec
+        self.trip = trip
+        self.title("محرّر عرض السعر")
+        self.configure(bg=G.BG)
+        self.geometry("940x700")
+        self.minsize(740, 480)
+        self.transient(parent)
+        self._scroll_body()
+
+        self._fields: dict[str, StringVar] = {}
+        self._stay_rows: list[list] = []
+        self._flight_rows: list[list] = []
+        self._line_rows: list[list] = []
+        self._number = str(data.get("number") or "")
+
+        self._build_head(data)
+        self._build_stays(data)
+        self._build_flights(data)
+        self._build_transport(data)
+        self._build_costs(data)
+        self._build_signatures(data)
+        self._attach_clipboard(self.body)
+
+        bar = ttk.Frame(self, padding=(10, 6))
+        bar.pack(fill=X)
+        ttk.Button(bar, text="🖨  معاينة PDF",
+                   command=self._preview).pack(side=RIGHT)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
+                                                                 padx=6)
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    def _row_field(self, parent, label, key, data, r, c, width=26):
+        ttk.Label(parent, text=label).grid(row=r, column=c * 2, sticky="e",
+                                           padx=(8, 4), pady=3)
+        var = StringVar(value=str(data.get(key) or ""))
+        self._fields[key] = var
+        ttk.Entry(parent, textvariable=var, width=width, justify="right").grid(
+            row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
+
+    def _build_head(self, data: dict) -> None:
+        lf = self._section("البيانات الأساسية")
+        ttk.Label(lf, text="رقم العرض").grid(row=0, column=0, sticky="e",
+                                             padx=(8, 4), pady=3)
+        ttk.Label(lf, text=self._number, foreground=G.ACCENT,
+                  font=("Segoe UI", 10, "bold")).grid(row=0, column=1,
+                                                       sticky="w", pady=3)
+        ttk.Label(lf, text="التاريخ").grid(row=0, column=2, sticky="e",
+                                           padx=(8, 4), pady=3)
+        self._build_date_picker(lf, data.get("date"), row=0, col=3)
+        self._row_field(lf, "العنوان", "title", data, 1, 0)
+        self._row_field(lf, "العدد", "pax", data, 1, 1)
+        self._row_field(lf, "التحية", "greeting", data, 2, 0)
+        # الفترة: من / إلى بقوائم منسدلة
+        ttk.Label(lf, text="الفترة من").grid(row=3, column=0, sticky="e",
+                                             padx=(8, 4), pady=3)
+        self._build_date_picker(lf, data.get("period_from"), row=3, col=1,
+                                prefix="_pf")
+        ttk.Label(lf, text="إلى").grid(row=3, column=2, sticky="e",
+                                       padx=(8, 4), pady=3)
+        self._build_date_picker(lf, data.get("period_to"), row=3, col=3,
+                                prefix="_pt")
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_stays(self, data: dict) -> None:
+        lf = self._section("الإقامة (المدينة / الليالي / من–إلى / الفندق والوصف)")
+        self._stay_widths = [12, 6, 12, 40]
+        hdr = ttk.Frame(lf)
+        hdr.pack(fill=X)
+        for w, h in zip(self._stay_widths, QUOTE_STAY_HEADS):
+            ttk.Label(hdr, text=h, width=w, anchor="center",
+                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
+        self._stay_box = ttk.Frame(lf)
+        self._stay_box.pack(fill=X)
+        for r in data.get("stays", []):
+            self._add_stay_row(list(r))
+        ttk.Button(lf, text="＋ إضافة إقامة",
+                   command=lambda: self._add_stay_row()).pack(anchor="e",
+                                                              pady=(4, 0))
+
+    def _add_stay_row(self, values=None) -> None:
+        values = list(values or []) + [""] * 4
+        fr = ttk.Frame(self._stay_box)
+        fr.pack(fill=X, pady=1)
+        cells = []
+        for i, w in enumerate(self._stay_widths):
+            var = StringVar(value=str(values[i] or ""))
+            expand = i == 3
+            ttk.Entry(fr, textvariable=var, width=w, justify="right").pack(
+                side=RIGHT, fill=X, expand=expand, padx=1)
+            cells.append(var)
+        entry = [fr, cells]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._stay_rows, entry)).pack(
+            side=RIGHT, padx=(4, 1))
+        self._stay_rows.append(entry)
+        self._attach_clipboard(fr)
+
+    def _build_flights(self, data: dict) -> None:
+        lf = self._section("الطيران (اليوم / الناقل / الإقلاع / من / الوصول / إلى)")
+        self._row_field(lf, "الدرجة", "flight_class", data, 0, 0)
+        lf.columnconfigure(1, weight=1)
+        self._flight_widths = [11, 11, 8, 9, 8, 9]
+        hdr = ttk.Frame(lf)
+        hdr.grid(row=1, column=0, columnspan=4, sticky="we", pady=(6, 0))
+        for w, h in zip(self._flight_widths, QUOTE_FLIGHT_HEADS):
+            ttk.Label(hdr, text=h, width=w, anchor="center",
+                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
+        self._flight_box = ttk.Frame(lf)
+        self._flight_box.grid(row=2, column=0, columnspan=4, sticky="we")
+        for r in data.get("flights", []):
+            self._add_flight_row(list(r))
+        ttk.Button(lf, text="＋ إضافة رحلة",
+                   command=lambda: self._add_flight_row()).grid(
+            row=3, column=0, columnspan=4, sticky="e", pady=(4, 0))
+
+    def _add_flight_row(self, values=None) -> None:
+        values = list(values or []) + [""] * 6
+        fr = ttk.Frame(self._flight_box)
+        fr.pack(fill=X, pady=1)
+        cells = []
+        for i, w in enumerate(self._flight_widths):
+            var = StringVar(value=str(values[i] or ""))
+            ttk.Entry(fr, textvariable=var, width=w, justify="center").pack(
+                side=RIGHT, padx=1)
+            cells.append(var)
+        entry = [fr, cells]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._flight_rows, entry)).pack(
+            side=RIGHT, padx=(4, 1))
+        self._flight_rows.append(entry)
+        self._attach_clipboard(fr)
+
+    def _build_transport(self, data: dict) -> None:
+        lf = self._section("المواصلات والتنقّلات")
+        self._row_field(lf, "المركبة", "transport_note", data, 0, 0, width=44)
+        lf.columnconfigure(1, weight=1)
+        ttk.Label(lf, text="بنود التنقّل:").grid(row=1, column=0, sticky="e",
+                                                 padx=(8, 4), pady=(6, 2))
+        self._line_box = ttk.Frame(lf)
+        self._line_box.grid(row=2, column=0, columnspan=4, sticky="we")
+        for line in data.get("transport_lines", []):
+            self._add_line_row(str(line))
+        ttk.Button(lf, text="＋ إضافة بند",
+                   command=lambda: self._add_line_row("")).grid(
+            row=3, column=0, columnspan=4, sticky="e", pady=(4, 0))
+
+    def _add_line_row(self, text: str) -> None:
+        fr = ttk.Frame(self._line_box)
+        fr.pack(fill=X, pady=1)
+        var = StringVar(value=text)
+        entry = [fr, [var]]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._line_rows, entry)).pack(
+            side=RIGHT, padx=(4, 1))
+        ttk.Entry(fr, textvariable=var, justify="right").pack(
+            side=RIGHT, fill=X, expand=True, padx=1)
+        self._line_rows.append(entry)
+        self._attach_clipboard(fr)
+
+    def _build_costs(self, data: dict) -> None:
+        lf = self._section("التكلفة والصلاحية")
+        self._row_field(lf, "التكلفة الإجمالية", "total_cost", data, 0, 0)
+        self._row_field(lf, "التكلفة للفرد", "per_person", data, 0, 1)
+        ttk.Label(lf, text="صالح حتى").grid(row=1, column=0, sticky="e",
+                                            padx=(8, 4), pady=3)
+        self._build_date_picker(lf, data.get("validity"), row=1, col=1,
+                                prefix="_vl")
+        self._has_validity = bool(str(data.get("validity") or "").strip())
+        self._vl_on = BooleanVar(value=self._has_validity)
+        ttk.Checkbutton(lf, text="إظهار الصلاحية",
+                        variable=self._vl_on).grid(row=1, column=2,
+                                                   columnspan=2, sticky="w")
+        self._row_field(lf, "خاتمة العرض", "closing", data, 2, 0, width=60)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_signatures(self, data: dict) -> None:
+        lf = self._section("التوقيعات")
+        self._row_field(lf, "صفة (يمين)", "gm_title", data, 0, 0)
+        self._row_field(lf, "الاسم", "gm_name", data, 0, 1)
+        self._row_field(lf, "صفة (يسار)", "office_title", data, 1, 0)
+        self._row_field(lf, "الاسم", "office_name", data, 1, 1)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _collect(self) -> dict:
+        data = {k: v.get().strip() for k, v in self._fields.items()}
+        data["number"] = self._number
+        data["date"] = self._iso_from(self._d_year, self._d_month, self._d_day)
+        data["period_from"] = self._iso_from(self._pf_year, self._pf_month,
+                                             self._pf_day)
+        data["period_to"] = self._iso_from(self._pt_year, self._pt_month,
+                                           self._pt_day)
+        data["validity"] = self._iso_from(self._vl_year, self._vl_month,
+                                          self._vl_day) if self._vl_on.get() \
+            else ""
+        data["stays"] = [[c.get().strip() for c in cells]
+                         for _fr, cells in self._stay_rows
+                         if any(c.get().strip() for c in cells)]
+        data["flights"] = [[c.get().strip() for c in cells]
+                           for _fr, cells in self._flight_rows
+                           if any(c.get().strip() for c in cells)]
+        data["transport_lines"] = [cells[0].get().strip()
+                                   for _fr, cells in self._line_rows
+                                   if cells[0].get().strip()]
+        return data
+
+    def _preview(self) -> None:
+        data = self._collect()
+        code = getattr(self.trip, "code", "") or "يدوي"
+        G.open_preview(
+            self,
+            lambda p: export_umrah_quotation_pdf(self.rec, p, data=data),
+            f"عرض سعر {code}", "pdf")
 
 
 class RoomingWindow(Toplevel):

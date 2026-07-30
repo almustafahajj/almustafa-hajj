@@ -191,6 +191,17 @@ def next_voucher_number(settings: dict) -> str:
     return f"MA{seq:04d}"
 
 
+def next_quote_number(settings: dict) -> str:
+    """يخصّص رقم عرض سعر تسلسلياً (MA-Q0001…) ويحدّث العدّاد في الإعدادات."""
+    try:
+        seq = int(settings.get("quote_seq", 0) or 0)
+    except (TypeError, ValueError):
+        seq = 0
+    seq += 1
+    settings["quote_seq"] = seq
+    return f"MA-Q{seq:04d}"
+
+
 def next_code(trips: list[UmrahTrip]) -> str:
     """يقترح رمزاً جديداً غير مستعمل للبرنامج (U1، U2…)."""
     used = {t.code for t in trips}
