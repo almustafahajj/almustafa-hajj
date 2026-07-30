@@ -2870,6 +2870,10 @@ QUOTE_HOTELS = ("جميرا مكة جبل عمر", "فيرمونت مكة", "ه�
 QUOTE_GREETING = "السلام عليكم ورحمة الله وبركاته،"
 QUOTE_CLOSING = ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
                  "ردّكم الكريم.")
+# خانة توقيع ثابتة (غير قابلة للتعديل)
+QUOTE_OFFICE_TITLE = "مدير المكتب"
+QUOTE_OFFICE_NAME = "أيمن الشهابي"
+QUOTE_OFFICE_PHONE = "0549964801"
 
 
 def quote_times() -> list:
@@ -3007,10 +3011,14 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "currency": "درهم",
         "validity": "",
         "closing": QUOTE_CLOSING,
+        # الخانة القابلة للتعديل (الصفة/الاسم/الهاتف)
         "gm_title": "المدير العام",
         "gm_name": "محمد شعّار",
-        "office_title": "مدير المكتب",
-        "office_name": "أيمن الشهابي",
+        "gm_phone": "",
+        # الخانة الثابتة (مدير المكتب) تُؤخذ من ثوابت المكتب في المستند
+        "office_title": QUOTE_OFFICE_TITLE,
+        "office_name": QUOTE_OFFICE_NAME,
+        "office_phone": QUOTE_OFFICE_PHONE,
     }
 
 
@@ -3265,19 +3273,25 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(_ar_para(closing, val, W - 8))
         story.append(Spacer(1, 12))
 
-    # التوقيعات: المدير العام (يمين) ومدير المكتب (يسار)
+    # التوقيعات: خانة قابلة للتعديل (يمين) وخانة المكتب الثابتة (يسار)
     sig_t = ParagraphStyle("qst", parent=lbl, alignment=1, fontSize=10)
     sig_n = ParagraphStyle("qsn", parent=val, alignment=1, fontName=_FONT_BOLD)
-    gm = Table([[_ar_para(str(data.get("gm_title") or ""), sig_t, W * 0.5 - 12)],
-                [_ar_para(str(data.get("gm_name") or ""), sig_n, W * 0.5 - 12)]],
-               colWidths=[W * 0.5])
-    office = Table(
-        [[_ar_para(str(data.get("office_title") or ""), sig_t, W * 0.5 - 12)],
-         [_ar_para(str(data.get("office_name") or ""), sig_n, W * 0.5 - 12)]],
-        colWidths=[W * 0.5])
-    for tb in (gm, office):
+    sig_p = ParagraphStyle("qsp", parent=val, alignment=1, fontSize=9,
+                           textColor=colors.HexColor("#555555"))
+
+    def sig_box(title, name, phone):
+        cells = [[_ar_para(str(title or ""), sig_t, W * 0.5 - 12)],
+                 [_ar_para(str(name or ""), sig_n, W * 0.5 - 12)]]
+        if str(phone or "").strip():
+            cells.append([_ar_para(ltr(str(phone)), sig_p, W * 0.5 - 12)])
+        tb = Table(cells, colWidths=[W * 0.5])
         tb.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
                                 ("TOPPADDING", (0, 0), (-1, -1), 2)]))
+        return tb
+
+    gm = sig_box(data.get("gm_title"), data.get("gm_name"),
+                 data.get("gm_phone"))
+    office = sig_box(QUOTE_OFFICE_TITLE, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE)
     sig = Table([[office, gm]], colWidths=[W * 0.5, W * 0.5])
     sig.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),

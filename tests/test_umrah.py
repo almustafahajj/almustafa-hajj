@@ -487,6 +487,25 @@ assert len(_qe._guests) == _ng + 1
 _nf = len(_qe._flight_rows)
 _qe._add_flight_row(["2026-09-11", "فلاي دبي", "17:45", "جدة", "21:45", "دبي"])
 assert len(_qe._flight_rows) == _nf + 1
+# قراءة الطيران من نصّ حجز أماديوس
+_amz = umrah.parse_amadeus_flights(
+    "1 EY 611 M 04AUG 2 AUHJED DK1 1405 1610\n"
+    "2 EY 632 Q 10AUG 1 MEDAUH DK1 1525 1855", year=2026)
+assert _amz[0] == ["2026-08-04", "الاتحاد", "14:05", "أبوظبي", "16:10", "جدة"]
+assert _amz[1] == ["2026-08-10", "الاتحاد", "15:25", "المدينة", "18:55",
+                   "أبوظبي"]
+# محاكاة زرّ أماديوس في المحرّر (تصحيح OCR وحوار الملفّ)
+import hajj_app.ocr as _ocrmod
+_ocrmod.read_amadeus_text = lambda p: (
+    "1 EY 611 M 04AUG 2 AUHJED DK1 1405 1610\n"
+    "2 EY 632 Q 10AUG 1 MEDAUH DK1 1525 1855")
+_ug.filedialog.askopenfilename = lambda **k: "dummy.png"
+_ug.messagebox.showinfo = lambda *a, **k: None
+_qe._read_amadeus()
+assert len(_qe._flight_rows) == 2
+# التوقيع: خانة قابلة للتعديل بهاتف، وخانة المكتب ثابتة
+assert "office_name" not in _qe._fields and "gm_phone" in _qe._fields
+_qe._fields["gm_phone"].set("0501234567")
 _qe._add_line_row(["2026-09-07", "محطة قطار مكة", "فندق مكة"])
 _qe._fields["train_tickets"].set("2")
 _qe._fields["visas"].set("عدد (2) تأشيرة عمرة")

@@ -92,6 +92,29 @@ def image_to_text(path: str | Path) -> str:
     return "\n".join(chunks)
 
 
+# نص أماديوس: أحرف كبيرة وأرقام ومسافة وشرطة/شرطة مائلة (لأسطر الرحلات)
+_AMADEUS_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 /-"
+_AMADEUS_CONFIG = f"--psm 6 --oem 3 -c tessedit_char_whitelist={_AMADEUS_CHARS}"
+
+
+def read_amadeus_text(path: str | Path) -> str:
+    """يقرأ نصّ حجز أماديوس من صورة (لقطة شاشة) ويعيد النص الخام لتحليل الرحلات."""
+    ensure_tesseract()
+    img = _load_image(path)
+    gray = _upscale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 2000)
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    best = ""
+    for variant in (otsu, gray):
+        try:
+            txt = pytesseract.image_to_string(Image.fromarray(variant),
+                                              config=_AMADEUS_CONFIG)
+        except Exception:
+            continue
+        if len(txt) > len(best):
+            best = txt
+    return best
+
+
 def ensure_tesseract() -> None:
     """يتأكد من توفّر Tesseract أو يرفع خطأً واضحاً."""
     cmd = pytesseract.pytesseract.tesseract_cmd

@@ -30,7 +30,8 @@ from .pdf_io import (
     QUOTE_AIRPORT_CITIES, QUOTE_CAR_COUNTS, QUOTE_CAR_MODELS, QUOTE_CAR_TYPES,
     QUOTE_CARRIERS, QUOTE_CITY_OPTIONS, QUOTE_FLIGHT_CLASSES, QUOTE_FLIGHT_HEADS,
     QUOTE_GUEST_TYPES, QUOTE_HOTELS, QUOTE_LOCATIONS, QUOTE_MEALS, QUOTE_NIGHTS,
-    QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
+    QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE, QUOTE_ROOM_COUNTS,
+    QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
     VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
     VOUCHER_VIEW_OPTIONS, build_quotation_data, build_voucher_data,
     export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
@@ -1853,6 +1854,10 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         lf = self._section("الطيران")
         self._combo(lf, "الدرجة", "flight_class", data, QUOTE_FLIGHT_CLASSES,
                     0, 0, width=14)
+        ttk.Button(lf, text="📷 قراءة من صورة أماديوس",
+                   command=self._read_amadeus).grid(row=0, column=2,
+                                                    columnspan=2, sticky="w",
+                                                    padx=6)
         lf.columnconfigure(1, weight=1)
         self._flight_box = ttk.Frame(lf)
         self._flight_box.grid(row=1, column=0, columnspan=4, sticky="we",
@@ -1862,6 +1867,43 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         ttk.Button(lf, text="＋ إضافة رحلة",
                    command=lambda: self._add_flight_row()).grid(
             row=2, column=0, columnspan=4, sticky="e", pady=(4, 0))
+
+    def _read_amadeus(self):
+        """يقرأ رحلات من صورة حجز أماديوس ويملأ جدول الطيران تلقائياً."""
+        path = filedialog.askopenfilename(
+            parent=self, title="صورة حجز أماديوس",
+            filetypes=[("صور", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
+                       ("كل الملفّات", "*.*")])
+        if not path:
+            return
+        try:
+            from .ocr import read_amadeus_text
+            text = read_amadeus_text(path)
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        year = None
+        for src in (self._pf.get(), self._d.get()):
+            if src and "-" in src:
+                try:
+                    year = int(src.split("-")[0])
+                    break
+                except ValueError:
+                    pass
+        rows = umrah.parse_amadeus_flights(text, year=year)
+        if not rows:
+            messagebox.showinfo(
+                "قراءة أماديوس",
+                "تعذّر التعرّف على رحلات في الصورة. تأكّد من وضوح اللقطة.",
+                parent=self)
+            return
+        for entry in list(self._flight_rows):
+            entry[0].destroy()
+        self._flight_rows.clear()
+        for r in rows:
+            self._add_flight_row(r)
+        messagebox.showinfo("قراءة أماديوس", f"تمّت قراءة {len(rows)} رحلة.",
+                            parent=self)
 
     def _add_flight_row(self, values=None):
         values = list(values or []) + [""] * 6
@@ -2041,10 +2083,19 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
 
     def _build_signatures(self, data):
         lf = self._section("التوقيعات")
-        self._field(lf, "صفة (يمين)", "gm_title", data, 0, 0)
+        # الخانة القابلة للتعديل: الاسم / الصفة / رقم الهاتف
+        self._field(lf, "الصفة", "gm_title", data, 0, 0)
         self._field(lf, "الاسم", "gm_name", data, 0, 1)
-        self._field(lf, "صفة (يسار)", "office_title", data, 1, 0)
-        self._field(lf, "الاسم", "office_name", data, 1, 1)
+        self._field(lf, "رقم الهاتف", "gm_phone", data, 1, 0)
+        # الخانة الثابتة (غير قابلة للتعديل)
+        ttk.Label(lf, text="الخانة الثابتة:").grid(row=2, column=0, sticky="e",
+                                                   padx=(8, 4), pady=(8, 3))
+        fixed = (f"{QUOTE_OFFICE_TITLE} — {QUOTE_OFFICE_NAME} — "
+                 f"{QUOTE_OFFICE_PHONE}")
+        ttk.Label(lf, text=fixed, foreground=G.ACCENT,
+                  font=("Segoe UI", 9, "bold")).grid(row=2, column=1,
+                                                     columnspan=3, sticky="w",
+                                                     pady=(8, 3))
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
