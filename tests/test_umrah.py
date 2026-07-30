@@ -459,31 +459,45 @@ _tripq = umrah.UmrahTrip(code="Q1", name="سبتمبر", depart_date="2026-09-04
                          madinah_nights="3", airline="FLYDUBAI",
                          out_depart_time="14:25", ret_depart_time="17:45",
                          transport="سيارة (FORD)", price_double="5700")
-_qd = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائية"),
-                           trip=_tripq, number="MA-Q0001", pax="2 كبار")
-assert _qd["stays"] and _qd["flights"], "بيانات عرض السعر غير مكتملة"
+_qd = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائي"),
+                           trip=_tripq, number="MA-Q0001")
+assert _qd["stays"] and _qd["flights"] and _qd["guests"], "بيانات غير مكتملة"
+assert len(_qd["stays"][0]) == 7          # المدينة/الليالي/الفندق/النوع/العدد/الإطلالة/الوجبات
 _qp = WORK / "quote.pdf"
 export_umrah_quotation_pdf(PassportData(full_name_ar="خالد"), _qp, data=_qd)
 assert _qp.read_bytes()[:5] == b"%PDF-" and _qp.stat().st_size > 3000
-# محرّر عرض السعر: إضافة/حذف صفوف، رقم تسلسلي، معاينة
+# محرّر عرض السعر: قوائم منسدلة، ضيوف، قطار/تأشيرات، تقويم منبثق، معاينة
 rq = tk.Tk(); rq.withdraw()
 appq = _ug.UmrahApp(rq, session=None)
 appq.trips.append(_tripq)
 appq.records.append(PassportData(full_name_ar="خالد", trip="Q1",
-                                 room_type="ثنائية"))
+                                 room_type="ثنائي"))
 wq = _ug.TripPilgrimsWindow(appq, _tripq)
 wq.tree.selection_set("0")
 wq.do_quotation()
 _qe = [w for w in wq.winfo_children()
        if isinstance(w, _ug.QuotationEditorDialog)][-1]
 assert _qe._number.startswith("MA-Q") and _qe._stay_rows and _qe._flight_rows
+assert _qe._guests and _qe._line_rows       # ضيوف افتراضيون وبنود تنقّل
+assert _qe._d.get() and _qe._pf.get()        # حقول التاريخ (تقويم منبثق)
+# إضافة ضيوف عبر عناصر التحكّم
+_ng = len(_qe._guests)
+_qe._g_count.set("1"); _qe._g_type.set("أطفال"); _qe._add_guest_ctl()
+assert len(_qe._guests) == _ng + 1
 _nf = len(_qe._flight_rows)
-_qe._add_flight_row(["2026-09-11", "FLYDUBAI", "17:45", "جدة", "21:45", "دبي"])
+_qe._add_flight_row(["2026-09-11", "فلاي دبي", "17:45", "جدة", "21:45", "دبي"])
 assert len(_qe._flight_rows) == _nf + 1
-_qe._add_line_row("عدد (2) تذاكر قطار الحرمين.")
+_qe._add_line_row(["2026-09-07", "محطة قطار مكة", "فندق مكة"])
+_qe._fields["train_tickets"].set("2")
+_qe._fields["visas"].set("عدد (2) تأشيرة عمرة")
 _qe._fields["total_cost"].set("11,400 درهم")
+_qe._stay_rows[0][1][5].set("مطلّة كعبة")
 _qdc = _qe._collect()
 assert _qdc["number"] == _qe._number and _qdc["flights"] and _qdc["stays"]
+assert _qdc["guests"] == [["2", "كبار"], ["1", "أطفال"]]
+assert _qdc["train_tickets"] == "2" and _qdc["visas"]
+assert _qdc["car_type"] and _qdc["car_model"] and _qdc["car_count"]
+assert _qdc["stays"][0][5] == "مطلّة كعبة"
 _qe._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _qe.destroy()
@@ -492,7 +506,9 @@ appq.new_manual_quotation()
 _qm = [w for w in rq.winfo_children()
        if isinstance(w, _ug.QuotationEditorDialog)][-1]
 assert _qm.trip is None and _qm._number.startswith("MA-Q")
-_qm._add_stay_row(["مكة المكرّمة", "4", "09/07 – 09/11", "فندق"])
+_qm._add_stay_row(["مكة المكرّمة", "4", "فندق النور", "ثنائي", "1",
+                   "مطلّة كعبة", "إفطار"])
+_qm._add_guest([" 2", "كبار"])
 _qm._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _qm.destroy()

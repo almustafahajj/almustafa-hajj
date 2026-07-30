@@ -2840,8 +2840,41 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
 #  عرض السعر (Quotation)
 # ======================================================================
 
-QUOTE_STAY_HEADS = ("المدينة", "الليالي", "من – إلى", "الفندق والوصف")
+QUOTE_STAY_HEADS = ("المدينة", "الليالي", "الفندق", "نوع الغرفة", "عدد الغرف",
+                    "الإطلالة", "الوجبات")
 QUOTE_FLIGHT_HEADS = ("اليوم", "الناقل", "الإقلاع", "من", "الوصول", "إلى")
+
+# خيارات القوائم المنسدلة في محرّر عرض السعر
+QUOTE_GUEST_TYPES = ("كبار", "صغار", "أطفال", "رضّع")
+QUOTE_CITY_OPTIONS = ("مكة المكرّمة", "المدينة المنوّرة")
+QUOTE_NIGHTS = tuple(str(i) for i in range(1, 11))
+QUOTE_ROOM_TYPES = ("مفرد", "ثنائي", "ثلاثي", "رباعي", "جناح غرفة وصالة",
+                    "جناح غرفتين وصالة", "جناح 3 غرف وصالة", "جناح 4 غرف وصالة")
+QUOTE_ROOM_COUNTS = tuple(str(i) for i in range(1, 11))
+QUOTE_VIEWS = ("غير مطلّة", "مطلّة مدينة", "مطلّة كعبة")
+QUOTE_MEALS = ("إفطار", "غداء", "عشاء", "وجبات كاملة", "غداء وعشاء")
+QUOTE_FLIGHT_CLASSES = ("سياحية", "رجال أعمال", "درجة أولى")
+QUOTE_CARRIERS = ("السعودية", "الإتحاد", "الإمارات", "فلاي دبي", "فلاي ناس",
+                  "العربية", "أديل")
+QUOTE_AIRPORT_CITIES = ("أبوظبي", "دبي", "جدة", "المدينة", "الرياض", "الطائف",
+                        "رأس الخيمة")
+QUOTE_CAR_TYPES = ("GMC", "FORD", "BMW", "Mercedes", "VAN", "Mini Bus", "Satria")
+QUOTE_CAR_MODELS = ("2025", "2026", "2027", "2028")
+QUOTE_CAR_COUNTS = tuple(str(i) for i in range(1, 11))
+QUOTE_LOCATIONS = ("مطار جدة", "مطار المدينة", "فندق مكة", "فندق المدينة",
+                   "محطة قطار مكة", "محطة قطار المدينة", "مطار الرياض",
+                   "مطار الطائف")
+QUOTE_HOTELS = ("جميرا مكة جبل عمر", "فيرمونت مكة", "هيلتون مكة الضيافة",
+                "سويس أوتيل مكة", "دار الإيمان الحرم", "دار التقوى",
+                "أنوار المدينة موفنبيك", "شذا المدينة")
+QUOTE_GREETING = "السلام عليكم ورحمة الله وبركاته،"
+QUOTE_CLOSING = ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
+                 "ردّكم الكريم.")
+
+
+def quote_times() -> list:
+    """أوقات بفواصل نصف ساعة (00:00 … 23:30) للقوائم المنسدلة."""
+    return [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
 
 
 def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
@@ -2857,13 +2890,12 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
     if not date_str:
         date_str = date.today().isoformat()
 
-    def short(d):
-        return f"{d.month:02d}/{d.day:02d}" if d else ""
+    room = str(getattr(rec, "room_type", "") or "ثنائي")
+    if room not in QUOTE_ROOM_TYPES:
+        room = "ثنائي"
 
-    room = str(getattr(rec, "room_type", "") or "غرفة")
-    # الإقامات: [المدينة، الليالي، «من – إلى»، وصف الفندق]
+    # الإقامات: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة، الوجبات]
     stays: list[list[str]] = []
-    cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
     for label, hotel_f, nights_f in (
             ("المدينة المنوّرة", "madinah_hotel", "madinah_nights"),
             ("مكة المكرّمة", "makkah_hotel", "makkah_nights")):
@@ -2874,14 +2906,13 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
             n = int(float(str(getattr(trip, nights_f, "") or "").strip() or 0))
         except ValueError:
             n = 0
-        cout = (cur + timedelta(days=n)) if (cur and n) else None
-        rng = f"{short(cur)} – {short(cout)}" if cur else ""
-        desc = f"{hotel} — عدد (1) غرفة {room} غير مطلّة شامل الإفطار"
-        stays.append([label, str(n or ""), rng, desc])
-        cur = cout or cur
+        stays.append([label, str(n or ""), hotel, room, "1", "غير مطلّة",
+                      "إفطار"])
 
     # الطيران: رحلتا الذهاب والعودة من بيانات البرنامج (المطارات تُملأ يدوياً)
     airline = str(getattr(trip, "airline", "") or "") if trip else ""
+    if airline not in QUOTE_CARRIERS:
+        airline = ""
     dep = str(getattr(trip, "depart_date", "") or "") if trip else ""
     ret = str(getattr(trip, "return_date", "") or "") if trip else ""
     flights = [
@@ -2892,12 +2923,11 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
     ] if trip else []
 
     car = str(getattr(trip, "transport", "") or "") if trip else ""
-    transport_note = f"عدد (1) {car or 'سيارة خاصّة'}"
-    transport_lines = [
-        "الاستقبال من المطار والتوصيل إلى الفندق.",
-        "التنقّل بين الفنادق ومحطّات قطار الحرمين.",
-        "التوصيل إلى مطار المغادرة في نهاية الرحلة.",
-    ]
+    car_type = next((c for c in QUOTE_CAR_TYPES if c.lower() in car.lower()),
+                    "GMC")
+    transport_lines = [[dep, "مطار جدة", "فندق مكة"],
+                       ["", "فندق مكة", "فندق المدينة"],
+                       [ret, "فندق المدينة", "مطار المدينة"]]
 
     per_person = str(getattr(trip, "price_double", "") or "") if trip else ""
 
@@ -2905,22 +2935,32 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "number": str(number or ""),
         "date": date_str,
         "title": "عرض سعر رحلة عمرة",
-        "greeting": "السلام عليكم ورحمة الله وبركاته،",
-        "pax": pax or "",
+        "greeting": QUOTE_GREETING,
+        # الضيوف: كل عنصر [العدد، النوع]
+        "guests": [["2", "كبار"]],
         "period_from": dep,
         "period_to": ret,
-        # كل صف: [المدينة، الليالي، «من – إلى»، وصف الفندق]
+        # كل صف: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة، الوجبات]
         "stays": stays,
-        "flight_class": "درجة سياحية",
+        "flight_class": "سياحية",
         # كل صف: [اليوم، الناقل، الإقلاع، من، الوصول، إلى]
         "flights": flights,
-        "transport_note": transport_note,
+        "car_type": car_type,
+        "car_model": "2025",
+        "car_count": "1",
+        # كل بند تنقّل: [التاريخ، من، إلى]
         "transport_lines": transport_lines,
+        # قطار الحرمين
+        "train_tickets": "",
+        "train_class": "سياحية",
+        "train_from": "المدينة",
+        "train_to": "مكة",
+        # التأشيرات
+        "visas": "",
         "total_cost": "",
         "per_person": per_person,
         "validity": "",
-        "closing": ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
-                    "ردّكم الكريم."),
+        "closing": QUOTE_CLOSING,
         "gm_title": "المدير العام",
         "gm_name": "محمد شعّار",
         "office_title": "مدير المكتب",
@@ -3050,22 +3090,26 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         ]))
         return t
 
-    # العدد والفترة
-    pax = str(data.get("pax") or "")
-    if pax:
-        story.append(bullet(f"العدد: {pax}", bold=True))
+    # الضيوف والفترة
+    guests = ["، ".join(f"{ltr(str(c).strip())} {str(t).strip()}"
+                        for c, t in [g[:2] + [""] * (2 - len(g))
+                                     for g in data.get("guests", [])]
+                        if str(c).strip() or str(t).strip())]
+    if guests[0]:
+        story.append(bullet(f"الضيوف: {guests[0]}", bold=True))
     pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
     if pf or pt:
         story.append(bullet(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
     story.append(Spacer(1, 6))
 
     # الإقامة
-    stays = [list(r)[:4] + [""] * (4 - len(r)) for r in data.get("stays", [])
+    stays = [list(r)[:7] + [""] * (7 - len(r)) for r in data.get("stays", [])
              if any(str(x or "").strip() for x in r)]
     if stays:
         story.append(section("تفاصيل الإقامة"))
         story.append(Spacer(1, 4))
-        story.append(data_table(list(QUOTE_STAY_HEADS), [70, 40, 78, 220], stays))
+        story.append(data_table(list(QUOTE_STAY_HEADS),
+                                [70, 34, 130, 84, 44, 66, 56], stays))
         story.append(Spacer(1, 8))
 
     # الطيران
@@ -3081,16 +3125,46 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                             flights))
     story.append(Spacer(1, 8))
 
-    # المواصلات
+    # المواصلات والتنقّلات
     story.append(section("المواصلات والتنقّلات"))
     story.append(Spacer(1, 3))
-    note = str(data.get("transport_note") or "")
-    if note:
+    ctype = str(data.get("car_type") or "")
+    cmodel = str(data.get("car_model") or "")
+    ccount = str(data.get("car_count") or "")
+    if ctype or ccount:
+        note = f"عدد ({ltr(ccount or '1')}) سيارة ({ctype})"
+        if cmodel:
+            note += f" موديل {ltr(cmodel)}"
         story.append(bullet(note, bold=True))
     for line in data.get("transport_lines", []):
-        if str(line or "").strip():
-            story.append(_ar_para("– " + str(line), ParagraphStyle(
-                "qsub", parent=val, fontSize=9, leading=13), W - 24))
+        row = list(line)[:3] + [""] * (3 - len(line)) if isinstance(
+            line, (list, tuple)) else ["", "", str(line)]
+        d, frm, to = (str(x or "").strip() for x in row)
+        if not (d or frm or to):
+            continue
+        parts = []
+        if d:
+            parts.append(f"يوم {ltr(d)}")
+        if frm:
+            parts.append(f"من {frm}")
+        if to:
+            parts.append(f"إلى {to}")
+        story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
+            "qsub", parent=val, fontSize=9, leading=13), W - 24))
+    # قطار الحرمين
+    tk_n = str(data.get("train_tickets") or "").strip()
+    if tk_n:
+        tc = str(data.get("train_class") or "")
+        tf = str(data.get("train_from") or "")
+        tt = str(data.get("train_to") or "")
+        line = f"عدد ({ltr(tk_n)}) تذاكر قطار الحرمين على الدرجة {tc}"
+        if tf or tt:
+            line += f" ({tf} – {tt})"
+        story.append(bullet(line))
+    # التأشيرات
+    visas = str(data.get("visas") or "").strip()
+    if visas:
+        story.append(bullet(f"التأشيرات: {visas}"))
     story.append(Spacer(1, 8))
 
     # التكلفة
