@@ -39,4 +39,4 @@ desktop.ini
 /vendor/
 
 # ملفات مستندات خارجية تُسقط في tests/ (بيانات خاصة) — لا تُتعقّب
-tests/Hotel Voucher*.pdf
+tests/Hotel Voucher*
