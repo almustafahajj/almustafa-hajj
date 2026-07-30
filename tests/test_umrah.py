@@ -462,7 +462,8 @@ _tripq = umrah.UmrahTrip(code="Q1", name="سبتمبر", depart_date="2026-09-04
 _qd = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائي"),
                            trip=_tripq, number="MA-Q0001")
 assert _qd["stays"] and _qd["flights"] and _qd["guests"], "بيانات غير مكتملة"
-assert len(_qd["stays"][0]) == 7          # المدينة/الليالي/الفندق/النوع/العدد/الإطلالة/الوجبات
+# المدينة/الليالي/الفندق/النوع/العدد/الإطلالة/الوجبات + تاريخي الدخول/المغادرة
+assert len(_qd["stays"][0]) == 9
 _qp = WORK / "quote.pdf"
 export_umrah_quotation_pdf(PassportData(full_name_ar="خالد"), _qp, data=_qd)
 assert _qp.read_bytes()[:5] == b"%PDF-" and _qp.stat().st_size > 3000
@@ -507,9 +508,12 @@ assert len(_qe._flight_rows) == 2
 assert "office_name" not in _qe._fields and "gm_phone" in _qe._fields
 _qe._fields["gm_phone"].set("0501234567")
 _qe._add_line_row(["2026-09-07", "محطة قطار مكة", "فندق مكة"])
+_qe._train_on.set(True)                        # إضافة بند قطار الحرمين
 _qe._fields["train_tickets"].set("2")
 _qe._trd.set("2026-09-07")                     # تاريخ القطار
 _qe._fields["train_dep"].set("14:30")
+_qe._stay_rows[0][2].set("2026-09-04")         # تاريخ الإقامة يدوياً (من)
+_qe._stay_rows[0][3].set("2026-09-07")         # (إلى)
 _qe._visas_on.set(True)                        # إضافة بند التأشيرات
 _qe._visas.set("عدد (2) تأشيرة عمرة")
 _qe._addr_on.set(True)
@@ -532,6 +536,12 @@ assert _qdc["addressed_to"] == "خالد الشامسي"     # توجيه باس
 assert _qdc["validity_time"] == "17:00" and _qdc["note"]   # وقت الصلاحية + ملاحظة
 assert _qdc["car_type"] and _qdc["car_model"] and _qdc["car_count"]
 assert _qdc["stays"][0][5] == "مطلّة كعبة"
+assert len(_qdc["stays"][0]) == 9                         # يشمل تاريخي الدخول/المغادرة
+assert _qdc["stays"][0][7] == "2026-09-04"                # تاريخ الإقامة يدوي
+# إلغاء بند قطار الحرمين يُفرّغ التذاكر
+_qe._train_on.set(False)
+assert _qe._collect()["train_tickets"] == ""
+_qe._train_on.set(True)
 assert len(_qdc["pricing"]) == 2 and _qdc["currency"]
 # التحقّق من الحساب عبر الدالّة المشتركة
 from hajj_app.pdf_io import quotation_pricing as _qpr

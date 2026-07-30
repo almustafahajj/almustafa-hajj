@@ -171,6 +171,7 @@ class UmrahApp:
             ("👤  المعتمرين", self.open_pilgrims, "Act.TButton"),
             ("✏️  تعديل البرنامج", self.edit_trip, "Ghost.TButton"),
             ("🗑  حذف البرنامج", self.delete_trip, "Ghost.TButton"),
+            ("📋  عروض الأسعار", self.open_quotes, "Ghost.TButton"),
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher, "Ghost.TButton"),
             ("💲  عرض سعر يدوي", self.new_manual_quotation, "Ghost.TButton"),
         ):
@@ -326,6 +327,15 @@ class UmrahApp:
                                   company=co, number=number)
         VoucherEditorDialog(self.root, rec, None, data, program="",
                             company=co)
+
+    def open_quotes(self) -> None:
+        """فتح قائمة «عروض الأسعار» المحفوظة للبرنامج المحدّد."""
+        trip = self._selected_trip()
+        if trip is None:
+            messagebox.showinfo("عروض الأسعار", "اختر برنامجاً أولاً.",
+                                parent=self.root)
+            return
+        QuotesListWindow(self.root, self, trip)
 
     def new_manual_quotation(self) -> None:
         """عرض سعر لأي رحلة — حتى خارج البرامج — يُملأ يدوياً بالكامل."""
@@ -1778,6 +1788,15 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                      state="readonly" if readonly else "normal").pack()
         return var
 
+    def _date_cell(self, parent, label, iso, width=9):
+        """خلية تاريخ بتقويم منبثق، بعنوان صغير، ضمن صفّ أفقي."""
+        sub = ttk.Frame(parent)
+        sub.pack(side=RIGHT, padx=2)
+        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
+        dp = DatePicker(sub, iso=iso, width=width)
+        dp.pack()
+        return dp
+
     # ---- البيانات الأساسية ----
     def _build_head(self, data):
         lf = self._section("البيانات الأساسية")
@@ -1871,13 +1890,16 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                                                               pady=(4, 0))
 
     def _add_stay_row(self, values=None):
-        values = list(values or []) + [""] * 7
+        values = list(values or []) + [""] * 9
         fr = ttk.Frame(self._stay_box)
         fr.pack(fill=X, pady=2)
         cells = []
         for i, (label, opts, w, ro) in enumerate(self._stay_specs):
             cells.append(self._cell(fr, label, values[i], opts, w, ro))
-        entry = [fr, cells]
+        # تاريخ الإقامة (من – إلى) يُحدَّد يدوياً لكل مدينة
+        cin = self._date_cell(fr, "من", values[7])
+        cout = self._date_cell(fr, "إلى", values[8])
+        entry = [fr, cells, cin, cout]
         ttk.Button(fr, text="حذف", width=5,
                    command=lambda: self._del_row(self._stay_rows, entry)).pack(
             side=RIGHT, padx=(4, 2))
@@ -2066,24 +2088,31 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
     # ---- قطار الحرمين والتأشيرات ----
     def _build_extras(self, data):
         lf = self._section("قطار الحرمين والتأشيرات")
-        ttk.Label(lf, text="تذاكر القطار").grid(row=0, column=0, sticky="e",
+        # إضافة/إلغاء بند قطار الحرمين
+        self._train_on = BooleanVar(
+            value=bool(str(data.get("train_tickets") or "").strip()))
+        ttk.Checkbutton(lf, text="إضافة بند قطار الحرمين",
+                        variable=self._train_on).grid(row=0, column=0,
+                                                      sticky="w", padx=(8, 0),
+                                                      pady=3)
+        ttk.Label(lf, text="تذاكر القطار").grid(row=0, column=2, sticky="e",
                                                 padx=(8, 4), pady=3)
         v = StringVar(value=str(data.get("train_tickets") or ""))
         self._fields["train_tickets"] = v
         ttk.Combobox(lf, textvariable=v,
                      values=[""] + [str(i) for i in range(1, 21)], width=5,
-                     state="readonly").grid(row=0, column=1, sticky="w", pady=3)
+                     state="readonly").grid(row=0, column=3, sticky="w", pady=3)
         self._combo(lf, "الدرجة", "train_class", data, QUOTE_FLIGHT_CLASSES,
-                    0, 1, width=12)
-        self._combo(lf, "من", "train_from", data, ("المدينة", "مكة"), 1, 0,
-                    width=10, readonly=False)
-        self._combo(lf, "إلى", "train_to", data, ("المدينة", "مكة"), 1, 1,
-                    width=10, readonly=False)
-        # تاريخ وتوقيتات القطار
-        ttk.Label(lf, text="تاريخ القطار").grid(row=2, column=0, sticky="e",
+                    1, 0, width=12)
+        # تاريخ القطار
+        ttk.Label(lf, text="تاريخ القطار").grid(row=1, column=2, sticky="e",
                                                 padx=(8, 4), pady=3)
-        self._build_date_picker(lf, data.get("train_date"), row=2, col=1,
+        self._build_date_picker(lf, data.get("train_date"), row=1, col=3,
                                 prefix="_trd")
+        self._combo(lf, "من", "train_from", data, ("المدينة", "مكة"), 2, 0,
+                    width=10, readonly=False)
+        self._combo(lf, "إلى", "train_to", data, ("المدينة", "مكة"), 2, 1,
+                    width=10, readonly=False)
         self._combo(lf, "الإقلاع", "train_dep", data, quote_times(), 3, 0,
                     width=8, readonly=False)
         self._combo(lf, "الوصول", "train_arr", data, quote_times(), 3, 1,
@@ -2093,7 +2122,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
             value=bool(str(data.get("visas") or "").strip()))
         ttk.Checkbutton(lf, text="إضافة بند التأشيرات",
                         variable=self._visas_on).grid(row=4, column=0,
-                                                      sticky="e", padx=(8, 4),
+                                                      sticky="w", padx=(8, 0),
                                                       pady=3)
         self._visas = StringVar(value=str(data.get("visas") or ""))
         ttk.Entry(lf, textvariable=self._visas, width=44,
@@ -2238,9 +2267,10 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         data["guests"] = [[c.get().strip(), t.get().strip()]
                           for _fr, c, t in self._guests
                           if c.get().strip() or t.get().strip()]
-        data["stays"] = [[cell.get().strip() for cell in cells]
-                         for _fr, cells in self._stay_rows
-                         if any(cell.get().strip() for cell in cells)]
+        data["stays"] = [[c.get().strip() for c in cells]
+                         + [cin.get(), cout.get()]
+                         for _fr, cells, cin, cout in self._stay_rows
+                         if any(c.get().strip() for c in cells)]
         data["flights"] = [[dp.get().strip()] +
                            [c.get().strip() for c in cells]
                            for _fr, dp, cells in self._flight_rows
@@ -2249,6 +2279,9 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         data["addressed_to"] = (self._addr.get().strip()
                                 if self._addr_on.get() else "")
         data["train_date"] = self._trd.get()
+        # بند قطار الحرمين قابل للإلغاء (تفريغ التذاكر يُخفيه من المستند)
+        if not self._train_on.get():
+            data["train_tickets"] = ""
         data["visas"] = self._visas.get().strip() if self._visas_on.get() else ""
         data["car_type"] = self._car_type.get().strip()
         data["car_model"] = self._car_model.get().strip()

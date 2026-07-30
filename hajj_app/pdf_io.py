@@ -2928,8 +2928,10 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
     if room not in QUOTE_ROOM_TYPES:
         room = "ثنائي"
 
-    # الإقامات: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة، الوجبات]
+    # الإقامات: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة،
+    #            الوجبات، الدخول، المغادرة] — الدخول/المغادرة محسوبان مبدئياً
     stays: list[list[str]] = []
+    _cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
     for label, hotel_f, nights_f in (
             ("المدينة المنوّرة", "madinah_hotel", "madinah_nights"),
             ("مكة المكرّمة", "makkah_hotel", "makkah_nights")):
@@ -2940,8 +2942,12 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
             n = int(float(str(getattr(trip, nights_f, "") or "").strip() or 0))
         except ValueError:
             n = 0
+        cin = _cur.isoformat() if _cur else ""
+        cout = (_cur + timedelta(days=n)).isoformat() if (_cur and n) else ""
         stays.append([label, str(n or ""), hotel, room, "1", "غير مطلّة",
-                      "إفطار"])
+                      "إفطار", cin, cout])
+        if _cur and n:
+            _cur = _cur + timedelta(days=n)
 
     # الطيران: رحلتا الذهاب والعودة من بيانات البرنامج (المطارات تُملأ يدوياً)
     airline = str(getattr(trip, "airline", "") or "") if trip else ""
@@ -3048,8 +3054,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
     co = company_info(company)
     doc = SimpleDocTemplate(
-        str(path), pagesize=A4, rightMargin=14 * mm, leftMargin=14 * mm,
-        topMargin=10 * mm, bottomMargin=15 * mm, title="عرض سعر",
+        str(path), pagesize=A4, rightMargin=9 * mm, leftMargin=9 * mm,
+        topMargin=9 * mm, bottomMargin=14 * mm, title="عرض سعر",
         author="ميسّر العمرة")
     st = _styles()
     story = []
@@ -3170,28 +3176,34 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(bullet(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
     story.append(Spacer(1, 6))
 
-    # الإقامة — مع تاريخ الإقامة (من – إلى) لكل مدينة، محسوباً من الفترة والليالي
+    # الإقامة — مع تاريخ الإقامة (من – إلى) لكل مدينة (يدوي أو محسوب من الفترة)
     from datetime import timedelta as _td
 
     from .umrah import _parse_date as _pd
-    stays_raw = [list(r)[:7] + [""] * (7 - len(r)) for r in data.get("stays", [])
+    stays_raw = [list(r)[:9] + [""] * (9 - len(r)) for r in data.get("stays", [])
                  if any(str(x or "").strip() for x in r)]
     if stays_raw:
         cur = _pd(pf)
 
-        def _sh(d):
+        def _sh(iso):
+            d = _pd(iso)
             return f"{d.month:02d}/{d.day:02d}" if d else ""
 
         disp = []
-        for city, nights, hotel, room, rooms, view, meals in stays_raw:
+        for row in stays_raw:
+            city, nights, hotel, room, rooms, view, meals, cin, cout = row[:9]
             try:
                 n = int(float(str(nights).strip() or 0))
             except ValueError:
                 n = 0
-            cin = cur
-            cout = (cur + _td(days=n)) if (cur and n) else None
-            rng = f"{_sh(cin)} – {_sh(cout)}" if cin else ""
-            cur = cout or cur
+            # التواريخ اليدوية إن وُجدت، وإلّا تُحسب تسلسلياً من الفترة
+            if not cin and cur:
+                cin = cur.isoformat()
+            if not cout and cur and n:
+                cout = (cur + _td(days=n)).isoformat()
+            rng = f"{_sh(cin)} – {_sh(cout)}" if (cin or cout) else ""
+            nxt = _pd(cout)
+            cur = nxt or (cur + _td(days=n) if (cur and n) else cur)
             disp.append([city, rng, nights, hotel, room, rooms, view, meals])
         heads = ["المدينة", "من – إلى", "الليالي", "الفندق", "نوع الغرفة",
                  "عدد الغرف", "الإطلالة", "الوجبات"]
@@ -3311,11 +3323,20 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         vtime = str(data.get("validity_time") or "").strip()
         if vtime:
             vtxt += f" الساعة {ltr(vtime)}"
-        story.append(_ar_para(vtxt + ".",
-                              ParagraphStyle("qvld", parent=val,
-                                             fontName=_FONT_BOLD,
-                                             textColor=colors.HexColor("#B23B3B")),
-                              W - 8))
+        vpar = _ar_para(vtxt + ".", ParagraphStyle(
+            "qvld", parent=val, fontName=_FONT_BOLD, fontSize=10.5,
+            textColor=colors.HexColor("#7A5C00")), W - 16)
+        # تظليل أصفر ليبرز للضيف
+        vbox = Table([[vpar]], colWidths=[W])
+        vbox.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF3B0")),
+            ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#E0B400")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(vbox)
     story.append(Spacer(1, 6))
 
     # ملاحظات (اختيارية)
