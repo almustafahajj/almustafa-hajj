@@ -387,13 +387,24 @@ t9 = umrah.UmrahTrip(code="D1", name="ديسمبر")
 app9.trips.append(t9)
 app9.records.append(PassportData(full_name_ar="محمد", trip="D1",
                                  program_value="5000", paid_amount="2000"))
+# فاوتشر الفندق (إقامات مكة/المدينة بتواريخ متسلسلة)
+from hajj_app.pdf_io import export_umrah_voucher_pdf
+tripv = umrah.UmrahTrip(code="U1", name="ديسمبر", makkah_hotel="جميرا مكة",
+                        makkah_nights="4", madinah_hotel="دار التقوى",
+                        madinah_nights="3", depart_date="2026-08-07",
+                        transport="جيمس")
+pv = WORK / "voucher.pdf"
+export_umrah_voucher_pdf(PassportData(full_name_ar="خالد", passport_number="A1",
+                                      room_type="ثنائي"), pv, trip=tripv,
+                         program_name="ديسمبر")
+assert pv.read_bytes()[:5] == b"%PDF-" and pv.stat().st_size > 3000
 w9 = _ug.TripPilgrimsWindow(app9, t9)
 w9.tree.selection_set("0")
-for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract):
+for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract, w9.do_voucher):
     _do()
     assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 r9.destroy()
-print("  OK: سند قبض وفاتورة وعقد عمرة لكل معتمر بمسمّيات العمرة")
+print("  OK: سند وفاتورة وعقد وفاوتشر الفندق لكل معتمر بمسمّيات العمرة")
 
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

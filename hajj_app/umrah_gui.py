@@ -29,6 +29,7 @@ from .pdf_io import (
     export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
     export_umrah_finance_pdf, export_umrah_invoice_pdf, export_umrah_pdf,
     export_umrah_receipt_pdf, export_umrah_rooming_pdf, export_umrah_transport_pdf,
+    export_umrah_voucher_pdf,
 )
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
@@ -775,7 +776,8 @@ class TripPilgrimsWindow(Toplevel):
                    command=self.do_cards).pack(side=LEFT, padx=3)
         for text, cmd in (("🧾  سند قبض", self.do_receipt),
                           ("🧾  فاتورة", self.do_invoice),
-                          ("📜  عقد", self.do_contract)):
+                          ("📜  عقد", self.do_contract),
+                          ("🏨  فاوتشر الفندق", self.do_voucher)):
             ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",
                        command=cmd).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("👁  معاينة PDF"), style="Ghost.TButton",
@@ -1130,6 +1132,20 @@ class TripPilgrimsWindow(Toplevel):
     def do_contract(self) -> None:
         """معاينة عقد خدمات العمرة للمعتمر المحدّد."""
         self._doc_for_selected(export_umrah_contract_pdf, "عقد")
+
+    def do_voucher(self) -> None:
+        """معاينة فاوتشر الفندق للمعتمر المحدّد (إقامات مكة/المدينة والنقل)."""
+        rec = self._selected()
+        if rec is None:
+            messagebox.showinfo("فاوتشر", "اختر معتمراً أولاً.", parent=self)
+            return
+        prog = self.trip.name or self.trip.code
+        G.open_preview(
+            self,
+            lambda p: export_umrah_voucher_pdf(rec, p, trip=self.trip,
+                                               program_name=prog,
+                                               company=self._company()),
+            f"فاوتشر {self.trip.code}", "pdf")
 
 
 class RoomingWindow(Toplevel):
