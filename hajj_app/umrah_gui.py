@@ -36,8 +36,8 @@ from .pdf_io import (
     export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
     export_umrah_finance_pdf, export_umrah_invoice_pdf, export_umrah_pdf,
     export_umrah_quotation_pdf, export_umrah_receipt_pdf, export_umrah_rooming_pdf,
-    export_umrah_transport_pdf, export_umrah_voucher_pdf, quote_times,
-    voucher_car_models,
+    export_umrah_transport_pdf, export_umrah_voucher_pdf, fmt_money,
+    quotation_pricing, quote_times, voucher_car_models,
 )
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
@@ -1949,23 +1949,95 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
-    # ---- التكلفة والتوقيعات ----
+    # ---- التكلفة (تُحسب تلقائياً) ----
     def _build_costs(self, data):
-        lf = self._section("التكلفة والصلاحية")
-        self._field(lf, "التكلفة الإجمالية", "total_cost", data, 0, 0)
-        self._field(lf, "التكلفة للفرد", "per_person", data, 0, 1)
-        ttk.Label(lf, text="صالح حتى").grid(row=1, column=0, sticky="e",
-                                            padx=(8, 4), pady=3)
-        self._build_date_picker(lf, data.get("validity"), row=1, col=1,
+        lf = self._section("التكلفة (تُحسب تلقائياً حسب العدد ونوع الغرفة)")
+        self._currency = StringVar(value=str(data.get("currency") or "درهم"))
+        self._price_rows = []
+        self._price_heads = [("نوع الشخص", 10), ("نوع الغرفة", 16),
+                             ("العدد", 6), ("سعر الفرد", 10), ("الإجمالي", 11)]
+        hdr = ttk.Frame(lf)
+        hdr.pack(fill=X)
+        for label, w in self._price_heads:
+            ttk.Label(hdr, text=label, width=w, anchor="center",
+                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
+        self._price_box = ttk.Frame(lf)
+        self._price_box.pack(fill=X)
+        for r in data.get("pricing", []):
+            self._add_price_row(list(r))
+        ttk.Button(lf, text="＋ إضافة فئة سعر",
+                   command=lambda: self._add_price_row()).pack(anchor="e",
+                                                               pady=(4, 0))
+        # الإجمالي الكلي (محسوب تلقائياً) + العملة
+        tot = ttk.Frame(lf)
+        tot.pack(fill=X, pady=(8, 0))
+        self._total_var = StringVar(value="0")
+        ttk.Label(tot, textvariable=self._total_var,
+                  font=("Segoe UI", 13, "bold"),
+                  foreground=G.ACCENT).pack(side=RIGHT, padx=6)
+        ttk.Label(tot, text="التكلفة الإجمالية:",
+                  font=("Segoe UI", 11, "bold")).pack(side=RIGHT)
+        ttk.Combobox(tot, textvariable=self._currency,
+                     values=["درهم", "ريال", "دولار"], width=7).pack(side=LEFT)
+        ttk.Label(tot, text="العملة:").pack(side=LEFT)
+        self._recalc_total()
+
+        # الصلاحية والخاتمة
+        lf2 = self._section("الصلاحية والخاتمة")
+        ttk.Label(lf2, text="صالح حتى").grid(row=0, column=0, sticky="e",
+                                             padx=(8, 4), pady=3)
+        self._build_date_picker(lf2, data.get("validity"), row=0, col=1,
                                 prefix="_vl")
         self._vl_on = BooleanVar(value=bool(str(data.get("validity") or
                                                "").strip()))
-        ttk.Checkbutton(lf, text="إظهار الصلاحية",
-                        variable=self._vl_on).grid(row=1, column=2,
+        ttk.Checkbutton(lf2, text="إظهار الصلاحية",
+                        variable=self._vl_on).grid(row=0, column=2,
                                                    columnspan=2, sticky="w")
-        self._field(lf, "خاتمة العرض", "closing", data, 2, 0, width=60)
-        lf.columnconfigure(1, weight=1)
-        lf.columnconfigure(3, weight=1)
+        self._field(lf2, "خاتمة العرض", "closing", data, 1, 0, width=60)
+        lf2.columnconfigure(1, weight=1)
+        lf2.columnconfigure(3, weight=1)
+
+    def _add_price_row(self, values=None):
+        values = list(values or []) + ["", "", "", ""]
+        fr = ttk.Frame(self._price_box)
+        fr.pack(fill=X, pady=2)
+        pt = StringVar(value=str(values[0] or ""))
+        rt = StringVar(value=str(values[1] or ""))
+        cnt = StringVar(value=str(values[2] or ""))
+        price = StringVar(value=str(values[3] or ""))
+        sub = StringVar(value="0")
+        ttk.Combobox(fr, textvariable=pt, values=list(QUOTE_GUEST_TYPES),
+                     width=9, state="readonly").pack(side=RIGHT, padx=1)
+        ttk.Combobox(fr, textvariable=rt, values=list(QUOTE_ROOM_TYPES),
+                     width=15).pack(side=RIGHT, padx=1)
+        ttk.Combobox(fr, textvariable=cnt,
+                     values=[str(i) for i in range(1, 31)], width=5).pack(
+            side=RIGHT, padx=1)
+        ttk.Entry(fr, textvariable=price, width=10, justify="center").pack(
+            side=RIGHT, padx=1)
+        ttk.Label(fr, textvariable=sub, width=11, anchor="center",
+                  font=("Segoe UI", 9, "bold"),
+                  foreground=G.ACCENT).pack(side=RIGHT, padx=1)
+        entry = [fr, [pt, rt, cnt, price], sub]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: (self._del_row(self._price_rows, entry),
+                                    self._recalc_total())).pack(side=RIGHT,
+                                                                padx=(4, 1))
+        for v in (cnt, price):
+            v.trace_add("write", lambda *a: self._recalc_total())
+        self._price_rows.append(entry)
+        self._attach_clipboard(fr)
+        self._recalc_total()
+
+    def _recalc_total(self):
+        pricing = [[pt.get(), rt.get(), cnt.get(), pr.get()]
+                   for _fr, (pt, rt, cnt, pr), _sub in self._price_rows]
+        rows, total = quotation_pricing(pricing)
+        for (_fr, _cells, subvar), row in zip(self._price_rows, rows):
+            subvar.set(fmt_money(row[4]))
+        if hasattr(self, "_total_var"):
+            self._total_var.set(fmt_money(total))
 
     def _build_signatures(self, data):
         lf = self._section("التوقيعات")
@@ -2002,6 +2074,12 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         lines = [[dp.get().strip()] + [c.get().strip() for c in cells]
                  for _fr, dp, cells in self._line_rows]
         data["transport_lines"] = [row for row in lines if any(row)]
+        # التسعير: [نوع الشخص، نوع الغرفة، العدد، سعر الفرد] (الإجمالي تلقائي)
+        data["currency"] = self._currency.get().strip() or "درهم"
+        data["pricing"] = [[pt.get().strip(), rt.get().strip(),
+                            cnt.get().strip(), pr.get().strip()]
+                           for _fr, (pt, rt, cnt, pr), _sub in self._price_rows
+                           if any(x.get().strip() for x in (pt, rt, cnt, pr))]
         return data
 
     def _preview(self):

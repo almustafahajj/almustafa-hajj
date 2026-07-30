@@ -2878,6 +2878,35 @@ def quote_times() -> list:
     return [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
 
 
+def _money_num(x) -> float:
+    try:
+        return float(str(x).replace(",", "").replace("،", "").strip() or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def fmt_money(x) -> str:
+    """تنسيق مبلغ بفواصل الآلاف، دون كسور إن كان صحيحاً."""
+    x = _money_num(x)
+    return f"{int(x):,}" if x == int(x) else f"{x:,.2f}"
+
+
+def quotation_pricing(pricing) -> tuple:
+    """يحسب الإجمالي الفرعي لكل صفّ تسعير (العدد × سعر الفرد) والإجمالي الكلي.
+
+    كل صفّ: ``[نوع الشخص، نوع الغرفة، العدد، سعر الفرد]``. يعيد
+    ``(rows, total)`` حيث كل عنصر في ``rows`` هو
+    ``(نوع الشخص، نوع الغرفة، العدد، سعر الفرد، الإجمالي)``."""
+    rows, total = [], 0.0
+    for row in pricing or []:
+        ptype, rtype, count, price = (list(row) + ["", "", "", ""])[:4]
+        sub = _money_num(count) * _money_num(price)
+        total += sub
+        rows.append((str(ptype or ""), str(rtype or ""), str(count or ""),
+                     str(price or ""), sub))
+    return rows, total
+
+
 def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
                          date_str: str = "", pax: str = "") -> dict:
     """يبني بيانات عرض السعر (قاموس قابل للتعديل) من بيانات البرنامج/المعتمر،
@@ -2930,7 +2959,22 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
                        ["", "فندق مكة", "فندق المدينة"],
                        [ret, "فندق المدينة", "مطار المدينة"]]
 
-    per_person = str(getattr(trip, "price_double", "") or "") if trip else ""
+    # التسعير الافتراضي: صفّ لكل فئة ضيوف، بسعر الفرد حسب نوع الغرفة
+    def _tprice(field):
+        return str(getattr(trip, field, "") or "") if trip else ""
+
+    default_room = stays[0][3] if stays else "ثنائي"
+    room_price = {"مفرد": _tprice("price_single"), "ثنائي": _tprice("price_double"),
+                  "ثلاثي": _tprice("price_triple"), "رباعي": _tprice("price_quad")}
+    guests_default = [["2", "كبار"]]
+    price_by_type = {"أطفال": _tprice("price_child"),
+                     "رضّع": _tprice("price_infant")}
+    pricing = []
+    for count, gtype in guests_default:
+        price = price_by_type.get(gtype) or room_price.get(default_room) \
+            or _tprice("price_double")
+        # كل صفّ تسعير: [نوع الشخص، نوع الغرفة، العدد، سعر الفرد]
+        pricing.append([gtype, default_room, count, price])
 
     return {
         "number": str(number or ""),
@@ -2938,7 +2982,7 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "title": "عرض سعر رحلة عمرة",
         "greeting": QUOTE_GREETING,
         # الضيوف: كل عنصر [العدد، النوع]
-        "guests": [["2", "كبار"]],
+        "guests": guests_default,
         "period_from": dep,
         "period_to": ret,
         # كل صف: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة، الوجبات]
@@ -2958,8 +3002,9 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "train_to": "مكة",
         # التأشيرات
         "visas": "",
-        "total_cost": "",
-        "per_person": per_person,
+        # التسعير: [[نوع الشخص، نوع الغرفة، العدد، سعر الفرد], …] والإجمالي تلقائي
+        "pricing": pricing,
+        "currency": "درهم",
         "validity": "",
         "closing": QUOTE_CLOSING,
         "gm_title": "المدير العام",
@@ -3168,32 +3213,44 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(bullet(f"التأشيرات: {visas}"))
     story.append(Spacer(1, 8))
 
-    # التكلفة
+    # التكلفة — جدول تسعير: العدد × سعر الفرد لكل فئة/غرفة، والإجمالي تلقائي
     story.append(section("التكلفة"))
     story.append(Spacer(1, 4))
-    cost_rows = []
-    if str(data.get("total_cost") or "").strip():
-        cost_rows.append(["التكلفة الإجمالية", str(data["total_cost"])])
-    if str(data.get("per_person") or "").strip():
-        cost_rows.append(["التكلفة للفرد", str(data["per_person"])])
-    if cost_rows:
-        cc = [W * 0.5, W * 0.5]
-        cost = Table([[_ar_para(ltr(v), ParagraphStyle(
-            "qcv", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=11),
-            cc[0] - 10),
-            _ar_para(k, ParagraphStyle("qck", parent=lbl, alignment=1,
-                                       fontSize=11), cc[1] - 10)]
-            for k, v in cost_rows], colWidths=cc)
-        cost.setStyle(TableStyle([
-            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
-            ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
-            ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        story.append(cost)
-        story.append(Spacer(1, 4))
+    cur = str(data.get("currency") or "درهم")
+    prows, grand = quotation_pricing(data.get("pricing", []))
+    prows = [r for r in prows if r[2].strip() or r[3].strip()
+             or r[0].strip() or r[1].strip()]
+    if prows:
+        heads = ["نوع الشخص", "نوع الغرفة", "العدد", "سعر الفرد",
+                 f"الإجمالي ({cur})"]
+        rows_vals = []
+        for ptype, rtype, count, price, sub in prows:
+            rows_vals.append([ptype or "—", rtype or "—", count or "—",
+                              fmt_money(price) if price.strip() else "—",
+                              fmt_money(sub)])
+        pr_t = data_table(heads, [70, 90, 44, 66, 78], rows_vals)
+        story.append(pr_t)
+        story.append(Spacer(1, 3))
+    # صفّ الإجمالي الكلي (محسوب تلقائياً)
+    tot = Table([[_ar_para(f"{fmt_money(grand)} {cur}", ParagraphStyle(
+        "qtv", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=12),
+        W * 0.5 - 10),
+        _ar_para("التكلفة الإجمالية", ParagraphStyle(
+            "qtk", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=12,
+            textColor=colors.white), W * 0.5 - 10)]],
+        colWidths=[W * 0.5, W * 0.5])
+    tot.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("BACKGROUND", (1, 0), (1, -1), _ACCENT),
+        ("TEXTCOLOR", (1, 0), (1, -1), colors.white),
+        ("BACKGROUND", (0, 0), (0, -1), _ALT_ROW),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(tot)
+    story.append(Spacer(1, 4))
     validity = str(data.get("validity") or "")
     if validity:
         story.append(_ar_para(f"هذا العرض صالح حتى نهاية يوم {ltr(validity)}.",
