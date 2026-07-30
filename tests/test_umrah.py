@@ -400,9 +400,30 @@ export_umrah_voucher_pdf(PassportData(full_name_ar="خالد", passport_number="
 assert pv.read_bytes()[:5] == b"%PDF-" and pv.stat().st_size > 3000
 w9 = _ug.TripPilgrimsWindow(app9, t9)
 w9.tree.selection_set("0")
-for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract, w9.do_voucher):
+for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract):
     _do()
     assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+# فاوتشر الفندق يفتح محرّراً قابلاً للتعديل (إضافة/حذف خلايا) قبل المعاينة
+w9.do_voucher()
+_vdlg = [w for w in app9.root.winfo_children()
+         if isinstance(w, _ug.VoucherEditorDialog)] or \
+        [w for w in w9.winfo_children()
+         if isinstance(w, _ug.VoucherEditorDialog)]
+assert _vdlg, "محرّر الفاوتشر لم يُفتح"
+_ed = _vdlg[-1]
+_n0 = len(_ed._stay_rows)
+_ed._add_stay_row(["المدينة المنوّرة", "دار الإيمان", "ثلاثي", "مطل", "", "", "2",
+                   "إفطار"])
+assert len(_ed._stay_rows) == _n0 + 1
+_ed._del_row(_ed._stay_rows, _ed._stay_rows[-1])
+assert len(_ed._stay_rows) == _n0
+_ed._add_contact_row(["مشرف", "سالم", "+966 55 000 0000"])
+_ed._add_term_row("بند إضافي.")
+_data = _ed._collect()
+assert _data["contacts"] and _data["terms"]
+_ed._preview()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_ed.destroy()
 r9.destroy()
 print("  OK: سند وفاتورة وعقد وفاوتشر الفندق لكل معتمر بمسمّيات العمرة")
 

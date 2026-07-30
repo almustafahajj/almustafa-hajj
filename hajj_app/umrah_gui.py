@@ -14,8 +14,8 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 from tkinter import (
-    BOTH, BooleanVar, END, LEFT, RIGHT, StringVar, Text, Toplevel, X, filedialog,
-    messagebox, ttk,
+    BOTH, BooleanVar, Canvas, END, LEFT, RIGHT, StringVar, Text, Toplevel, X, Y,
+    filedialog, messagebox, ttk,
 )
 
 from . import app_mode, images as imgmod, umrah
@@ -26,10 +26,10 @@ from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
 from .pdf_io import (
-    export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
-    export_umrah_finance_pdf, export_umrah_invoice_pdf, export_umrah_pdf,
-    export_umrah_receipt_pdf, export_umrah_rooming_pdf, export_umrah_transport_pdf,
-    export_umrah_voucher_pdf,
+    VOUCHER_STAY_HEADS, build_voucher_data, export_airline_pdf,
+    export_umrah_cards_pdf, export_umrah_contract_pdf, export_umrah_finance_pdf,
+    export_umrah_invoice_pdf, export_umrah_pdf, export_umrah_receipt_pdf,
+    export_umrah_rooming_pdf, export_umrah_transport_pdf, export_umrah_voucher_pdf,
 )
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
@@ -1134,18 +1134,228 @@ class TripPilgrimsWindow(Toplevel):
         self._doc_for_selected(export_umrah_contract_pdf, "عقد")
 
     def do_voucher(self) -> None:
-        """معاينة فاوتشر الفندق للمعتمر المحدّد (إقامات مكة/المدينة والنقل)."""
+        """فتح محرّر فاوتشر الفندق للمعتمر المحدّد (تعديل/إضافة/حذف الخلايا
+        قبل المعاينة)."""
         rec = self._selected()
         if rec is None:
             messagebox.showinfo("فاوتشر", "اختر معتمراً أولاً.", parent=self)
             return
         prog = self.trip.name or self.trip.code
+        data = build_voucher_data(rec, trip=self.trip, program_name=prog,
+                                  company=self._company())
+        VoucherEditorDialog(self, rec, self.trip, data)
+
+
+class VoucherEditorDialog(Toplevel):
+    """محرّر فاوتشر الفندق: تعديل كل الخلايا، وإضافة/حذف صفوف الإقامات وجهات
+    التواصل وبنود الشروط، قبل المعاينة."""
+
+    def __init__(self, parent, rec, trip, data: dict) -> None:
+        super().__init__(parent)
+        self.parent = parent
+        self.rec = rec
+        self.trip = trip
+        self.title("محرّر فاوتشر الفندق")
+        self.configure(bg=G.BG)
+        self.geometry("920x680")
+        self.minsize(720, 480)
+        self.transient(parent)
+
+        # حاوية قابلة للتمرير
+        outer = ttk.Frame(self, padding=(10, 10, 10, 4))
+        outer.pack(fill=BOTH, expand=True)
+        canvas = Canvas(outer, bg=G.BG, highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        self.body = ttk.Frame(canvas, padding=2)
+        self.body.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win = canvas.create_window((0, 0), window=self.body, anchor="nw")
+        canvas.bind(
+            "<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        sb.pack(side=RIGHT, fill=Y)
+        canvas.bind_all(
+            "<MouseWheel>",
+            lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+
+        self._meta: dict[str, StringVar] = {}
+        self._stay_rows: list[list] = []
+        self._contact_rows: list[list] = []
+        self._term_rows: list[Text] = []
+
+        self._build_meta(data)
+        self._build_stays(data)
+        self._build_transport(data)
+        self._build_contacts(data)
+        self._build_terms(data)
+
+        bar = ttk.Frame(self, padding=(10, 6))
+        bar.pack(fill=X)
+        ttk.Button(bar, text="🖨  معاينة PDF",
+                   command=self._preview).pack(side=RIGHT)
+        ttk.Button(bar, text="إغلاق",
+                   command=self.destroy).pack(side=RIGHT, padx=6)
+
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    # ---- أقسام النموذج -------------------------------------------------
+    def _section(self, title: str) -> ttk.LabelFrame:
+        lf = ttk.LabelFrame(self.body, text=title, padding=8)
+        lf.pack(fill=X, pady=(0, 8))
+        return lf
+
+    def _build_meta(self, data: dict) -> None:
+        lf = self._section("البيانات الأساسية")
+        fields = [("رقم الفاوتشر", "number"), ("التاريخ", "date"),
+                  ("اسم الضيف (عربي)", "guest_ar"),
+                  ("اسم الضيف (إنجليزي)", "guest_en"),
+                  ("رقم الحجز", "booking_no"), ("البرنامج", "program")]
+        for i, (label, key) in enumerate(fields):
+            r, c = divmod(i, 2)
+            ttk.Label(lf, text=label).grid(row=r, column=c * 2, sticky="e",
+                                           padx=(8, 4), pady=3)
+            var = StringVar(value=str(data.get(key) or ""))
+            self._meta[key] = var
+            ttk.Entry(lf, textvariable=var, width=28, justify="right").grid(
+                row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_stays(self, data: dict) -> None:
+        lf = self._section("الإقامات (المدينة / الفندق / الغرفة / الإطلالة / "
+                           "الدخول / المغادرة / الليالي / الوجبات)")
+        self._stay_head = lf
+        self._stay_widths = [10, 15, 9, 8, 10, 10, 5, 11]
+        hdr = ttk.Frame(lf)
+        hdr.pack(fill=X)
+        for w, h in zip(self._stay_widths, VOUCHER_STAY_HEADS):
+            ttk.Label(hdr, text=h, width=w, anchor="center",
+                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
+        self._stay_box = ttk.Frame(lf)
+        self._stay_box.pack(fill=X)
+        for row in data.get("stays", []):
+            self._add_stay_row(list(row))
+        ttk.Button(lf, text="＋ إضافة صف",
+                   command=lambda: self._add_stay_row()).pack(anchor="e",
+                                                              pady=(4, 0))
+
+    def _add_stay_row(self, values=None) -> None:
+        values = list(values or []) + [""] * 8
+        fr = ttk.Frame(self._stay_box)
+        fr.pack(fill=X, pady=1)
+        cells = []
+        for i, w in enumerate(self._stay_widths):
+            var = StringVar(value=str(values[i] or ""))
+            ttk.Entry(fr, textvariable=var, width=w, justify="right").pack(
+                side=RIGHT, padx=1)
+            cells.append(var)
+        entry = [fr, cells]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._stay_rows, entry)).pack(
+            side=RIGHT, padx=(4, 1))
+        self._stay_rows.append(entry)
+
+    def _build_transport(self, data: dict) -> None:
+        lf = self._section("النقل والحالة")
+        ttk.Label(lf, text="خطة النقل").grid(row=0, column=0, sticky="e",
+                                             padx=(8, 4), pady=3)
+        self._transport = StringVar(value=str(data.get("transport") or ""))
+        ttk.Entry(lf, textvariable=self._transport, justify="right").grid(
+            row=0, column=1, sticky="we", padx=(0, 8), pady=3)
+        ttk.Label(lf, text="حالة الحجز").grid(row=1, column=0, sticky="e",
+                                              padx=(8, 4), pady=3)
+        self._status = StringVar(value=str(data.get("status") or ""))
+        ttk.Entry(lf, textvariable=self._status, justify="right").grid(
+            row=1, column=1, sticky="we", padx=(0, 8), pady=3)
+        lf.columnconfigure(1, weight=1)
+
+    def _build_contacts(self, data: dict) -> None:
+        lf = self._section("جهات التواصل (الصفة / الاسم / الهاتف)")
+        self._contact_box = ttk.Frame(lf)
+        self._contact_box.pack(fill=X)
+        for c in data.get("contacts", []):
+            self._add_contact_row(list(c))
+        ttk.Button(lf, text="＋ إضافة جهة",
+                   command=lambda: self._add_contact_row()).pack(anchor="e",
+                                                                 pady=(4, 0))
+
+    def _add_contact_row(self, values=None) -> None:
+        values = list(values or []) + ["", "", ""]
+        fr = ttk.Frame(self._contact_box)
+        fr.pack(fill=X, pady=1)
+        cells = []
+        for i, w in enumerate((16, 26, 18)):
+            var = StringVar(value=str(values[i] or ""))
+            ttk.Entry(fr, textvariable=var, width=w, justify="right").pack(
+                side=RIGHT, padx=1)
+            cells.append(var)
+        entry = [fr, cells]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._contact_rows,
+                                                 entry)).pack(side=RIGHT,
+                                                              padx=(4, 1))
+        self._contact_rows.append(entry)
+
+    def _build_terms(self, data: dict) -> None:
+        lf = self._section("الشروط والأحكام")
+        self._term_box = ttk.Frame(lf)
+        self._term_box.pack(fill=X)
+        for t in data.get("terms", []):
+            self._add_term_row(str(t))
+        ttk.Button(lf, text="＋ إضافة بند",
+                   command=lambda: self._add_term_row("")).pack(anchor="e",
+                                                                pady=(4, 0))
+
+    def _add_term_row(self, text: str) -> None:
+        fr = ttk.Frame(self._term_box)
+        fr.pack(fill=X, pady=1)
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_term(fr, box)).pack(side=RIGHT,
+                                                                 padx=(4, 1))
+        box = Text(fr, height=2, wrap="word", font=("Segoe UI", 10))
+        box.insert("1.0", text)
+        box.pack(side=RIGHT, fill=X, expand=True)
+        self._term_rows.append(box)
+
+    def _del_row(self, store: list, entry) -> None:
+        entry[0].destroy()
+        if entry in store:
+            store.remove(entry)
+
+    def _del_term(self, frame, box) -> None:
+        frame.destroy()
+        if box in self._term_rows:
+            self._term_rows.remove(box)
+
+    # ---- المعاينة ------------------------------------------------------
+    def _collect(self) -> dict:
+        data = {k: v.get().strip() for k, v in self._meta.items()}
+        data["stays"] = [[c.get().strip() for c in cells]
+                         for _fr, cells in self._stay_rows
+                         if any(c.get().strip() for c in cells)]
+        data["transport"] = self._transport.get().strip()
+        data["status"] = self._status.get().strip()
+        data["contacts"] = [[c.get().strip() for c in cells]
+                            for _fr, cells in self._contact_rows
+                            if any(c.get().strip() for c in cells)]
+        data["terms"] = [t.get("1.0", "end").strip() for t in self._term_rows
+                         if t.get("1.0", "end").strip()]
+        return data
+
+    def _preview(self) -> None:
+        data = self._collect()
+        code = getattr(self.trip, "code", "") or ""
         G.open_preview(
             self,
-            lambda p: export_umrah_voucher_pdf(rec, p, trip=self.trip,
-                                               program_name=prog,
-                                               company=self._company()),
-            f"فاوتشر {self.trip.code}", "pdf")
+            lambda p: export_umrah_voucher_pdf(self.rec, p, data=data),
+            f"فاوتشر {code}", "pdf")
 
 
 class RoomingWindow(Toplevel):

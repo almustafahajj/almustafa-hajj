@@ -2373,12 +2373,12 @@ _VOUCHER_TERMS = (
     "فيه من شروط وأحكام.",
     "على الضيف التواجد في المطار قبل ساعتين ونصف على الأقل من موعد الرحلة، "
     "والالتزام بشروط الوزن المحدَّدة من شركة الطيران؛ وأيّ تأخير في مواعيد الرحلات "
-    "أو إلغائها يكون مسؤولية شركة وإدارة الطيران، ولا تتحمّل {company} أيّ مسؤولية "
-    "بهذا الخصوص.",
+    "أو إلغائها يقع على مسؤولية شركة الطيران وإدارتها، ولا تتحمّل {company} أيّ "
+    "مسؤولية بهذا الخصوص.",
     "في حال تعديل التذكرة أو إلغائها، تُحتسب رسوم التعديل أو الإلغاء وفق شروط "
-    "وقوانين شركات الطيران وما يتبعه من تغيير في درجة الطيران؛ وفي رحلات المجموعات "
-    "(Groups) تكون قيمة التذكرة غير مسترَدّة وغير قابلة للتعديل أو الإلغاء، "
-    "وتُحتسب كامل قيمتها.",
+    "وقوانين شركات الطيران، وما يترتّب على ذلك من تغيير في درجة الطيران؛ وفي رحلات "
+    "المجموعات (Groups) تكون قيمة التذكرة غير مسترَدّة وغير قابلة للتعديل أو "
+    "الإلغاء، وتُحتسب كامل قيمتها.",
     "بعض شركات الطيران (مثل طيران العربية وفلاي دبي) لا تُلغي التذكرة ولا تُعيد "
     "قيمتها نقداً، ويمكن في بعض الحالات تعديل الحجز قبل موعد الإقلاع بمدّة لا تقلّ "
     "عن 24 ساعة، على أن تبقى قيمة التذكرة في حساب الضيف لاستخدامها خلال سنة من "
@@ -2398,6 +2398,79 @@ _VOUCHER_TERMS = (
 )
 
 
+def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
+                       number: str = "", date_str: str = "",
+                       booking_no: str = "",
+                       office_manager: str = "أيمن الشهابي",
+                       office_phone: str = "+971 54 996 4801",
+                       makkah_ops: str = "خالد",
+                       makkah_phone: str = "+966 54 300 3388") -> dict:
+    """يبني بيانات فاوتشر الفندق (قاموس قابل للتعديل) من بيانات المعتمر والبرنامج.
+    يُستخدم كقيَم افتراضية في محرّر الفاوتشر، ثم يُمرَّر إلى
+    :func:`export_umrah_voucher_pdf` عبر الوسيط ``data``."""
+    from datetime import timedelta
+
+    from .umrah import _parse_date
+
+    co = company_info(company)
+    number = str(number or "MA0001")
+    if not date_str:
+        date_str = date.today().isoformat()
+
+    def fmt(d):
+        return d.isoformat() if d else ""
+
+    # الإقامات: الدخول/المغادرة محسوبة تسلسلياً من تاريخ مغادرة البرنامج
+    stays: list[list[str]] = []
+    cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
+    for label, hotel_f, nights_f in (
+            ("مكة المكرّمة", "makkah_hotel", "makkah_nights"),
+            ("المدينة المنوّرة", "madinah_hotel", "madinah_nights")):
+        hotel = str(getattr(trip, hotel_f, "") or "") if trip else ""
+        if not hotel:            # لا تسكين في هذه المدينة → تُلغى تلقائياً
+            continue
+        try:
+            n = int(float(str(getattr(trip, nights_f, "") or "").strip() or 0))
+        except ValueError:
+            n = 0
+        ci = cur
+        cout = (cur + timedelta(days=n)) if (cur and n) else None
+        stays.append([label, hotel, rec.room_type or "", "",
+                      fmt(ci), fmt(cout), str(n or ""), "إفطار (B.B.)"])
+        cur = cout or cur
+
+    transport = str(getattr(rec, "vehicle", "") or "")
+    if not transport and trip:
+        transport = str(getattr(trip, "transport", "") or "")
+    if not transport:
+        transport = ("سيارة خاصة — استقبال من مطار جدة، والتنقّل بين الفنادق "
+                     "والحرمين، والتوصيل إلى مطار المغادرة")
+
+    terms = [t.format(company=co["name_ar"]) for t in _VOUCHER_TERMS]
+
+    return {
+        "number": number,
+        "date": date_str,
+        "guest_ar": rec.full_name_ar or "",
+        "guest_en": (rec.full_name_en or "").upper(),
+        "booking_no": booking_no or "",
+        "program": program_name or "",
+        # كل صف: [المدينة، الفندق، نوع الغرفة، الإطلالة، الدخول، المغادرة،
+        #          الليالي، الوجبات]
+        "stays": stays,
+        "transport": transport,
+        "status": "مؤكّد / CONFIRMED",
+        # كل جهة: [الصفة، الاسم، الهاتف]
+        "contacts": [["مدير المكتب", office_manager, office_phone],
+                     ["مدير العمليات في مكة", makkah_ops, makkah_phone]],
+        "terms": terms,
+    }
+
+
+VOUCHER_STAY_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "الإطلالة", "الدخول",
+                      "المغادرة", "الليالي", "الوجبات")
+
+
 def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                              program_name: str = "", company=None,
                              number: str = "", date_str: str = "",
@@ -2405,20 +2478,24 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                              office_manager: str = "أيمن الشهابي",
                              office_phone: str = "+971 54 996 4801",
                              makkah_ops: str = "خالد",
-                             makkah_phone: str = "+966 54 300 3388") -> Path:
+                             makkah_phone: str = "+966 54 300 3388",
+                             data: dict | None = None) -> Path:
     """فاوتشر فندق عمرة لمعتمر واحد بشعارَي الحملة، بيانات الضيف، إقامات
     مكة/المدينة (فندق، نوع الغرفة، الإطلالة، الدخول/المغادرة، الليالي، الوجبات)،
-    خطة النقل، جهات التواصل، والشروط والأحكام."""
-    from datetime import timedelta
+    خطة النقل، جهات التواصل، والشروط والأحكام.
 
-    from .umrah import _parse_date
-
+    عند تمرير ``data`` (قاموس من :func:`build_voucher_data`، وقد عُدِّل يدوياً)
+    يُبنى المستند من محتواه بالكامل؛ وإلّا يُبنى تلقائياً من ``rec`` و``trip``."""
     _register_fonts()
     path = Path(path)
-    co = company_info(company)
-    number = str(number or "MA0001")
-    if not date_str:
-        date_str = date.today().isoformat()
+    if data is None:
+        data = build_voucher_data(
+            rec, trip=trip, program_name=program_name, company=company,
+            number=number, date_str=date_str, booking_no=booking_no,
+            office_manager=office_manager, office_phone=office_phone,
+            makkah_ops=makkah_ops, makkah_phone=makkah_phone)
+    number = str(data.get("number") or "MA0001")
+    date_str = str(data.get("date") or date.today().isoformat())
 
     doc = SimpleDocTemplate(
         str(path), pagesize=A4, rightMargin=12 * mm, leftMargin=12 * mm,
@@ -2458,8 +2535,8 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     val = ParagraphStyle("vval", parent=st["cell"], alignment=2, fontSize=9)
     val_l = ParagraphStyle("vvall", parent=val, alignment=0)     # يسار (إنجليزي)
 
-    guest = rec.full_name_ar or "—"
-    guest_en = (rec.full_name_en or "").upper() or "—"
+    guest = data.get("guest_ar") or "—"
+    guest_en = data.get("guest_en") or "—"
     cw = [doc.width * 0.28, doc.width * 0.22, doc.width * 0.28, doc.width * 0.22]
     meta = Table(
         [[_ar_para(number, val, cw[0] - 12),
@@ -2471,9 +2548,9 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
           _ar_para("Guest name", lbl, cw[1] - 12),
           _ar_para(guest, val, cw[2] - 12),
           _ar_para("اسم الضيف", lbl, cw[3] - 12)],
-         [_ar_para(booking_no or "—", val, cw[0] - 12),
+         [_ar_para(data.get("booking_no") or "—", val, cw[0] - 12),
           _ar_para("رقم الحجز", lbl, cw[1] - 12),
-          _ar_para(program_name or "—", val, cw[2] - 12),
+          _ar_para(data.get("program") or "—", val, cw[2] - 12),
           _ar_para("البرنامج", lbl, cw[3] - 12)]],
         colWidths=cw)
     meta.setStyle(TableStyle([
@@ -2486,42 +2563,23 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     story.append(meta)
     story.append(Spacer(1, 8))
 
-    # جدول الإقامات — الدخول/المغادرة من تاريخ البرنامج + عدد الليالي
-    def fmt(d):
-        return d.isoformat() if d else "—"
-
-    stays = []
-    cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
-    for label, hotel_f, nights_f in (
-            ("مكة المكرّمة", "makkah_hotel", "makkah_nights"),
-            ("المدينة المنوّرة", "madinah_hotel", "madinah_nights")):
-        hotel = str(getattr(trip, hotel_f, "") or "") if trip else ""
-        if not hotel:            # لا تسكين في هذه المدينة → تُلغى تلقائياً
-            continue
-        try:
-            n = int(float(str(getattr(trip, nights_f, "") or "").strip() or 0))
-        except ValueError:
-            n = 0
-        ci = cur
-        cout = (cur + timedelta(days=n)) if (cur and n) else None
-        stays.append((label, hotel, rec.room_type or "—", fmt(ci), fmt(cout),
-                      str(n or "—")))
-        cur = cout or cur
-
-    heads = ["المدينة", "الفندق", "نوع الغرفة", "الإطلالة", "الدخول", "المغادرة",
-             "الليالي", "الوجبات"]
+    # جدول الإقامات — القيَم من data["stays"] (قابلة للتعديل يدوياً)
+    heads = list(VOUCHER_STAY_HEADS)
     weights = list(reversed([62, 108, 56, 52, 52, 52, 34, 46]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     avail = [w - 9 for w in colw]
-    data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
-    for label, hotel, room, ci, cout, n in stays:
-        # الإطلالة تُملأ يدوياً لاحقاً
-        vals = [label, hotel, room, "—", ltr(ci), ltr(cout), ltr(n), "إفطار (B.B.)"]
-        data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
-    if len(data) == 1:
-        data.append(_ar_cells([""] * len(heads), st["cell"], avail))
-    stay_t = Table(data, colWidths=colw)
+    rows = [_ar_cells(list(reversed(heads)), st["head"], avail)]
+    for row in data.get("stays", []):
+        vals = [str(x or "—") for x in list(row)[:8]]
+        vals += ["—"] * (8 - len(vals))
+        # الأرقام (الدخول/المغادرة/الليالي) تُلفّ بعلامات LTR
+        vals = [vals[0], vals[1], vals[2], vals[3],
+                ltr(vals[4]), ltr(vals[5]), ltr(vals[6]), vals[7]]
+        rows.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
+    if len(rows) == 1:
+        rows.append(_ar_cells([""] * len(heads), st["cell"], avail))
+    stay_t = Table(rows, colWidths=colw)
     stay_t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
         ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
@@ -2532,23 +2590,21 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     story.append(stay_t)
     story.append(Spacer(1, 6))
 
-    # خطة النقل: تفاصيل التنقّل كاملةً (قابلة للتعديل من حقل النقل في البرنامج)
-    transport = str(getattr(rec, "vehicle", "") or "")
-    if not transport and trip:
-        transport = str(getattr(trip, "transport", "") or "")
-    if not transport:
-        transport = ("سيارة خاصة — استقبال من مطار جدة، والتنقّل بين الفنادق "
-                     "والحرمين، والتوصيل إلى مطار المغادرة")
+    # خطة النقل والحالة (قابلة للتعديل من محرّر الفاوتشر)
+    transport = str(data.get("transport") or "")
     info = ParagraphStyle("vinfo", parent=st["cell"], alignment=2, fontSize=9.5,
                           leading=15)
-    story.append(Paragraph(ar(f"خطة النقل / Transportation: {transport}"), info))
-    story.append(Paragraph(ar("حالة الحجز: مؤكّد / CONFIRMED"),
-                           ParagraphStyle("vconf", parent=info,
-                                          fontName=_FONT_BOLD,
-                                          textColor=colors.HexColor("#2E6B45"))))
+    if transport:
+        story.append(Paragraph(ar(f"خطة النقل / Transportation: {transport}"),
+                               info))
+    status = str(data.get("status") or "")
+    if status:
+        story.append(Paragraph(ar(f"حالة الحجز: {status}"),
+                               ParagraphStyle("vconf", parent=info,
+                                              fontName=_FONT_BOLD,
+                                              textColor=colors.HexColor("#2E6B45"))))
 
-    # جهات التواصل: مدير المكتب ومدير العمليات في مكة
-    story.append(Spacer(1, 6))
+    # جهات التواصل (قابلة للإضافة/الحذف/التعديل)
     ccw = [doc.width * 0.30, doc.width * 0.42, doc.width * 0.28]
 
     def contact_row(role, name, phone):
@@ -2556,27 +2612,31 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                 _ar_para(name, val, ccw[1] - 10),
                 _ar_para(role, lbl, ccw[2] - 10)]
 
-    contacts = Table([contact_row("مدير المكتب", office_manager, office_phone),
-                      contact_row("مدير العمليات في مكة", makkah_ops,
-                                  makkah_phone)],
-                     colWidths=ccw)
-    contacts.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("BACKGROUND", (2, 0), (2, -1), _ALT_ROW),
-    ]))
-    story.append(contacts)
+    contact_data = [c for c in data.get("contacts", [])
+                    if any(str(x or "").strip() for x in c)]
+    if contact_data:
+        story.append(Spacer(1, 6))
+        contacts = Table([contact_row(str(c[0]), str(c[1]), str(c[2]))
+                          for c in contact_data], colWidths=ccw)
+        contacts.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND", (2, 0), (2, -1), _ALT_ROW),
+        ]))
+        story.append(contacts)
 
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(ar("الشروط والأحكام"), ParagraphStyle(
-        "vth", parent=st["title"], fontSize=12, alignment=2, textColor=_ACCENT,
-        spaceAfter=4)))
-    term = ParagraphStyle("vterm", parent=st["cell"], alignment=2, fontSize=8.5,
-                          leading=13, spaceAfter=2)
-    for i, t in enumerate(_VOUCHER_TERMS, 1):
-        story.append(Paragraph(ar(f"{i}- " + t.format(company=co["name_ar"])),
-                               term))
+    terms = [t for t in data.get("terms", []) if str(t or "").strip()]
+    if terms:
+        story.append(Spacer(1, 8))
+        story.append(Paragraph(ar("الشروط والأحكام"), ParagraphStyle(
+            "vth", parent=st["title"], fontSize=12, alignment=2,
+            textColor=_ACCENT, spaceAfter=4)))
+        term = ParagraphStyle("vterm", parent=st["cell"], alignment=2,
+                              fontSize=8.5, leading=13, spaceAfter=2)
+        for i, t in enumerate(terms, 1):
+            story.append(Paragraph(ar(f"{i}- " + str(t)), term))
 
     doc.build(story,
               onFirstPage=lambda c, d: _footer_portrait(c, d, "فاوتشر الفندق"),
