@@ -2367,44 +2367,50 @@ def export_umrah_contract_pdf(rec, path: str | Path, *, program_name: str = "",
                   "— وهما بكامل الأهلية — على ما يلي:"))
 
 
-# شروط وأحكام فاوتشر الفندق (نصّ الحملة الرسمي حرفياً)
+# شروط وأحكام فاوتشر الفندق (نصّ الحملة — مُدقَّق إملائياً ولغوياً)
 _VOUCHER_TERMS = (
-    "عند استلام الضيف برنامج الرحلة، يكون بمثابة إقرار وموافقة منه على كل ما جاء "
+    "عند استلام الضيف برنامج الرحلة، يُعدّ ذلك إقراراً وموافقةً منه على كل ما جاء "
     "فيه من شروط وأحكام.",
-    "التواجد في المطار قبل ساعتين ونصف على الأقل من موعد الرحلة، والإلتزام بشروط "
-    "الوزن المُحددة من قبل شركة الطيران، وأي تأخير في موعد الرحلات أو إلغائها يكون "
-    "مسؤولية شركة وإدارة الطيران، ولا تتحمل {company} أي مسؤولية بهذا الخصوص.",
-    "في حال تعديل أو إلغاء التذكرة، يتم إحتساب رسوم التعديل أو الإلغاء وذلك حسب "
-    "شروط وقوانين شركات الطيران، وما يتبعه من تغيير في درجة الطيران، وفي حال رحلات "
-    "المجموعات (Groups) تكون قيمة التذكرة غير مرتجعة وغير قابلة للتعديل أو الإلغاء، "
-    "وتحسب كامل قيمة التذكرة.",
-    "بعض شركات الطيران مثل (طيران العربية، فلاي دبي) لا تقوم بإلغاء التذكرة أو "
-    "إرجاع قيمتها نقداً، ويمكن في بعض الحالات تعديل الحجز قبل موعد الرحلة بمدة لا "
-    "تقل عن 24 ساعة من موعد الإقلاع، على أن تبقى قيمة التذكرة في حساب الضيف "
-    "لاستخدامها لاحقاً خلال سنة من تاريخ الإصدار، مع احتساب الرسوم الإضافية "
-    "للتعديل، وهذا الكلام لا ينطبق على رحلات المجموعات.",
-    "موعد دخول الغرف في الفندق الساعة 5:00 عصراً، وموعد المُغادرة الساعة "
+    "على الضيف التواجد في المطار قبل ساعتين ونصف على الأقل من موعد الرحلة، "
+    "والالتزام بشروط الوزن المحدَّدة من شركة الطيران؛ وأيّ تأخير في مواعيد الرحلات "
+    "أو إلغائها يكون مسؤولية شركة وإدارة الطيران، ولا تتحمّل {company} أيّ مسؤولية "
+    "بهذا الخصوص.",
+    "في حال تعديل التذكرة أو إلغائها، تُحتسب رسوم التعديل أو الإلغاء وفق شروط "
+    "وقوانين شركات الطيران وما يتبعه من تغيير في درجة الطيران؛ وفي رحلات المجموعات "
+    "(Groups) تكون قيمة التذكرة غير مسترَدّة وغير قابلة للتعديل أو الإلغاء، "
+    "وتُحتسب كامل قيمتها.",
+    "بعض شركات الطيران (مثل طيران العربية وفلاي دبي) لا تُلغي التذكرة ولا تُعيد "
+    "قيمتها نقداً، ويمكن في بعض الحالات تعديل الحجز قبل موعد الإقلاع بمدّة لا تقلّ "
+    "عن 24 ساعة، على أن تبقى قيمة التذكرة في حساب الضيف لاستخدامها خلال سنة من "
+    "تاريخ الإصدار مع احتساب رسوم التعديل، ولا ينطبق ذلك على رحلات المجموعات.",
+    "موعد دخول الغرف في الفندق الساعة 5:00 عصراً، وموعد المغادرة الساعة "
     "12:00 ظهراً.",
-    "في حال إلغاء الحجز في فترة المواسم المرتفعة (نهاية الأسبوع، رمضان، اجازات) "
-    "يتم إحتساب قيمة حجز الفندق بالكامل، أما في باقي أيام السنة يتم إحتساب قيمة "
-    "ليلة واحدة على أن يتم الإلغاء قبل 72 ساعة من تاريخ السفر.",
-    "أي تعديل في أنواع الغرف يكون حسب الإمكانية المتاحة في الفندق، ويخضع لسعر جديد.",
-    "الغرف الثنائية تكون عبارة عن سرير كبير أو سريرين منفصلين، والغرف الثلاثية تكون "
-    "عبارة عن سريرين منفصلين و سرير إضافي صغير (متحرك) أو صوفا (Sofa bed)، وذلك "
-    "حسب نظام الفندق.",
-    "طلب الغرف المتجاورة والمتصلة في الفنادق يكون من قبل الإستقبال في الفندق وعند "
-    "الدخول، وعليه تكون حسب الإمكانية المتاحة في الفندق.",
+    "في حال إلغاء الحجز خلال المواسم المرتفعة (نهاية الأسبوع، رمضان، الإجازات) "
+    "تُحتسب قيمة حجز الفندق كاملةً؛ أمّا في باقي أيام السنة فتُحتسب قيمة ليلة "
+    "واحدة، على أن يتمّ الإلغاء قبل 72 ساعة من تاريخ السفر.",
+    "أيّ تعديل في أنواع الغرف يكون حسب الإمكانية المتاحة في الفندق، ويخضع لسعر "
+    "جديد.",
+    "الغرف الثنائية عبارة عن سرير كبير أو سريرين منفصلين، والغرف الثلاثية عبارة عن "
+    "سريرين منفصلين وسرير إضافي صغير (متحرّك) أو صوفا (Sofa bed)، وذلك حسب نظام "
+    "الفندق.",
+    "طلب الغرف المتجاورة والمتّصلة يكون من استقبال الفندق عند الدخول، وحسب "
+    "الإمكانية المتاحة في الفندق.",
 )
 
 
 def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                              program_name: str = "", company=None,
-                             number: str = "", date_str: str = "") -> Path:
-    """فاوتشر فندق عمرة لمعتمر واحد: بيانات الضيف، إقامات مكة/المدينة (فندق،
-    نوع الغرفة، الدخول/المغادرة، الليالي، الوجبات)، خطة النقل، والشروط والأحكام."""
+                             number: str = "", date_str: str = "",
+                             booking_no: str = "",
+                             office_manager: str = "أيمن الشهابي",
+                             office_phone: str = "+971 54 996 4801",
+                             makkah_ops: str = "خالد",
+                             makkah_phone: str = "+966 54 300 3388") -> Path:
+    """فاوتشر فندق عمرة لمعتمر واحد بشعارَي الحملة، بيانات الضيف، إقامات
+    مكة/المدينة (فندق، نوع الغرفة، الإطلالة، الدخول/المغادرة، الليالي، الوجبات)،
+    خطة النقل، جهات التواصل، والشروط والأحكام."""
     from datetime import timedelta
 
-    from .fields import format_amount  # noqa: F401  (اتساق الاستيراد)
     from .umrah import _parse_date
 
     _register_fonts()
@@ -2421,18 +2427,19 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     st = _styles()
     story = []
 
-    def _logo_cell(pathobj, w):
+    def _logo_cell(pathobj, h):
+        """شعار بارتفاع موحّد (للتناسق بين الشعارين)."""
         if not pathobj.is_file():
             return ""
         try:
             iw, ih = ImageReader(str(pathobj)).getSize()
-            return RLImage(str(pathobj), width=w, height=w * ih / iw)
+            return RLImage(str(pathobj), width=h * iw / ih, height=h)
         except Exception:
             return ""
 
-    # الشعاران: المصطفى (يمين) و Nirvana (يسار) كما في نموذج الحملة
-    al = _logo_cell(_LOGO_PATH, 92)
-    nv = _logo_cell(_NIRVANA_PATH, 64)
+    # الشعاران بارتفاع موحّد: Nirvana (يسار) والمصطفى (يمين)
+    al = _logo_cell(_LOGO_PATH, 62)
+    nv = _logo_cell(_NIRVANA_PATH, 62)
     header = Table([[nv, al]], colWidths=[doc.width / 2, doc.width / 2])
     header.setStyle(TableStyle([
         ("ALIGN", (0, 0), (0, 0), "LEFT"),
@@ -2449,24 +2456,26 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     lbl = ParagraphStyle("vlbl", parent=st["cell"], fontName=_FONT_BOLD,
                          textColor=_ACCENT, alignment=2, fontSize=9)
     val = ParagraphStyle("vval", parent=st["cell"], alignment=2, fontSize=9)
+    val_l = ParagraphStyle("vvall", parent=val, alignment=0)     # يسار (إنجليزي)
 
     guest = rec.full_name_ar or "—"
     guest_en = (rec.full_name_en or "").upper() or "—"
+    cw = [doc.width * 0.28, doc.width * 0.22, doc.width * 0.28, doc.width * 0.22]
     meta = Table(
-        [[_ar_para(number, val, doc.width * 0.28 - 12),
-          _ar_para("رقم الفاوتشر / Voucher No.", lbl, doc.width * 0.22 - 12),
-          _ar_para(ltr(date_str), val, doc.width * 0.28 - 12),
-          _ar_para("التاريخ / Date", lbl, doc.width * 0.22 - 12)],
-         [_ar_para(guest, val, doc.width * 0.28 - 12),
-          _ar_para("اسم الضيف", lbl, doc.width * 0.22 - 12),
-          _ar_para(guest_en, val, doc.width * 0.28 - 12),
-          _ar_para("Guest name", lbl, doc.width * 0.22 - 12)],
-         [_ar_para(program_name or "—", val, doc.width * 0.28 - 12),
-          _ar_para("البرنامج", lbl, doc.width * 0.22 - 12),
-          _ar_para(rec.passport_number or "—", val, doc.width * 0.28 - 12),
-          _ar_para("رقم الجواز", lbl, doc.width * 0.22 - 12)]],
-        colWidths=[doc.width * 0.28, doc.width * 0.22,
-                   doc.width * 0.28, doc.width * 0.22])
+        [[_ar_para(number, val, cw[0] - 12),
+          _ar_para("رقم الفاوتشر / Voucher No.", lbl, cw[1] - 12),
+          _ar_para(ltr(date_str), val, cw[2] - 12),
+          _ar_para("التاريخ / Date", lbl, cw[3] - 12)],
+         # اسم الضيف: العربي يميناً والإنجليزي يساراً
+         [_ar_para(guest_en, val_l, cw[0] - 12),
+          _ar_para("Guest name", lbl, cw[1] - 12),
+          _ar_para(guest, val, cw[2] - 12),
+          _ar_para("اسم الضيف", lbl, cw[3] - 12)],
+         [_ar_para(booking_no or "—", val, cw[0] - 12),
+          _ar_para("رقم الحجز", lbl, cw[1] - 12),
+          _ar_para(program_name or "—", val, cw[2] - 12),
+          _ar_para("البرنامج", lbl, cw[3] - 12)]],
+        colWidths=cw)
     meta.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -2477,7 +2486,7 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     story.append(meta)
     story.append(Spacer(1, 8))
 
-    # جدول الإقامات (مكة/المدينة)
+    # جدول الإقامات — الدخول/المغادرة من تاريخ البرنامج + عدد الليالي
     def fmt(d):
         return d.isoformat() if d else "—"
 
@@ -2487,7 +2496,7 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
             ("مكة المكرّمة", "makkah_hotel", "makkah_nights"),
             ("المدينة المنوّرة", "madinah_hotel", "madinah_nights")):
         hotel = str(getattr(trip, hotel_f, "") or "") if trip else ""
-        if not hotel:
+        if not hotel:            # لا تسكين في هذه المدينة → تُلغى تلقائياً
             continue
         try:
             n = int(float(str(getattr(trip, nights_f, "") or "").strip() or 0))
@@ -2499,15 +2508,16 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                       str(n or "—")))
         cur = cout or cur
 
-    heads = ["المدينة", "الفندق", "نوع الغرفة", "الدخول", "المغادرة", "الليالي",
-             "الوجبات"]
-    weights = list(reversed([70, 120, 70, 58, 58, 40, 50]))
+    heads = ["المدينة", "الفندق", "نوع الغرفة", "الإطلالة", "الدخول", "المغادرة",
+             "الليالي", "الوجبات"]
+    weights = list(reversed([62, 108, 56, 52, 52, 52, 34, 46]))
     scale = doc.width / sum(weights)
     colw = [w * scale for w in weights]
     avail = [w - 9 for w in colw]
     data = [_ar_cells(list(reversed(heads)), st["head"], avail)]
     for label, hotel, room, ci, cout, n in stays:
-        vals = [label, hotel, room, ltr(ci), ltr(cout), ltr(n), "إفطار (B.B.)"]
+        # الإطلالة تُملأ يدوياً لاحقاً
+        vals = [label, hotel, room, "—", ltr(ci), ltr(cout), ltr(n), "إفطار (B.B.)"]
         data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
     if len(data) == 1:
         data.append(_ar_cells([""] * len(heads), st["cell"], avail))
@@ -2522,19 +2532,41 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     story.append(stay_t)
     story.append(Spacer(1, 6))
 
-    transport = ""
-    if getattr(rec, "vehicle", ""):
-        transport = rec.vehicle
-    elif trip and getattr(trip, "transport", ""):
-        transport = trip.transport
+    # خطة النقل: تفاصيل التنقّل كاملةً (قابلة للتعديل من حقل النقل في البرنامج)
+    transport = str(getattr(rec, "vehicle", "") or "")
+    if not transport and trip:
+        transport = str(getattr(trip, "transport", "") or "")
+    if not transport:
+        transport = ("سيارة خاصة — استقبال من مطار جدة، والتنقّل بين الفنادق "
+                     "والحرمين، والتوصيل إلى مطار المغادرة")
     info = ParagraphStyle("vinfo", parent=st["cell"], alignment=2, fontSize=9.5,
                           leading=15)
-    if transport:
-        story.append(Paragraph(ar(f"خطة النقل / Transportation: {transport}"), info))
+    story.append(Paragraph(ar(f"خطة النقل / Transportation: {transport}"), info))
     story.append(Paragraph(ar("حالة الحجز: مؤكّد / CONFIRMED"),
                            ParagraphStyle("vconf", parent=info,
                                           fontName=_FONT_BOLD,
                                           textColor=colors.HexColor("#2E6B45"))))
+
+    # جهات التواصل: مدير المكتب ومدير العمليات في مكة
+    story.append(Spacer(1, 6))
+    ccw = [doc.width * 0.30, doc.width * 0.42, doc.width * 0.28]
+
+    def contact_row(role, name, phone):
+        return [_ar_para(ltr(phone), val_l, ccw[0] - 10),
+                _ar_para(name, val, ccw[1] - 10),
+                _ar_para(role, lbl, ccw[2] - 10)]
+
+    contacts = Table([contact_row("مدير المكتب", office_manager, office_phone),
+                      contact_row("مدير العمليات في مكة", makkah_ops,
+                                  makkah_phone)],
+                     colWidths=ccw)
+    contacts.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BACKGROUND", (2, 0), (2, -1), _ALT_ROW),
+    ]))
+    story.append(contacts)
 
     story.append(Spacer(1, 8))
     story.append(Paragraph(ar("الشروط والأحكام"), ParagraphStyle(
