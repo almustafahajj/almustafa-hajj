@@ -174,6 +174,7 @@ class UmrahApp:
             ("📋  عروض الأسعار", self.open_quotes, "Ghost.TButton"),
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher, "Ghost.TButton"),
             ("💲  عرض سعر يدوي", self.new_manual_quotation, "Ghost.TButton"),
+            ("📁  العروض اليدوية", self.open_manual_quotes, "Ghost.TButton"),
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
@@ -348,7 +349,11 @@ class UmrahApp:
             pass
         rec = PassportData()
         data = build_quotation_data(rec, trip=None, company=co, number=number)
-        QuotationEditorDialog(self.root, rec, None, data, app=self)
+        QuotationEditorDialog(self.root, rec, None, data, app=self, company=co)
+
+    def open_manual_quotes(self) -> None:
+        """قائمة «عروض الأسعار اليدوية» المحفوظة (خارج البرامج)."""
+        QuotesListWindow(self.root, self, None)
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:
@@ -1211,9 +1216,11 @@ class TripPilgrimsWindow(Toplevel):
             save_settings(self.app._settings)
         except OSError:
             pass
-        data = build_quotation_data(rec, trip=self.trip, company=self._company(),
+        company = self._company()
+        data = build_quotation_data(rec, trip=self.trip, company=company,
                                     number=number)
-        QuotationEditorDialog(self, rec, self.trip, data, app=self.app)
+        QuotationEditorDialog(self, rec, self.trip, data, app=self.app,
+                              company=company)
 
     def do_quotes_list(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة لهذا البرنامج."""
@@ -1696,18 +1703,33 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
     تقويم منبثق للتواريخ، وبنود قطار الحرمين والتأشيرات — قبل المعاينة."""
 
     def __init__(self, parent, rec, trip, data: dict, *, app=None,
-                 on_saved=None) -> None:
+                 company=None, on_saved=None) -> None:
         super().__init__(parent)
         self.parent = parent
         self.rec = rec
         self.trip = trip
         self._app = app
+        self._company_dict = company
         self._on_saved = on_saved
+        self._lang = str(data.get("lang") or "ar")
         self.title("محرّر عرض السعر")
         self.configure(bg=G.BG)
         self.geometry("1000x720")
         self.minsize(820, 500)
         self.transient(parent)
+
+        # شريط اختيار اللغة (عربي/إنجليزي)
+        top = ttk.Frame(self, padding=(12, 8, 12, 0))
+        top.pack(fill=X)
+        ttk.Label(top, text="لغة العرض:",
+                  font=("Segoe UI", 10, "bold")).pack(side=RIGHT, padx=(0, 6))
+        self._lang_var = StringVar(
+            value="English" if self._lang == "en" else "عربي")
+        cb = ttk.Combobox(top, textvariable=self._lang_var, width=10,
+                          state="readonly", values=["عربي", "English"])
+        cb.pack(side=RIGHT)
+        cb.bind("<<ComboboxSelected>>", self._on_lang_change)
+
         self._scroll_body()
 
         self._fields: dict[str, StringVar] = {}
@@ -1764,6 +1786,21 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         self._persist(self._collect())
         messagebox.showinfo("عروض الأسعار",
                             f"تم حفظ العرض {self._number}.", parent=self)
+
+    def _on_lang_change(self, _event=None):
+        """تبديل لغة العرض: يعيد بناء المحرّر بالقيَم الافتراضية للّغة الجديدة
+        مع الحفاظ على الرقم."""
+        new = "en" if self._lang_var.get() == "English" else "ar"
+        if new == self._lang:
+            return
+        data = build_quotation_data(self.rec, trip=self.trip,
+                                    company=self._company_dict,
+                                    number=self._number, lang=new)
+        parent, rec, trip = self.parent, self.rec, self.trip
+        app, company, on_saved = self._app, self._company_dict, self._on_saved
+        self.destroy()
+        QuotationEditorDialog(parent, rec, trip, data, app=app, company=company,
+                              on_saved=on_saved)
 
     # ---- عناصر مساعدة ----
     def _field(self, parent, label, key, data, r, c, width=26):
@@ -2317,6 +2354,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
     # ---- الجمع والمعاينة ----
     def _collect(self):
         data = {k: v.get().strip() for k, v in self._fields.items()}
+        data["lang"] = self._lang
         data["number"] = self._number
         data["greeting"] = self._greeting
         data["date"] = self._d.get()
@@ -2447,7 +2485,10 @@ class QuotesListWindow(Toplevel):
             messagebox.showinfo("عروض الأسعار", "اختر عرضاً أولاً.", parent=self)
             return
         QuotationEditorDialog(self, PassportData(), self.trip, dict(q),
-                              app=self.app, on_saved=self.refresh)
+                              app=self.app, company=self.app._settings.get(
+                                  "company") if isinstance(
+                                  self.app._settings.get("company"), dict)
+                              else None, on_saved=self.refresh)
 
     def preview_sel(self) -> None:
         q = self._sel()

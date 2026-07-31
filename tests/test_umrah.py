@@ -471,6 +471,14 @@ export_umrah_quotation_pdf(PassportData(), _qp0,
                            data={**_qd, "show_flights": False,
                                  "show_costs": False})
 assert _qp0.read_bytes()[:5] == b"%PDF-"
+# عرض سعر بالإنجليزية (قيَم مترجمة)
+_qen = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائي"),
+                            trip=_tripq, number="MA-Q0002", lang="en")
+assert _qen["lang"] == "en" and _qen["stays"][0][0] == "Madinah"
+assert _qen["stays"][0][3] == "Double" and _qen["flight_class"] == "Economy"
+_qpen = WORK / "quote_en.pdf"
+export_umrah_quotation_pdf(PassportData(), _qpen, data=_qen)
+assert _qpen.read_bytes()[:5] == b"%PDF-" and _qpen.stat().st_size > 3000
 _qp = WORK / "quote.pdf"
 export_umrah_quotation_pdf(PassportData(full_name_ar="خالد"), _qp, data=_qd)
 assert _qp.read_bytes()[:5] == b"%PDF-" and _qp.stat().st_size > 3000
@@ -486,6 +494,17 @@ wq.do_quotation()
 _qe = [w for w in wq.winfo_children()
        if isinstance(w, _ug.QuotationEditorDialog)][-1]
 assert _qe._number.startswith("MA-Q") and _qe._stay_rows and _qe._flight_rows
+# تبديل اللغة إلى الإنجليزية ثم العودة للعربية (يحافظ على الرقم)
+_num = _qe._number
+_qe._lang_var.set("English"); _qe._on_lang_change()
+_qe = [w for w in wq.winfo_children()
+       if isinstance(w, _ug.QuotationEditorDialog)][-1]
+assert _qe._lang == "en" and _qe._number == _num
+_qe._lang_var.set("عربي"); _qe._on_lang_change()
+_qe = [w for w in wq.winfo_children()
+       if isinstance(w, _ug.QuotationEditorDialog)][-1]
+assert _qe._lang == "ar" and _qe._number == _num
+assert _qe._stay_rows and _qe._flight_rows
 assert _qe._guests and _qe._line_rows       # ضيوف افتراضيون وبنود تنقّل
 assert _qe._d.get() and _qe._pf.get()        # حقول التاريخ (تقويم منبثق)
 # إضافة ضيوف عبر عناصر التحكّم

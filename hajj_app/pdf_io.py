@@ -2875,6 +2875,46 @@ QUOTE_OFFICE_TITLE = "مدير المكتب"
 QUOTE_OFFICE_NAME = "أيمن الشهابي"
 QUOTE_OFFICE_PHONE = "0549964801"
 
+# ترجمة المفردات الثابتة لعرض السعر بالإنجليزية (النصوص الحرّة تبقى كما هي)
+_QTR = {
+    "cities": {"مكة المكرّمة": "Makkah", "المدينة المنوّرة": "Madinah",
+               "مكة": "Makkah", "المدينة": "Madinah"},
+    "rooms": {"مفرد": "Single", "ثنائي": "Double", "ثلاثي": "Triple",
+              "رباعي": "Quad", "جناح غرفة وصالة": "1-BR Suite",
+              "جناح غرفتين وصالة": "2-BR Suite",
+              "جناح 3 غرف وصالة": "3-BR Suite",
+              "جناح 4 غرف وصالة": "4-BR Suite"},
+    "views": {"غير مطلّة": "No View", "مطلّة مدينة": "City View",
+              "مطلّة كعبة": "Kaaba View"},
+    "meals": {"إفطار": "Breakfast", "غداء": "Lunch", "عشاء": "Dinner",
+              "وجبات كاملة": "Full Board", "غداء وعشاء": "Lunch & Dinner"},
+    "persons": {"كبار": "Adults", "صغار": "Minors", "أطفال": "Children",
+                "رضّع": "Infants"},
+    "classes": {"سياحية": "Economy", "رجال أعمال": "Business",
+                "درجة أولى": "First"},
+    "carriers": {"السعودية": "Saudia", "الاتحاد": "Etihad",
+                 "الإمارات": "Emirates", "فلاي دبي": "flydubai",
+                 "فلاي ناس": "flynas", "العربية": "Air Arabia",
+                 "أديل": "flyadeal", "الجزيرة": "Jazeera"},
+    "airports": {"أبوظبي": "Abu Dhabi", "دبي": "Dubai", "الشارقة": "Sharjah",
+                 "رأس الخيمة": "Ras Al Khaimah", "جدة": "Jeddah",
+                 "المدينة": "Madinah", "الرياض": "Riyadh", "الطائف": "Taif",
+                 "الدمام": "Dammam", "مكة": "Makkah"},
+    "locations": {"مطار جدة": "Jeddah Airport", "مطار المدينة": "Madinah Airport",
+                  "فندق مكة": "Makkah Hotel", "فندق المدينة": "Madinah Hotel",
+                  "محطة قطار مكة": "Makkah Train Station",
+                  "محطة قطار المدينة": "Madinah Train Station",
+                  "مطار الرياض": "Riyadh Airport", "مطار الطائف": "Taif Airport"},
+    "visa": {"سياحية": "Tourist", "عمرة": "Umrah"},
+}
+
+
+def _qtr(val, cat: str, en: bool):
+    """يترجم مفردة ثابتة إلى الإنجليزية عند ``en`` وإلّا يعيدها كما هي."""
+    if not en:
+        return val
+    return _QTR.get(cat, {}).get(str(val or "").strip(), val)
+
 
 def quote_times() -> list:
     """أوقات بفواصل خمس دقائق (00:00 … 23:55) لقوائم الطيران — والحقل قابل
@@ -2912,10 +2952,11 @@ def quotation_pricing(pricing) -> tuple:
 
 
 def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
-                         date_str: str = "", pax: str = "") -> dict:
+                         date_str: str = "", pax: str = "",
+                         lang: str = "ar") -> dict:
     """يبني بيانات عرض السعر (قاموس قابل للتعديل) من بيانات البرنامج/المعتمر،
     على غرار نموذج العرض المعتمد. يُمرَّر إلى :func:`export_umrah_quotation_pdf`
-    عبر الوسيط ``data``."""
+    عبر الوسيط ``data``. ``lang`` يحدّد لغة القيَم الافتراضية (ar/en)."""
     from datetime import timedelta
 
     from .umrah import _parse_date
@@ -2923,15 +2964,22 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
     company_info(company)
     if not date_str:
         date_str = date.today().isoformat()
+    en = lang == "en"
+
+    def T(ar_txt, en_txt):
+        return en_txt if en else ar_txt
 
     room = str(getattr(rec, "room_type", "") or "ثنائي")
     if room not in QUOTE_ROOM_TYPES:
         room = "ثنائي"
+    room = _qtr(room, "rooms", en)
 
     # الإقامات: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة،
     #            الوجبات، الدخول، المغادرة] — الدخول/المغادرة محسوبان مبدئياً
     stays: list[list[str]] = []
     _cur = _parse_date(getattr(trip, "depart_date", "")) if trip else None
+    view0 = _qtr("غير مطلّة", "views", en)
+    meals0 = _qtr("إفطار", "meals", en)
     for label, hotel_f, nights_f in (
             ("المدينة المنوّرة", "madinah_hotel", "madinah_nights"),
             ("مكة المكرّمة", "makkah_hotel", "makkah_nights")):
@@ -2944,8 +2992,8 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
             n = 0
         cin = _cur.isoformat() if _cur else ""
         cout = (_cur + timedelta(days=n)).isoformat() if (_cur and n) else ""
-        stays.append([label, str(n or ""), hotel, room, "1", "غير مطلّة",
-                      "إفطار", cin, cout])
+        stays.append([_qtr(label, "cities", en), str(n or ""), hotel, room, "1",
+                      view0, meals0, cin, cout])
         if _cur and n:
             _cur = _cur + timedelta(days=n)
 
@@ -2965,32 +3013,34 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
     car = str(getattr(trip, "transport", "") or "") if trip else ""
     car_type = next((c for c in QUOTE_CAR_TYPES if c.lower() in car.lower()),
                     "GMC")
-    transport_lines = [[dep, "مطار جدة", "فندق مكة"],
-                       ["", "فندق مكة", "فندق المدينة"],
-                       [ret, "فندق المدينة", "مطار المدينة"]]
+    transport_lines = [[dep, _qtr("مطار جدة", "locations", en),
+                        _qtr("فندق مكة", "locations", en)],
+                       ["", _qtr("فندق مكة", "locations", en),
+                        _qtr("فندق المدينة", "locations", en)],
+                       [ret, _qtr("فندق المدينة", "locations", en),
+                        _qtr("مطار المدينة", "locations", en)]]
 
     # التسعير الافتراضي: صفّ لكل فئة ضيوف، بسعر الفرد حسب نوع الغرفة
     def _tprice(field):
         return str(getattr(trip, field, "") or "") if trip else ""
 
-    default_room = stays[0][3] if stays else "ثنائي"
     room_price = {"مفرد": _tprice("price_single"), "ثنائي": _tprice("price_double"),
                   "ثلاثي": _tprice("price_triple"), "رباعي": _tprice("price_quad")}
-    guests_default = [["2", "كبار"]]
     price_by_type = {"أطفال": _tprice("price_child"),
                      "رضّع": _tprice("price_infant")}
-    pricing = []
-    for count, gtype in guests_default:
-        price = price_by_type.get(gtype) or room_price.get(default_room) \
-            or _tprice("price_double")
-        # كل صفّ تسعير: [نوع الشخص، نوع الغرفة، العدد، سعر الفرد]
-        pricing.append([gtype, default_room, count, price])
+    _def_price = (price_by_type.get("كبار") or room_price.get("ثنائي")
+                  or _tprice("price_double"))
+    guests_default = [["2", _qtr("كبار", "persons", en)]]
+    # كل صفّ تسعير: [نوع الشخص، نوع الغرفة، العدد، سعر الفرد]
+    pricing = [[_qtr("كبار", "persons", en), room, "2", _def_price]]
 
     return {
+        "lang": lang,
         "number": str(number or ""),
         "date": date_str,
-        "title": "عرض سعر رحلة عمرة",
-        "greeting": QUOTE_GREETING,
+        "title": T("عرض سعر رحلة عمرة", "Umrah Trip Quotation"),
+        "greeting": T(QUOTE_GREETING,
+                      "Peace be upon you and God's mercy and blessings,"),
         # توجيه العرض باسم الضيف (فارغ = بدون توجيه)
         "addressed_to": str(getattr(rec, "full_name_ar", "") or ""),
         # الضيوف: كل عنصر [العدد، النوع]
@@ -2999,7 +3049,7 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "period_to": ret,
         # كل صف: [المدينة، الليالي، الفندق، نوع الغرفة، عدد الغرف، الإطلالة، الوجبات]
         "stays": stays,
-        "flight_class": "سياحية",
+        "flight_class": _qtr("سياحية", "classes", en),
         # كل صف: [اليوم، الناقل، الإقلاع، من، الوصول، إلى]
         "flights": flights,
         "car_type": car_type,
@@ -3013,14 +3063,16 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         # التأشيرات: العدد والنوع (سياحية/عمرة) — يُبنى منهما نصّ البند
         "visas": "",
         "visa_count": "",
-        "visa_type": "عمرة",
+        "visa_type": _qtr("عمرة", "visa", en),
         # التسعير: [[نوع الشخص، نوع الغرفة، العدد، سعر الفرد], …] والإجمالي تلقائي
         "pricing": pricing,
-        "currency": "درهم",
+        "currency": T("درهم", "AED"),
         "validity": "",
         "validity_time": "",
         "note": "",
-        "closing": QUOTE_CLOSING,
+        "closing": T(QUOTE_CLOSING,
+                     "We hope our programs meet your satisfaction; awaiting "
+                     "your kind reply."),
         # عرض/إخفاء بنود العرض
         "show_stays": True,
         "show_flights": True,
@@ -3039,10 +3091,11 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
 
 def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None,
                                number: str = "", date_str: str = "",
-                               pax: str = "", data: dict | None = None) -> Path:
+                               pax: str = "", lang: str = "ar",
+                               data: dict | None = None) -> Path:
     """عرض سعر رحلة عمرة (Quotation) على صفحة A4 عمودية، بشعارَي الحملة،
     التحيّة، تفاصيل الإقامة والطيران والمواصلات، والتكلفة وصلاحية العرض،
-    وتوقيعَي المدير العام ومدير المكتب — على غرار النموذج المعتمد.
+    وتوقيعَي المدير العام ومدير المكتب — يدعم العربية والإنجليزية (``lang``).
 
     عند تمرير ``data`` (من :func:`build_quotation_data`، وقد عُدّل يدوياً) يُبنى
     المستند من محتواه؛ وإلّا يُبنى تلقائياً من ``rec`` و``trip``."""
@@ -3050,9 +3103,18 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     path = Path(path)
     if data is None:
         data = build_quotation_data(rec, trip=trip, company=company,
-                                    number=number, date_str=date_str, pax=pax)
+                                    number=number, date_str=date_str, pax=pax,
+                                    lang=lang)
     number = str(data.get("number") or "")
     date_str = str(data.get("date") or date.today().isoformat())
+    L = str(data.get("lang") or "ar") == "en"    # إنجليزي ⇒ LTR
+    ALN = 0 if L else 2
+
+    def T(ar_txt, en_txt):
+        return en_txt if L else ar_txt
+
+    def rev(seq):
+        return list(seq) if L else list(reversed(seq))
 
     co = company_info(company)
     doc = SimpleDocTemplate(
@@ -3085,14 +3147,17 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     story.append(Spacer(1, 6))
 
     lbl = ParagraphStyle("qlbl", parent=st["cell"], fontName=_FONT_BOLD,
-                         textColor=_ACCENT, alignment=2, fontSize=9.5)
-    val = ParagraphStyle("qval", parent=st["cell"], alignment=2, fontSize=9.5,
+                         textColor=_ACCENT, alignment=ALN, fontSize=9.5)
+    val = ParagraphStyle("qval", parent=st["cell"], alignment=ALN, fontSize=9.5,
                          leading=14)
-    val_l = ParagraphStyle("qvall", parent=val, alignment=0)
+    val_l = ParagraphStyle("qvall", parent=val, alignment=0)     # يسار دائماً
+    val_r = ParagraphStyle("qvalr", parent=val, alignment=2)     # يمين دائماً
 
-    # التاريخ (يمين) ورقم العرض (يسار)
+    # رقم العرض (يسار) والتاريخ (يمين) على الطرفين
+    date_lbl = T("التاريخ", "Date")
     meta = Table([[_ar_para(ltr(number), val_l, W * 0.5 - 6),
-                   _ar_para(f"التاريخ: {ltr(date_str)}", val, W * 0.5 - 6)]],
+                   _ar_para(f"{date_lbl}: {ltr(date_str)}", val_r,
+                            W * 0.5 - 6)]],
                  colWidths=[W * 0.5, W * 0.5])
     meta.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
@@ -3103,10 +3168,11 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     # توجيه العرض باسم الضيف (اختياري)
     addressed = str(data.get("addressed_to") or "").strip()
     if addressed:
+        atxt = (f"Attention: Mr./Ms. {addressed}," if L
+                else f"عناية السيّد/ {addressed} المحترم،")
         story.append(_ar_para(
-            f"عناية السيّد/ {addressed} المحترم،",
-            ParagraphStyle("qaddr", parent=val, fontName=_FONT_BOLD,
-                           textColor=_DEEP), W - 8))
+            atxt, ParagraphStyle("qaddr", parent=val, fontName=_FONT_BOLD,
+                                 textColor=_DEEP), W - 8))
     story.append(Spacer(1, 6))
 
     # شريط العنوان بلون الهوية
@@ -3131,7 +3197,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
     def section(title):
         p = Paragraph(ar(title), ParagraphStyle(
-            "qsec", fontName=_FONT_BOLD, fontSize=11, alignment=2,
+            "qsec", fontName=_FONT_BOLD, fontSize=11, alignment=ALN,
             textColor=_DEEP, leading=15))
         t = Table([[p]], colWidths=[W])
         t.setStyle(TableStyle([
@@ -3143,14 +3209,14 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         return t
 
     def data_table(heads, weights, rows_vals):
-        vw = list(reversed(weights))
+        vw = rev(weights)
         scale = W / sum(vw)
         cw = [w * scale for w in vw]
         av = [w - 9 for w in cw]
-        table = [_ar_cells(list(reversed(heads)), st["head"], av)]
+        table = [_ar_cells(rev(heads), st["head"], av)]
         for row in rows_vals:
             vals = [str(x if x not in (None, "") else "—") for x in row]
-            table.append(_ar_cells(list(reversed(vals)), st["cell"], av))
+            table.append(_ar_cells(rev(vals), st["cell"], av))
         if len(table) == 1:
             table.append(_ar_cells([""] * len(heads), st["cell"], av))
         t = Table(table, colWidths=cw)
@@ -3167,15 +3233,19 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         return t
 
     # الضيوف والفترة
-    guests = ["، ".join(f"{ltr(str(c).strip())} {str(t).strip()}"
-                        for c, t in [g[:2] + [""] * (2 - len(g))
-                                     for g in data.get("guests", [])]
-                        if str(c).strip() or str(t).strip())]
-    if guests[0]:
-        story.append(bullet(f"الضيوف: {guests[0]}", bold=True))
+    sep = ", " if L else "، "
+    guests_txt = sep.join(
+        f"{ltr(str(c).strip())} {_qtr(str(t).strip(), 'persons', L)}"
+        for c, t in [g[:2] + [""] * (2 - len(g))
+                     for g in data.get("guests", [])]
+        if str(c).strip() or str(t).strip())
+    if guests_txt:
+        story.append(bullet(f"{T('الضيوف', 'Guests')}: {guests_txt}", bold=True))
     pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
     if pf or pt:
-        story.append(bullet(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
+        ptxt = (f"Period: from {ltr(pf)} to {ltr(pt)}" if L
+                else f"الفترة: من {ltr(pf)} إلى {ltr(pt)}")
+        story.append(bullet(ptxt, bold=True))
     story.append(Spacer(1, 6))
 
     # الإقامة — مع تاريخ الإقامة (من – إلى) لكل مدينة (يدوي أو محسوب من الفترة)
@@ -3203,108 +3273,138 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 cin = cur.isoformat()
             if not cout and cur and n:
                 cout = (cur + _td(days=n)).isoformat()
-            rng = f"{_sh(cin)} – {_sh(cout)}" if (cin or cout) else ""
+            # المدى: في العربي يُقرأ يمين←يسار (الدخول يميناً)، وفي الإنجليزي
+            # يسار→يمين (الدخول يساراً)
+            if cin or cout:
+                rng = (f"{_sh(cin)} – {_sh(cout)}" if L
+                       else f"{_sh(cout)} – {_sh(cin)}")
+            else:
+                rng = ""
             nxt = _pd(cout)
             cur = nxt or (cur + _td(days=n) if (cur and n) else cur)
-            disp.append([city, rng, nights, hotel, room, rooms, view, meals])
-        heads = ["المدينة", "من – إلى", "الليالي", "الفندق", "نوع الغرفة",
-                 "عدد الغرف", "الإطلالة", "الوجبات"]
-        story.append(section("تفاصيل الإقامة"))
+            disp.append([_qtr(city, "cities", L), rng, nights, hotel,
+                         _qtr(room, "rooms", L), rooms, _qtr(view, "views", L),
+                         _qtr(meals, "meals", L)])
+        heads = ([T("المدينة", "City"), T("من – إلى", "From – To"),
+                  T("الليالي", "Nights"), T("الفندق", "Hotel"),
+                  T("نوع الغرفة", "Room Type"), T("عدد الغرف", "Rooms"),
+                  T("الإطلالة", "View"), T("الوجبات", "Meals")])
+        story.append(section(T("تفاصيل الإقامة", "Accommodation")))
         story.append(Spacer(1, 4))
         story.append(data_table(heads, [58, 72, 28, 112, 78, 40, 60, 48], disp))
         story.append(Spacer(1, 8))
 
     # الطيران
     if data.get("show_flights", True):
-        story.append(section("الطيران"))
+        story.append(section(T("الطيران", "Flights")))
         story.append(Spacer(1, 3))
         fclass = str(data.get("flight_class") or "")
         if fclass:
-            story.append(bullet(f"الدرجة: {fclass}"))
+            story.append(bullet(f"{T('الدرجة', 'Class')}: "
+                                f"{_qtr(fclass, 'classes', L)}"))
             story.append(Spacer(1, 3))
-        flights = [list(r)[:6] + [""] * (6 - len(r))
-                   for r in data.get("flights", [])
-                   if any(str(x or "").strip() for x in r)]
-        story.append(data_table(list(QUOTE_FLIGHT_HEADS),
-                                [70, 70, 50, 60, 50, 60], flights))
+        fheads = ([T("اليوم", "Day"), T("الناقل", "Carrier"),
+                   T("الإقلاع", "Departure"), T("من", "From"),
+                   T("الوصول", "Arrival"), T("إلى", "To")])
+        flights = []
+        for r in data.get("flights", []):
+            if not any(str(x or "").strip() for x in r):
+                continue
+            day, carrier, dep_t, frm, arr_t, to = (list(r)[:6] +
+                                                   [""] * (6 - len(r)))[:6]
+            flights.append([day, _qtr(carrier, "carriers", L), dep_t,
+                            _qtr(frm, "airports", L), arr_t,
+                            _qtr(to, "airports", L)])
+        story.append(data_table(fheads, [70, 70, 50, 60, 50, 60], flights))
         story.append(Spacer(1, 8))
 
-    # المواصلات والتنقّلات + قطار الحرمين + التأشيرات (كلٌّ قابل للإلغاء)
+    # المواصلات والتنقّلات (سيارة + بنود تنقّل)
     show_tr = data.get("show_transport", True)
+    if show_tr:
+        story.append(section(T("المواصلات والتنقّلات", "Transportation")))
+        story.append(Spacer(1, 3))
+        ctype = str(data.get("car_type") or "")
+        cmodel = str(data.get("car_model") or "")
+        ccount = str(data.get("car_count") or "")
+        if ctype or ccount:
+            if L:
+                note = f"{ltr(ccount or '1')} car(s) ({ctype})"
+                if cmodel:
+                    note += f" model {ltr(cmodel)}"
+            else:
+                note = f"عدد ({ltr(ccount or '1')}) سيارة ({ctype})"
+                if cmodel:
+                    note += f" موديل {ltr(cmodel)}"
+            story.append(bullet(note, bold=True))
+        for line in data.get("transport_lines", []):
+            row = list(line)[:3] + [""] * (3 - len(line)) if isinstance(
+                line, (list, tuple)) else ["", "", str(line)]
+            d, frm, to = (str(x or "").strip() for x in row)
+            if not (d or frm or to):
+                continue
+            parts = []
+            if d:
+                parts.append(f"{T('يوم', 'Day')} {ltr(d)}")
+            if frm:
+                parts.append(f"{T('من', 'from')} {_qtr(frm, 'locations', L)}")
+            if to:
+                parts.append(f"{T('إلى', 'to')} {_qtr(to, 'locations', L)}")
+            story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
+                "qsub", parent=val, fontSize=9, leading=13, alignment=ALN),
+                W - 24))
+        story.append(Spacer(1, 8))
+
+    # قطار الحرمين — جدول ببنود متعددة
     trains = [t for t in data.get("trains", [])
               if any(str(x or "").strip() for x in t)]
-    # توافق خلفي مع الصيغة القديمة (بند قطار واحد)
     if not trains and str(data.get("train_tickets") or "").strip():
         trains = [[data.get("train_tickets"), data.get("train_class"),
                    data.get("train_from"), data.get("train_to"),
                    data.get("train_date"), data.get("train_dep"),
                    data.get("train_arr")]]
-    visas = str(data.get("visas") or "").strip()
-    if show_tr or trains or visas:
-        story.append(section("المواصلات والتنقّلات"))
-        story.append(Spacer(1, 3))
-        if show_tr:
-            ctype = str(data.get("car_type") or "")
-            cmodel = str(data.get("car_model") or "")
-            ccount = str(data.get("car_count") or "")
-            if ctype or ccount:
-                note = f"عدد ({ltr(ccount or '1')}) سيارة ({ctype})"
-                if cmodel:
-                    note += f" موديل {ltr(cmodel)}"
-                story.append(bullet(note, bold=True))
-            for line in data.get("transport_lines", []):
-                row = list(line)[:3] + [""] * (3 - len(line)) if isinstance(
-                    line, (list, tuple)) else ["", "", str(line)]
-                d, frm, to = (str(x or "").strip() for x in row)
-                if not (d or frm or to):
-                    continue
-                parts = []
-                if d:
-                    parts.append(f"يوم {ltr(d)}")
-                if frm:
-                    parts.append(f"من {frm}")
-                if to:
-                    parts.append(f"إلى {to}")
-                story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
-                    "qsub", parent=val, fontSize=9, leading=13), W - 24))
-        # قطار الحرمين: بند لكل رحلة قطار (مع تاريخ وتوقيتات اختيارية)
+    trains = [t for t in trains if str((list(t) + [""])[0] or "").strip()]
+    if trains:
+        story.append(section(T("قطار الحرمين", "Haramain Train")))
+        story.append(Spacer(1, 4))
+        theads = ([T("التذاكر", "Tickets"), T("الدرجة", "Class"),
+                   T("من", "From"), T("إلى", "To"), T("التاريخ", "Date"),
+                   T("الإقلاع", "Departure"), T("الوصول", "Arrival")])
+        trows = []
         for tr in trains:
             tk_n, tc, tf, tt, tdate, tdep, tarr = (
                 [str(x or "").strip() for x in list(tr)[:7]] + [""] * 7)[:7]
-            if not tk_n:
-                continue
-            line = f"عدد ({ltr(tk_n)}) تذاكر قطار الحرمين على الدرجة {tc}"
-            if tf or tt:
-                line += f" ({tf} – {tt})"
-            if tdate:
-                line += f"، يوم {ltr(tdate)}"
-            if tdep or tarr:
-                times = []
-                if tdep:
-                    times.append(f"الإقلاع {ltr(tdep)}")
-                if tarr:
-                    times.append(f"الوصول {ltr(tarr)}")
-                line += " (" + " - ".join(times) + ")"
-            story.append(bullet(line))
-        # التأشيرات
-        if visas:
-            story.append(bullet(f"التأشيرات: {visas}"))
+            trows.append([tk_n, _qtr(tc, "classes", L),
+                          _qtr(tf, "airports", L), _qtr(tt, "airports", L),
+                          tdate, tdep, tarr])
+        story.append(data_table(theads, [40, 58, 54, 54, 60, 48, 48], trows))
         story.append(Spacer(1, 8))
+
+    # التأشيرات
+    visas = str(data.get("visas") or "").strip()
+    vcount = str(data.get("visa_count") or "").strip()
+    vtype = str(data.get("visa_type") or "").strip()
+    if L and vcount:      # أعِد بناء نصّ التأشيرات بالإنجليزية
+        visas = f"{ltr(vcount)} {_qtr(vtype, 'visa', L)} visa(s)"
+    if visas:
+        story.append(bullet(f"{T('التأشيرات', 'Visas')}: {visas}"))
+        story.append(Spacer(1, 6))
 
     # التكلفة — جدول تسعير: العدد × سعر الفرد لكل فئة/غرفة، والإجمالي تلقائي
     if data.get("show_costs", True):
-        story.append(section("التكلفة"))
+        story.append(section(T("التكلفة", "Cost")))
         story.append(Spacer(1, 4))
-        cur = str(data.get("currency") or "درهم")
+        cur = str(data.get("currency") or T("درهم", "AED"))
         prows, grand = quotation_pricing(data.get("pricing", []))
         prows = [r for r in prows if r[2].strip() or r[3].strip()
                  or r[0].strip() or r[1].strip()]
         if prows:
-            heads = ["نوع الشخص", "نوع الغرفة", "العدد", "سعر الفرد",
-                     f"الإجمالي ({cur})"]
+            heads = [T("نوع الشخص", "Person"), T("نوع الغرفة", "Room Type"),
+                     T("العدد", "Count"), T("سعر الفرد", "Unit Price"),
+                     f"{T('الإجمالي', 'Total')} ({cur})"]
             rows_vals = []
             for ptype, rtype, count, price, sub in prows:
-                rows_vals.append([ptype or "—", rtype or "—", count or "—",
+                rows_vals.append([_qtr(ptype, "persons", L) or "—",
+                                  _qtr(rtype, "rooms", L) or "—", count or "—",
                                   fmt_money(price) if price.strip() else "—",
                                   fmt_money(sub)])
             story.append(data_table(heads, [70, 90, 44, 66, 78], rows_vals))
@@ -3313,7 +3413,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         tot = Table([[_ar_para(f"{fmt_money(grand)} {cur}", ParagraphStyle(
             "qtv", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=12),
             W * 0.5 - 10),
-            _ar_para("التكلفة الإجمالية", ParagraphStyle(
+            _ar_para(T("التكلفة الإجمالية", "Total Cost"), ParagraphStyle(
                 "qtk", parent=val, fontName=_FONT_BOLD, alignment=1,
                 fontSize=12, textColor=colors.white), W * 0.5 - 10)]],
             colWidths=[W * 0.5, W * 0.5])
@@ -3331,13 +3431,18 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(Spacer(1, 4))
     validity = str(data.get("validity") or "")
     if validity:
-        vtxt = f"هذا العرض صالح لغاية يوم {ltr(validity)}"
         vtime = str(data.get("validity_time") or "").strip()
-        if vtime:
-            vtxt += f" الساعة {ltr(vtime)}"
+        if L:
+            vtxt = f"This offer is valid until {ltr(validity)}"
+            if vtime:
+                vtxt += f" at {ltr(vtime)}"
+        else:
+            vtxt = f"هذا العرض صالح لغاية يوم {ltr(validity)}"
+            if vtime:
+                vtxt += f" الساعة {ltr(vtime)}"
         vpar = _ar_para(vtxt + ".", ParagraphStyle(
             "qvld", parent=val, fontName=_FONT_BOLD, fontSize=10.5,
-            textColor=colors.HexColor("#7A5C00")), W - 16)
+            alignment=ALN, textColor=colors.HexColor("#7A5C00")), W - 16)
         # تظليل أصفر ليبرز للضيف
         vbox = Table([[vpar]], colWidths=[W])
         vbox.setStyle(TableStyle([
@@ -3354,7 +3459,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     # ملاحظات (اختيارية)
     note = str(data.get("note") or "").strip()
     if note:
-        story.append(section("ملاحظات"))
+        story.append(section(T("ملاحظات", "Notes")))
         story.append(Spacer(1, 3))
         story.append(_ar_para(note, ParagraphStyle("qnote", parent=val,
                                                    fontSize=9.5, leading=14),
@@ -3384,7 +3489,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
     gm = sig_box(data.get("gm_title"), data.get("gm_name"),
                  data.get("gm_phone"))
-    office = sig_box(QUOTE_OFFICE_TITLE, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE)
+    office = sig_box(T(QUOTE_OFFICE_TITLE, "Office Manager"), QUOTE_OFFICE_NAME,
+                     QUOTE_OFFICE_PHONE)
     sig = Table([[office, gm]], colWidths=[W * 0.5, W * 0.5])
     sig.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -3393,10 +3499,11 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     ]))
     story.append(sig)
 
+    foot = T("عرض سعر", "Quotation")
     doc.build(
         story,
-        onFirstPage=lambda c, d: _footer_portrait(c, d, "عرض سعر"),
-        onLaterPages=lambda c, d: _footer_portrait(c, d, "عرض سعر"))
+        onFirstPage=lambda c, d: _footer_portrait(c, d, foot),
+        onLaterPages=lambda c, d: _footer_portrait(c, d, foot))
     return path
 
 
