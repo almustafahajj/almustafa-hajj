@@ -2870,6 +2870,14 @@ QUOTE_HOTELS = ("جميرا مكة جبل عمر", "فيرمونت مكة", "ه�
 QUOTE_GREETING = "السلام عليكم ورحمة الله وبركاته،"
 QUOTE_CLOSING = ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
                  "ردّكم الكريم.")
+# ملاحظات جاهزة (تُترجم آلياً عند تحويل العرض للإنجليزية)
+QUOTE_NOTES = (
+    "جميع الحجوزات غير قابلة للإلغاء أو التعديل.",
+    "الأسعار قابلة للتغيير حسب التوفّر وقت التأكيد.",
+    "الأسعار شاملة الضرائب والرسوم.",
+    "التأشيرات حسب أنظمة الجهات المختصّة.",
+    "يُرجى تزويدنا بصور الجوازات لإتمام الحجز.",
+)
 # خانة توقيع ثابتة (غير قابلة للتعديل)
 QUOTE_OFFICE_TITLE = "مدير المكتب"
 QUOTE_OFFICE_NAME = "أيمن الشهابي"
@@ -2918,6 +2926,18 @@ _QTR = {
     "office": {"أيمن الشهابي": "AYMAN ALSHEHABI",
                "مدير المكتب": "Office Manager"},
     "titles": {"السيد": "Mr.", "السيدة": "Mrs.", "الآنسة": "Ms."},
+    "notes": {
+        "جميع الحجوزات غير قابلة للإلغاء أو التعديل.":
+            "All bookings are non-refundable and non-changeable.",
+        "الأسعار قابلة للتغيير حسب التوفّر وقت التأكيد.":
+            "Prices are subject to change based on availability at confirmation.",
+        "الأسعار شاملة الضرائب والرسوم.":
+            "Prices are inclusive of taxes and fees.",
+        "التأشيرات حسب أنظمة الجهات المختصّة.":
+            "Visas are subject to the regulations of the competent authorities.",
+        "يُرجى تزويدنا بصور الجوازات لإتمام الحجز.":
+            "Please provide passport copies to complete the booking.",
+    },
     "phrases": {"عرض سعر رحلة عمرة": "Umrah Trip Quotation",
                 QUOTE_GREETING: "Greetings,",
                 QUOTE_CLOSING: ("We hope our programs meet your satisfaction; "
@@ -2956,6 +2976,9 @@ def translate_quotation_data(data: dict, lang: str) -> dict:
     d["greeting"] = tv(data.get("greeting"), "phrases")
     d["closing"] = tv(data.get("closing"), "phrases")
     d["currency"] = tv(data.get("currency"), "phrases")
+    # الملاحظات: تُترجم إن كانت من الجاهزة (سطراً سطراً)، وإلّا تبقى كما هي
+    d["note"] = "\n".join(tv(ln, "notes")
+                          for ln in str(data.get("note") or "").split("\n"))
     d["flight_class"] = tv(data.get("flight_class"), "classes")
     d["visa_type"] = tv(data.get("visa_type"), "visa")
     d["addressed_title"] = tv(data.get("addressed_title"), "titles")
@@ -3326,21 +3349,41 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         ]))
         return t
 
-    # الضيوف والفترة
+    # الضيوف والفترة — في بطاقة معلومات أنيقة
     sep = ", " if L else "، "
     guests_txt = sep.join(
         f"{ltr(str(c).strip())} {_qtr(str(t).strip(), 'persons', L)}"
         for c, t in [g[:2] + [""] * (2 - len(g))
                      for g in data.get("guests", [])]
         if str(c).strip() or str(t).strip())
-    if guests_txt:
-        story.append(bullet(f"{T('الضيوف', 'Guests')}: {guests_txt}", bold=True))
     pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
+    info_lines = []
+    if guests_txt:
+        info_lines.append(_ar_para(
+            f"{T('الضيوف', 'Guests')}: {guests_txt}",
+            ParagraphStyle("qinfo", parent=val, fontName=_FONT_BOLD,
+                           fontSize=10, leading=15), W - 24))
     if pf or pt:
         ptxt = (f"Period: from {ltr(pf)} to {ltr(pt)}" if L
                 else f"الفترة: من {ltr(pf)} إلى {ltr(pt)}")
-        story.append(bullet(ptxt, bold=True))
-    story.append(Spacer(1, 6))
+        info_lines.append(_ar_para(ptxt, ParagraphStyle(
+            "qinfo2", parent=val, fontName=_FONT_BOLD, fontSize=10, leading=15),
+            W - 24))
+    if info_lines:
+        card = Table([[info_lines]], colWidths=[W])
+        card.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FBF8F3")),
+            ("BOX", (0, 0), (-1, -1), 0.6, _GRID),
+            # الشريط اللوني على جهة بداية القراءة (يمين العربي/يسار الإنجليزي)
+            ("LINEAFTER" if not L else "LINEBEFORE", (0, 0), (0, -1), 3,
+             _ACCENT),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        story.append(card)
+    story.append(Spacer(1, 8))
 
     # الإقامة — مع تاريخ الإقامة (من – إلى) لكل مدينة (يدوي أو محسوب من الفترة)
     from datetime import timedelta as _td

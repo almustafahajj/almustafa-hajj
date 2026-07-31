@@ -485,10 +485,12 @@ _qar = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ث�
                             trip=_tripq, number="MA-Q0003", lang="ar")
 _qar["flights"] = [["2026-09-04", "الاتحاد", "14:25", "دبي", "16:15", "جدة"]]
 _qar["addressed_title"] = "السيدة"
+_qar["note"] = "جميع الحجوزات غير قابلة للإلغاء أو التعديل."
 _t_en = _tq(_qar, "en")
 assert _t_en["greeting"] == "Greetings," and _t_en["stays"][0][0] == "Madinah"
 assert _t_en["flights"][0][1] == "Etihad"        # ترجمة الناقل
 assert _t_en["addressed_title"] == "Mrs."        # اللقب (السيدة → Mrs.)
+assert _t_en["note"] == "All bookings are non-refundable and non-changeable."
 _t_ar = _tq(_t_en, "ar")
 assert _t_ar["stays"][0][0] == "المدينة المنوّرة"      # عاد للعربية
 assert _t_ar["stays"][0][3] == "ثنائي"

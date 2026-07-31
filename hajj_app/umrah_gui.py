@@ -30,8 +30,8 @@ from .pdf_io import (
     QUOTE_AIRPORT_CITIES, QUOTE_CAR_COUNTS, QUOTE_CAR_MODELS, QUOTE_CAR_TYPES,
     QUOTE_CARRIERS, QUOTE_CITY_OPTIONS, QUOTE_FLIGHT_CLASSES, QUOTE_FLIGHT_HEADS,
     QUOTE_GUEST_TYPES, QUOTE_HOTELS, QUOTE_LOCATIONS, QUOTE_MEALS, QUOTE_NIGHTS,
-    QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE, QUOTE_ROOM_COUNTS,
-    QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
+    QUOTE_NOTES, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE,
+    QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
     VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
     VOUCHER_VIEW_OPTIONS, build_quotation_data, build_voucher_data,
     export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
@@ -2306,13 +2306,27 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         ttk.Checkbutton(lf2, text="إظهار الصلاحية",
                         variable=self._vl_on).grid(row=1, column=0, sticky="w",
                                                    padx=(8, 0))
-        # ملاحظة على العرض
+        # ملاحظة على العرض — مع ملاحظات جاهزة تُترجم آلياً
         ttk.Label(lf2, text="ملاحظة").grid(row=2, column=0, sticky="ne",
                                            padx=(8, 4), pady=3)
-        self._note = Text(lf2, height=2, wrap="word", font=(G._FUI, 10))
+        nfr = ttk.Frame(lf2)
+        nfr.grid(row=2, column=1, columnspan=3, sticky="we", padx=(0, 8),
+                 pady=3)
+        preset = StringVar()
+        ttk.Combobox(nfr, textvariable=preset, values=list(QUOTE_NOTES),
+                     state="readonly", width=48).pack(fill=X)
+        self._note = Text(nfr, height=2, wrap="word", font=(G._FUI, 10))
         self._note.insert("1.0", str(data.get("note") or ""))
-        self._note.grid(row=2, column=1, columnspan=3, sticky="we", padx=(0, 8),
-                        pady=3)
+        self._note.pack(fill=X, pady=(3, 0))
+
+        def _add_preset(_e=None):
+            p = preset.get().strip()
+            if p:
+                cur = self._note.get("1.0", "end").strip()
+                self._note.delete("1.0", "end")
+                self._note.insert("1.0", (cur + "\n" + p).strip()
+                                  if cur else p)
+        preset.trace_add("write", lambda *a: _add_preset())
         self._field(lf2, "خاتمة العرض", "closing", data, 3, 0, width=60)
         lf2.columnconfigure(1, weight=1)
         lf2.columnconfigure(3, weight=1)
