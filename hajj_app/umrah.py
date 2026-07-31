@@ -209,10 +209,21 @@ _AMADEUS_MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
 _AMADEUS_RE = re.compile(
     r"([A-Z][A-Z0-9])\s*(\d{2,4})\s+[A-Z0-9]{0,2}\s*(\d{1,2})([A-Z]{3})"
     r"\s+\d?\s*([A-Z]{3})\s*([A-Z]{3})\s+[A-Z0-9]{2,4}\s+(\d{3,4})\s+(\d{3,4})")
+# صيغة مُدمجة (OCR يفقد المسافات غالباً): EY611MO4AUG2AUHJEDDK114051610
+# مع تسامح مع خلط 0/O في الأرقام.
+_AMADEUS_MERGED = re.compile(
+    r"([A-Z][A-Z0-9])(\d{2,4})[A-Z]([0-9O]{1,2})([A-Z]{3})[0-9O]"
+    r"([A-Z]{3})([A-Z]{3})[A-Z]{2}[0-9O]([0-9O]{4})([0-9O]{4})")
+
+
+def _norm_digits(s: str) -> str:
+    """يصحّح خلط OCR الشائع في الأرقام (O←0، I/l←1، S←5، B←8)."""
+    return (str(s).replace("O", "0").replace("I", "1").replace("l", "1")
+            .replace("S", "5").replace("B", "8"))
 
 
 def _hhmm(t: str) -> str:
-    t = str(t).zfill(4)[-4:]
+    t = _norm_digits(t).zfill(4)[-4:]
     return f"{t[:2]}:{t[2:]}"
 
 
@@ -283,15 +294,31 @@ def parse_amadeus_flights(text: str, year: int | None = None) -> list:
                      _hhmm(arr), _AMADEUS_AIRPORTS.get(to3, to3)])
 
     rows, seen = [], set()
-    # 1) التعبير النمطي الدقيق
-    for m in _AMADEUS_RE.finditer(text):
-        carrier, _flight, day, mon, frm3, to3, dep, arr = m.groups()
+
+    def _add(day, mon, carrier, frm3, to3, dep, arr):
         mnum = _AMADEUS_MONTHS.get(mon, 0)
-        if mnum and 1 <= int(day) <= 31 and int(dep[-2:]) < 60 \
-                and int(arr[-2:]) < 60:
-            _emit(rows, seen, f"{year:04d}-{mnum:02d}-{int(day):02d}",
-                  carrier, frm3, to3, dep, arr)
-    # 2) محلّل سطري متسامح (يلتقط ما فات التعبير النمطي)
+        try:
+            dnum = int(_norm_digits(day))
+            depn, arrn = _norm_digits(dep), _norm_digits(arr)
+        except ValueError:
+            return
+        if not mnum or not (1 <= dnum <= 31):
+            return
+        if int(depn[:2]) >= 24 or int(depn[2:]) >= 60 \
+                or int(arrn[:2]) >= 24 or int(arrn[2:]) >= 60:
+            return
+        _emit(rows, seen, f"{year:04d}-{mnum:02d}-{dnum:02d}",
+              carrier, frm3, to3, depn, arrn)
+
+    # 1) التعبير النمطي الدقيق (نصّ بمسافات)
+    for m in _AMADEUS_RE.finditer(text):
+        c, _f, day, mon, frm3, to3, dep, arr = m.groups()
+        _add(day, mon, c, frm3, to3, dep, arr)
+    # 2) الصيغة المُدمجة (OCR بلا مسافات)
+    for m in _AMADEUS_MERGED.finditer(text):
+        c, _f, day, mon, frm3, to3, dep, arr = m.groups()
+        _add(day, mon, c, frm3, to3, dep, arr)
+    # 3) محلّل سطري متسامح (يلتقط ما فات)
     for line in text.splitlines():
         parsed = _amadeus_line_row(line, year)
         if parsed:

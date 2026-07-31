@@ -502,6 +502,14 @@ _amz = umrah.parse_amadeus_flights(
 assert _amz[0] == ["2026-08-04", "الاتحاد", "14:05", "أبوظبي", "16:10", "جدة"]
 assert _amz[1] == ["2026-08-10", "الاتحاد", "15:25", "المدينة", "18:55",
                    "أبوظبي"]
+# صيغة OCR مُدمجة بلا مسافات ومع خلط O←0 (كما في لقطات الأماديوس الفعلية)
+_amz2 = umrah.parse_amadeus_flights(
+    "EY611MO4AUG2AUHJEDDK114051610QO4AUGE06320M\nSEERTSVC\n"
+    "EY632Q10AUG1MEDAUHDK11525185510AUGE9321M", year=2026)
+assert len(_amz2) == 2, _amz2
+assert _amz2[0] == ["2026-08-04", "الاتحاد", "14:05", "أبوظبي", "16:10", "جدة"]
+assert _amz2[1] == ["2026-08-10", "الاتحاد", "15:25", "المدينة", "18:55",
+                    "أبوظبي"]
 # محاكاة زرّ أماديوس في المحرّر (تصحيح OCR وحوار الملفّ)
 import hajj_app.ocr as _ocrmod
 _ocrmod.read_amadeus_text = lambda p: (
@@ -532,8 +540,8 @@ _qe._add_train_row(["2", "سياحية", "مكة", "المدينة", "2026-09-10
                     "11:00"])
 _qe._stay_rows[0][2].set("2026-09-04")         # تاريخ الإقامة يدوياً (من)
 _qe._stay_rows[0][3].set("2026-09-07")         # (إلى)
-_qe._visas_on.set(True)                        # إضافة بند التأشيرات
-_qe._visas.set("عدد (2) تأشيرة عمرة")
+_qe._visas_on.set(True)                        # بند التأشيرات (عدد + نوع)
+_qe._visa_count.set("2"); _qe._visa_type.set("عمرة")
 _qe._addr_on.set(True)
 _qe._addr.set("خالد الشامسي")                  # توجيه باسم الضيف
 _qe._vl_on.set(True); _qe._vl.set("2026-07-29"); _qe._vl_time.set("17:00")
@@ -550,6 +558,7 @@ assert _qdc["number"] == _qe._number and _qdc["flights"] and _qdc["stays"]
 assert _qdc["guests"] == [["2", "كبار"], ["1", "أطفال"]]
 assert len(_qdc["trains"]) == 2 and _qdc["visas"]   # بندا قطار
 assert _qdc["trains"][0][4] == "2026-09-07" and _qdc["trains"][0][5] == "14:30"
+assert _qdc["visas"] == "عدد (2) تأشيرة عمرة"        # التأشيرات من العدد والنوع
 assert _qdc["addressed_to"] == "خالد الشامسي"     # توجيه باسم الضيف
 assert _qdc["validity_time"] == "17:00" and _qdc["note"]   # وقت الصلاحية + ملاحظة
 assert _qdc["car_type"] and _qdc["car_model"] and _qdc["car_count"]

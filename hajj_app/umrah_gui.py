@@ -2159,14 +2159,17 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
 
         lf2 = self._section("التأشيرات")
         self._visas_on = BooleanVar(
-            value=bool(str(data.get("visas") or "").strip()))
+            value=bool(str(data.get("visa_count") or data.get("visas") or
+                           "").strip()))
         row = ttk.Frame(lf2)
         row.pack(fill=X)
         ttk.Checkbutton(row, text="إضافة بند التأشيرات",
-                        variable=self._visas_on).pack(side=RIGHT, padx=(0, 8))
-        self._visas = StringVar(value=str(data.get("visas") or ""))
-        ttk.Entry(row, textvariable=self._visas, justify="right").pack(
-            side=RIGHT, fill=X, expand=True)
+                        variable=self._visas_on).pack(side=RIGHT, padx=(0, 12))
+        self._visa_count = self._cell(row, "العدد", data.get("visa_count"),
+                                      [str(i) for i in range(1, 51)], 5)
+        self._visa_type = self._cell(row, "النوع",
+                                     data.get("visa_type") or "عمرة",
+                                     ("سياحية", "عمرة"), 10)
 
     def _add_train_row(self, values=None):
         values = list(values or []) + [""] * 7
@@ -2345,7 +2348,13 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                           + [c.get().strip() for c in cells2]
                           for _fr, cells4, dp, cells2 in self._train_rows
                           if cells4[0].get().strip()]
-        data["visas"] = self._visas.get().strip() if self._visas_on.get() else ""
+        # التأشيرات: يُبنى النصّ من العدد والنوع (سياحية/عمرة)
+        vcnt = self._visa_count.get().strip()
+        vtype = self._visa_type.get().strip() or "عمرة"
+        data["visa_count"] = vcnt if self._visas_on.get() else ""
+        data["visa_type"] = vtype
+        data["visas"] = (f"عدد ({vcnt}) تأشيرة {vtype}"
+                         if (self._visas_on.get() and vcnt) else "")
         data["car_type"] = self._car_type.get().strip()
         data["car_model"] = self._car_model.get().strip()
         data["car_count"] = self._car_count.get().strip()
