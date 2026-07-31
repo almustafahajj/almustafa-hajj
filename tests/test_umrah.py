@@ -464,6 +464,13 @@ _qd = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثن
 assert _qd["stays"] and _qd["flights"] and _qd["guests"], "بيانات غير مكتملة"
 # المدينة/الليالي/الفندق/النوع/العدد/الإطلالة/الوجبات + تاريخي الدخول/المغادرة
 assert len(_qd["stays"][0]) == 9
+assert _qd["gm_name"] == "" and _qd["gm_title"] == ""   # الاسم/الصفة فارغان
+# مستند مع إخفاء بنود (طيران + تكلفة)
+_qp0 = WORK / "quote_hidden.pdf"
+export_umrah_quotation_pdf(PassportData(), _qp0,
+                           data={**_qd, "show_flights": False,
+                                 "show_costs": False})
+assert _qp0.read_bytes()[:5] == b"%PDF-"
 _qp = WORK / "quote.pdf"
 export_umrah_quotation_pdf(PassportData(full_name_ar="خالد"), _qp, data=_qd)
 assert _qp.read_bytes()[:5] == b"%PDF-" and _qp.stat().st_size > 3000
@@ -504,6 +511,14 @@ _ug.filedialog.askopenfilename = lambda **k: "dummy.png"
 _ug.messagebox.showinfo = lambda *a, **k: None
 _qe._amadeus_file()
 assert len(_qe._flight_rows) == 2
+# سحب وإفلات صورة الأماديوس (لا يتعطّل)
+_qe._on_drop_amadeus([])
+# بنود العرض قابلة للإظهار/الإخفاء
+assert {"show_stays", "show_flights", "show_transport", "show_costs"} <= \
+    set(_qe._collect())
+_qe._show["show_costs"].set(False)
+assert _qe._collect()["show_costs"] is False
+_qe._show["show_costs"].set(True)
 # التوقيع: خانة قابلة للتعديل بهاتف، وخانة المكتب ثابتة
 assert "office_name" not in _qe._fields and "gm_phone" in _qe._fields
 _qe._fields["gm_phone"].set("0501234567")

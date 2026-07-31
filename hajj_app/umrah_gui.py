@@ -1719,6 +1719,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         self._greeting = str(data.get("greeting") or "")   # ثابتة
 
         self._build_head(data)
+        self._build_toggles(data)
         self._build_guests(data)
         self._build_stays(data)
         self._build_flights(data)
@@ -1828,6 +1829,22 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
+    # ---- بنود العرض (إظهار/إخفاء أي بند) ----
+    def _build_toggles(self, data):
+        lf = self._section("بنود العرض (أظهر/أخفِ أي بند)")
+        self._show = {}
+        row = ttk.Frame(lf)
+        row.pack(fill=X)
+        for label, key in (("الإقامة", "show_stays"),
+                           ("الطيران", "show_flights"),
+                           ("المواصلات", "show_transport"),
+                           ("التكلفة", "show_costs")):
+            var = BooleanVar(value=bool(data.get(key, True)))
+            self._show[key] = var
+            ttk.Checkbutton(row, text=label, variable=var).pack(side=RIGHT,
+                                                                padx=10)
+        ttk.Label(row, text="إظهار:").pack(side=RIGHT, padx=(0, 6))
+
     # ---- الضيوف ----
     def _build_guests(self, data):
         lf = self._section("الضيوف (العدد + النوع)")
@@ -1918,14 +1935,37 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                           ("📸 لقطة شاشة", self._amadeus_screen)):
             ttk.Button(amz, text=text, command=cmd).pack(side=LEFT, padx=2)
         lf.columnconfigure(1, weight=1)
+        # منطقة سحب وإفلات صورة الأماديوس
+        self._drop = ttk.Label(
+            lf, text="⬇ اسحب صورة حجز الأماديوس هنا وأفلتها لقراءتها",
+            anchor="center", relief="groove", padding=6)
+        self._drop.grid(row=1, column=0, columnspan=4, sticky="we", pady=(6, 2))
+        try:
+            import windnd
+            windnd.hook_dropfiles(self._drop, func=self._on_drop_amadeus)
+        except Exception:
+            self._drop.configure(text="📷 استخدم أزرار القراءة أعلاه "
+                                      "(السحب والإفلات غير متاح)")
         self._flight_box = ttk.Frame(lf)
-        self._flight_box.grid(row=1, column=0, columnspan=4, sticky="we",
-                              pady=(6, 0))
+        self._flight_box.grid(row=2, column=0, columnspan=4, sticky="we",
+                              pady=(4, 0))
         for r in data.get("flights", []):
             self._add_flight_row(list(r))
         ttk.Button(lf, text="＋ إضافة رحلة",
                    command=lambda: self._add_flight_row()).grid(
-            row=2, column=0, columnspan=4, sticky="e", pady=(4, 0))
+            row=3, column=0, columnspan=4, sticky="e", pady=(4, 0))
+
+    def _on_drop_amadeus(self, files):
+        """يُستدعى عند إفلات صورة على منطقة السحب — يقرأ رحلات الأماديوس."""
+        if not files:
+            return
+        p = files[0]
+        if isinstance(p, bytes):
+            try:
+                p = p.decode("mbcs")
+            except Exception:
+                p = p.decode("utf-8", "ignore")
+        self.after(0, lambda: self._apply_amadeus(p))
 
     # ---- قراءة رحلات أماديوس (صورة / حافظة / لقطة شاشة) ----
     def _amadeus_year(self):
@@ -2276,6 +2316,8 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                            for _fr, dp, cells in self._flight_rows
                            if dp.get().strip() or
                            any(c.get().strip() for c in cells)]
+        for key, var in self._show.items():
+            data[key] = bool(var.get())
         data["addressed_to"] = (self._addr.get().strip()
                                 if self._addr_on.get() else "")
         data["train_date"] = self._trd.get()

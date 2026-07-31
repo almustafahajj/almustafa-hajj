@@ -3024,9 +3024,14 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "validity_time": "",
         "note": "",
         "closing": QUOTE_CLOSING,
-        # الخانة القابلة للتعديل (الصفة/الاسم/الهاتف)
-        "gm_title": "المدير العام",
-        "gm_name": "محمد شعّار",
+        # عرض/إخفاء بنود العرض
+        "show_stays": True,
+        "show_flights": True,
+        "show_transport": True,
+        "show_costs": True,
+        # الخانة القابلة للتعديل (الصفة/الاسم/الهاتف) — تبدأ فارغة ليملأها المستخدم
+        "gm_title": "",
+        "gm_name": "",
         "gm_phone": "",
         # الخانة الثابتة (مدير المكتب) تُؤخذ من ثوابت المكتب في المستند
         "office_title": QUOTE_OFFICE_TITLE,
@@ -3182,7 +3187,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     from .umrah import _parse_date as _pd
     stays_raw = [list(r)[:9] + [""] * (9 - len(r)) for r in data.get("stays", [])
                  if any(str(x or "").strip() for x in r)]
-    if stays_raw:
+    if stays_raw and data.get("show_stays", True):
         cur = _pd(pf)
 
         def _sh(iso):
@@ -3213,110 +3218,115 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(Spacer(1, 8))
 
     # الطيران
-    story.append(section("الطيران"))
-    story.append(Spacer(1, 3))
-    fclass = str(data.get("flight_class") or "")
-    if fclass:
-        story.append(bullet(f"الدرجة: {fclass}"))
+    if data.get("show_flights", True):
+        story.append(section("الطيران"))
         story.append(Spacer(1, 3))
-    flights = [list(r)[:6] + [""] * (6 - len(r)) for r in data.get("flights", [])
-               if any(str(x or "").strip() for x in r)]
-    story.append(data_table(list(QUOTE_FLIGHT_HEADS), [70, 70, 50, 60, 50, 60],
-                            flights))
-    story.append(Spacer(1, 8))
+        fclass = str(data.get("flight_class") or "")
+        if fclass:
+            story.append(bullet(f"الدرجة: {fclass}"))
+            story.append(Spacer(1, 3))
+        flights = [list(r)[:6] + [""] * (6 - len(r))
+                   for r in data.get("flights", [])
+                   if any(str(x or "").strip() for x in r)]
+        story.append(data_table(list(QUOTE_FLIGHT_HEADS),
+                                [70, 70, 50, 60, 50, 60], flights))
+        story.append(Spacer(1, 8))
 
-    # المواصلات والتنقّلات
-    story.append(section("المواصلات والتنقّلات"))
-    story.append(Spacer(1, 3))
-    ctype = str(data.get("car_type") or "")
-    cmodel = str(data.get("car_model") or "")
-    ccount = str(data.get("car_count") or "")
-    if ctype or ccount:
-        note = f"عدد ({ltr(ccount or '1')}) سيارة ({ctype})"
-        if cmodel:
-            note += f" موديل {ltr(cmodel)}"
-        story.append(bullet(note, bold=True))
-    for line in data.get("transport_lines", []):
-        row = list(line)[:3] + [""] * (3 - len(line)) if isinstance(
-            line, (list, tuple)) else ["", "", str(line)]
-        d, frm, to = (str(x or "").strip() for x in row)
-        if not (d or frm or to):
-            continue
-        parts = []
-        if d:
-            parts.append(f"يوم {ltr(d)}")
-        if frm:
-            parts.append(f"من {frm}")
-        if to:
-            parts.append(f"إلى {to}")
-        story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
-            "qsub", parent=val, fontSize=9, leading=13), W - 24))
-    # قطار الحرمين (مع تاريخ وتوقيتات اختيارية)
+    # المواصلات والتنقّلات + قطار الحرمين + التأشيرات (كلٌّ قابل للإلغاء)
+    show_tr = data.get("show_transport", True)
     tk_n = str(data.get("train_tickets") or "").strip()
-    if tk_n:
-        tc = str(data.get("train_class") or "")
-        tf = str(data.get("train_from") or "")
-        tt = str(data.get("train_to") or "")
-        line = f"عدد ({ltr(tk_n)}) تذاكر قطار الحرمين على الدرجة {tc}"
-        if tf or tt:
-            line += f" ({tf} – {tt})"
-        tdate = str(data.get("train_date") or "").strip()
-        tdep = str(data.get("train_dep") or "").strip()
-        tarr = str(data.get("train_arr") or "").strip()
-        if tdate:
-            line += f"، يوم {ltr(tdate)}"
-        if tdep or tarr:
-            times = []
-            if tdep:
-                times.append(f"الإقلاع {ltr(tdep)}")
-            if tarr:
-                times.append(f"الوصول {ltr(tarr)}")
-            line += " (" + " - ".join(times) + ")"
-        story.append(bullet(line))
-    # التأشيرات
     visas = str(data.get("visas") or "").strip()
-    if visas:
-        story.append(bullet(f"التأشيرات: {visas}"))
-    story.append(Spacer(1, 8))
+    if show_tr or tk_n or visas:
+        story.append(section("المواصلات والتنقّلات"))
+        story.append(Spacer(1, 3))
+        if show_tr:
+            ctype = str(data.get("car_type") or "")
+            cmodel = str(data.get("car_model") or "")
+            ccount = str(data.get("car_count") or "")
+            if ctype or ccount:
+                note = f"عدد ({ltr(ccount or '1')}) سيارة ({ctype})"
+                if cmodel:
+                    note += f" موديل {ltr(cmodel)}"
+                story.append(bullet(note, bold=True))
+            for line in data.get("transport_lines", []):
+                row = list(line)[:3] + [""] * (3 - len(line)) if isinstance(
+                    line, (list, tuple)) else ["", "", str(line)]
+                d, frm, to = (str(x or "").strip() for x in row)
+                if not (d or frm or to):
+                    continue
+                parts = []
+                if d:
+                    parts.append(f"يوم {ltr(d)}")
+                if frm:
+                    parts.append(f"من {frm}")
+                if to:
+                    parts.append(f"إلى {to}")
+                story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
+                    "qsub", parent=val, fontSize=9, leading=13), W - 24))
+        # قطار الحرمين (مع تاريخ وتوقيتات اختيارية)
+        if tk_n:
+            tc = str(data.get("train_class") or "")
+            tf = str(data.get("train_from") or "")
+            tt = str(data.get("train_to") or "")
+            line = f"عدد ({ltr(tk_n)}) تذاكر قطار الحرمين على الدرجة {tc}"
+            if tf or tt:
+                line += f" ({tf} – {tt})"
+            tdate = str(data.get("train_date") or "").strip()
+            tdep = str(data.get("train_dep") or "").strip()
+            tarr = str(data.get("train_arr") or "").strip()
+            if tdate:
+                line += f"، يوم {ltr(tdate)}"
+            if tdep or tarr:
+                times = []
+                if tdep:
+                    times.append(f"الإقلاع {ltr(tdep)}")
+                if tarr:
+                    times.append(f"الوصول {ltr(tarr)}")
+                line += " (" + " - ".join(times) + ")"
+            story.append(bullet(line))
+        # التأشيرات
+        if visas:
+            story.append(bullet(f"التأشيرات: {visas}"))
+        story.append(Spacer(1, 8))
 
     # التكلفة — جدول تسعير: العدد × سعر الفرد لكل فئة/غرفة، والإجمالي تلقائي
-    story.append(section("التكلفة"))
-    story.append(Spacer(1, 4))
-    cur = str(data.get("currency") or "درهم")
-    prows, grand = quotation_pricing(data.get("pricing", []))
-    prows = [r for r in prows if r[2].strip() or r[3].strip()
-             or r[0].strip() or r[1].strip()]
-    if prows:
-        heads = ["نوع الشخص", "نوع الغرفة", "العدد", "سعر الفرد",
-                 f"الإجمالي ({cur})"]
-        rows_vals = []
-        for ptype, rtype, count, price, sub in prows:
-            rows_vals.append([ptype or "—", rtype or "—", count or "—",
-                              fmt_money(price) if price.strip() else "—",
-                              fmt_money(sub)])
-        pr_t = data_table(heads, [70, 90, 44, 66, 78], rows_vals)
-        story.append(pr_t)
-        story.append(Spacer(1, 3))
-    # صفّ الإجمالي الكلي (محسوب تلقائياً)
-    tot = Table([[_ar_para(f"{fmt_money(grand)} {cur}", ParagraphStyle(
-        "qtv", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=12),
-        W * 0.5 - 10),
-        _ar_para("التكلفة الإجمالية", ParagraphStyle(
-            "qtk", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=12,
-            textColor=colors.white), W * 0.5 - 10)]],
-        colWidths=[W * 0.5, W * 0.5])
-    tot.setStyle(TableStyle([
-        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
-        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
-        ("BACKGROUND", (1, 0), (1, -1), _ACCENT),
-        ("TEXTCOLOR", (1, 0), (1, -1), colors.white),
-        ("BACKGROUND", (0, 0), (0, -1), _ALT_ROW),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.append(tot)
-    story.append(Spacer(1, 4))
+    if data.get("show_costs", True):
+        story.append(section("التكلفة"))
+        story.append(Spacer(1, 4))
+        cur = str(data.get("currency") or "درهم")
+        prows, grand = quotation_pricing(data.get("pricing", []))
+        prows = [r for r in prows if r[2].strip() or r[3].strip()
+                 or r[0].strip() or r[1].strip()]
+        if prows:
+            heads = ["نوع الشخص", "نوع الغرفة", "العدد", "سعر الفرد",
+                     f"الإجمالي ({cur})"]
+            rows_vals = []
+            for ptype, rtype, count, price, sub in prows:
+                rows_vals.append([ptype or "—", rtype or "—", count or "—",
+                                  fmt_money(price) if price.strip() else "—",
+                                  fmt_money(sub)])
+            story.append(data_table(heads, [70, 90, 44, 66, 78], rows_vals))
+            story.append(Spacer(1, 3))
+        # صفّ الإجمالي الكلي (محسوب تلقائياً)
+        tot = Table([[_ar_para(f"{fmt_money(grand)} {cur}", ParagraphStyle(
+            "qtv", parent=val, fontName=_FONT_BOLD, alignment=1, fontSize=12),
+            W * 0.5 - 10),
+            _ar_para("التكلفة الإجمالية", ParagraphStyle(
+                "qtk", parent=val, fontName=_FONT_BOLD, alignment=1,
+                fontSize=12, textColor=colors.white), W * 0.5 - 10)]],
+            colWidths=[W * 0.5, W * 0.5])
+        tot.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("BACKGROUND", (1, 0), (1, -1), _ACCENT),
+            ("TEXTCOLOR", (1, 0), (1, -1), colors.white),
+            ("BACKGROUND", (0, 0), (0, -1), _ALT_ROW),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(tot)
+        story.append(Spacer(1, 4))
     validity = str(data.get("validity") or "")
     if validity:
         vtxt = f"هذا العرض صالح حتى نهاية يوم {ltr(validity)}"

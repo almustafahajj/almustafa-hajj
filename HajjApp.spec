@@ -28,7 +28,7 @@ a = Analysis(
     datas=datas,
     # مُلقّم tkinter داخل PIL + مكتبات نسخة الويب (تُستورد بكسل أحياناً)
     hiddenimports=[
-        "PIL._tkinter_finder",
+        "PIL._tkinter_finder", "windnd",
         "hajj_web", "hajj_web.app", "hajj_web.server", "hajj_web.sessions",
         "flask", "waitress", "qrcode", "jinja2",
     ],
