@@ -511,8 +511,10 @@ _ug.filedialog.askopenfilename = lambda **k: "dummy.png"
 _ug.messagebox.showinfo = lambda *a, **k: None
 _qe._amadeus_file()
 assert len(_qe._flight_rows) == 2
-# سحب وإفلات صورة الأماديوس (لا يتعطّل)
-_qe._on_drop_amadeus([])
+# سحب وإفلات صورة الأماديوس (لا يتعطّل) — حدث فارغ لا يفعل شيئاً
+class _DropEv:
+    data = ""
+_qe._on_drop_amadeus(_DropEv())
 # بنود العرض قابلة للإظهار/الإخفاء
 assert {"show_stays", "show_flights", "show_transport", "show_costs"} <= \
     set(_qe._collect())
@@ -574,8 +576,10 @@ assert len(_qlw.tree.get_children()) == 1
 umrah.delete_quote(appq._settings, "Q1", _qe._number)
 assert umrah.load_quotes(appq._settings, "Q1") == []
 _qlw.destroy()
+# المعاينة تحفظ العرض تلقائياً في «عروض الأسعار»
 _qe._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+assert len(umrah.load_quotes(appq._settings, "Q1")) == 1   # حُفظ تلقائياً
 _qe.destroy()
 # عرض سعر يدوي خارج البرامج
 appq.new_manual_quotation()

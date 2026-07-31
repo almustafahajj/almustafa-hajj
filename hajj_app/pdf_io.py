@@ -3329,7 +3329,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(Spacer(1, 4))
     validity = str(data.get("validity") or "")
     if validity:
-        vtxt = f"هذا العرض صالح حتى نهاية يوم {ltr(validity)}"
+        vtxt = f"هذا العرض صالح لغاية يوم {ltr(validity)}"
         vtime = str(data.get("validity_time") or "").strip()
         if vtime:
             vtxt += f" الساعة {ltr(vtime)}"

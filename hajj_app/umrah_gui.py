@@ -1744,21 +1744,26 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
             pass
         self.grab_set()
 
-    def _save(self):
-        """يحفظ العرض في قائمة «عروض الأسعار» للبرنامج (أو اليدوية)."""
+    def _persist(self, data):
+        """يخزّن العرض ضمن «عروض الأسعار» (يحدّث الموجود بنفس الرقم)."""
         if self._app is None:
             return
-        data = self._collect()
         code = getattr(self.trip, "code", "") or ""
         umrah.save_quote(self._app._settings, code, data)
         try:
             save_settings(self._app._settings)
         except OSError:
             pass
-        messagebox.showinfo("عروض الأسعار",
-                            f"تم حفظ العرض {self._number}.", parent=self)
         if callable(self._on_saved):
             self._on_saved()
+
+    def _save(self):
+        """يحفظ العرض يدوياً مع رسالة تأكيد."""
+        if self._app is None:
+            return
+        self._persist(self._collect())
+        messagebox.showinfo("عروض الأسعار",
+                            f"تم حفظ العرض {self._number}.", parent=self)
 
     # ---- عناصر مساعدة ----
     def _field(self, parent, label, key, data, r, c, width=26):
@@ -1935,15 +1940,12 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                           ("📸 لقطة شاشة", self._amadeus_screen)):
             ttk.Button(amz, text=text, command=cmd).pack(side=LEFT, padx=2)
         lf.columnconfigure(1, weight=1)
-        # منطقة سحب وإفلات صورة الأماديوس
+        # منطقة سحب وإفلات صورة الأماديوس (عبر tkdnd — مستقرّة مع Tkinter)
         self._drop = ttk.Label(
             lf, text="⬇ اسحب صورة حجز الأماديوس هنا وأفلتها لقراءتها",
             anchor="center", relief="groove", padding=6)
         self._drop.grid(row=1, column=0, columnspan=4, sticky="we", pady=(6, 2))
-        try:
-            import windnd
-            windnd.hook_dropfiles(self._drop, func=self._on_drop_amadeus)
-        except Exception:
+        if not self._enable_drop(self._drop):
             self._drop.configure(text="📷 استخدم أزرار القراءة أعلاه "
                                       "(السحب والإفلات غير متاح)")
         self._flight_box = ttk.Frame(lf)
@@ -1955,17 +1957,28 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                    command=lambda: self._add_flight_row()).grid(
             row=3, column=0, columnspan=4, sticky="e", pady=(4, 0))
 
-    def _on_drop_amadeus(self, files):
+    def _enable_drop(self, widget):
+        """يفعّل السحب والإفلات على ``widget`` عبر tkdnd (مستقرّ مع Tkinter)."""
+        try:
+            from tkinterdnd2 import DND_FILES, TkinterDnD
+            TkinterDnD._require(widget)      # تحميل حزمة tkdnd في المفسّر
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", self._on_drop_amadeus)
+            return True
+        except Exception:
+            return False
+
+    def _on_drop_amadeus(self, event):
         """يُستدعى عند إفلات صورة على منطقة السحب — يقرأ رحلات الأماديوس."""
-        if not files:
+        try:
+            paths = list(self.tk.splitlist(event.data))
+        except Exception:
+            paths = [event.data]
+        paths = [p for p in paths if str(p).strip()]
+        if not paths:
             return
-        p = files[0]
-        if isinstance(p, bytes):
-            try:
-                p = p.decode("mbcs")
-            except Exception:
-                p = p.decode("utf-8", "ignore")
-        self.after(0, lambda: self._apply_amadeus(p))
+        # نؤجّل القراءة قليلاً كي يكتمل حدث الإفلات قبل تشغيل OCR
+        self.after(50, lambda: self._apply_amadeus(paths[0]))
 
     # ---- قراءة رحلات أماديوس (صورة / حافظة / لقطة شاشة) ----
     def _amadeus_year(self):
@@ -2341,6 +2354,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
 
     def _preview(self):
         data = self._collect()
+        self._persist(data)          # كل معاينة تُحفظ تلقائياً في عروض الأسعار
         code = getattr(self.trip, "code", "") or "يدوي"
         G.open_preview(
             self,
