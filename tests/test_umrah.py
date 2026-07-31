@@ -483,8 +483,12 @@ assert _qpen.read_bytes()[:5] == b"%PDF-" and _qpen.stat().st_size > 3000
 from hajj_app.pdf_io import translate_quotation_data as _tq
 _qar = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائي"),
                             trip=_tripq, number="MA-Q0003", lang="ar")
+_qar["flights"] = [["2026-09-04", "الاتحاد", "14:25", "دبي", "16:15", "جدة"]]
+_qar["addressed_title"] = "السيدة"
 _t_en = _tq(_qar, "en")
 assert _t_en["greeting"] == "Greetings," and _t_en["stays"][0][0] == "Madinah"
+assert _t_en["flights"][0][1] == "Etihad"        # ترجمة الناقل
+assert _t_en["addressed_title"] == "Mrs."        # اللقب (السيدة → Mrs.)
 _t_ar = _tq(_t_en, "ar")
 assert _t_ar["stays"][0][0] == "المدينة المنوّرة"      # عاد للعربية
 assert _t_ar["stays"][0][3] == "ثنائي"

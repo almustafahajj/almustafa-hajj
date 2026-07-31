@@ -1876,14 +1876,23 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                                        padx=(8, 4), pady=3)
         self._build_date_picker(lf, data.get("period_to"), row=2, col=3,
                                 prefix="_pt")
-        # توجيه العرض باسم الضيف (اختياري)
+        # توجيه العرض باسم الضيف (اختياري) مع اللقب (السيد/السيدة أو Mr./Mrs.)
         self._addr_on = BooleanVar(
             value=bool(str(data.get("addressed_to") or "").strip()))
         ttk.Checkbutton(lf, text="توجيه باسم الضيف", variable=self._addr_on).grid(
             row=3, column=0, sticky="e", padx=(8, 4), pady=3)
+        arow = ttk.Frame(lf)
+        arow.grid(row=3, column=1, columnspan=3, sticky="we", padx=(0, 8),
+                  pady=3)
+        titles = (["Mr.", "Mrs.", "Ms."] if self._lang == "en"
+                  else ["السيد", "السيدة", "الآنسة"])
+        self._addr_title = StringVar(
+            value=str(data.get("addressed_title") or titles[0]))
+        ttk.Combobox(arow, textvariable=self._addr_title, values=titles,
+                     width=7).pack(side=RIGHT, padx=(4, 0))
         self._addr = StringVar(value=str(data.get("addressed_to") or ""))
-        ttk.Entry(lf, textvariable=self._addr, width=28, justify="right").grid(
-            row=3, column=1, columnspan=3, sticky="we", padx=(0, 8), pady=3)
+        ttk.Entry(arow, textvariable=self._addr, justify="right").pack(
+            side=RIGHT, fill=X, expand=True)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
@@ -2396,6 +2405,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
             data[key] = bool(var.get())
         data["addressed_to"] = (self._addr.get().strip()
                                 if self._addr_on.get() else "")
+        data["addressed_title"] = self._addr_title.get().strip()
         # قطار الحرمين: بنود متعددة [التذاكر، الدرجة، من، إلى، التاريخ، الإقلاع،
         # الوصول] — تُدرَج البنود التي لها عدد تذاكر فقط
         data["trains"] = [[c.get().strip() for c in cells4] + [dp.get()]

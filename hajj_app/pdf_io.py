@@ -2854,7 +2854,7 @@ QUOTE_ROOM_COUNTS = tuple(str(i) for i in range(1, 11))
 QUOTE_VIEWS = ("غير مطلّة", "مطلّة مدينة", "مطلّة كعبة")
 QUOTE_MEALS = ("إفطار", "غداء", "عشاء", "وجبات كاملة", "غداء وعشاء")
 QUOTE_FLIGHT_CLASSES = ("سياحية", "رجال أعمال", "درجة أولى")
-QUOTE_CARRIERS = ("السعودية", "الإتحاد", "الإمارات", "فلاي دبي", "فلاي ناس",
+QUOTE_CARRIERS = ("السعودية", "الاتحاد", "الإمارات", "فلاي دبي", "فلاي ناس",
                   "العربية", "أديل")
 QUOTE_AIRPORT_CITIES = ("أبوظبي", "دبي", "جدة", "المدينة", "الرياض", "الطائف",
                         "رأس الخيمة")
@@ -2891,10 +2891,11 @@ _QTR = {
                 "رضّع": "Infants"},
     "classes": {"سياحية": "Economy", "رجال أعمال": "Business",
                 "درجة أولى": "First"},
-    "carriers": {"السعودية": "Saudia", "الاتحاد": "Etihad",
-                 "الإمارات": "Emirates", "فلاي دبي": "flydubai",
-                 "فلاي ناس": "flynas", "العربية": "Air Arabia",
-                 "أديل": "flyadeal", "الجزيرة": "Jazeera"},
+    "carriers": {"السعودية": "Saudia", "الإتحاد": "Etihad",
+                 "الاتحاد": "Etihad", "الإمارات": "Emirates",
+                 "فلاي دبي": "flydubai", "فلاي ناس": "flynas",
+                 "العربية": "Air Arabia", "أديل": "flyadeal",
+                 "الجزيرة": "Jazeera"},
     "airports": {"أبوظبي": "Abu Dhabi", "دبي": "Dubai", "الشارقة": "Sharjah",
                  "رأس الخيمة": "Ras Al Khaimah", "جدة": "Jeddah",
                  "المدينة": "Madinah", "الرياض": "Riyadh", "الطائف": "Taif",
@@ -2916,6 +2917,7 @@ _QTR = {
                "دار الإيمان": "Dar Al Iman"},
     "office": {"أيمن الشهابي": "AYMAN ALSHEHABI",
                "مدير المكتب": "Office Manager"},
+    "titles": {"السيد": "Mr.", "السيدة": "Mrs.", "الآنسة": "Ms."},
     "phrases": {"عرض سعر رحلة عمرة": "Umrah Trip Quotation",
                 QUOTE_GREETING: "Greetings,",
                 QUOTE_CLOSING: ("We hope our programs meet your satisfaction; "
@@ -2956,6 +2958,7 @@ def translate_quotation_data(data: dict, lang: str) -> dict:
     d["currency"] = tv(data.get("currency"), "phrases")
     d["flight_class"] = tv(data.get("flight_class"), "classes")
     d["visa_type"] = tv(data.get("visa_type"), "visa")
+    d["addressed_title"] = tv(data.get("addressed_title"), "titles")
     # الإقامات
     d["stays"] = []
     for r in data.get("stays", []):
@@ -3117,8 +3120,9 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "date": date_str,
         "title": T("عرض سعر رحلة عمرة", "Umrah Trip Quotation"),
         "greeting": T(QUOTE_GREETING, "Greetings,"),
-        # توجيه العرض باسم الضيف (فارغ = بدون توجيه)
+        # توجيه العرض باسم الضيف (فارغ = بدون توجيه) + اللقب (السيد/السيدة)
         "addressed_to": str(getattr(rec, "full_name_ar", "") or ""),
+        "addressed_title": T("السيد", "Mr."),
         # الضيوف: كل عنصر [العدد، النوع]
         "guests": guests_default,
         "period_from": dep,
@@ -3241,11 +3245,16 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     ]))
     story.append(meta)
     story.append(_ar_para(str(data.get("greeting") or ""), val, W - 8))
-    # توجيه العرض باسم الضيف (اختياري)
+    # توجيه العرض باسم الضيف (اختياري) مع اللقب (السيد/السيدة أو Mr./Mrs.)
     addressed = str(data.get("addressed_to") or "").strip()
     if addressed:
-        atxt = (f"Attention: Mr./Ms. {addressed}," if L
-                else f"عناية السيّد/ {addressed} المحترم،")
+        atitle = str(data.get("addressed_title") or T("السيد", "Mr.")).strip()
+        if L:
+            atxt = f"Attention: {atitle} {addressed},"
+        else:
+            respect = "المحترمة" if atitle in ("السيدة", "الآنسة") \
+                else "المحترم"
+            atxt = f"عناية {atitle}/ {addressed} {respect}،"
         story.append(_ar_para(
             atxt, ParagraphStyle("qaddr", parent=val, fontName=_FONT_BOLD,
                                  textColor=_DEEP), W - 8))
@@ -3397,8 +3406,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 continue
             day, carrier, dep_t, frm, arr_t, to = (list(r)[:6] +
                                                    [""] * (6 - len(r)))[:6]
-            flights.append([day, _qtr(carrier, "carriers", L), dep_t,
-                            _qtr(frm, "airports", L), arr_t,
+            flights.append([ltr(day), _qtr(carrier, "carriers", L), ltr(dep_t),
+                            _qtr(frm, "airports", L), ltr(arr_t),
                             _qtr(to, "airports", L)])
         story.append(data_table(fheads, [70, 70, 50, 60, 50, 60], flights))
         story.append(Spacer(1, 8))
@@ -3460,7 +3469,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 [str(x or "").strip() for x in list(tr)[:7]] + [""] * 7)[:7]
             trows.append([tk_n, _qtr(tc, "classes", L),
                           _qtr(tf, "airports", L), _qtr(tt, "airports", L),
-                          tdate, tdep, tarr])
+                          ltr(tdate), ltr(tdep), ltr(tarr)])
         story.append(data_table(theads, [40, 58, 54, 54, 60, 48, 48], trows))
         story.append(Spacer(1, 8))
 
