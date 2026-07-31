@@ -3346,6 +3346,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4]),          # زوايا ناعمة
         ]))
         return t
 
@@ -3381,6 +3382,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 10),
             ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("ROUNDEDCORNERS", [5, 5, 5, 5]),
         ]))
         story.append(card)
     story.append(Spacer(1, 8))
@@ -3561,8 +3563,9 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             ("TEXTCOLOR", (1, 0), (1, -1), colors.white),
             ("BACKGROUND", (0, 0), (0, -1), _ALT_ROW),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("ROUNDEDCORNERS", [6, 6, 6, 6]),
         ]))
         story.append(tot)
         story.append(Spacer(1, 4))
@@ -3606,7 +3609,24 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     closing = str(data.get("closing") or "")
     if closing:
         story.append(_ar_para(closing, val, W - 8))
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 6))
+
+    # زخرفة فاصلة أنيقة قبل التوقيعات (خطّان بمعيّن في الوسط)
+    from reportlab.graphics.shapes import Drawing, Line, Polygon
+    flo = Drawing(W, 14)
+    cy = 7
+    flo.add(Line(W * 0.18, cy, W / 2 - 10, cy, strokeColor=_ACCENT,
+                 strokeWidth=0.8))
+    flo.add(Line(W / 2 + 10, cy, W * 0.82, cy, strokeColor=_ACCENT,
+                 strokeWidth=0.8))
+    flo.add(Polygon([W / 2, cy + 5, W / 2 + 6, cy, W / 2, cy - 5, W / 2 - 6, cy],
+                    fillColor=_ACCENT, strokeColor=_DEEP, strokeWidth=0.5))
+    flo.add(Polygon([W / 2 - 14, cy + 3, W / 2 - 11, cy, W / 2 - 14, cy - 3,
+                     W / 2 - 17, cy], fillColor=_DEEP, strokeWidth=0))
+    flo.add(Polygon([W / 2 + 14, cy + 3, W / 2 + 17, cy, W / 2 + 14, cy - 3,
+                     W / 2 + 11, cy], fillColor=_DEEP, strokeWidth=0))
+    story.append(flo)
+    story.append(Spacer(1, 8))
 
     # التوقيعات: خانة قابلة للتعديل (يمين) وخانة المكتب الثابتة (يسار)
     sig_t = ParagraphStyle("qst", parent=lbl, alignment=1, fontSize=10)
@@ -3639,12 +3659,24 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     foot = T("عرض سعر", "Quotation")
 
     def _bg(canvas, d):
+        canvas.saveState()
+        # إطار زخرفيّ مزدوج أنيق بلون الهوية قرب حواف الصفحة
+        canvas.setStrokeColor(_ACCENT)
+        canvas.setLineWidth(1.3)
+        m1 = 6 * mm
+        canvas.roundRect(m1, m1, A4[0] - 2 * m1, A4[1] - 2 * m1, 10,
+                         stroke=1, fill=0)
+        canvas.setLineWidth(0.4)
+        m2 = 7.4 * mm
+        canvas.roundRect(m2, m2, A4[0] - 2 * m2, A4[1] - 2 * m2, 8,
+                         stroke=1, fill=0)
+        canvas.restoreState()
         # علامة مائية باهتة (شعار المصطفى) في وسط الصفحة
         wm = _faint_logo_reader()
         if wm is not None:
             try:
                 iw, ih = wm.getSize()
-                ww = doc.width * 0.55
+                ww = doc.width * 0.5
                 wh = ww * ih / iw
                 canvas.drawImage(
                     wm, (A4[0] - ww) / 2, (A4[1] - wh) / 2, width=ww,
