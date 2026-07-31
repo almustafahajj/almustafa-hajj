@@ -479,6 +479,23 @@ assert _qen["stays"][0][3] == "Double" and _qen["flight_class"] == "Economy"
 _qpen = WORK / "quote_en.pdf"
 export_umrah_quotation_pdf(PassportData(), _qpen, data=_qen)
 assert _qpen.read_bytes()[:5] == b"%PDF-" and _qpen.stat().st_size > 3000
+# تحويل عرض محفوظ عربي ← إنجليزي ← عربي يترجم المحتوى (ذهاباً وإياباً)
+from hajj_app.pdf_io import translate_quotation_data as _tq
+_qar = build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائي"),
+                            trip=_tripq, number="MA-Q0003", lang="ar")
+_t_en = _tq(_qar, "en")
+assert _t_en["greeting"] == "Greetings," and _t_en["stays"][0][0] == "Madinah"
+_t_ar = _tq(_t_en, "ar")
+assert _t_ar["stays"][0][0] == "المدينة المنوّرة"      # عاد للعربية
+assert _t_ar["stays"][0][3] == "ثنائي"
+# عرض السعر يتّسع في صفحة واحدة مهما طال (بنود قطار متعددة + مسارات)
+_long = dict(_qar)
+_long["trains"] = [["2", "سياحية", "المدينة", "مكة", "2026-09-07", "14:30",
+                    "16:30"]] * 6
+_lp = WORK / "quote_long.pdf"
+export_umrah_quotation_pdf(PassportData(), _lp, data=_long)
+import fitz as _f
+assert _f.open(str(_lp)).page_count == 1, "العرض تجاوز صفحة واحدة"
 _qp = WORK / "quote.pdf"
 export_umrah_quotation_pdf(PassportData(full_name_ar="خالد"), _qp, data=_qd)
 assert _qp.read_bytes()[:5] == b"%PDF-" and _qp.stat().st_size > 3000

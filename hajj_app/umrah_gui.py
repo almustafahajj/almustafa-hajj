@@ -38,7 +38,7 @@ from .pdf_io import (
     export_umrah_finance_pdf, export_umrah_invoice_pdf, export_umrah_pdf,
     export_umrah_quotation_pdf, export_umrah_receipt_pdf, export_umrah_rooming_pdf,
     export_umrah_transport_pdf, export_umrah_voucher_pdf, fmt_money,
-    quotation_pricing, quote_times, voucher_car_models,
+    quotation_pricing, quote_times, translate_quotation_data, voucher_car_models,
 )
 from .storage import load_records, load_settings, save_records, save_settings
 from .tesseract_setup import configure_tesseract
@@ -1280,6 +1280,8 @@ class _CalendarPopup(Toplevel):
         ttk.Button(hdr, text="›", width=2, command=self._next).pack(side=LEFT)
         ttk.Button(hdr, text="»", width=2, command=self._next_year).pack(
             side=LEFT)
+        ttk.Button(hdr, text="✕", width=2, command=self.destroy).pack(
+            side=LEFT, padx=(4, 0))
         g = ttk.Frame(self, padding=(4, 0, 4, 4))
         g.pack()
         for i, wd in enumerate(("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa")):
@@ -1294,6 +1296,22 @@ class _CalendarPopup(Toplevel):
                 ttk.Button(g, text=str(day), width=3,
                            command=lambda d=day: self._pick(d)).grid(
                     row=r, column=c, padx=1, pady=1)
+        # صفّ أدوات: مسح التاريخ / اليوم / إغلاق
+        foot = ttk.Frame(self, padding=(4, 0, 4, 4))
+        foot.pack(fill=X)
+        ttk.Button(foot, text="مسح", command=self._clear).pack(side=LEFT)
+        ttk.Button(foot, text="اليوم", command=self._today).pack(side=LEFT,
+                                                                 padx=3)
+        ttk.Button(foot, text="إغلاق", command=self.destroy).pack(side=RIGHT)
+
+    def _clear(self) -> None:
+        self.picker.set("")
+        self.destroy()
+
+    def _today(self) -> None:
+        t = date.today()
+        self.picker.set(t.isoformat())
+        self.destroy()
 
     def _prev(self) -> None:
         self._m -= 1
@@ -1788,14 +1806,12 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                             f"تم حفظ العرض {self._number}.", parent=self)
 
     def _on_lang_change(self, _event=None):
-        """تبديل لغة العرض: يعيد بناء المحرّر بالقيَم الافتراضية للّغة الجديدة
-        مع الحفاظ على الرقم."""
+        """تبديل لغة العرض: يترجم المحتوى الحالي (مع الحفاظ على تعديلات المستخدم)
+        ويعيد فتح المحرّر باللغة الجديدة — يعمل للعروض المحفوظة أيضاً."""
         new = "en" if self._lang_var.get() == "English" else "ar"
         if new == self._lang:
             return
-        data = build_quotation_data(self.rec, trip=self.trip,
-                                    company=self._company_dict,
-                                    number=self._number, lang=new)
+        data = translate_quotation_data(self._collect(), new)
         parent, rec, trip = self.parent, self.rec, self.trip
         app, company, on_saved = self._app, self._company_dict, self._on_saved
         self.destroy()

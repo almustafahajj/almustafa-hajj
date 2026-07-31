@@ -22,8 +22,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    Image as RLImage, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table,
-    TableStyle,
+    Image as RLImage, KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate,
+    Spacer, Table, TableStyle,
 )
 
 from .fields import FIELDS, PDF_FIELDS, row_dict
@@ -2877,8 +2877,7 @@ QUOTE_OFFICE_PHONE = "0549964801"
 
 # ترجمة المفردات الثابتة لعرض السعر بالإنجليزية (النصوص الحرّة تبقى كما هي)
 _QTR = {
-    "cities": {"مكة المكرّمة": "Makkah", "المدينة المنوّرة": "Madinah",
-               "مكة": "Makkah", "المدينة": "Madinah"},
+    "cities": {"مكة المكرّمة": "Makkah", "المدينة المنوّرة": "Madinah"},
     "rooms": {"مفرد": "Single", "ثنائي": "Double", "ثلاثي": "Triple",
               "رباعي": "Quad", "جناح غرفة وصالة": "1-BR Suite",
               "جناح غرفتين وصالة": "2-BR Suite",
@@ -2906,7 +2905,25 @@ _QTR = {
                   "محطة قطار المدينة": "Madinah Train Station",
                   "مطار الرياض": "Riyadh Airport", "مطار الطائف": "Taif Airport"},
     "visa": {"سياحية": "Tourist", "عمرة": "Umrah"},
+    "hotels": {"جميرا مكة جبل عمر": "Jumeirah Makkah Jabal Omar",
+               "فيرمونت مكة": "Fairmont Makkah",
+               "هيلتون مكة الضيافة": "Hilton Makkah Convention",
+               "سويس أوتيل مكة": "Swissotel Makkah",
+               "دار الإيمان الحرم": "Dar Al Iman Haram",
+               "دار التقوى": "Dar Al Taqwa",
+               "أنوار المدينة موفنبيك": "Anwar Al Madinah Movenpick",
+               "شذا المدينة": "Shaza Madinah", "جميرا مكة": "Jumeirah Makkah",
+               "دار الإيمان": "Dar Al Iman"},
+    "office": {"أيمن الشهابي": "AYMAN ALSHEHABI",
+               "مدير المكتب": "Office Manager"},
+    "phrases": {"عرض سعر رحلة عمرة": "Umrah Trip Quotation",
+                QUOTE_GREETING: "Greetings,",
+                QUOTE_CLOSING: ("We hope our programs meet your satisfaction; "
+                                "awaiting your kind reply."),
+                "درهم": "AED", "ريال": "SAR", "دولار": "USD"},
 }
+# خرائط عكسية (إنجليزي ← عربي) للتحويل في الاتجاهين
+_QTR_REV = {cat: {v: k for k, v in m.items()} for cat, m in _QTR.items()}
 
 
 def _qtr(val, cat: str, en: bool):
@@ -2914,6 +2931,65 @@ def _qtr(val, cat: str, en: bool):
     if not en:
         return val
     return _QTR.get(cat, {}).get(str(val or "").strip(), val)
+
+
+def _tr_val(val, cat: str, to_en: bool):
+    """يحوّل مفردة ثابتة في الاتجاهين حسب الهدف (إنجليزي/عربي)."""
+    v = str(val or "").strip()
+    table = _QTR.get(cat, {}) if to_en else _QTR_REV.get(cat, {})
+    return table.get(v, val)
+
+
+def translate_quotation_data(data: dict, lang: str) -> dict:
+    """يترجم بيانات عرض سعر محفوظ إلى اللغة الهدف مع الحفاظ على محتوى المستخدم
+    (النصوص الحرّة وأسماء الفنادق المعروفة تُترجم، وغير المعروف يبقى كما هو)."""
+    d = dict(data)
+    en = lang == "en"
+    d["lang"] = lang
+
+    def tv(val, cat):
+        return _tr_val(val, cat, en)
+
+    d["title"] = tv(data.get("title"), "phrases")
+    d["greeting"] = tv(data.get("greeting"), "phrases")
+    d["closing"] = tv(data.get("closing"), "phrases")
+    d["currency"] = tv(data.get("currency"), "phrases")
+    d["flight_class"] = tv(data.get("flight_class"), "classes")
+    d["visa_type"] = tv(data.get("visa_type"), "visa")
+    # الإقامات
+    d["stays"] = []
+    for r in data.get("stays", []):
+        r = list(r) + [""] * (9 - len(r))
+        d["stays"].append([tv(r[0], "cities"), r[1], tv(r[2], "hotels"),
+                           tv(r[3], "rooms"), r[4], tv(r[5], "views"),
+                           tv(r[6], "meals"), r[7], r[8]])
+    # الطيران
+    d["flights"] = [[r[0], tv(r[1], "carriers"), r[2], tv(r[3], "airports"),
+                     r[4], tv(r[5], "airports")]
+                    for r in (list(x) + [""] * (6 - len(x))
+                              for x in data.get("flights", []))]
+    # بنود التنقّل
+    d["transport_lines"] = [[r[0], tv(r[1], "locations"), tv(r[2], "locations")]
+                            for r in (list(x) + [""] * (3 - len(x))
+                                      for x in data.get("transport_lines", []))]
+    # القطار
+    d["trains"] = [[r[0], tv(r[1], "classes"), tv(r[2], "airports"),
+                    tv(r[3], "airports"), r[4], r[5], r[6]]
+                   for r in (list(x) + [""] * (7 - len(x))
+                             for x in data.get("trains", []))]
+    # الضيوف والتسعير
+    d["guests"] = [[g[0], tv(g[1], "persons")]
+                   for g in (list(x) + [""] * (2 - len(x))
+                             for x in data.get("guests", []))]
+    d["pricing"] = [[tv(p[0], "persons"), tv(p[1], "rooms"), p[2], p[3]]
+                    for p in (list(x) + [""] * (4 - len(x))
+                              for x in data.get("pricing", []))]
+    # نصّ التأشيرات يُعاد بناؤه من العدد والنوع
+    vc = str(data.get("visa_count") or "").strip()
+    if vc:
+        vt = d["visa_type"]
+        d["visas"] = f"{vc} {vt} visa(s)" if en else f"عدد ({vc}) تأشيرة {vt}"
+    return d
 
 
 def quote_times() -> list:
@@ -2992,7 +3068,8 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
             n = 0
         cin = _cur.isoformat() if _cur else ""
         cout = (_cur + timedelta(days=n)).isoformat() if (_cur and n) else ""
-        stays.append([_qtr(label, "cities", en), str(n or ""), hotel, room, "1",
+        stays.append([_qtr(label, "cities", en), str(n or ""),
+                      _qtr(hotel, "hotels", en), room, "1",
                       view0, meals0, cin, cout])
         if _cur and n:
             _cur = _cur + timedelta(days=n)
@@ -3039,8 +3116,7 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "number": str(number or ""),
         "date": date_str,
         "title": T("عرض سعر رحلة عمرة", "Umrah Trip Quotation"),
-        "greeting": T(QUOTE_GREETING,
-                      "Peace be upon you and God's mercy and blessings,"),
+        "greeting": T(QUOTE_GREETING, "Greetings,"),
         # توجيه العرض باسم الضيف (فارغ = بدون توجيه)
         "addressed_to": str(getattr(rec, "full_name_ar", "") or ""),
         # الضيوف: كل عنصر [العدد، النوع]
@@ -3199,12 +3275,21 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         p = Paragraph(ar(title), ParagraphStyle(
             "qsec", fontName=_FONT_BOLD, fontSize=11, alignment=ALN,
             textColor=_DEEP, leading=15))
-        t = Table([[p]], colWidths=[W])
+        # علامة لونية صغيرة قبل العنوان (على جهة بداية القراءة)
+        mark = Table([[""]], colWidths=[7], rowHeights=[12])
+        mark.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+            ("LINEBEFORE", (0, 0), (0, -1), 2, _DEEP),
+        ]))
+        cells = rev([mark, p])
+        t = Table([cells], colWidths=rev([12, W - 12]))
         t.setStyle(TableStyle([
             ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 1),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ]))
         return t
 
@@ -3274,17 +3359,17 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             if not cout and cur and n:
                 cout = (cur + _td(days=n)).isoformat()
             # المدى: في العربي يُقرأ يمين←يسار (الدخول يميناً)، وفي الإنجليزي
-            # يسار→يمين (الدخول يساراً)
+            # يسار→يمين صريحاً (الدخول يساراً)
             if cin or cout:
-                rng = (f"{_sh(cin)} – {_sh(cout)}" if L
+                rng = (ltr(f"{_sh(cin)} – {_sh(cout)}") if L
                        else f"{_sh(cout)} – {_sh(cin)}")
             else:
                 rng = ""
             nxt = _pd(cout)
             cur = nxt or (cur + _td(days=n) if (cur and n) else cur)
-            disp.append([_qtr(city, "cities", L), rng, nights, hotel,
-                         _qtr(room, "rooms", L), rooms, _qtr(view, "views", L),
-                         _qtr(meals, "meals", L)])
+            disp.append([_qtr(city, "cities", L), rng, nights,
+                         _qtr(hotel, "hotels", L), _qtr(room, "rooms", L), rooms,
+                         _qtr(view, "views", L), _qtr(meals, "meals", L)])
         heads = ([T("المدينة", "City"), T("من – إلى", "From – To"),
                   T("الليالي", "Nights"), T("الفندق", "Hotel"),
                   T("نوع الغرفة", "Room Type"), T("عدد الغرف", "Rooms"),
@@ -3489,8 +3574,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
     gm = sig_box(data.get("gm_title"), data.get("gm_name"),
                  data.get("gm_phone"))
-    office = sig_box(T(QUOTE_OFFICE_TITLE, "Office Manager"), QUOTE_OFFICE_NAME,
-                     QUOTE_OFFICE_PHONE)
+    office = sig_box(_qtr(QUOTE_OFFICE_TITLE, "office", L),
+                     _qtr(QUOTE_OFFICE_NAME, "office", L), QUOTE_OFFICE_PHONE)
     sig = Table([[office, gm]], colWidths=[W * 0.5, W * 0.5])
     sig.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -3500,10 +3585,26 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     story.append(sig)
 
     foot = T("عرض سعر", "Quotation")
-    doc.build(
-        story,
-        onFirstPage=lambda c, d: _footer_portrait(c, d, foot),
-        onLaterPages=lambda c, d: _footer_portrait(c, d, foot))
+
+    def _bg(canvas, d):
+        # علامة مائية باهتة (شعار المصطفى) في وسط الصفحة
+        wm = _faint_logo_reader()
+        if wm is not None:
+            try:
+                iw, ih = wm.getSize()
+                ww = doc.width * 0.55
+                wh = ww * ih / iw
+                canvas.drawImage(
+                    wm, (A4[0] - ww) / 2, (A4[1] - wh) / 2, width=ww,
+                    height=wh, mask="auto")
+            except Exception:
+                pass
+        _footer_portrait(canvas, d, foot)
+
+    # عرض السعر في صفحة واحدة مهما طال المحتوى (تصغير تلقائي عند الحاجة)
+    fitted = KeepInFrame(doc.width, doc.height, story, mode="shrink",
+                         hAlign="CENTER", vAlign="TOP")
+    doc.build([fitted], onFirstPage=_bg, onLaterPages=_bg)
     return path
 
 
