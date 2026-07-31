@@ -216,32 +216,86 @@ def _hhmm(t: str) -> str:
     return f"{t[:2]}:{t[2:]}"
 
 
+def _amadeus_line_row(line: str, year: int):
+    """محلّل متسامح لسطر أماديوس واحد: يبحث عن التاريخ وزوج المطارين ووقتين
+    والناقل بمرونة، فيصمد أمام أخطاء الـ OCR التي تكسر التعبير النمطي."""
+    toks = re.split(r"[\s/]+", line.upper().strip())
+    date_i = next((i for i, t in enumerate(toks)
+                   if re.fullmatch(r"\d{1,2}[A-Z]{3}", t)), None)
+    if date_i is None:
+        return None
+    dt = toks[date_i]
+    mnum = _AMADEUS_MONTHS.get(dt[-3:], 0)
+    day = int(dt[:-3] or 0)
+    if not mnum or not (1 <= day <= 31):
+        return None
+    # زوج المطارين: رمز سداسي، أو رمزان ثلاثيان معروفان
+    frm3 = to3 = None
+    for t in toks:
+        if re.fullmatch(r"[A-Z]{6}", t):
+            frm3, to3 = t[:3], t[3:]
+            break
+    if frm3 is None:
+        threes = [t for t in toks if re.fullmatch(r"[A-Z]{3}", t)]
+        known = [t for t in threes if t in _AMADEUS_AIRPORTS]
+        pick = known if len(known) >= 2 else threes
+        if len(pick) >= 2:
+            frm3, to3 = pick[0], pick[1]
+    if frm3 is None:
+        return None
+    pair_i = next((i for i, t in enumerate(toks) if t in (frm3 + to3, frm3)),
+                  date_i)
+    # وقتان بأربع خانات بعد زوج المطارين (تفادياً لرقم الرحلة)
+    times = [t for i, t in enumerate(toks) if i > pair_i
+             and re.fullmatch(r"\d{4}", t)
+             and int(t[:2]) < 24 and int(t[2:]) < 60]
+    if len(times) < 2:
+        return None
+    dep, arr = times[0], times[1]
+    # الناقل: رمز معروف، أو رمز مكوّن من حرفين قبل التاريخ
+    carrier = next((t for t in toks if t in _AMADEUS_CARRIERS), None)
+    if carrier is None:
+        carrier = next((t for t in toks[:date_i]
+                        if re.fullmatch(r"[A-Z][A-Z0-9]", t)), "")
+    iso = f"{year:04d}-{mnum:02d}-{day:02d}"
+    return (iso, carrier, frm3, to3, dep, arr)
+
+
 def parse_amadeus_flights(text: str, year: int | None = None) -> list:
     """يحلّل نصّ حجز أماديوس ويعيد صفوف رحلات جاهزة لجدول الطيران في عرض السعر:
     ``[التاريخ ISO، الناقل، الإقلاع، من، الوصول، إلى]`` لكل رحلة.
 
-    متسامح مع أخطاء الـ OCR ويُزيل التكرار (نمرّر عدّة نسخ من النصّ عادةً)."""
+    يجمع بين تعبير نمطي دقيق ومحلّل سطري متسامح، ويُزيل التكرار (نمرّر عدّة نسخ
+    من النصّ عادةً)."""
     from datetime import date as _date
 
     if year is None:
         year = _date.today().year
+    text = (text or "").upper()
+
+    def _emit(rows, seen, iso, carrier, frm3, to3, dep, arr):
+        key = (iso, frm3, to3, dep, arr)
+        if key in seen:
+            return
+        seen.add(key)
+        rows.append([iso, _AMADEUS_CARRIERS.get(carrier, carrier),
+                     _hhmm(dep), _AMADEUS_AIRPORTS.get(frm3, frm3),
+                     _hhmm(arr), _AMADEUS_AIRPORTS.get(to3, to3)])
+
     rows, seen = [], set()
-    for m in _AMADEUS_RE.finditer((text or "").upper()):
+    # 1) التعبير النمطي الدقيق
+    for m in _AMADEUS_RE.finditer(text):
         carrier, _flight, day, mon, frm3, to3, dep, arr = m.groups()
         mnum = _AMADEUS_MONTHS.get(mon, 0)
-        if not mnum or not (1 <= int(day) <= 31):
-            continue
-        if int(dep[-2:]) >= 60 or int(arr[-2:]) >= 60:
-            continue
-        iso = f"{year:04d}-{mnum:02d}-{int(day):02d}"
-        key = (iso, carrier, frm3, to3, dep, arr)
-        if key in seen:
-            continue
-        seen.add(key)
-        frm = _AMADEUS_AIRPORTS.get(frm3, frm3)
-        to = _AMADEUS_AIRPORTS.get(to3, to3)
-        carrier_name = _AMADEUS_CARRIERS.get(carrier, carrier)
-        rows.append([iso, carrier_name, _hhmm(dep), frm, _hhmm(arr), to])
+        if mnum and 1 <= int(day) <= 31 and int(dep[-2:]) < 60 \
+                and int(arr[-2:]) < 60:
+            _emit(rows, seen, f"{year:04d}-{mnum:02d}-{int(day):02d}",
+                  carrier, frm3, to3, dep, arr)
+    # 2) محلّل سطري متسامح (يلتقط ما فات التعبير النمطي)
+    for line in text.splitlines():
+        parsed = _amadeus_line_row(line, year)
+        if parsed:
+            _emit(rows, seen, *parsed)
     return rows
 
 

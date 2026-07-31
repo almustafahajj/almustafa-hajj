@@ -3007,14 +3007,9 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "car_count": "1",
         # كل بند تنقّل: [التاريخ، من، إلى]
         "transport_lines": transport_lines,
-        # قطار الحرمين (مع تاريخ وتوقيتات اختيارية)
-        "train_tickets": "",
-        "train_class": "سياحية",
-        "train_from": "المدينة",
-        "train_to": "مكة",
-        "train_date": "",
-        "train_dep": "",
-        "train_arr": "",
+        # قطار الحرمين: قائمة بنود، كل بند
+        # [التذاكر، الدرجة، من، إلى، التاريخ، الإقلاع، الوصول]
+        "trains": [],
         # التأشيرات
         "visas": "",
         # التسعير: [[نوع الشخص، نوع الغرفة، العدد، سعر الفرد], …] والإجمالي تلقائي
@@ -3234,9 +3229,16 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
     # المواصلات والتنقّلات + قطار الحرمين + التأشيرات (كلٌّ قابل للإلغاء)
     show_tr = data.get("show_transport", True)
-    tk_n = str(data.get("train_tickets") or "").strip()
+    trains = [t for t in data.get("trains", [])
+              if any(str(x or "").strip() for x in t)]
+    # توافق خلفي مع الصيغة القديمة (بند قطار واحد)
+    if not trains and str(data.get("train_tickets") or "").strip():
+        trains = [[data.get("train_tickets"), data.get("train_class"),
+                   data.get("train_from"), data.get("train_to"),
+                   data.get("train_date"), data.get("train_dep"),
+                   data.get("train_arr")]]
     visas = str(data.get("visas") or "").strip()
-    if show_tr or tk_n or visas:
+    if show_tr or trains or visas:
         story.append(section("المواصلات والتنقّلات"))
         story.append(Spacer(1, 3))
         if show_tr:
@@ -3263,17 +3265,15 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                     parts.append(f"إلى {to}")
                 story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
                     "qsub", parent=val, fontSize=9, leading=13), W - 24))
-        # قطار الحرمين (مع تاريخ وتوقيتات اختيارية)
-        if tk_n:
-            tc = str(data.get("train_class") or "")
-            tf = str(data.get("train_from") or "")
-            tt = str(data.get("train_to") or "")
+        # قطار الحرمين: بند لكل رحلة قطار (مع تاريخ وتوقيتات اختيارية)
+        for tr in trains:
+            tk_n, tc, tf, tt, tdate, tdep, tarr = (
+                [str(x or "").strip() for x in list(tr)[:7]] + [""] * 7)[:7]
+            if not tk_n:
+                continue
             line = f"عدد ({ltr(tk_n)}) تذاكر قطار الحرمين على الدرجة {tc}"
             if tf or tt:
                 line += f" ({tf} – {tt})"
-            tdate = str(data.get("train_date") or "").strip()
-            tdep = str(data.get("train_dep") or "").strip()
-            tarr = str(data.get("train_arr") or "").strip()
             if tdate:
                 line += f"، يوم {ltr(tdate)}"
             if tdep or tarr:

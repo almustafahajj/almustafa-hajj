@@ -525,10 +525,11 @@ _qe._show["show_costs"].set(True)
 assert "office_name" not in _qe._fields and "gm_phone" in _qe._fields
 _qe._fields["gm_phone"].set("0501234567")
 _qe._add_line_row(["2026-09-07", "محطة قطار مكة", "فندق مكة"])
-_qe._train_on.set(True)                        # إضافة بند قطار الحرمين
-_qe._fields["train_tickets"].set("2")
-_qe._trd.set("2026-09-07")                     # تاريخ القطار
-_qe._fields["train_dep"].set("14:30")
+# قطار الحرمين: بنود متعددة (تذاكر/درجة/من/إلى/تاريخ/إقلاع/وصول)
+_qe._add_train_row(["2", "سياحية", "المدينة", "مكة", "2026-09-07", "14:30",
+                    "16:30"])
+_qe._add_train_row(["2", "سياحية", "مكة", "المدينة", "2026-09-10", "09:00",
+                    "11:00"])
 _qe._stay_rows[0][2].set("2026-09-04")         # تاريخ الإقامة يدوياً (من)
 _qe._stay_rows[0][3].set("2026-09-07")         # (إلى)
 _qe._visas_on.set(True)                        # إضافة بند التأشيرات
@@ -547,18 +548,17 @@ assert _qe._total_var.get().replace(",", "") == "19100"
 _qdc = _qe._collect()
 assert _qdc["number"] == _qe._number and _qdc["flights"] and _qdc["stays"]
 assert _qdc["guests"] == [["2", "كبار"], ["1", "أطفال"]]
-assert _qdc["train_tickets"] == "2" and _qdc["visas"]
-assert _qdc["train_date"] == "2026-09-07" and _qdc["train_dep"] == "14:30"
+assert len(_qdc["trains"]) == 2 and _qdc["visas"]   # بندا قطار
+assert _qdc["trains"][0][4] == "2026-09-07" and _qdc["trains"][0][5] == "14:30"
 assert _qdc["addressed_to"] == "خالد الشامسي"     # توجيه باسم الضيف
 assert _qdc["validity_time"] == "17:00" and _qdc["note"]   # وقت الصلاحية + ملاحظة
 assert _qdc["car_type"] and _qdc["car_model"] and _qdc["car_count"]
 assert _qdc["stays"][0][5] == "مطلّة كعبة"
 assert len(_qdc["stays"][0]) == 9                         # يشمل تاريخي الدخول/المغادرة
 assert _qdc["stays"][0][7] == "2026-09-04"                # تاريخ الإقامة يدوي
-# إلغاء بند قطار الحرمين يُفرّغ التذاكر
-_qe._train_on.set(False)
-assert _qe._collect()["train_tickets"] == ""
-_qe._train_on.set(True)
+# حذف أحد بندي القطار يُبقي بنداً واحداً
+_qe._del_row(_qe._train_rows, _qe._train_rows[-1])
+assert len(_qe._collect()["trains"]) == 1
 assert len(_qdc["pricing"]) == 2 and _qdc["currency"]
 # التحقّق من الحساب عبر الدالّة المشتركة
 from hajj_app.pdf_io import quotation_pricing as _qpr

@@ -2138,51 +2138,57 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         self._line_rows.append(entry)
         self._attach_clipboard(fr)
 
-    # ---- قطار الحرمين والتأشيرات ----
+    # ---- قطار الحرمين (بنود متعددة) والتأشيرات ----
     def _build_extras(self, data):
-        lf = self._section("قطار الحرمين والتأشيرات")
-        # إضافة/إلغاء بند قطار الحرمين
-        self._train_on = BooleanVar(
-            value=bool(str(data.get("train_tickets") or "").strip()))
-        ttk.Checkbutton(lf, text="إضافة بند قطار الحرمين",
-                        variable=self._train_on).grid(row=0, column=0,
-                                                      sticky="w", padx=(8, 0),
-                                                      pady=3)
-        ttk.Label(lf, text="تذاكر القطار").grid(row=0, column=2, sticky="e",
-                                                padx=(8, 4), pady=3)
-        v = StringVar(value=str(data.get("train_tickets") or ""))
-        self._fields["train_tickets"] = v
-        ttk.Combobox(lf, textvariable=v,
-                     values=[""] + [str(i) for i in range(1, 21)], width=5,
-                     state="readonly").grid(row=0, column=3, sticky="w", pady=3)
-        self._combo(lf, "الدرجة", "train_class", data, QUOTE_FLIGHT_CLASSES,
-                    1, 0, width=12)
-        # تاريخ القطار
-        ttk.Label(lf, text="تاريخ القطار").grid(row=1, column=2, sticky="e",
-                                                padx=(8, 4), pady=3)
-        self._build_date_picker(lf, data.get("train_date"), row=1, col=3,
-                                prefix="_trd")
-        self._combo(lf, "من", "train_from", data, ("المدينة", "مكة"), 2, 0,
-                    width=10, readonly=False)
-        self._combo(lf, "إلى", "train_to", data, ("المدينة", "مكة"), 2, 1,
-                    width=10, readonly=False)
-        self._combo(lf, "الإقلاع", "train_dep", data, quote_times(), 3, 0,
-                    width=8, readonly=False)
-        self._combo(lf, "الوصول", "train_arr", data, quote_times(), 3, 1,
-                    width=8, readonly=False)
-        # التأشيرات مع إمكانية الإضافة/الإلغاء
+        lf = self._section("قطار الحرمين (يمكن إضافة أكثر من بند)")
+        self._train_rows = []
+        self._train_box = ttk.Frame(lf)
+        self._train_box.pack(fill=X)
+        trains = data.get("trains")
+        if not trains and str(data.get("train_tickets") or "").strip():
+            # توافق خلفي: تحويل البند المفرد القديم إلى صفّ
+            trains = [[data.get("train_tickets"), data.get("train_class"),
+                       data.get("train_from"), data.get("train_to"),
+                       data.get("train_date"), data.get("train_dep"),
+                       data.get("train_arr")]]
+        for tr in (trains or []):
+            self._add_train_row(list(tr))
+        ttk.Button(lf, text="＋ إضافة بند قطار",
+                   command=lambda: self._add_train_row()).pack(anchor="e",
+                                                               pady=(4, 0))
+
+        lf2 = self._section("التأشيرات")
         self._visas_on = BooleanVar(
             value=bool(str(data.get("visas") or "").strip()))
-        ttk.Checkbutton(lf, text="إضافة بند التأشيرات",
-                        variable=self._visas_on).grid(row=4, column=0,
-                                                      sticky="w", padx=(8, 0),
-                                                      pady=3)
+        row = ttk.Frame(lf2)
+        row.pack(fill=X)
+        ttk.Checkbutton(row, text="إضافة بند التأشيرات",
+                        variable=self._visas_on).pack(side=RIGHT, padx=(0, 8))
         self._visas = StringVar(value=str(data.get("visas") or ""))
-        ttk.Entry(lf, textvariable=self._visas, width=44,
-                  justify="right").grid(row=4, column=1, columnspan=3,
-                                        sticky="we", padx=(0, 8), pady=3)
-        lf.columnconfigure(1, weight=1)
-        lf.columnconfigure(3, weight=1)
+        ttk.Entry(row, textvariable=self._visas, justify="right").pack(
+            side=RIGHT, fill=X, expand=True)
+
+    def _add_train_row(self, values=None):
+        values = list(values or []) + [""] * 7
+        fr = ttk.Frame(self._train_box)
+        fr.pack(fill=X, pady=2)
+        v_tk = self._cell(fr, "التذاكر", values[0],
+                          [str(i) for i in range(1, 21)], 5)
+        v_cl = self._cell(fr, "الدرجة", values[1] or "سياحية",
+                          QUOTE_FLIGHT_CLASSES, 11)
+        v_fr = self._cell(fr, "من", values[2] or "المدينة",
+                          ("المدينة", "مكة"), 9, False)
+        v_to = self._cell(fr, "إلى", values[3] or "مكة",
+                          ("المدينة", "مكة"), 9, False)
+        dp = self._date_cell(fr, "التاريخ", values[4])
+        v_dep = self._cell(fr, "الإقلاع", values[5], quote_times(), 7, False)
+        v_arr = self._cell(fr, "الوصول", values[6], quote_times(), 7, False)
+        entry = [fr, [v_tk, v_cl, v_fr, v_to], dp, [v_dep, v_arr]]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._train_rows, entry)).pack(
+            side=RIGHT, padx=(4, 2))
+        self._train_rows.append(entry)
+        self._attach_clipboard(fr)
 
     # ---- التكلفة (تُحسب تلقائياً) ----
     def _build_costs(self, data):
@@ -2333,10 +2339,12 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
             data[key] = bool(var.get())
         data["addressed_to"] = (self._addr.get().strip()
                                 if self._addr_on.get() else "")
-        data["train_date"] = self._trd.get()
-        # بند قطار الحرمين قابل للإلغاء (تفريغ التذاكر يُخفيه من المستند)
-        if not self._train_on.get():
-            data["train_tickets"] = ""
+        # قطار الحرمين: بنود متعددة [التذاكر، الدرجة، من، إلى، التاريخ، الإقلاع،
+        # الوصول] — تُدرَج البنود التي لها عدد تذاكر فقط
+        data["trains"] = [[c.get().strip() for c in cells4] + [dp.get()]
+                          + [c.get().strip() for c in cells2]
+                          for _fr, cells4, dp, cells2 in self._train_rows
+                          if cells4[0].get().strip()]
         data["visas"] = self._visas.get().strip() if self._visas_on.get() else ""
         data["car_type"] = self._car_type.get().strip()
         data["car_model"] = self._car_model.get().strip()

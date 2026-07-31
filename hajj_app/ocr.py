@@ -104,15 +104,25 @@ def read_amadeus_text(path: str | Path) -> str:
     (تدرّج رمادي، Otsu، معكوس، وعتبة تكيّفية) وعدّة أوضاع تقسيم (PSM)، ونعيد
     اتّحاد النصوص كلّها ليختار المحلّل منها أكثر الرحلات وضوحاً."""
     ensure_tesseract()
-    img = _load_image(path)
-    gray = _upscale(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), 2400)
-    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    inv = cv2.bitwise_not(otsu)
-    adaptive = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15)
+    img = _load_image(path)                       # BGR
+    b, g, rr = cv2.split(img)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # القناة الدنيا: النصّ الملوّن (وردي/أحمر/أزرق) يصبح داكناً على خلفية فاتحة
+    mn = cv2.min(cv2.min(b, g), rr)
+    sources = [gray, mn, g]                        # رمادي + قناة دنيا + خضراء
+    variants = []
+    for src in sources:
+        up = _upscale(src, 2400)
+        _, otsu = cv2.threshold(up, 0, 255,
+                                cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(otsu)
+        variants.append(cv2.bitwise_not(otsu))
+    variants.append(cv2.adaptiveThreshold(
+        _upscale(gray, 2400), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 31, 15))
     texts = []
-    for variant in (gray, otsu, inv, adaptive):
-        for psm in (6, 4, 11):
+    for variant in variants:
+        for psm in (6, 11):
             cfg = (f"--psm {psm} --oem 3 "
                    f"-c tessedit_char_whitelist={_AMADEUS_CHARS}")
             try:
