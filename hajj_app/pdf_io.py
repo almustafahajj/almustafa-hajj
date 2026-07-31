@@ -3298,15 +3298,25 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     story.append(band)
     story.append(Spacer(1, 8))
 
+    def qpara(text, style, maxw):
+        """للنصّ الإنجليزي الخالص (بلا حروف عربية) نبني فقرة LTR مباشرة بلا
+        إعادة تشكيل/bidi — فلا يمكن أن تنعكس التواريخ أو الأرقام مطلقاً."""
+        s = str(text)
+        if L and not any("؀" <= c <= "ۿ" for c in s):
+            s = (s.replace("‎", "").replace("‏", "")
+                 .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+            return Paragraph(s, style)
+        return _ar_para(text, style, maxw)
+
     def bullet(text, bold=False):
         style = ParagraphStyle("qbul", parent=val, fontName=(
-            _FONT_BOLD if bold else _FONT))
-        return _ar_para("• " + text, style, W - 16)
+            _FONT_BOLD if bold else _FONT), alignment=ALN)
+        return qpara("• " + text, style, W - 16)
 
     def section(title):
-        p = Paragraph(ar(title), ParagraphStyle(
+        p = qpara(title, ParagraphStyle(
             "qsec", fontName=_FONT_BOLD, fontSize=11, alignment=ALN,
-            textColor=_DEEP, leading=15))
+            textColor=_DEEP, leading=15), W - 12)
         # علامة لونية صغيرة قبل العنوان (على جهة بداية القراءة)
         mark = Table([[""]], colWidths=[7], rowHeights=[12])
         mark.setStyle(TableStyle([
@@ -3325,17 +3335,21 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         ]))
         return t
 
+    def _cells(values, style, av):
+        vv = rev(values)
+        return [qpara(v, style, av[i] - 3) for i, v in enumerate(vv)]
+
     def data_table(heads, weights, rows_vals):
         vw = rev(weights)
         scale = W / sum(vw)
         cw = [w * scale for w in vw]
         av = [w - 9 for w in cw]
-        table = [_ar_cells(rev(heads), st["head"], av)]
+        table = [_cells(heads, st["head"], av)]
         for row in rows_vals:
             vals = [str(x if x not in (None, "") else "—") for x in row]
-            table.append(_ar_cells(rev(vals), st["cell"], av))
+            table.append(_cells(vals, st["cell"], av))
         if len(table) == 1:
-            table.append(_ar_cells([""] * len(heads), st["cell"], av))
+            table.append(_cells([""] * len(heads), st["cell"], av))
         t = Table(table, colWidths=cw)
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
@@ -3358,18 +3372,16 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                      for g in data.get("guests", [])]
         if str(c).strip() or str(t).strip())
     pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
+    info_st = ParagraphStyle("qinfo", parent=val, fontName=_FONT_BOLD,
+                             fontSize=10, leading=15, alignment=ALN)
     info_lines = []
     if guests_txt:
-        info_lines.append(_ar_para(
-            f"{T('الضيوف', 'Guests')}: {guests_txt}",
-            ParagraphStyle("qinfo", parent=val, fontName=_FONT_BOLD,
-                           fontSize=10, leading=15), W - 24))
+        info_lines.append(qpara(f"{T('الضيوف', 'Guests')}: {guests_txt}",
+                                info_st, W - 24))
     if pf or pt:
         ptxt = (f"Period: from {ltr(pf)} to {ltr(pt)}" if L
                 else f"الفترة: من {ltr(pf)} إلى {ltr(pt)}")
-        info_lines.append(_ar_para(ptxt, ParagraphStyle(
-            "qinfo2", parent=val, fontName=_FONT_BOLD, fontSize=10, leading=15),
-            W - 24))
+        info_lines.append(qpara(ptxt, info_st, W - 24))
     if info_lines:
         card = Table([[info_lines]], colWidths=[W])
         card.setStyle(TableStyle([
@@ -3488,7 +3500,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 parts.append(f"{T('من', 'from')} {_qtr(frm, 'locations', L)}")
             if to:
                 parts.append(f"{T('إلى', 'to')} {_qtr(to, 'locations', L)}")
-            story.append(_ar_para("– " + " ".join(parts), ParagraphStyle(
+            story.append(qpara("– " + " ".join(parts), ParagraphStyle(
                 "qsub", parent=val, fontSize=9, leading=13, alignment=ALN),
                 W - 24))
         story.append(Spacer(1, 8))
@@ -3580,7 +3592,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             vtxt = f"هذا العرض صالح لغاية يوم {ltr(validity)}"
             if vtime:
                 vtxt += f" الساعة {ltr(vtime)}"
-        vpar = _ar_para(vtxt + ".", ParagraphStyle(
+        vpar = qpara(vtxt + ".", ParagraphStyle(
             "qvld", parent=val, fontName=_FONT_BOLD, fontSize=10.5,
             alignment=ALN, textColor=colors.HexColor("#7A5C00")), W - 16)
         # تظليل أصفر ليبرز للضيف
@@ -3601,14 +3613,14 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     if note:
         story.append(section(T("ملاحظات", "Notes")))
         story.append(Spacer(1, 3))
-        story.append(_ar_para(note, ParagraphStyle("qnote", parent=val,
-                                                   fontSize=9.5, leading=14),
-                              W - 8))
+        story.append(qpara(note, ParagraphStyle("qnote", parent=val,
+                                                fontSize=9.5, leading=14,
+                                                alignment=ALN), W - 8))
         story.append(Spacer(1, 8))
 
     closing = str(data.get("closing") or "")
     if closing:
-        story.append(_ar_para(closing, val, W - 8))
+        story.append(qpara(closing, val, W - 8))
         story.append(Spacer(1, 6))
 
     # زخرفة فاصلة أنيقة قبل التوقيعات (خطّان بمعيّن في الوسط)
