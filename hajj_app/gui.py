@@ -527,6 +527,15 @@ class HajjApp:
         _dash.pack(side=LEFT, padx=16)
         add_tooltip(_dash, "مؤشّرات سريعة + إعدادات العرض")
 
+        # زرّ التبديل السريع بين وضعي الحج والعمرة (يعرض الوضع الآخر)
+        _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
+        _sicon = "🌙" if _other == app_mode.UMRAH else "🕋"
+        _switch = ttk.Button(
+            bar, style="Ghost.TButton", command=self.switch_mode,
+            text=rtl(i18n.tr(f"{_sicon}  التبديل إلى {app_mode.mode_label(_other)}")))
+        _switch.pack(side=LEFT, padx=(0, 8))
+        add_tooltip(_switch, "الانتقال مباشرةً إلى الوضع الآخر (تُحفظ بياناتك أولاً)")
+
         # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
         ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
 
@@ -683,8 +692,9 @@ class HajjApp:
         except Exception:
             pass
         self._audit("تبديل الوضع", app_mode.mode_label(other))
-        self._exit_action = "switch"
-        self.root.destroy()             # يعيد main إلى شاشة اختيار الوضع
+        # ننتقل مباشرةً إلى نافذة الوضع الآخر (بلا المرور بشاشة الاختيار)
+        self._exit_action = f"switch:{other}"
+        self.root.destroy()
 
     def cycle_accent(self) -> None:
         """يبدّل لون البرنامج (accent) إلى التالي ويعيد البناء بلونه."""
@@ -7409,8 +7419,11 @@ def _mode_loop(session, open_mode: bool) -> str | None:
         action = _run_session(session, open_mode)
         if action == "restart":
             continue                           # تبديل اللغة/اللون — نفس الوضع
-        if action == "switch":
-            mode = _choose_mode()              # العودة إلى شاشة اختيار الوضع
+        if action and action.startswith("switch"):
+            # "switch:<mode>" ينتقل مباشرةً لذلك الوضع؛ "switch" وحده = شاشة الاختيار
+            target = action.split(":", 1)[1] if ":" in action else ""
+            mode = target if target in (app_mode.HAJJ, app_mode.UMRAH) \
+                else _choose_mode()
             continue
         if action == "logout":
             return "logout"

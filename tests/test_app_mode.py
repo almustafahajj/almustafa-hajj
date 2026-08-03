@@ -98,5 +98,23 @@ assert "التبديل إلى العمرة" in labels_hajj, labels_hajj
 root2.destroy()
 print("  OK: الحج يُظهر المناسك والخيام ويعرض «التبديل إلى العمرة»")
 
+print("\n=== التبديل المباشر بين النافذتين ===")
+import tkinter.messagebox as _mbx
+_mbx.askyesno = lambda *a, **k: True        # نؤكّد التبديل تلقائياً
+# زرّ التبديل ظاهر في ترويسة نافذة الحج (وصولٌ سهل لا مدفون في القوائم)
+app_mode.set_mode("hajj")
+r3 = tk.Tk(); r3.withdraw()
+app3 = _g.HajjApp(r3, session=None)
+app3.switch_mode()                          # يهدم r3 ويضبط وجهة التبديل
+assert app3._exit_action == "switch:umrah", app3._exit_action  # مباشرةً للعمرة
+# ومن نافذة العمرة → مباشرةً إلى الحج
+app_mode.set_mode("umrah")
+import hajj_app.umrah_gui as _ug
+r4 = tk.Tk(); r4.withdraw()
+app4 = _ug.UmrahApp(r4, session=None)
+app4.switch_mode()
+assert app4._exit_action == "switch:hajj", app4._exit_action
+print("  OK: التبديل ينتقل مباشرةً إلى نافذة الوضع الآخر (بلا شاشة اختيار)")
+
 app_mode.set_mode("hajj")                  # إعادة للوضع الافتراضي
 print("\n*** APP MODE TESTS PASSED ***")

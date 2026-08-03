@@ -397,7 +397,8 @@ class UmrahApp:
                 f"الانتقال إلى وضع «{app_mode.mode_label(app_mode.HAJJ)}»؟\n"
                 "لكلّ وضع بياناته المستقلّة.", parent=self.root):
             return
-        self._exit_action = "switch"
+        # ننتقل مباشرةً إلى نافذة الحج (بلا المرور بشاشة الاختيار)
+        self._exit_action = f"switch:{app_mode.HAJJ}"
         self.root.destroy()
 
     def do_logout(self) -> None:
