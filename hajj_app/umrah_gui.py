@@ -174,6 +174,7 @@ class UmrahApp:
             ("🗑  حذف البرنامج", self.delete_trip, "Ghost.TButton"),
             ("📋  عروض الأسعار", self.open_quotes, "Ghost.TButton"),
             ("🧮  مسعّر المجموعات", self.open_group_pricer, "Ghost.TButton"),
+            ("🗂  التسعيرات المحفوظة", self.open_pricings, "Ghost.TButton"),
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher, "Ghost.TButton"),
             ("💲  عرض سعر يدوي", self.new_manual_quotation, "Ghost.TButton"),
             ("📁  العروض اليدوية", self.open_manual_quotes, "Ghost.TButton"),
@@ -360,6 +361,10 @@ class UmrahApp:
     def open_group_pricer(self) -> None:
         """مسعّر المجموعات: أداة حساب كلفة الفرد وسعر البيع لكل نوع غرفة."""
         GroupPricerWindow(self.root, self)
+
+    def open_pricings(self) -> None:
+        """قائمة التسعيرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
+        PricingsListWindow(self.root, self)
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:
@@ -2566,9 +2571,17 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
     """مسعّر المجموعات: يحسب كلفة الفرد وسعر البيع لكل نوع غرفة تلقائياً من
     بنود الفنادق والوجبات والخدمات والربح (على غرار جداول التسعير)."""
 
-    def __init__(self, parent, app) -> None:
+    def __init__(self, parent, app, data=None, on_saved=None) -> None:
         super().__init__(parent)
         self._app = app
+        self._on_saved = on_saved
+        self._number = str((data or {}).get("number") or
+                           umrah.next_pricing_number(app._settings))
+        if not (data or {}).get("number"):
+            try:
+                save_settings(app._settings)
+            except OSError:
+                pass
         self.title("مسعّر المجموعات")
         self.configure(bg=G.BG)
         self.geometry("980x700")
@@ -2582,12 +2595,16 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         self._build_services()
         self._build_margin()
         self._build_result()
+        if data:
+            self._populate(data)
         self._attach_clipboard(self.body)
 
         bar = ttk.Frame(self, padding=(10, 6))
         bar.pack(fill=X)
         ttk.Button(bar, text="🖨  معاينة PDF",
                    command=self._preview).pack(side=RIGHT)
+        ttk.Button(bar, text="💾  حفظ التسعير",
+                   command=self._save).pack(side=RIGHT, padx=6)
         ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
                                                                  padx=6)
         try:
@@ -2596,6 +2613,35 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
             pass
         self.grab_set()
         self._recalc()
+
+    def _populate(self, data):
+        for k, v in self._f.items():
+            if k in data:
+                v.set(str(data.get(k) or ""))
+        if data.get("period_from"):
+            self._pf.set(data["period_from"])
+        if data.get("period_to"):
+            self._pt.set(data["period_to"])
+        items = data.get("items")
+        if isinstance(items, list):
+            for entry in list(self._item_rows):
+                entry[0].destroy()
+            self._item_rows.clear()
+            for it in items:
+                name, amt = (list(it) + ["", ""])[:2]
+                self._add_item_row(name, amt)
+
+    def _save(self):
+        data = self._collect()
+        umrah.save_pricing(self._app._settings, data)
+        try:
+            save_settings(self._app._settings)
+        except OSError:
+            pass
+        messagebox.showinfo("التسعيرات",
+                            f"تم حفظ التسعير {self._number}.", parent=self)
+        if callable(self._on_saved):
+            self._on_saved()
 
     def _mfield(self, parent, label, key, r, c, values=None, width=15):
         ttk.Label(parent, text=label).grid(row=r, column=c * 2, sticky="e",
@@ -2613,6 +2659,11 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
 
     def _build_head(self):
         lf = self._section("العنوان والفترة والعملة")
+        ttk.Label(lf, text="رقم التسعير").grid(row=0, column=2, sticky="e",
+                                               padx=(8, 4), pady=3)
+        ttk.Label(lf, text=self._number, foreground=G.ACCENT,
+                  font=("Segoe UI", 10, "bold")).grid(row=0, column=3,
+                                                       sticky="w", pady=3)
         self._mfield(lf, "عنوان التسعير", "title", 0, 0, width=40)
         ttk.Label(lf, text="من").grid(row=1, column=0, sticky="e", padx=(8, 4),
                                       pady=3)
@@ -2717,6 +2768,7 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
 
     def _collect(self) -> dict:
         data = {k: v.get().strip() for k, v in self._f.items()}
+        data["number"] = self._number
         data["period_from"] = self._pf.get()
         data["period_to"] = self._pt.get()
         # البنود الديناميكية [الاسم، المبلغ]
@@ -2737,11 +2789,113 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
 
     def _preview(self):
         data = self._collect()
+        # حفظ تلقائي في التسعيرات المحفوظة
+        umrah.save_pricing(self._app._settings, data)
+        try:
+            save_settings(self._app._settings)
+        except OSError:
+            pass
+        if callable(self._on_saved):
+            self._on_saved()
         name = str(data.get("title") or "").strip() or "تسعير المجموعات"
         G.open_preview(
             self,
             lambda p: export_group_pricing_pdf(data, p, company=self._company()),
             name, "pdf")
+
+
+class PricingsListWindow(Toplevel):
+    """قائمة تسعيرات المجموعات المحفوظة: فتح/تعديل، معاينة، حذف."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("التسعيرات المحفوظة")
+        self.configure(bg=G.BG)
+        self.geometry("720x430")
+        self.transient(parent)
+        outer = ttk.Frame(self, padding=8)
+        outer.pack(fill=BOTH, expand=True)
+        cols = ("number", "title", "cur", "double")
+        heads = {"number": "الرقم", "title": "العنوان", "cur": "العملة",
+                 "double": "بيع الثنائي/فرد"}
+        widths = {"number": 100, "title": 300, "cur": 80, "double": 130}
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings",
+                                 selectmode="browse")
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c],
+                             anchor="e" if c == "title" else "center")
+        vs = ttk.Scrollbar(outer, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vs.set)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        vs.pack(side=RIGHT, fill="y")
+        bar = ttk.Frame(self, padding=(8, 6))
+        bar.pack(fill=X)
+        for text, cmd in (("✏ فتح/تعديل", self.open_sel),
+                          ("👁 معاينة", self.preview_sel),
+                          ("🗑 حذف", self.delete_sel), ("↻ تحديث", self.refresh)):
+            ttk.Button(bar, text=G.rtl(text), command=cmd).pack(side=RIGHT,
+                                                                padx=3)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=LEFT,
+                                                                 padx=3)
+        self.tree.bind("<Double-1>", lambda e: self.open_sel())
+        self._items: list = []
+        self.refresh()
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    def refresh(self) -> None:
+        self._items = umrah.load_pricings(self.app._settings)
+        self.tree.delete(*self.tree.get_children())
+        for i, p in enumerate(self._items):
+            dbl = next((r for r in umrah.group_pricing(p)
+                        if r["type"] == "ثنائي"), None)
+            self.tree.insert("", "end", iid=str(i), values=(
+                p.get("number", ""), p.get("title", "") or "—",
+                p.get("currency", "درهم"),
+                fmt_money(dbl["selling"]) if dbl else "—"))
+
+    def _sel(self):
+        s = self.tree.selection()
+        return self._items[int(s[0])] if s else None
+
+    def open_sel(self) -> None:
+        p = self._sel()
+        if p is None:
+            messagebox.showinfo("التسعيرات", "اختر تسعيراً أولاً.", parent=self)
+            return
+        GroupPricerWindow(self, self.app, data=dict(p), on_saved=self.refresh)
+
+    def preview_sel(self) -> None:
+        p = self._sel()
+        if p is None:
+            return
+        name = str(p.get("title") or "").strip() or "تسعير المجموعات"
+        G.open_preview(
+            self,
+            lambda path: export_group_pricing_pdf(
+                p, path, company=self.app._settings.get("company")
+                if isinstance(self.app._settings.get("company"), dict)
+                else None), name, "pdf")
+
+    def delete_sel(self) -> None:
+        p = self._sel()
+        if p is None:
+            return
+        if not messagebox.askyesno("حذف",
+                                   f"حذف التسعير {p.get('number', '')}؟",
+                                   parent=self):
+            return
+        umrah.delete_pricing(self.app._settings, p.get("number", ""))
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.refresh()
 
 
 class RoomingWindow(Toplevel):

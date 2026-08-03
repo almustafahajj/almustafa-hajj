@@ -694,8 +694,27 @@ assert _vals["ثنائي"][4].replace(",", "") == "3950"        # سعر الب�
 assert _vals["ثنائي"][3].endswith("%")                     # النسبة تلقائية
 _gw._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
-_gw.destroy(); rg.destroy()
-print("  OK: مسعّر المجموعات — حساب ومستند")
+# حفظ التسعير داخل البرنامج واستعراضه لاحقاً
+assert _gw._number.startswith("MA-P")
+_gw._save()
+_psaved = umrah.load_pricings(appg._settings)
+assert len(_psaved) == 1 and _psaved[0]["number"] == _gw._number
+_gw.destroy()
+appg.open_pricings()
+_plw = [w for w in rg.winfo_children()
+        if isinstance(w, _ug.PricingsListWindow)][-1]
+assert len(_plw.tree.get_children()) == 1
+_plw.tree.selection_set("0"); _plw.open_sel()
+_ped = [w for w in _plw.winfo_children()
+        if isinstance(w, _ug.GroupPricerWindow)][-1]
+assert _ped._number == _gw._number and len(_ped._item_rows) == 7
+_ped._save()                                    # نفس الرقم، بلا تكرار
+assert len(umrah.load_pricings(appg._settings)) == 1
+umrah.delete_pricing(appg._settings, _gw._number)
+assert umrah.load_pricings(appg._settings) == []
+_ped.destroy(); _plw.destroy()
+rg.destroy()
+print("  OK: مسعّر المجموعات — حساب ومستند وحفظ")
 
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

@@ -424,6 +424,45 @@ def delete_quote(settings: dict, code: str, number: str) -> None:
                       if str(q.get("number") or "") != str(number)]
 
 
+def next_pricing_number(settings: dict) -> str:
+    """يخصّص رقم تسعير مجموعة تسلسلياً (MA-P0001…)."""
+    try:
+        seq = int(settings.get("pricing_seq", 0) or 0)
+    except (TypeError, ValueError):
+        seq = 0
+    seq += 1
+    settings["pricing_seq"] = seq
+    return f"MA-P{seq:04d}"
+
+
+def load_pricings(settings: dict) -> list:
+    """يعيد تسعيرات المجموعات المحفوظة."""
+    lst = settings.get("umrah_pricings")
+    return list(lst) if isinstance(lst, list) else []
+
+
+def save_pricing(settings: dict, pricing: dict) -> None:
+    """يحفظ تسعير مجموعة؛ يحدّث الموجود بنفس الرقم."""
+    lst = settings.get("umrah_pricings")
+    if not isinstance(lst, list):
+        lst = []
+        settings["umrah_pricings"] = lst
+    num = str(pricing.get("number") or "")
+    for i, p in enumerate(lst):
+        if str(p.get("number") or "") == num and num:
+            lst[i] = dict(pricing)
+            return
+    lst.append(dict(pricing))
+
+
+def delete_pricing(settings: dict, number: str) -> None:
+    """يحذف تسعير مجموعة بحسب رقمه."""
+    lst = settings.get("umrah_pricings")
+    if isinstance(lst, list):
+        settings["umrah_pricings"] = [
+            p for p in lst if str(p.get("number") or "") != str(number)]
+
+
 def next_quote_number(settings: dict) -> str:
     """يخصّص رقم عرض سعر تسلسلياً (MA-Q0001…) ويحدّث العدّاد في الإعدادات."""
     try:
