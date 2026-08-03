@@ -656,6 +656,15 @@ _d2 = next(r for r in _grows if r["type"] == "ثنائي")
 assert _d2["net"] == 3750.0 and _d2["selling"] == 3950.0     # مطابقة الجدول
 _s1 = next(r for r in _grows if r["type"] == "مفرد")
 assert _s1["net"] == 5889.0                                  # المفرد = الغرفة كاملة
+# نسبة ربح مئوية (10% من الصافي)
+_gpct = umrah.group_pricing({**_gd, "profit": "", "profit_pct": "10"})
+_dp = next(r for r in _gpct if r["type"] == "ثنائي")
+assert _dp["margin"] == 375.0 and _dp["selling"] == 4125.0
+# مبلغ ربح لكل نوع غرفة
+_gper = umrah.group_pricing({k: v for k, v in _gd.items() if k != "profit"}
+                            | {"profit_single": "500", "profit_double": "300"})
+assert next(r for r in _gper if r["type"] == "مفرد")["margin"] == 500.0
+assert next(r for r in _gper if r["type"] == "ثنائي")["margin"] == 300.0
 _gp = WORK / "group.pdf"
 export_group_pricing_pdf(_gd, _gp)
 assert _gp.read_bytes()[:5] == b"%PDF-" and _gp.stat().st_size > 3000
@@ -670,10 +679,12 @@ _gw._f["transport"].set("50"); _gw._f["ticket"].set("1265")
 _gw._f["water"].set("46"); _gw._f["gifts"].set("150")
 _gw._f["admin"].set("100"); _gw._f["profit"].set("200")
 rg.update()
+_gw._f["profit"].set("200")
+rg.update()
 _vals = {row[0]: row for row in
          (_gw._tree.item(i, "values") for i in _gw._tree.get_children())}
-assert _vals["ثنائي"][1].replace(",", "") == "3750"
-assert _vals["ثنائي"][2].replace(",", "") == "3950"
+assert _vals["ثنائي"][1].replace(",", "") == "3750"        # الصافية
+assert _vals["ثنائي"][3].replace(",", "") == "3950"        # سعر البيع
 _gw._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _gw.destroy(); rg.destroy()

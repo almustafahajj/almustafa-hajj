@@ -2652,20 +2652,31 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         lf.columnconfigure(3, weight=1)
 
     def _build_margin(self):
-        lf = self._section("الربح والمصاريف الأخرى (للفرد)")
-        self._mfield(lf, "الربح", "profit", 0, 0)
+        lf = self._section("الربح والمصاريف (للفرد)")
+        self._mfield(lf, "نسبة الربح %", "profit_pct", 0, 0)
         self._mfield(lf, "مصاريف أخرى", "other", 0, 1)
+        self._mfield(lf, "ربح عام (لكل الأنواع)", "profit", 1, 0)
+        ttk.Label(lf, text="أو مبلغ ربح لكل نوع غرفة:",
+                  font=("Segoe UI", 8, "italic")).grid(row=2, column=0,
+                                                       columnspan=4, sticky="e",
+                                                       padx=(8, 4), pady=(6, 0))
+        self._mfield(lf, "مفرد", "profit_single", 3, 0, width=10)
+        self._mfield(lf, "ثنائي", "profit_double", 3, 1, width=10)
+        self._mfield(lf, "ثلاثي", "profit_triple", 4, 0, width=10)
+        self._mfield(lf, "رباعي", "profit_quad", 4, 1, width=10)
+        self._mfield(lf, "طفل", "profit_child", 5, 0, width=10)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
     def _build_result(self):
-        lf = self._section("النتيجة — التكلفة وسعر البيع لكل فرد")
-        cols = ("type", "net", "selling")
+        lf = self._section("النتيجة — التكلفة والربح وسعر البيع لكل فرد")
+        cols = ("type", "net", "profit", "selling")
         self._tree = ttk.Treeview(lf, columns=cols, show="headings", height=5,
                                   selectmode="none")
-        for c, txt, w in (("type", "نوع الغرفة", 140),
-                          ("net", "التكلفة الصافية", 150),
-                          ("selling", "سعر البيع", 150)):
+        for c, txt, w in (("type", "نوع الغرفة", 130),
+                          ("net", "التكلفة الصافية", 140),
+                          ("profit", "الربح", 110),
+                          ("selling", "سعر البيع", 140)):
             self._tree.heading(c, text=txt)
             self._tree.column(c, width=w, anchor="center")
         self._tree.pack(fill=X)
@@ -2687,7 +2698,8 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         self._tree.delete(*self._tree.get_children())
         for r in rows:
             self._tree.insert("", "end", values=(
-                r["type"], fmt_money(r["net"]), fmt_money(r["selling"])))
+                r["type"], fmt_money(r["net"]), fmt_money(r["margin"]),
+                fmt_money(r["selling"])))
 
     def _preview(self):
         data = self._collect()

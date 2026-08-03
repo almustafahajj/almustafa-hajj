@@ -331,6 +331,10 @@ GROUP_ROOM_TYPES = (("مفرد", 1), ("ثنائي", 2), ("ثلاثي", 3), ("ر�
                     ("طفل", 0))
 GROUP_SERVICE_FIELDS = ("transport", "transport_air", "visa", "water", "gifts",
                         "admin", "ticket")
+# مفتاح مبلغ الربح لكل نوع غرفة
+GROUP_PROFIT_KEYS = {"مفرد": "profit_single", "ثنائي": "profit_double",
+                     "ثلاثي": "profit_triple", "رباعي": "profit_quad",
+                     "طفل": "profit_child"}
 
 
 def _gnum(x) -> float:
@@ -351,7 +355,7 @@ def group_pricing(data: dict) -> list:
     mk_meals = _gnum(data.get("makkah_meals"))
     md_meals = _gnum(data.get("madinah_meals"))
     services = sum(_gnum(data.get(k)) for k in GROUP_SERVICE_FIELDS)
-    profit = _gnum(data.get("profit"))
+    pct = _gnum(data.get("profit_pct"))          # نسبة الربح من التكلفة الصافية
     other = _gnum(data.get("other"))
     rows = []
     for name, occ in GROUP_ROOM_TYPES:
@@ -362,10 +366,14 @@ def group_pricing(data: dict) -> list:
             mk_pp = md_pp = 0.0
         room = mk_pp + md_pp + mk_meals + md_meals
         net = room + services
-        selling = net + profit + other
+        # مبلغ الربح: لكل نوع غرفة إن حُدِّد، وإلّا الربح العام
+        raw = str(data.get(GROUP_PROFIT_KEYS[name]) or "").strip()
+        p_amt = _gnum(raw) if raw != "" else _gnum(data.get("profit"))
+        margin = p_amt + net * pct / 100.0 + other
+        selling = net + margin
         rows.append({"type": name, "occ": occ, "makkah": mk_pp, "madinah": md_pp,
                      "room": room, "services": services, "net": net,
-                     "margin": profit + other, "selling": selling})
+                     "margin": margin, "selling": selling})
     return rows
 
 
