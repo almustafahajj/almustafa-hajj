@@ -91,6 +91,47 @@ CHOICES = {
 }
 TEXTAREA_KEYS = {"notes"}
 
+# ---- نماذج وضع العمرة ----
+# حقول نموذج برنامج العمرة: (المفتاح، العنوان، النوع)
+UMRAH_TRIP_FIELDS = [
+    ("name", "اسم البرنامج", "text"),
+    ("manager", "مدير البرنامج", "text"),
+    ("depart_date", "تاريخ المغادرة", "date"),
+    ("return_date", "تاريخ العودة", "date"),
+    ("makkah_hotel", "فندق مكة", "text"),
+    ("makkah_nights", "ليالي مكة", "number"),
+    ("makkah_rooms", "غرف مكة المتاحة", "number"),
+    ("madinah_hotel", "فندق المدينة", "text"),
+    ("madinah_nights", "ليالي المدينة", "number"),
+    ("madinah_rooms", "غرف المدينة المتاحة", "number"),
+    ("airline", "شركة الطيران", "text"),
+    ("capacity", "السعة (المقاعد)", "number"),
+    ("price_single", "سعر المفرد", "number"),
+    ("price_double", "سعر الثنائي", "number"),
+    ("price_triple", "سعر الثلاثي", "number"),
+    ("price_quad", "سعر الرباعي", "number"),
+    ("price_child", "سعر الطفل", "number"),
+    ("transport", "ملاحظة النقل الداخلي", "text"),
+    ("emergency_uae", "طوارئ الإمارات", "text"),
+    ("emergency_ksa", "طوارئ السعودية", "text"),
+    ("notes", "ملاحظات", "textarea"),
+]
+# حقول نموذج المعتمر (إدخال يدوي على الويب)
+UMRAH_PILGRIM_FIELDS = [
+    ("full_name_ar", "الاسم بالعربي", "text"),
+    ("full_name_en", "الاسم بالإنجليزي", "text"),
+    ("passport_number", "رقم الجواز", "text"),
+    ("nationality_ar", "الجنسية", "text"),
+    ("phone", "الهاتف", "text"),
+    ("room_type", "نوع الغرفة", "room"),
+    ("room_number", "رقم الغرفة", "text"),
+    ("program_value", "قيمة البرنامج", "number"),
+    ("paid_amount", "المبلغ المدفوع", "number"),
+    ("payment_method", "طريقة الدفع", "text"),
+    ("notes", "ملاحظات", "textarea"),
+]
+PAYMENT_METHODS = ["نقد", "تحويل بنكي", "شبكة/مدى", "شيك", "رابط دفع", "أخرى"]
+
 
 def create_app(auth_path: str | Path | None = None,
                data_path: str | Path | None = None) -> Flask:
@@ -305,12 +346,14 @@ def create_app(auth_path: str | Path | None = None,
             abort(404)
         return trip
 
-    def _finance_rows(pilgrims):
-        """صفوف مالية لكل معتمر + إجماليات (القيمة/المحصّل/المتبقّي/الحالة)."""
+    def _finance_rows(indexed):
+        """صفوف مالية لكل معتمر + إجماليات. ``indexed`` أزواج (الفهرس، السجلّ)."""
         rows = []
         total = paid = 0.0
         owe = 0
-        for r in pilgrims:
+        count = 0
+        for gidx, r in indexed:
+            count += 1
             v = fields.parse_amount(r.program_value) or 0.0
             p = fields.parse_amount(r.paid_amount) or 0.0
             rem = v - p
@@ -325,6 +368,7 @@ def create_app(auth_path: str | Path | None = None,
             else:
                 status, cls = "مسدّد", "paid"
             rows.append({
+                "idx": gidx, "orig": r.passport_number or "",
                 "name": r.full_name_ar or r.full_name_en or "—",
                 "passport": r.passport_number or "—",
                 "room": r.room_type or "—",
@@ -332,6 +376,7 @@ def create_app(auth_path: str | Path | None = None,
                 "value": fields.format_amount(v),
                 "paid": fields.format_amount(p),
                 "remaining": fields.format_amount(rem),
+                "npays": len(getattr(r, "payments", None) or []),
                 "status": status, "cls": cls,
             })
         totals = {
@@ -339,9 +384,14 @@ def create_app(auth_path: str | Path | None = None,
             "paid": fields.format_amount(paid),
             "remaining": fields.format_amount(total - paid),
             "pct": (f"{(paid / total * 100):.0f}%" if total else "0%"),
-            "owe": owe, "count": len(pilgrims),
+            "owe": owe, "count": count,
         }
         return rows, totals
+
+    def _program_indexed(records, code):
+        """أزواج (الفهرس العام، السجلّ) لمعتمري برنامجٍ ضمن الكشف الكامل."""
+        return [(i, r) for i, r in enumerate(records)
+                if str(getattr(r, "trip", "") or "") == code]
 
     @app.route("/umrah/programs")
     @login_required
@@ -355,7 +405,7 @@ def create_app(auth_path: str | Path | None = None,
         rows = []
         for t in trips:
             pilgrims = umrah.trip_pilgrims(records, t.code)
-            _r, tot = _finance_rows(pilgrims)
+            _r, tot = _finance_rows(list(enumerate(pilgrims)))
             rows.append({
                 "code": t.code, "name": t.name or "—",
                 "makkah": t.makkah_hotel or "—", "madinah": t.madinah_hotel or "—",
@@ -378,8 +428,7 @@ def create_app(auth_path: str | Path | None = None,
             sessions.destroy(request.cookies.get(_COOKIE))
             return redirect(url_for("login"))
         trip = _trip_or_404(code)
-        pilgrims = umrah.trip_pilgrims(records, code)
-        rows, totals = _finance_rows(pilgrims)
+        rows, totals = _finance_rows(_program_indexed(records, code))
         return render_template(
             "umrah_program.html", trip=trip, rows=rows, totals=totals, note=note,
             username=g.session.username, role=g.session.role_label,
@@ -402,6 +451,229 @@ def create_app(auth_path: str | Path | None = None,
             lambda p: pdf_io.export_umrah_finance_pdf(pilgrims, p,
                                                       program_name=label),
             f"مالية {trip.code}.pdf", "application/pdf")
+
+    # ---- إدارة برامج العمرة (إضافة/تعديل/حذف) ----
+    def _apply_trip_form(trip):
+        for key, _l, _t in UMRAH_TRIP_FIELDS:
+            setattr(trip, key, (request.form.get(key) or "").strip())
+        return trip
+
+    @app.route("/umrah/program/new", methods=["GET", "POST"])
+    @edit_required
+    def umrah_program_new():
+        if request.method == "POST":
+            with _WRITE_LOCK:
+                settings = storage.load_settings()
+                trips = umrah.load_trips(settings)
+                trip = _apply_trip_form(umrah.UmrahTrip(code=umrah.next_code(trips)))
+                trips.append(trip)
+                umrah.save_trips(settings, trips)
+                storage.save_settings(settings)
+            _audit("إضافة برنامج عمرة", trip.name or trip.code)
+            flash(f"أُضيف البرنامج: {trip.name or trip.code}", "ok")
+            return redirect(url_for("umrah_program", code=trip.code))
+        return render_template(
+            "umrah_program_form.html", title="برنامج عمرة جديد",
+            action=url_for("umrah_program_new"), fields=UMRAH_TRIP_FIELDS,
+            trip=umrah.UmrahTrip(), is_new=True,
+            username=g.session.username, role=g.session.role_label)
+
+    @app.route("/umrah/program/<code>/edit", methods=["GET", "POST"])
+    @edit_required
+    def umrah_program_edit(code):
+        with _WRITE_LOCK:
+            settings = storage.load_settings()
+            trips = umrah.load_trips(settings)
+            trip = next((t for t in trips if t.code == code), None)
+            if trip is None:
+                abort(404)
+            if request.method == "POST":
+                _apply_trip_form(trip)
+                umrah.save_trips(settings, trips)
+                storage.save_settings(settings)
+                _audit("تعديل برنامج عمرة", trip.name or trip.code)
+                flash("تم حفظ تعديلات البرنامج", "ok")
+                return redirect(url_for("umrah_program", code=code))
+        return render_template(
+            "umrah_program_form.html", title="تعديل البرنامج",
+            action=url_for("umrah_program_edit", code=code),
+            fields=UMRAH_TRIP_FIELDS, trip=trip, is_new=False,
+            username=g.session.username, role=g.session.role_label)
+
+    @app.route("/umrah/program/<code>/delete", methods=["POST"])
+    @edit_required
+    def umrah_program_delete(code):
+        with _WRITE_LOCK:
+            settings = storage.load_settings()
+            trips = umrah.load_trips(settings)
+            if not any(t.code == code for t in trips):
+                abort(404)
+            umrah.save_trips(settings, [t for t in trips if t.code != code])
+            storage.save_settings(settings)
+        _audit("حذف برنامج عمرة", code)
+        flash("حُذف البرنامج", "ok")
+        return redirect(url_for("umrah_programs"))
+
+    # ---- معتمرو البرنامج (إضافة/تعديل/حذف) ----
+    def _apply_pilgrim_form(rec):
+        for key, _l, _t in UMRAH_PILGRIM_FIELDS:
+            setattr(rec, key, (request.form.get(key) or "").strip())
+        return rec
+
+    def _umrah_room_names():
+        return [n for _k, n, _o in umrah.ROOM_TYPES]
+
+    @app.route("/umrah/program/<code>/pilgrim/new", methods=["GET", "POST"])
+    @edit_required
+    def umrah_pilgrim_new(code):
+        trip = _trip_or_404(code)
+        if request.method == "POST":
+            with _WRITE_LOCK:
+                records, _ = storage.load_records(_data_path(), g.session)
+                trips = umrah.load_trips(storage.load_settings())
+                trip = next((t for t in trips if t.code == code), trip)
+                rec = _apply_pilgrim_form(PassportData(source_file="إدخال ويب"))
+                umrah.apply_trip_to_record(trip, rec)
+                rec.trip = code
+                if not str(rec.reference_number or "").strip():
+                    rec.reference_number = umrah.next_reference(trip, records)
+                records.append(rec)
+                storage.save_records(records, _data_path(), g.session)
+            name = rec.full_name_ar or rec.passport_number or "—"
+            _audit("إضافة معتمر", name)
+            flash(f"أُضيف المعتمر: {name}", "ok")
+            return redirect(url_for("umrah_program", code=code))
+        return render_template(
+            "umrah_pilgrim_form.html", title="إضافة معتمر",
+            action=url_for("umrah_pilgrim_new", code=code),
+            fields=UMRAH_PILGRIM_FIELDS, rooms=_umrah_room_names(),
+            rec=PassportData(), code=code, orig="", is_new=True,
+            username=g.session.username, role=g.session.role_label)
+
+    def _pilgrim_in_program(records, code, idx):
+        """يعيد سجلّ المعتمر بعد التحقّق من انتمائه للبرنامج، أو 404."""
+        if idx < 0 or idx >= len(records):
+            abort(404)
+        rec = records[idx]
+        if str(getattr(rec, "trip", "") or "") != code:
+            abort(404)
+        return rec
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/edit",
+               methods=["GET", "POST"])
+    @edit_required
+    def umrah_pilgrim_edit(code, idx):
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            rec = _pilgrim_in_program(records, code, idx)
+            if request.method == "POST":
+                if (request.form.get("orig") or "") != (rec.passport_number or ""):
+                    abort(409)
+                _apply_pilgrim_form(rec)
+                rec.trip = code
+                storage.save_records(records, _data_path(), g.session)
+                name = rec.full_name_ar or rec.passport_number or "—"
+                _audit("تعديل معتمر", name)
+                flash("تم حفظ التعديلات", "ok")
+                return redirect(url_for("umrah_program", code=code))
+        return render_template(
+            "umrah_pilgrim_form.html", title="تعديل بيانات المعتمر",
+            action=url_for("umrah_pilgrim_edit", code=code, idx=idx),
+            fields=UMRAH_PILGRIM_FIELDS, rooms=_umrah_room_names(),
+            rec=rec, code=code, orig=rec.passport_number or "", is_new=False,
+            username=g.session.username, role=g.session.role_label)
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/delete",
+               methods=["POST"])
+    @edit_required
+    def umrah_pilgrim_delete(code, idx):
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            rec = _pilgrim_in_program(records, code, idx)
+            if (request.form.get("orig") or "") != (rec.passport_number or ""):
+                abort(409)
+            name = rec.full_name_ar or rec.passport_number or "—"
+            _push_undo(records, f"حذف «{name}»")
+            del records[idx]
+            storage.save_records(records, _data_path(), g.session)
+        _audit("حذف معتمر", name)
+        flash(f"حُذف المعتمر: {name}", "ok")
+        return redirect(url_for("umrah_program", code=code))
+
+    # ---- سجلّ الدفعات (الأقساط) للمعتمر ----
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/payments")
+    @login_required
+    def umrah_payments(code, idx):
+        _trip_or_404(code)
+        try:
+            records, _ = storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        rec = _pilgrim_in_program(records, code, idx)
+        pays = list(getattr(rec, "payments", None) or [])
+        value = fields.parse_amount(rec.program_value) or 0.0
+        paid = fields.payment_total(rec)
+        totals = {
+            "value": fields.format_amount(value),
+            "paid": fields.format_amount(paid),
+            "remaining": fields.format_amount(value - paid),
+        }
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        return render_template(
+            "umrah_payments.html", code=code, idx=idx, name=name,
+            payments=pays, totals=totals, methods=PAYMENT_METHODS,
+            orig=rec.passport_number or "",
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit)
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/payments/add",
+               methods=["POST"])
+    @edit_required
+    def umrah_payment_add(code, idx):
+        _trip_or_404(code)
+        amount = fields.parse_amount(request.form.get("amount"))
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            rec = _pilgrim_in_program(records, code, idx)
+            if not amount:
+                flash("أدخل مبلغ الدفعة بالأرقام", "error")
+                return redirect(url_for("umrah_payments", code=code, idx=idx))
+            if not isinstance(getattr(rec, "payments", None), list):
+                rec.payments = []
+            rec.payments.append({
+                "date": (request.form.get("date") or "").strip(),
+                "amount": fields.format_amount(amount),
+                "method": (request.form.get("method") or "").strip(),
+                "note": (request.form.get("note") or "").strip(),
+            })
+            rec.paid_amount = fields.format_amount(fields.payment_total(rec))
+            if rec.payments:
+                rec.payment_method = str(rec.payments[-1].get("method", "") or "")
+                rec.payment_date = str(rec.payments[-1].get("date", "") or "")
+            storage.save_records(records, _data_path(), g.session)
+        _audit("إضافة دفعة", rec.full_name_ar or rec.passport_number or "—")
+        flash("أُضيفت الدفعة", "ok")
+        return redirect(url_for("umrah_payments", code=code, idx=idx))
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/payments/<int:pi>/delete",
+               methods=["POST"])
+    @edit_required
+    def umrah_payment_delete(code, idx, pi):
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            rec = _pilgrim_in_program(records, code, idx)
+            pays = getattr(rec, "payments", None) or []
+            if 0 <= pi < len(pays):
+                del pays[pi]
+                rec.paid_amount = fields.format_amount(fields.payment_total(rec))
+                storage.save_records(records, _data_path(), g.session)
+        _audit("حذف دفعة", rec.full_name_ar or rec.passport_number or "—")
+        flash("حُذفت الدفعة", "ok")
+        return redirect(url_for("umrah_payments", code=code, idx=idx))
 
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.

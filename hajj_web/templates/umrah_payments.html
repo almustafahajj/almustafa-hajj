@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}دفعات {{ name }} — العمرة{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">💵 دفعات: {{ name }}</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_program', code=code) }}">↩ رجوع للبرنامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="kpis dash">
+    <div class="kpi"><div class="kpi-val">{{ totals.value }}</div><div class="kpi-lbl">قيمة البرنامج</div></div>
+    <div class="kpi"><div class="kpi-val">{{ totals.paid }}</div><div class="kpi-lbl">المحصّل</div></div>
+    <div class="kpi"><div class="kpi-val">{{ totals.remaining }}</div><div class="kpi-lbl">المتبقّي</div></div>
+  </div>
+
+  <h2 class="sec-title">سجلّ الدفعات (الأقساط)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th class="idx">م</th><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th>
+        <th>ملاحظة</th>{% if can_edit %}<th></th>{% endif %}</tr>
+      </thead>
+      <tbody>
+        {% for p in payments %}
+        <tr>
+          <td class="idx">{{ loop.index }}</td>
+          <td>{{ p.date or '—' }}</td><td>{{ p.amount or '—' }}</td>
+          <td>{{ p.method or '—' }}</td><td>{{ p.note or '—' }}</td>
+          {% if can_edit %}<td>
+            <form method="post" class="inline"
+                  action="{{ url_for('umrah_payment_delete', code=code, idx=idx, pi=loop.index0) }}"
+                  onsubmit="return confirm('حذف هذه الدفعة؟');">
+              <button type="submit" class="btn-danger small">🗑</button>
+            </form>
+          </td>{% endif %}
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="{{ 6 if can_edit else 5 }}">لا دفعات مسجّلة بعد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if can_edit %}
+  <h2 class="sec-title">إضافة دفعة</h2>
+  <form class="record-form" method="post" action="{{ url_for('umrah_payment_add', code=code, idx=idx) }}">
+    <div class="cards">
+      <section class="card">
+        <div class="field"><label>التاريخ</label><input type="date" name="date"></div>
+        <div class="field"><label>المبلغ</label><input type="text" inputmode="numeric" name="amount"></div>
+        <div class="field"><label>الطريقة</label>
+          <select name="method">
+            {% for m in methods %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><label>ملاحظة</label><input type="text" name="note"></div>
+      </section>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">➕ إضافة دفعة</button>
+    </div>
+  </form>
+  {% endif %}
+</main>
+{% endblock %}

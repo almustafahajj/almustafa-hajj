@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — العمرة{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">👤 {{ title }}</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_program', code=code) }}">↩ رجوع للبرنامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head"><h1>{{ title }}</h1></div>
+  <form method="post" action="{{ action }}" class="record-form">
+    <input type="hidden" name="orig" value="{{ orig }}">
+    <div class="cards">
+      <section class="card">
+        <h2>بيانات المعتمر والمالية</h2>
+        {% for key, label, kind in fields %}
+        <div class="field">
+          <label for="f_{{ key }}">{{ label }}</label>
+          {% if kind == 'textarea' %}
+            <textarea id="f_{{ key }}" name="{{ key }}" rows="3">{{ rec[key] or '' }}</textarea>
+          {% elif kind == 'room' %}
+            <select id="f_{{ key }}" name="{{ key }}">
+              <option value="">—</option>
+              {% for r in rooms %}
+                <option value="{{ r }}" {% if rec[key] == r %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          {% elif kind == 'number' %}
+            <input type="text" inputmode="numeric" id="f_{{ key }}" name="{{ key }}" value="{{ rec[key] or '' }}">
+          {% else %}
+            <input type="text" id="f_{{ key }}" name="{{ key }}" value="{{ rec[key] or '' }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+      </section>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">💾 حفظ</button>
+      <a class="btn-ghost" href="{{ url_for('umrah_program', code=code) }}">إلغاء</a>
+    </div>
+  </form>
+</main>
+{% endblock %}

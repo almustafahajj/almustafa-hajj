@@ -487,6 +487,85 @@ fp = um.get("/umrah/program/U1/finance.pdf")
 assert fp.status_code == 200 and fp.data[:5] == b"%PDF-"
 # بيانات العمرة معزولة عن الحج: ملفّ umrah.json مستقلّ
 assert UDATA.is_file() and DATA.is_file() and UDATA != DATA
+
+# --- المرحلة ٢: إدارة البرامج والمعتمرين والدفعات على الويب ---
+from hajj_app.fields import payment_total as _ptot
+assert "برنامج جديد" in um.get("/umrah/programs").get_data(as_text=True)
+# إضافة برنامج
+r = um.post("/umrah/program/new", data={"name": "شعبان", "makkah_hotel": "فندق",
+            "price_double": "4500", "capacity": "30", "depart_date": "2026-02-01"})
+assert r.status_code == 302 and "/umrah/program/" in r.headers["Location"]
+NC = r.headers["Location"].rstrip("/").split("/")[-1]
+_am.set_mode("umrah")
+_trips = _um.load_trips(storage.load_settings())
+assert any(t.code == NC and t.name == "شعبان" for t in _trips)
+# تعديل البرنامج
+r = um.post(f"/umrah/program/{NC}/edit", data={"name": "شعبان المعدّل",
+            "price_double": "4700", "makkah_hotel": "فندق"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_t = next(t for t in _um.load_trips(storage.load_settings()) if t.code == NC)
+assert _t.name == "شعبان المعدّل" and _t.price_double == "4700"
+# إضافة معتمر إلى البرنامج (يأخذ رقماً مرجعياً تلقائياً)
+r = um.post(f"/umrah/program/{NC}/pilgrim/new", data={"full_name_ar": "معتمر جديد",
+            "passport_number": "N-1", "room_type": "ثنائي",
+            "program_value": "4700", "paid_amount": "1000"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_recs, _ = storage.load_records(UDATA, admin)
+_mine = [(i, x) for i, x in enumerate(_recs) if x.trip == NC]
+assert len(_mine) == 1 and _mine[0][1].full_name_ar == "معتمر جديد"
+GI = _mine[0][0]
+assert _mine[0][1].reference_number.startswith(NC + "-")
+# تعديل المعتمر + حارس التزامن
+r = um.post(f"/umrah/program/{NC}/pilgrim/{GI}/edit", data={
+    "full_name_ar": "معتمر معدّل", "passport_number": "N-1", "room_type": "ثلاثي",
+    "program_value": "4700", "paid_amount": "1000", "orig": "N-1"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_recs, _ = storage.load_records(UDATA, admin)
+assert _recs[GI].full_name_ar == "معتمر معدّل" and _recs[GI].room_type == "ثلاثي"
+assert um.post(f"/umrah/program/{NC}/pilgrim/{GI}/edit",
+               data={"passport_number": "N-1", "orig": "WRONG"}).status_code == 409
+# سجلّ الدفعات: إضافة دفعة تُحدّث المحصّل والحالة
+assert "سجلّ الدفعات" in um.get(
+    f"/umrah/program/{NC}/pilgrim/{GI}/payments").get_data(as_text=True)
+r = um.post(f"/umrah/program/{NC}/pilgrim/{GI}/payments/add",
+            data={"date": "2026-08-03", "amount": "2000", "method": "نقد",
+                  "note": "دفعة أولى"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_recs, _ = storage.load_records(UDATA, admin)
+assert len(_recs[GI].payments) == 1 and _ptot(_recs[GI]) == 2000.0
+assert _recs[GI].paid_amount.replace(",", "") == "2000"
+prog2 = um.get(f"/umrah/program/{NC}").get_data(as_text=True)
+assert "معتمر معدّل" in prog2 and "جزئي" in prog2       # 2000 من 4700 = جزئي
+# حذف الدفعة يعيد المحصّل صفراً
+r = um.post(f"/umrah/program/{NC}/pilgrim/{GI}/payments/0/delete")
+assert r.status_code == 302
+_am.set_mode("umrah")
+_recs, _ = storage.load_records(UDATA, admin)
+assert len(_recs[GI].payments) == 0 and _ptot(_recs[GI]) == 0.0
+# حذف المعتمر
+r = um.post(f"/umrah/program/{NC}/pilgrim/{GI}/delete", data={"orig": "N-1"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_recs, _ = storage.load_records(UDATA, admin)
+assert not any(x.trip == NC for x in _recs)
+# حذف البرنامج
+r = um.post(f"/umrah/program/{NC}/delete")
+assert r.status_code == 302
+_am.set_mode("umrah")
+assert not any(t.code == NC for t in _um.load_trips(storage.load_settings()))
+# المطّلع ممنوع من مسارات كتابة العمرة (403)
+vw = app.test_client()
+vw.post("/login", data={"username": "viewer1", "password": "View-Pass-1234"})
+vw.get("/mode/umrah")
+assert vw.get("/umrah/program/new").status_code == 403
+assert vw.post("/umrah/program/U1/pilgrim/new").status_code == 403
+assert vw.post("/umrah/program/U1/pilgrim/0/payments/add").status_code == 403
+print("  OK: إدارة برامج العمرة ومعتمريها ودفعاتهم على الويب، والمطّلع ممنوع")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

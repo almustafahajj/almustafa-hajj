@@ -5,6 +5,7 @@
   <div class="titles"><span class="app-title">🌙 برامج العمرة</span></div>
   <div class="spacer"></div>
   <div class="user">
+    {% if can_edit %}<a class="add-btn" href="{{ url_for('umrah_program_new') }}">➕ برنامج جديد</a>{% endif %}
     <a class="add-btn ghost-add" href="{{ url_for('switch_mode', mode='hajj') }}">🕋 التبديل إلى الحج</a>
     <span class="who">👤 {{ username }} · {{ role }}</span>
     <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
