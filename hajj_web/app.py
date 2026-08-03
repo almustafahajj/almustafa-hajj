@@ -22,8 +22,8 @@ from flask import (
 )
 
 from hajj_app import (
-    audit, auth, einvoice, excel_io, fields, pdf_io, programs, quality,
-    stats, storage, transport,
+    app_mode, audit, auth, einvoice, excel_io, fields, pdf_io, programs,
+    quality, stats, storage, transport, umrah,
 )
 from hajj_app.mrz import PassportData
 from . import sessions
@@ -31,6 +31,7 @@ from . import sessions
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 _COOKIE = "hajj_session"
+_MODE_COOKIE = "hajj_mode"          # وضع التشغيل الحالي (حج/عمرة) لهذا المتصفّح
 
 # يُسلسِل عمليات الكتابة داخل الخادم حتى لا يدهس طلبان الملف نفسه
 _WRITE_LOCK = threading.Lock()
@@ -109,7 +110,34 @@ def create_app(auth_path: str | Path | None = None,
         return app.config["AUTH_PATH"] or auth.default_auth_path()
 
     def _data_path():
-        return app.config["DATA_PATH"] or storage.default_data_path()
+        # مسار بيانات الوضع الحالي: يُشتقّ اسم الملف من الوضع (حج/عمرة) فتبقى
+        # قائمة كل وضع مستقلّة حتى مع تثبيت مسار قاعديّ في الإعدادات.
+        base = app.config["DATA_PATH"]
+        if base:
+            return str(Path(base).with_name(app_mode.data_filename()))
+        return str(storage.default_data_path())
+
+    @app.before_request
+    def _apply_mode():
+        # يضبط وضع التشغيل من كوكيّ المتصفّح قبل أي قراءة/كتابة, فتُحسم مسارات
+        # البيانات والإعدادات والمسمّيات تلقائياً لكل طلب.
+        mode = request.cookies.get(_MODE_COOKIE, app_mode.HAJJ)
+        app_mode.set_mode(mode if mode in (app_mode.HAJJ, app_mode.UMRAH)
+                          else app_mode.HAJJ)
+        g.mode = app_mode.get_mode()
+        g.other_mode = (app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ)
+
+    @app.context_processor
+    def _inject_mode():
+        # يُتيح لكل القوالب معرفة الوضع الحالي والآخر (لزرّ التبديل والمسمّيات)
+        return {
+            "mode": app_mode.get_mode(),
+            "is_umrah": app_mode.is_umrah(),
+            "other_mode": g.get("other_mode", app_mode.HAJJ),
+            "other_mode_label": app_mode.mode_label(
+                g.get("other_mode", app_mode.HAJJ)),
+            "pilgrims_label": app_mode.label("pilgrims"),
+        }
 
     def _company():
         return pdf_io.company_info(storage.load_settings().get("company"))
@@ -204,6 +232,16 @@ def create_app(auth_path: str | Path | None = None,
         resp.delete_cookie(_COOKIE)
         return resp
 
+    @app.route("/mode/<mode>")
+    @login_required
+    def switch_mode(mode):
+        """يبدّل وضع التشغيل (حج/عمرة) لهذا المتصفّح ثم يعود للرئيسية."""
+        if mode not in (app_mode.HAJJ, app_mode.UMRAH):
+            abort(404)
+        resp = make_response(redirect(url_for("index")))
+        resp.set_cookie(_MODE_COOKIE, mode, httponly=True, samesite="Lax")
+        return resp
+
     def _filter_indexed(records):
         """يطبّق الفلاتر والبحث من ?args، ويعيد ([(الفهرس، السجلّ)], selected, q)."""
         selected = {key: (request.args.get(key) or "").strip() for key, _ in FILTERS}
@@ -226,6 +264,9 @@ def create_app(auth_path: str | Path | None = None,
     @app.route("/")
     @login_required
     def index():
+        # في وضع العمرة تكون الواجهة مُنظَّمة حسب البرامج (كبرنامج سطح المكتب)
+        if app_mode.is_umrah():
+            return redirect(url_for("umrah_programs"))
         try:
             records, note = load_records()
         except RuntimeError:
@@ -251,6 +292,116 @@ def create_app(auth_path: str | Path | None = None,
             username=g.session.username, role=g.session.role_label, note=note,
             can_edit=g.session.can_edit, is_admin=g.session.can_manage_accounts,
         )
+
+    # ============================== وضع العمرة ==============================
+    def _umrah_records():
+        """يحمّل معتمري ملف العمرة (يرفع RuntimeError إن فشل فكّ التشفير)."""
+        return load_records()
+
+    def _trip_or_404(code):
+        trips = umrah.load_trips(storage.load_settings())
+        trip = next((t for t in trips if t.code == code), None)
+        if trip is None:
+            abort(404)
+        return trip
+
+    def _finance_rows(pilgrims):
+        """صفوف مالية لكل معتمر + إجماليات (القيمة/المحصّل/المتبقّي/الحالة)."""
+        rows = []
+        total = paid = 0.0
+        owe = 0
+        for r in pilgrims:
+            v = fields.parse_amount(r.program_value) or 0.0
+            p = fields.parse_amount(r.paid_amount) or 0.0
+            rem = v - p
+            total += v
+            paid += p
+            if rem > 0.005 and p > 0.005:
+                status, cls = "جزئي", "partial"
+                owe += 1
+            elif rem > 0.005:
+                status, cls = "غير مدفوع", "unpaid"
+                owe += 1
+            else:
+                status, cls = "مسدّد", "paid"
+            rows.append({
+                "name": r.full_name_ar or r.full_name_en or "—",
+                "passport": r.passport_number or "—",
+                "room": r.room_type or "—",
+                "phone": r.phone or "—",
+                "value": fields.format_amount(v),
+                "paid": fields.format_amount(p),
+                "remaining": fields.format_amount(rem),
+                "status": status, "cls": cls,
+            })
+        totals = {
+            "value": fields.format_amount(total),
+            "paid": fields.format_amount(paid),
+            "remaining": fields.format_amount(total - paid),
+            "pct": (f"{(paid / total * 100):.0f}%" if total else "0%"),
+            "owe": owe, "count": len(pilgrims),
+        }
+        return rows, totals
+
+    @app.route("/umrah/programs")
+    @login_required
+    def umrah_programs():
+        try:
+            records, note = _umrah_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        trips = umrah.load_trips(storage.load_settings())
+        rows = []
+        for t in trips:
+            pilgrims = umrah.trip_pilgrims(records, t.code)
+            _r, tot = _finance_rows(pilgrims)
+            rows.append({
+                "code": t.code, "name": t.name or "—",
+                "makkah": t.makkah_hotel or "—", "madinah": t.madinah_hotel or "—",
+                "depart": t.depart_date or "—", "ret": t.return_date or "—",
+                "count": len(pilgrims), "capacity": t.capacity or "—",
+                "value": tot["value"], "paid": tot["paid"],
+                "remaining": tot["remaining"],
+            })
+        return render_template(
+            "umrah_programs.html", rows=rows, note=note,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit, is_admin=g.session.can_manage_accounts)
+
+    @app.route("/umrah/program/<code>")
+    @login_required
+    def umrah_program(code):
+        try:
+            records, note = _umrah_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        trip = _trip_or_404(code)
+        pilgrims = umrah.trip_pilgrims(records, code)
+        rows, totals = _finance_rows(pilgrims)
+        return render_template(
+            "umrah_program.html", trip=trip, rows=rows, totals=totals, note=note,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit, is_admin=g.session.can_manage_accounts)
+
+    @app.route("/umrah/program/<code>/finance.pdf")
+    @login_required
+    def umrah_finance_pdf(code):
+        try:
+            records, _note = _umrah_records()
+        except RuntimeError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        trip = _trip_or_404(code)
+        pilgrims = umrah.trip_pilgrims(records, code)
+        if not pilgrims:
+            abort(404)
+        label = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_finance_pdf(pilgrims, p,
+                                                      program_name=label),
+            f"مالية {trip.code}.pdf", "application/pdf")
 
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.

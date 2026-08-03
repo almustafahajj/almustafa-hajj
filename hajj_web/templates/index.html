@@ -8,6 +8,7 @@
     {% if can_edit %}<a class="add-btn" href="{{ url_for('pilgrim_new') }}">➕ إضافة حاج</a>{% endif %}
     {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('pilgrim_scan') }}">📷 قراءة جواز</a>{% endif %}
     {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('import_page') }}">📥 استيراد</a>{% endif %}
+    <a class="add-btn ghost-add" href="{{ url_for('switch_mode', mode='umrah') }}">🌙 التبديل إلى العمرة</a>
     <span class="who">👤 {{ username }} · {{ role }}</span>
     <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
   </div>

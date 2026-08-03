@@ -436,4 +436,62 @@ if sc.status_code == 200:
     assert "من الجواز" in sc.get_data(as_text=True)
 print("  OK: صفحة قراءة الجواز تعمل، والمطّلع ممنوع، والرفع الفارغ آمن")
 
+print("\n=== وضع العمرة: التبديل والبرامج والإدارة المالية ===")
+import hajj_app.app_mode as _am
+import hajj_app.umrah as _um
+UDATA = WORK / "umrah.json"
+# نجهّز برنامج عمرة ومعتمريه في ملفّات العمرة المعزولة (umrah.json + settings_umrah)
+_am.set_mode("umrah")
+_usettings = storage.load_settings()
+_um.save_trips(_usettings, [
+    _um.UmrahTrip(code="U1", name="رمضان", makkah_hotel="كونراد",
+                  madinah_hotel="المدينة المنوّرة", depart_date="2026-03-01",
+                  return_date="2026-03-10", capacity="40"),
+])
+storage.save_settings(_usettings)
+storage.save_records([
+    PassportData(full_name_ar="معتمر مسدّد", trip="U1", passport_number="U-1",
+                 room_type="ثنائي", program_value="5000", paid_amount="5000"),
+    PassportData(full_name_ar="معتمر جزئي", trip="U1", passport_number="U-2",
+                 room_type="ثلاثي", program_value="4000", paid_amount="1500"),
+    PassportData(full_name_ar="معتمر غير مدفوع", trip="U1", passport_number="U-3",
+                 room_type="مفرد", program_value="6000", paid_amount="0"),
+], UDATA, admin)
+_am.set_mode("hajj")                         # التطبيق يضبط الوضع من الكوكيّ
+
+um = app.test_client()
+um.post("/login", data={"username": "MHU", "password": "New-Pass-9999"})
+# قبل التبديل: الرئيسية كشف الحج + زرّ التبديل للعمرة ظاهر
+hajj_home = um.get("/").get_data(as_text=True)
+assert "برنامج موسم الحج" in hajj_home and "التبديل إلى العمرة" in hajj_home
+# التبديل إلى العمرة يضبط الكوكيّ
+sw = um.get("/mode/umrah")
+assert sw.status_code == 302
+assert "hajj_mode" in sw.headers.get("Set-Cookie", "")
+# الرئيسية الآن تعيد التوجيه إلى برامج العمرة
+home = um.get("/")
+assert home.status_code == 302 and "/umrah/programs" in home.headers["Location"]
+progs = um.get("/umrah/programs").get_data(as_text=True)
+assert "برامج العمرة" in progs and "رمضان" in progs and "U1" in progs
+assert "كونراد" in progs                     # فندق مكة يظهر
+# صفحة البرنامج: بطاقات مالية + حالات المعتمرين + الإجماليات
+prog = um.get("/umrah/program/U1").get_data(as_text=True)
+assert "معتمر مسدّد" in prog and "معتمر جزئي" in prog and "معتمر غير مدفوع" in prog
+assert "نسبة التحصيل" in prog and "متأخّرون" in prog
+assert "مسدّد" in prog and "جزئي" in prog and "غير مدفوع" in prog
+assert "15,000" in prog and "6,500" in prog and "8,500" in prog   # 15000/6500/8500
+# برنامج غير موجود -> 404
+assert um.get("/umrah/program/ZZ").status_code == 404
+# الملخّص المالي PDF للبرنامج
+fp = um.get("/umrah/program/U1/finance.pdf")
+assert fp.status_code == 200 and fp.data[:5] == b"%PDF-"
+# بيانات العمرة معزولة عن الحج: ملفّ umrah.json مستقلّ
+assert UDATA.is_file() and DATA.is_file() and UDATA != DATA
+# التبديل عائداً إلى الحج يعيد كشف الحج
+um.get("/mode/hajj")
+assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)
+# التبديل لوضع غير معروف -> 404
+assert um.get("/mode/zzz").status_code == 404
+print("  OK: التبديل للعمرة وبرامجها وإدارتها المالية وملخّصها PDF ومعزولة عن الحج")
+
 print("\n*** WEB TESTS PASSED ***")

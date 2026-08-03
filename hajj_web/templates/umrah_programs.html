@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}برامج العمرة{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">🌙 برامج العمرة</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('switch_mode', mode='hajj') }}">🕋 التبديل إلى الحج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<nav class="nav">
+  <a href="{{ url_for('account_password') }}">🔑 كلمة المرور</a>
+  <a href="{{ url_for('account_recovery') }}">🗝 مفتاح استرداد</a>
+</nav>
+
+<main class="content">
+  {% if note %}<div class="note">{{ note }}</div>{% endif %}
+  <h2 class="sec-title">برامج العمرة — {{ rows|length }} برنامج</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>الرمز</th><th>اسم البرنامج</th><th>المغادرة</th><th>العودة</th>
+          <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th>
+          <th>الإجمالي</th><th>المحصّل</th><th>المتبقّي</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in rows %}
+        <tr onclick="location='{{ url_for('umrah_program', code=t.code) }}'">
+          <td>{{ t.code }}</td><td>{{ t.name }}</td><td>{{ t.depart }}</td>
+          <td>{{ t.ret }}</td><td>{{ t.makkah }}</td><td>{{ t.madinah }}</td>
+          <td>{{ t.count }}</td><td>{{ t.value }}</td><td>{{ t.paid }}</td>
+          <td>{{ t.remaining }}</td>
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="10">لا برامج عمرة بعد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="tip">اضغط على أي برنامج لعرض معتمريه وإدارته المالية.</p>
+</main>
+{% endblock %}

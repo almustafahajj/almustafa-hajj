@@ -190,6 +190,19 @@ tbody tr:hover{background:#f3ece0}
 td.idx{text-align:center}
 .empty{text-align:center; color:var(--muted); padding:32px}
 
+/* عنوان قسم + حالات المالية (العمرة) */
+.sec-title{font-size:16px; font-weight:700; color:var(--ink); margin:16px 0 10px}
+tbody tr.fin-paid{background:#e6f1e9}
+tbody tr.fin-partial{background:#fbf0dc}
+tbody tr.fin-unpaid{background:#f6d9d0}
+tbody tr.fin-paid:hover{background:#d7ecdd}
+tbody tr.fin-partial:hover{background:#f5e6c8}
+tbody tr.fin-unpaid:hover{background:#f0cabf}
+.badge{display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:700}
+.badge.paid{background:#2e7d46; color:#fff}
+.badge.partial{background:#c9922a; color:#fff}
+.badge.unpaid{background:#c0392b; color:#fff}
+
 @media (max-width:600px){
   .content{padding:14px}
   .app-title{font-size:16px}

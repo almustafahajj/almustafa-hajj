@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ trip.name or trip.code }} — العمرة{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">💰 {{ trip.name or trip.code }}</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_programs') }}">🌙 كل البرامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  {% if note %}<div class="note">{{ note }}</div>{% endif %}
+
+  <div class="kpis dash">
+    <div class="kpi"><div class="kpi-val">{{ totals.value }}</div><div class="kpi-lbl">إجمالي القيمة</div></div>
+    <div class="kpi"><div class="kpi-val">{{ totals.paid }}</div><div class="kpi-lbl">المحصّل</div></div>
+    <div class="kpi"><div class="kpi-val">{{ totals.remaining }}</div><div class="kpi-lbl">المتبقّي</div></div>
+    <div class="kpi"><div class="kpi-val">{{ totals.pct }}</div><div class="kpi-lbl">نسبة التحصيل</div></div>
+    <div class="kpi"><div class="kpi-val">{{ totals.owe }}</div><div class="kpi-lbl">متأخّرون</div></div>
+  </div>
+
+  <div class="exports">
+    <span class="exp-label">الإدارة المالية:</span>
+    <a class="exp-btn" href="{{ url_for('umrah_finance_pdf', code=trip.code) }}" target="_blank">📄 الملخّص المالي PDF</a>
+  </div>
+
+  <h2 class="sec-title">المعتمرون — {{ totals.count }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="idx">م</th><th>اسم المعتمر</th><th>رقم الجواز</th>
+          <th>الغرفة</th><th>القيمة</th><th>المحصّل</th><th>المتبقّي</th><th>الحالة</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="fin-{{ r.cls }}">
+          <td class="idx">{{ loop.index }}</td><td>{{ r.name }}</td>
+          <td>{{ r.passport }}</td><td>{{ r.room }}</td><td>{{ r.value }}</td>
+          <td>{{ r.paid }}</td><td>{{ r.remaining }}</td>
+          <td><span class="badge {{ r.cls }}">{{ r.status }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="8">لا معتمرين في هذا البرنامج.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}
