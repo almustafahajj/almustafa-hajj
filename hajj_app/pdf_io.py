@@ -3442,7 +3442,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                   T("الإطلالة", "View"), T("الوجبات", "Meals")])
         story.append(section(T("تفاصيل الإقامة", "Accommodation")))
         story.append(Spacer(1, 4))
-        story.append(data_table(heads, [58, 72, 28, 112, 78, 40, 60, 48], disp))
+        story.append(data_table(heads, [54, 66, 52, 98, 74, 44, 52, 48], disp))
         story.append(Spacer(1, 8))
 
     # الطيران
