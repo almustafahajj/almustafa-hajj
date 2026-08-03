@@ -2591,6 +2591,7 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
 
         self._f: dict[str, StringVar] = {}
         self._build_head()
+        self._build_types()
         self._build_hotels()
         self._build_services()
         self._build_margin()
@@ -2622,6 +2623,10 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
             self._pf.set(data["period_from"])
         if data.get("period_to"):
             self._pt.set(data["period_to"])
+        sel = data.get("room_types")
+        if isinstance(sel, list) and sel:
+            for name, var in self._type_vars.items():
+                var.set(name in sel)
         items = data.get("items")
         if isinstance(items, list):
             for entry in list(self._item_rows):
@@ -2676,6 +2681,18 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         self._f["currency"].set("درهم")
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
+
+    def _build_types(self):
+        lf = self._section("أنواع الغرف المطلوب تسعيرها")
+        self._type_vars: dict[str, "BooleanVar"] = {}
+        row = ttk.Frame(lf)
+        row.pack(fill=X)
+        for name, _occ in umrah.GROUP_ROOM_TYPES:
+            var = BooleanVar(value=True)
+            self._type_vars[name] = var
+            ttk.Checkbutton(row, text=name, variable=var,
+                            command=self._recalc).pack(side=RIGHT, padx=8)
+            var.trace_add("write", lambda *a: self._recalc())
 
     def _build_hotels(self):
         lf = self._section("الفنادق (سعر الغرفة/الليلة + الوجبات للفرد)")
@@ -2775,6 +2792,10 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         data["items"] = [[n.get().strip(), a.get().strip()]
                          for _fr, n, a in getattr(self, "_item_rows", [])
                          if n.get().strip() or a.get().strip()]
+        # أنواع الغرف المختارة (فارغ = الكل)
+        data["room_types"] = [name for name, var
+                              in getattr(self, "_type_vars", {}).items()
+                              if var.get()]
         return data
 
     def _recalc(self):

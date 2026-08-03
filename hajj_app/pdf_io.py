@@ -3779,10 +3779,11 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
         story.append(line(f"المدينة المنوّرة: {md_h} ({ltr(md_n)} ليالٍ)"))
     story.append(Spacer(1, 8))
 
-    # جدول التفصيل: البيان + عمود لكل نوع غرفة
-    types = [n for n, _ in GROUP_ROOM_TYPES]
+    # جدول التفصيل: البيان + عمود لكل نوع غرفة (المحدَّد فقط)
+    types = [r["type"] for r in rows]
+    ncol = len(types)
     heads = ["البيان"] + types
-    weights = list(reversed([150, 62, 62, 62, 62, 62]))
+    weights = list(reversed([150] + [62] * ncol))
     scale = W / sum(weights)
     colw = [w * scale for w in weights]
     avail = [w - 8 for w in colw]
@@ -3794,7 +3795,7 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
 
     def money_row(label, key_or_vals, bold=False, raw=False):
         if isinstance(key_or_vals, str):
-            vals = [fmt_money(_gnum(data.get(key_or_vals)))] * 5
+            vals = [fmt_money(_gnum(data.get(key_or_vals)))] * ncol
         elif raw:
             vals = [str(v) for v in key_or_vals]
         else:
@@ -3811,7 +3812,7 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
         for it in items:
             name, amt = (list(it) + ["", ""])[:2]
             if str(name or "").strip() and _gnum(amt):
-                body.append(money_row(str(name), [_gnum(amt)] * 5))
+                body.append(money_row(str(name), [_gnum(amt)] * ncol))
     else:
         for label, key in (("النقل الداخلي", "transport"),
                            ("نقل المطار", "transport_air"),

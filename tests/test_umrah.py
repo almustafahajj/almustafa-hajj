@@ -665,9 +665,15 @@ _gper = umrah.group_pricing({k: v for k, v in _gd.items() if k != "profit"}
                             | {"profit_single": "500", "profit_double": "300"})
 assert next(r for r in _gper if r["type"] == "مفرد")["margin"] == 500.0
 assert next(r for r in _gper if r["type"] == "ثنائي")["margin"] == 300.0
+# اختيار أنواع الغرف المطلوب تسعيرها فقط
+_gsel = umrah.group_pricing({**_gd, "room_types": ["ثنائي", "ثلاثي"]})
+assert [r["type"] for r in _gsel] == ["ثنائي", "ثلاثي"]
+assert umrah.group_pricing({**_gd, "room_types": []}) == _grows   # فارغ = الكل
 _gp = WORK / "group.pdf"
 export_group_pricing_pdf(_gd, _gp)
 assert _gp.read_bytes()[:5] == b"%PDF-" and _gp.stat().st_size > 3000
+export_group_pricing_pdf({**_gd, "room_types": ["ثنائي"]}, WORK / "gsel.pdf")
+assert (WORK / "gsel.pdf").read_bytes()[:5] == b"%PDF-"
 # نافذة المسعّر مع حساب حيّ
 rg = tk.Tk(); rg.withdraw()
 appg = _ug.UmrahApp(rg, session=None)
@@ -692,6 +698,14 @@ _vals = {row[0]: row for row in
 assert _vals["ثنائي"][1].replace(",", "") == "3750"        # الصافية
 assert _vals["ثنائي"][4].replace(",", "") == "3950"        # سعر البيع
 assert _vals["ثنائي"][3].endswith("%")                     # النسبة تلقائية
+# اختيار نوع الغرفة: إلغاء المفرد يخفيه من النتيجة
+_gw._type_vars["مفرد"].set(False)
+rg.update()
+_shown = [_gw._tree.item(i, "values")[0] for i in _gw._tree.get_children()]
+assert "مفرد" not in _shown and "ثنائي" in _shown
+assert _gw._collect()["room_types"] == ["ثنائي", "ثلاثي", "رباعي", "طفل"]
+_gw._type_vars["مفرد"].set(True)
+rg.update()
 _gw._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 # حفظ التسعير داخل البرنامج واستعراضه لاحقاً

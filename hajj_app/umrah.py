@@ -362,8 +362,12 @@ def group_pricing(data: dict) -> list:
         services = sum(_gnum(data.get(k)) for k in GROUP_SERVICE_FIELDS)
     pct = _gnum(data.get("profit_pct"))          # نسبة الربح من التكلفة الصافية
     other = _gnum(data.get("other"))
+    # اختيار أنواع الغرف المطلوب تسعيرها (فارغ/غير محدَّد = الكل)
+    selected = data.get("room_types") or None
     rows = []
     for name, occ in GROUP_ROOM_TYPES:
+        if selected and name not in selected:
+            continue
         if occ:
             mk_pp = (mk_rate * mk_n) / occ
             md_pp = (md_rate * md_n) / occ
