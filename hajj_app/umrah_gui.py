@@ -2612,14 +2612,15 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         return v
 
     def _build_head(self):
-        lf = self._section("الفترة والعملة")
-        ttk.Label(lf, text="من").grid(row=0, column=0, sticky="e", padx=(8, 4),
+        lf = self._section("العنوان والفترة والعملة")
+        self._mfield(lf, "عنوان التسعير", "title", 0, 0, width=40)
+        ttk.Label(lf, text="من").grid(row=1, column=0, sticky="e", padx=(8, 4),
                                       pady=3)
-        self._build_date_picker(lf, "", row=0, col=1, prefix="_pf")
-        ttk.Label(lf, text="إلى").grid(row=0, column=2, sticky="e", padx=(8, 4),
+        self._build_date_picker(lf, "", row=1, col=1, prefix="_pf")
+        ttk.Label(lf, text="إلى").grid(row=1, column=2, sticky="e", padx=(8, 4),
                                        pady=3)
-        self._build_date_picker(lf, "", row=0, col=3, prefix="_pt")
-        self._mfield(lf, "العملة", "currency", 1, 0,
+        self._build_date_picker(lf, "", row=1, col=3, prefix="_pt")
+        self._mfield(lf, "العملة", "currency", 2, 0,
                      values=("درهم", "ريال", "دولار"))
         self._f["currency"].set("درهم")
         lf.columnconfigure(1, weight=1)
@@ -2639,17 +2640,45 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
+    _DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة", "تذكرة الطيران",
+                      "ماء وعصير وتمر", "الهدايا", "المصاريف الإدارية")
+
     def _build_services(self):
-        lf = self._section("الخدمات (للفرد)")
-        self._mfield(lf, "النقل الداخلي", "transport", 0, 0)
-        self._mfield(lf, "نقل المطار", "transport_air", 0, 1)
-        self._mfield(lf, "التأشيرة", "visa", 1, 0)
-        self._mfield(lf, "تذكرة الطيران", "ticket", 1, 1)
-        self._mfield(lf, "ماء وعصير وتمر", "water", 2, 0)
-        self._mfield(lf, "الهدايا", "gifts", 2, 1)
-        self._mfield(lf, "المصاريف الإدارية", "admin", 3, 0)
-        lf.columnconfigure(1, weight=1)
-        lf.columnconfigure(3, weight=1)
+        lf = self._section("البنود (للفرد) — يمكن الإضافة أو الحذف")
+        self._item_rows: list = []
+        hdr = ttk.Frame(lf)
+        hdr.pack(fill=X)
+        ttk.Label(hdr, text="المبلغ", width=14, anchor="center",
+                  font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=2)
+        ttk.Label(hdr, text="البند", anchor="center",
+                  font=("Segoe UI", 8, "bold")).pack(side=RIGHT, fill=X,
+                                                     expand=True, padx=2)
+        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
+        self._item_box = ttk.Frame(lf)
+        self._item_box.pack(fill=X)
+        for name in self._DEFAULT_ITEMS:
+            self._add_item_row(name, "")
+        ttk.Button(lf, text="＋ إضافة بند",
+                   command=lambda: self._add_item_row()).pack(anchor="e",
+                                                              pady=(4, 0))
+
+    def _add_item_row(self, name="", amount=""):
+        fr = ttk.Frame(self._item_box)
+        fr.pack(fill=X, pady=1)
+        nvar = StringVar(value=str(name or ""))
+        avar = StringVar(value=str(amount or ""))
+        entry = [fr, nvar, avar]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: (self._del_row(self._item_rows, entry),
+                                    self._recalc())).pack(side=RIGHT, padx=(4, 1))
+        ttk.Entry(fr, textvariable=avar, width=14, justify="right").pack(
+            side=RIGHT, padx=2)
+        ttk.Entry(fr, textvariable=nvar, justify="right").pack(
+            side=RIGHT, fill=X, expand=True, padx=2)
+        avar.trace_add("write", lambda *a: self._recalc())
+        self._item_rows.append(entry)
+        self._attach_clipboard(fr)
+        self._recalc()
 
     def _build_margin(self):
         lf = self._section("الربح والمصاريف (للفرد)")
@@ -2669,14 +2698,15 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         lf.columnconfigure(3, weight=1)
 
     def _build_result(self):
-        lf = self._section("النتيجة — التكلفة والربح وسعر البيع لكل فرد")
-        cols = ("type", "net", "profit", "selling")
+        lf = self._section("النتيجة — التكلفة والربح والنسبة وسعر البيع لكل فرد")
+        cols = ("type", "net", "profit", "pct", "selling")
         self._tree = ttk.Treeview(lf, columns=cols, show="headings", height=5,
                                   selectmode="none")
-        for c, txt, w in (("type", "نوع الغرفة", 130),
-                          ("net", "التكلفة الصافية", 140),
-                          ("profit", "الربح", 110),
-                          ("selling", "سعر البيع", 140)):
+        for c, txt, w in (("type", "نوع الغرفة", 110),
+                          ("net", "التكلفة الصافية", 130),
+                          ("profit", "الربح", 100),
+                          ("pct", "النسبة %", 80),
+                          ("selling", "سعر البيع", 130)):
             self._tree.heading(c, text=txt)
             self._tree.column(c, width=w, anchor="center")
         self._tree.pack(fill=X)
@@ -2689,6 +2719,10 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         data = {k: v.get().strip() for k, v in self._f.items()}
         data["period_from"] = self._pf.get()
         data["period_to"] = self._pt.get()
+        # البنود الديناميكية [الاسم، المبلغ]
+        data["items"] = [[n.get().strip(), a.get().strip()]
+                         for _fr, n, a in getattr(self, "_item_rows", [])
+                         if n.get().strip() or a.get().strip()]
         return data
 
     def _recalc(self):
@@ -2699,14 +2733,15 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         for r in rows:
             self._tree.insert("", "end", values=(
                 r["type"], fmt_money(r["net"]), fmt_money(r["margin"]),
-                fmt_money(r["selling"])))
+                f"{r['margin_pct']:.1f}%", fmt_money(r["selling"])))
 
     def _preview(self):
         data = self._collect()
+        name = str(data.get("title") or "").strip() or "تسعير المجموعات"
         G.open_preview(
             self,
             lambda p: export_group_pricing_pdf(data, p, company=self._company()),
-            "مسعّر المجموعات", "pdf")
+            name, "pdf")
 
 
 class RoomingWindow(Toplevel):

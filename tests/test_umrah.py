@@ -674,17 +674,24 @@ appg = _ug.UmrahApp(rg, session=None)
 appg.open_group_pricer()
 _gw = [w for w in rg.winfo_children()
        if isinstance(w, _ug.GroupPricerWindow)][-1]
+_gw._f["title"].set("تسعير مجموعة")             # عنوان التسعير
 _gw._f["makkah_rate"].set("1426"); _gw._f["makkah_nights"].set("3")
-_gw._f["transport"].set("50"); _gw._f["ticket"].set("1265")
-_gw._f["water"].set("46"); _gw._f["gifts"].set("150")
-_gw._f["admin"].set("100"); _gw._f["profit"].set("200")
-rg.update()
+assert len(_gw._item_rows) == 7                 # بنود افتراضية
+# البنود ديناميكية: النقل(0)/المطار(1)/التأشيرة(2)/التذكرة(3)/ماء(4)/هدايا(5)/إداري(6)
+_gw._item_rows[0][2].set("50"); _gw._item_rows[3][2].set("1265")
+_gw._item_rows[4][2].set("46"); _gw._item_rows[5][2].set("150")
+_gw._item_rows[6][2].set("100")
 _gw._f["profit"].set("200")
+_gw._add_item_row("بند مخصّص", "0")             # إضافة بند
+assert len(_gw._item_rows) == 8
+_gw._del_row(_gw._item_rows, _gw._item_rows[-1]); _gw._recalc()   # إلغاء بند
+assert len(_gw._item_rows) == 7
 rg.update()
 _vals = {row[0]: row for row in
          (_gw._tree.item(i, "values") for i in _gw._tree.get_children())}
 assert _vals["ثنائي"][1].replace(",", "") == "3750"        # الصافية
-assert _vals["ثنائي"][3].replace(",", "") == "3950"        # سعر البيع
+assert _vals["ثنائي"][4].replace(",", "") == "3950"        # سعر البيع
+assert _vals["ثنائي"][3].endswith("%")                     # النسبة تلقائية
 _gw._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _gw.destroy(); rg.destroy()

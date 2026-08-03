@@ -3743,7 +3743,8 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
     ]))
     story.append(header)
     story.append(Spacer(1, 5))
-    band = Table([[Paragraph(ar("مسعّر المجموعات — تفصيل التكلفة"),
+    title = str(data.get("title") or "").strip() or "مسعّر المجموعات — تفصيل التكلفة"
+    band = Table([[Paragraph(ar(title),
                              ParagraphStyle("gt", fontName=_FONT_BOLD,
                                             fontSize=15, alignment=1,
                                             textColor=colors.white,
@@ -3791,9 +3792,11 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
 
     body = [cell_row(heads, st["head"])]
 
-    def money_row(label, key_or_vals, bold=False, highlight=False):
+    def money_row(label, key_or_vals, bold=False, raw=False):
         if isinstance(key_or_vals, str):
             vals = [fmt_money(_gnum(data.get(key_or_vals)))] * 5
+        elif raw:
+            vals = [str(v) for v in key_or_vals]
         else:
             vals = [fmt_money(v) for v in key_or_vals]
         cs = ParagraphStyle("gc", parent=st["cell"],
@@ -3802,18 +3805,28 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
 
     body.append(money_row("كلفة مكة للفرد", [r["makkah"] for r in rows]))
     body.append(money_row("كلفة المدينة للفرد", [r["madinah"] for r in rows]))
-    for label, key in (("النقل الداخلي", "transport"),
-                       ("نقل المطار", "transport_air"),
-                       ("التأشيرة", "visa"), ("تذكرة الطيران", "ticket"),
-                       ("ماء وعصير وتمر", "water"), ("الهدايا", "gifts"),
-                       ("المصاريف الإدارية", "admin")):
-        if _gnum(data.get(key)):
-            body.append(money_row(label, key))
+    # البنود: ديناميكية إن وُجدت، وإلّا الحقول الثابتة
+    items = data.get("items")
+    if items is not None:
+        for it in items:
+            name, amt = (list(it) + ["", ""])[:2]
+            if str(name or "").strip() and _gnum(amt):
+                body.append(money_row(str(name), [_gnum(amt)] * 5))
+    else:
+        for label, key in (("النقل الداخلي", "transport"),
+                           ("نقل المطار", "transport_air"),
+                           ("التأشيرة", "visa"), ("تذكرة الطيران", "ticket"),
+                           ("ماء وعصير وتمر", "water"), ("الهدايا", "gifts"),
+                           ("المصاريف الإدارية", "admin")):
+            if _gnum(data.get(key)):
+                body.append(money_row(label, key))
     body.append(money_row("التكلفة الصافية", [r["net"] for r in rows],
                           bold=True))
     if any(r["margin"] for r in rows):
         body.append(money_row("الربح والمصاريف", [r["margin"] for r in rows]))
-    n_data = len(body)
+        # النسبة المئوية للربح (تلقائية)
+        pct_vals = [ltr(f"{r['margin_pct']:.1f}%") for r in rows]
+        body.append(money_row("نسبة الربح %", pct_vals, raw=True))
     body.append(money_row("سعر البيع للفرد", [r["selling"] for r in rows],
                           bold=True))
 

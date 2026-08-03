@@ -354,7 +354,12 @@ def group_pricing(data: dict) -> list:
     md_rate, md_n = _gnum(data.get("madinah_rate")), _gnum(data.get("madinah_nights"))
     mk_meals = _gnum(data.get("makkah_meals"))
     md_meals = _gnum(data.get("madinah_meals"))
-    services = sum(_gnum(data.get(k)) for k in GROUP_SERVICE_FIELDS)
+    # الخدمات: بنود ديناميكية [الاسم، المبلغ] إن وُجدت، وإلّا الحقول الثابتة
+    items = data.get("items")
+    if items is not None:
+        services = sum(_gnum((list(it) + ["", ""])[1]) for it in items)
+    else:
+        services = sum(_gnum(data.get(k)) for k in GROUP_SERVICE_FIELDS)
     pct = _gnum(data.get("profit_pct"))          # نسبة الربح من التكلفة الصافية
     other = _gnum(data.get("other"))
     rows = []
@@ -371,9 +376,11 @@ def group_pricing(data: dict) -> list:
         p_amt = _gnum(raw) if raw != "" else _gnum(data.get("profit"))
         margin = p_amt + net * pct / 100.0 + other
         selling = net + margin
+        margin_pct = (margin / net * 100.0) if net else 0.0
         rows.append({"type": name, "occ": occ, "makkah": mk_pp, "madinah": md_pp,
                      "room": room, "services": services, "net": net,
-                     "margin": margin, "selling": selling})
+                     "margin": margin, "margin_pct": margin_pct,
+                     "selling": selling})
     return rows
 
 
