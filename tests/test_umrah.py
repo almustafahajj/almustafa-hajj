@@ -128,6 +128,24 @@ app._season.set("2027"); app._reload()
 c27 = set(app.tree.get_children())
 assert "B" in c27 and "A" not in c27 and "P1" not in c27
 assert "١ يناير" in app._season_text() and "2027" in app._season_text()
+# واجهة مبسّطة: الأدوات مجمّعة في قوائم منسدلة (Menubutton + Menu)
+_ulabels = set()
+for _m in getattr(app, "_menus", []):
+    try:
+        _end = _m.index("end")
+    except Exception:
+        _end = None
+    for _i in range(0 if _end is None else _end + 1):
+        try:
+            _ulabels.add(_m.entrycget(_i, "label"))
+        except Exception:
+            pass
+_utxt = " ".join(_ulabels)
+assert len(app._menus) == 3                                  # ثلاث قوائم مبسّطة
+for _need in ("تعديل البرنامج", "حذف البرنامج", "عروض الأسعار المحفوظة",
+              "عرض سعر يدوي", "العروض اليدوية", "مسعّر المجموعات",
+              "التسعيرات المحفوظة", "فاوتشر فندق يدوي"):
+    assert _need in _utxt, _need
 root.destroy()
 print("  OK: التسعير والسفر والرقم المرجعي، السعة، رمز البرنامج، وموسم السنة")
 

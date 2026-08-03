@@ -151,6 +151,10 @@ class UmrahApp:
                                     background=G.BG)
         self._subtitle.pack(anchor="e")
 
+        other = app_mode.mode_label(app_mode.HAJJ)
+        ttk.Button(bar, text=G.rtl(f"🕋  التبديل إلى {other}"),
+                   style="Ghost.TButton",
+                   command=self.switch_mode).pack(side=LEFT, padx=(0, 8))
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
@@ -164,28 +168,48 @@ class UmrahApp:
                        command=self.do_logout).pack(side=LEFT, padx=(0, 8))
 
     # ---- شريط الأدوات ----
+    #  واجهة مبسّطة: زران رئيسيان دائما الظهور + قوائم منسدلة تجمع بقية الأدوات
     def _build_toolbar(self) -> None:
         bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 10, 16, 12))
         bar.pack(fill=X)
-        for text, cmd, style in (
-            ("➕  برنامج جديد", self.new_trip, "Primary.TButton"),
-            ("👤  المعتمرين", self.open_pilgrims, "Act.TButton"),
-            ("✏️  تعديل البرنامج", self.edit_trip, "Ghost.TButton"),
-            ("🗑  حذف البرنامج", self.delete_trip, "Ghost.TButton"),
-            ("📋  عروض الأسعار", self.open_quotes, "Ghost.TButton"),
-            ("🧮  مسعّر المجموعات", self.open_group_pricer, "Ghost.TButton"),
-            ("🗂  التسعيرات المحفوظة", self.open_pricings, "Ghost.TButton"),
-            ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher, "Ghost.TButton"),
-            ("💲  عرض سعر يدوي", self.new_manual_quotation, "Ghost.TButton"),
-            ("📁  العروض اليدوية", self.open_manual_quotes, "Ghost.TButton"),
-        ):
-            ttk.Button(bar, text=G.rtl(text), style=style,
-                       command=cmd).pack(side=RIGHT, padx=3)
+        self._menus: list = []
+        # الأكثر استخداماً — أزرار مباشرة
+        ttk.Button(bar, text=G.rtl("➕  برنامج جديد"), style="Primary.TButton",
+                   command=self.new_trip).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("👤  المعتمرون"), style="Act.TButton",
+                   command=self.open_pilgrims).pack(side=RIGHT, padx=3)
+        # قوائم منسدلة تجمع الأدوات ذات الصلة لتخفيف الازدحام
+        self._menu_button(bar, "✏️  البرنامج", (
+            ("✏️  تعديل البرنامج", self.edit_trip),
+            ("🗑  حذف البرنامج", self.delete_trip),
+        ))
+        self._menu_button(bar, "💰  التسعير والعروض", (
+            ("📋  عروض الأسعار المحفوظة", self.open_quotes),
+            ("💲  عرض سعر يدوي جديد", self.new_manual_quotation),
+            ("📁  العروض اليدوية", self.open_manual_quotes),
+            None,
+            ("🧮  مسعّر المجموعات", self.open_group_pricer),
+            ("🗂  التسعيرات المحفوظة", self.open_pricings),
+        ))
+        self._menu_button(bar, "🏨  مستندات", (
+            ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
+        ))
 
-        other = app_mode.mode_label(app_mode.HAJJ)
-        ttk.Button(bar, text=G.rtl(f"🕋  التبديل إلى {other}"),
-                   style="Ghost.TButton",
-                   command=self.switch_mode).pack(side=LEFT, padx=3)
+    def _menu_button(self, bar, label, items):
+        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر) أو None لفاصل."""
+        mb = ttk.Menubutton(bar, text=G.rtl(label), style="Ghost.TMenubutton",
+                            direction="below")
+        menu = Menu(mb, tearoff=0, font=(G._FUI, 10))
+        for entry in items:
+            if entry is None:
+                menu.add_separator()
+            else:
+                text, cmd = entry
+                menu.add_command(label=G.rtl(text), command=cmd)
+        mb["menu"] = menu
+        self._menus.append(menu)          # مرجع يمنع جمع القمامة
+        mb.pack(side=RIGHT, padx=3)
+        return mb
 
     # ---- جدول البرامج ----
     def _build_table(self) -> None:
