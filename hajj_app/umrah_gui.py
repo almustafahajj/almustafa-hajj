@@ -1167,17 +1167,13 @@ class TripPilgrimsWindow(Toplevel):
             f"معتمرو {self.trip.code}", "pdf")
 
     def do_finance(self) -> None:
-        """معاينة الملخّص المالي للبرنامج (إجماليات، طرق الدفع، المتأخّرات)."""
+        """يفتح نافذة الإدارة المالية للبرنامج (قيم/محصّل/متبقّي + دفعات + ملخّص)."""
         recs = self._pilgrims()
         if not recs:
-            messagebox.showinfo("الملخّص المالي", "لا معتمرين في هذا البرنامج.",
+            messagebox.showinfo("الإدارة المالية", "لا معتمرين في هذا البرنامج.",
                                 parent=self)
             return
-        G.open_preview(
-            self,
-            lambda p: export_umrah_finance_pdf(recs, p,
-                                               program_name=self._prog_label()),
-            f"مالية {self.trip.code}", "pdf")
+        UmrahFinanceWindow(self, self.app, self.trip, on_change=self._reload)
 
     def do_cards(self) -> None:
         """معاينة بطاقات العمرة (بطاقة لكل معتمر)."""
@@ -1260,6 +1256,183 @@ class TripPilgrimsWindow(Toplevel):
     def do_quotes_list(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة لهذا البرنامج."""
         QuotesListWindow(self, self.app, self.trip)
+
+
+class UmrahFinanceWindow(Toplevel):
+    """الإدارة المالية لبرنامج عمرة: قيمة كل معتمر والمحصّل والمتبقّي وحالته،
+    مع تسجيل الدفعات (الأقساط) لكل معتمر، سند قبض، ومعاينة الملخّص المالي."""
+
+    _CARDS = (("value", "إجمالي القيمة"), ("paid", "المحصّل"),
+              ("remaining", "المتبقّي"), ("pct", "نسبة التحصيل"),
+              ("owe", "متأخّرون"))
+
+    def __init__(self, parent, app, trip, on_change=None) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.trip = trip
+        self.session = app.session
+        self._on_change = on_change
+        self.title(f"💰 الإدارة المالية — {trip.name or trip.code}")
+        self.configure(bg=G.BG)
+        self.geometry("1080x680")
+        self.minsize(840, 520)
+        self.transient(parent)
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 12, 16, 4))
+        head.pack(fill=X)
+        ttk.Label(head, text=f"💰 الإدارة المالية — «{trip.name or trip.code}»",
+                  font=(G._FSB, 15), foreground=G.TEXT,
+                  background=G.BG).pack(side=RIGHT)
+
+        # بطاقات الملخّص المالي
+        cards = ttk.Frame(self, style="Panel.TFrame", padding=(16, 10))
+        cards.pack(fill=X)
+        self._card_vars: dict[str, StringVar] = {}
+        for key, label in self._CARDS:
+            box = ttk.Frame(cards, style="Panel.TFrame")
+            box.pack(side=RIGHT, expand=True, fill=X, padx=4)
+            v = StringVar(value="—")
+            self._card_vars[key] = v
+            ttk.Label(box, textvariable=v, font=(G._FSB, 16), foreground=G.ACCENT,
+                      background=G.BG).pack()
+            ttk.Label(box, text=label, font=(G._FUI, 9), foreground=G.MUTED,
+                      background=G.BG).pack()
+
+        bar = ttk.Frame(self, style="Panel.TFrame", padding=(16, 6, 16, 10))
+        bar.pack(fill=X)
+        ttk.Button(bar, text=G.rtl("💵  دفعات المعتمر"), style="Primary.TButton",
+                   command=self.open_payments).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("🧾  سند قبض"), style="Act.TButton",
+                   command=self.do_receipt).pack(side=RIGHT, padx=3)
+        ttk.Button(bar, text=G.rtl("👁  معاينة الملخّص PDF"), style="Ghost.TButton",
+                   command=self.preview_pdf).pack(side=LEFT, padx=3)
+        ttk.Button(bar, text="إغلاق", style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT, padx=3)
+
+        wrap = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 4, 16, 14))
+        wrap.pack(fill=BOTH, expand=True)
+        cols = ("n", "name", "room", "value", "paid", "remaining", "status",
+                "method")
+        heads = {"n": "م", "name": "اسم المعتمر", "room": "الغرفة",
+                 "value": "القيمة", "paid": "المحصّل", "remaining": "المتبقّي",
+                 "status": "الحالة", "method": "آخر طريقة دفع"}
+        widths = {"n": 44, "name": 240, "room": 90, "value": 110, "paid": 110,
+                  "remaining": 110, "status": 100, "method": 120}
+        self.tree = ttk.Treeview(wrap, columns=cols, show="headings",
+                                 selectmode="browse")
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c],
+                             anchor="e" if c == "name" else "center")
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vs.set)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        vs.pack(side=RIGHT, fill="y")
+        self.tree.tag_configure("paid", background="#E6F1E9")       # مسدّد — أخضر
+        self.tree.tag_configure("partial", background="#FBF0DC")    # جزئي — كهرماني
+        self.tree.tag_configure("unpaid", background="#F6D9D0")     # غير مدفوع — أحمر
+        self.tree.bind("<Double-1>", lambda _e: self.open_payments())
+
+        self.grab_set()
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self._reload()
+
+    def _pilgrims(self) -> list:
+        return umrah.trip_pilgrims(self.app.records, self.trip.code)
+
+    def _prog_label(self) -> str:
+        return (f"{self.trip.code} — {self.trip.name}"
+                if self.trip.name else self.trip.code)
+
+    def _reload(self) -> None:
+        self.tree.delete(*self.tree.get_children())
+        recs = self._pilgrims()
+        total = paid = 0.0
+        owe = 0
+        for i, r in enumerate(recs):
+            v = parse_amount(r.program_value) or 0.0
+            p = parse_amount(r.paid_amount) or 0.0
+            rem = v - p
+            total += v
+            paid += p
+            if rem > 0.005 and p > 0.005:
+                status, tag = "جزئي", "partial"
+                owe += 1
+            elif rem > 0.005:
+                status, tag = "غير مدفوع", "unpaid"
+                owe += 1
+            else:
+                status, tag = "مسدّد", "paid"
+            name = r.full_name_ar or r.full_name_en or "—"
+            method = str(getattr(r, "payment_method", "") or "—")
+            self.tree.insert("", END, iid=str(i), values=(
+                i + 1, name, r.room_type or "—", format_amount(v),
+                format_amount(p), format_amount(rem), status, method),
+                tags=(tag,))
+        pct = f"{(paid / total * 100):.0f}%" if total else "0%"
+        self._card_vars["value"].set(format_amount(total) or "0")
+        self._card_vars["paid"].set(format_amount(paid) or "0")
+        self._card_vars["remaining"].set(format_amount(total - paid) or "0")
+        self._card_vars["pct"].set(pct)
+        self._card_vars["owe"].set(str(owe))
+
+    def _selected(self):
+        sel = self.tree.selection()
+        if not sel:
+            return None
+        recs = self._pilgrims()
+        idx = int(sel[0])
+        return recs[idx] if 0 <= idx < len(recs) else None
+
+    def open_payments(self) -> None:
+        """يفتح سجلّ الدفعات (الأقساط) للمعتمر المحدّد ويُزامن المالية."""
+        rec = self._selected()
+        if rec is None:
+            messagebox.showinfo("الدفعات", "اختر معتمراً أولاً.", parent=self)
+            return
+
+        def on_change():
+            # مزامنة آخر طريقة/تاريخ دفع من سجلّ الأقساط لعرضٍ وملخّصٍ متّسق
+            pays = getattr(rec, "payments", None) or []
+            if pays:
+                last = pays[-1]
+                rec.payment_method = str(last.get("method", "") or "")
+                rec.payment_date = str(last.get("date", "") or "")
+            self.app.save()
+            self._reload()
+            if callable(self._on_change):
+                self._on_change()
+
+        G.PaymentsDialog(self, rec, on_change)
+
+    def do_receipt(self) -> None:
+        """معاينة سند قبض للمعتمر المحدّد (بقيمة المحصّل الحالية)."""
+        rec = self._selected()
+        if rec is None:
+            messagebox.showinfo("سند قبض", "اختر معتمراً أولاً.", parent=self)
+            return
+        co = self.app._settings.get("company")
+        company = co if isinstance(co, dict) else None
+        G.open_preview(
+            self,
+            lambda p: export_umrah_receipt_pdf(rec, p, company=company,
+                                               program_name=self._prog_label()),
+            f"سند {rec.reference_number or rec.passport_number or 'قبض'}", "pdf")
+
+    def preview_pdf(self) -> None:
+        """معاينة الملخّص المالي الكامل للبرنامج (PDF)."""
+        recs = self._pilgrims()
+        if not recs:
+            messagebox.showinfo("الملخّص المالي", "لا معتمرين.", parent=self)
+            return
+        G.open_preview(
+            self,
+            lambda p: export_umrah_finance_pdf(recs, p,
+                                               program_name=self._prog_label()),
+            f"مالية {self.trip.code}", "pdf")
 
 
 _MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",

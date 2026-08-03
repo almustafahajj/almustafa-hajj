@@ -384,6 +384,49 @@ assert str(app8.tree.item("SE", "values")[-1]) == "3"      # 5 − 2 مقاعد 
 r8.destroy()
 print("  OK: رابط الدفع + الغرفة + المالية + البطاقات + تنبيه/انتهاء الجواز + المقاعد")
 
+print("\n=== نافذة الإدارة المالية (الدفعات والحالة والملخّص) ===")
+from hajj_app.fields import sync_paid_amount, payment_total
+r9 = tk.Tk(); r9.withdraw()
+app9 = _ug.UmrahApp(r9, session=None)
+t9 = umrah.UmrahTrip(code="FN", name="مالية")
+app9.trips.append(t9)
+app9.records.extend([
+    PassportData(full_name_ar="مسدّد", trip="FN", room_type="ثنائي",
+                 program_value="5000", paid_amount="5000"),
+    PassportData(full_name_ar="جزئي", trip="FN", room_type="ثلاثي",
+                 program_value="4000", paid_amount="1500"),
+    PassportData(full_name_ar="غير مدفوع", trip="FN", room_type="مفرد",
+                 program_value="6000", paid_amount="0"),
+])
+fw = _ug.UmrahFinanceWindow(app9.root, app9, t9)
+# بطاقات الملخّص: القيمة/المحصّل/المتبقّي/النسبة/المتأخّرون
+assert fw._card_vars["value"].get().replace(",", "") == "15000"
+assert fw._card_vars["paid"].get().replace(",", "") == "6500"
+assert fw._card_vars["remaining"].get().replace(",", "") == "8500"
+assert fw._card_vars["pct"].get() == "43%"
+assert fw._card_vars["owe"].get() == "2"
+# حالات الصفوف (المسدّد/الجزئي/غير المدفوع) بألوانها
+_st_by_name = {fw.tree.item(i, "values")[1]: fw.tree.item(i, "values")[6]
+               for i in fw.tree.get_children()}
+assert _st_by_name["مسدّد"] == "مسدّد"
+assert _st_by_name["جزئي"] == "جزئي"
+assert _st_by_name["غير مدفوع"] == "غير مدفوع"
+_tags = {fw.tree.item(i, "values")[1]: fw.tree.item(i, "tags")[0]
+         for i in fw.tree.get_children()}
+assert _tags["مسدّد"] == "paid" and _tags["جزئي"] == "partial"
+assert _tags["غير مدفوع"] == "unpaid"
+# تسجيل دفعة عبر سجلّ الأقساط يُحدّث المحصّل والحالة
+_rec_un = umrah.trip_pilgrims(app9.records, "FN")[2]     # «غير مدفوع»
+_rec_un.payments.append({"date": "2026-08-03", "amount": "6000",
+                         "method": "تحويل بنكي", "note": "كامل"})
+sync_paid_amount(_rec_un)
+assert payment_total(_rec_un) == 6000.0
+fw._reload()
+assert fw._card_vars["paid"].get().replace(",", "") == "12500"
+assert fw._card_vars["owe"].get() == "1"                 # بقي «الجزئي» فقط
+r9.destroy()
+print("  OK: الإدارة المالية — بطاقات وحالات ودفعات (أقساط) وتحصيل حيّ")
+
 print("\n=== مستندات العمرة: سند قبض، فاتورة، وعقد ===")
 app_mode.set_mode("umrah")
 from hajj_app.pdf_io import (export_umrah_receipt_pdf, export_umrah_invoice_pdf,
