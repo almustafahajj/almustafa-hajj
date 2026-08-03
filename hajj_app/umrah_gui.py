@@ -34,8 +34,9 @@ from .pdf_io import (
     QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
     VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
     VOUCHER_VIEW_OPTIONS, build_quotation_data, build_voucher_data,
-    export_airline_pdf, export_umrah_cards_pdf, export_umrah_contract_pdf,
-    export_umrah_finance_pdf, export_umrah_invoice_pdf, export_umrah_pdf,
+    export_airline_pdf, export_group_pricing_pdf, export_umrah_cards_pdf,
+    export_umrah_contract_pdf, export_umrah_finance_pdf, export_umrah_invoice_pdf,
+    export_umrah_pdf,
     export_umrah_quotation_pdf, export_umrah_receipt_pdf, export_umrah_rooming_pdf,
     export_umrah_transport_pdf, export_umrah_voucher_pdf, fmt_money,
     quotation_pricing, quote_times, translate_quotation_data, voucher_car_models,
@@ -172,6 +173,7 @@ class UmrahApp:
             ("✏️  تعديل البرنامج", self.edit_trip, "Ghost.TButton"),
             ("🗑  حذف البرنامج", self.delete_trip, "Ghost.TButton"),
             ("📋  عروض الأسعار", self.open_quotes, "Ghost.TButton"),
+            ("🧮  مسعّر المجموعات", self.open_group_pricer, "Ghost.TButton"),
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher, "Ghost.TButton"),
             ("💲  عرض سعر يدوي", self.new_manual_quotation, "Ghost.TButton"),
             ("📁  العروض اليدوية", self.open_manual_quotes, "Ghost.TButton"),
@@ -354,6 +356,10 @@ class UmrahApp:
     def open_manual_quotes(self) -> None:
         """قائمة «عروض الأسعار اليدوية» المحفوظة (خارج البرامج)."""
         QuotesListWindow(self.root, self, None)
+
+    def open_group_pricer(self) -> None:
+        """مسعّر المجموعات: أداة حساب كلفة الفرد وسعر البيع لكل نوع غرفة."""
+        GroupPricerWindow(self.root, self)
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:
@@ -2554,6 +2560,141 @@ class QuotesListWindow(Toplevel):
         except OSError:
             pass
         self.refresh()
+
+
+class GroupPricerWindow(Toplevel, _EditorMixin):
+    """مسعّر المجموعات: يحسب كلفة الفرد وسعر البيع لكل نوع غرفة تلقائياً من
+    بنود الفنادق والوجبات والخدمات والربح (على غرار جداول التسعير)."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self._app = app
+        self.title("مسعّر المجموعات")
+        self.configure(bg=G.BG)
+        self.geometry("980x700")
+        self.minsize(800, 520)
+        self.transient(parent)
+        self._scroll_body()
+
+        self._f: dict[str, StringVar] = {}
+        self._build_head()
+        self._build_hotels()
+        self._build_services()
+        self._build_margin()
+        self._build_result()
+        self._attach_clipboard(self.body)
+
+        bar = ttk.Frame(self, padding=(10, 6))
+        bar.pack(fill=X)
+        ttk.Button(bar, text="🖨  معاينة PDF",
+                   command=self._preview).pack(side=RIGHT)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
+                                                                 padx=6)
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+        self._recalc()
+
+    def _mfield(self, parent, label, key, r, c, values=None, width=15):
+        ttk.Label(parent, text=label).grid(row=r, column=c * 2, sticky="e",
+                                           padx=(8, 4), pady=3)
+        v = StringVar(value="")
+        self._f[key] = v
+        if values:
+            w = ttk.Combobox(parent, textvariable=v, values=list(values),
+                             width=width)
+        else:
+            w = ttk.Entry(parent, textvariable=v, width=width, justify="right")
+        w.grid(row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
+        v.trace_add("write", lambda *a: self._recalc())
+        return v
+
+    def _build_head(self):
+        lf = self._section("الفترة والعملة")
+        ttk.Label(lf, text="من").grid(row=0, column=0, sticky="e", padx=(8, 4),
+                                      pady=3)
+        self._build_date_picker(lf, "", row=0, col=1, prefix="_pf")
+        ttk.Label(lf, text="إلى").grid(row=0, column=2, sticky="e", padx=(8, 4),
+                                       pady=3)
+        self._build_date_picker(lf, "", row=0, col=3, prefix="_pt")
+        self._mfield(lf, "العملة", "currency", 1, 0,
+                     values=("درهم", "ريال", "دولار"))
+        self._f["currency"].set("درهم")
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_hotels(self):
+        lf = self._section("الفنادق (سعر الغرفة/الليلة + الوجبات للفرد)")
+        nights = [str(i) for i in range(1, 16)]
+        self._mfield(lf, "فندق مكة", "makkah_hotel", 0, 0, width=22)
+        self._mfield(lf, "ليالي مكة", "makkah_nights", 0, 1, values=nights)
+        self._mfield(lf, "سعر غرفة مكة/الليلة", "makkah_rate", 1, 0)
+        self._mfield(lf, "وجبات مكة (للفرد)", "makkah_meals", 1, 1)
+        self._mfield(lf, "فندق المدينة", "madinah_hotel", 2, 0, width=22)
+        self._mfield(lf, "ليالي المدينة", "madinah_nights", 2, 1, values=nights)
+        self._mfield(lf, "سعر غرفة المدينة/الليلة", "madinah_rate", 3, 0)
+        self._mfield(lf, "وجبات المدينة (للفرد)", "madinah_meals", 3, 1)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_services(self):
+        lf = self._section("الخدمات (للفرد)")
+        self._mfield(lf, "النقل الداخلي", "transport", 0, 0)
+        self._mfield(lf, "نقل المطار", "transport_air", 0, 1)
+        self._mfield(lf, "التأشيرة", "visa", 1, 0)
+        self._mfield(lf, "تذكرة الطيران", "ticket", 1, 1)
+        self._mfield(lf, "ماء وعصير وتمر", "water", 2, 0)
+        self._mfield(lf, "الهدايا", "gifts", 2, 1)
+        self._mfield(lf, "المصاريف الإدارية", "admin", 3, 0)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_margin(self):
+        lf = self._section("الربح والمصاريف الأخرى (للفرد)")
+        self._mfield(lf, "الربح", "profit", 0, 0)
+        self._mfield(lf, "مصاريف أخرى", "other", 0, 1)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _build_result(self):
+        lf = self._section("النتيجة — التكلفة وسعر البيع لكل فرد")
+        cols = ("type", "net", "selling")
+        self._tree = ttk.Treeview(lf, columns=cols, show="headings", height=5,
+                                  selectmode="none")
+        for c, txt, w in (("type", "نوع الغرفة", 140),
+                          ("net", "التكلفة الصافية", 150),
+                          ("selling", "سعر البيع", 150)):
+            self._tree.heading(c, text=txt)
+            self._tree.column(c, width=w, anchor="center")
+        self._tree.pack(fill=X)
+
+    def _company(self):
+        co = self._app._settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def _collect(self) -> dict:
+        data = {k: v.get().strip() for k, v in self._f.items()}
+        data["period_from"] = self._pf.get()
+        data["period_to"] = self._pt.get()
+        return data
+
+    def _recalc(self):
+        if not hasattr(self, "_tree"):      # قد تُستدعى قبل بناء الجدول
+            return
+        rows = umrah.group_pricing(self._collect())
+        self._tree.delete(*self._tree.get_children())
+        for r in rows:
+            self._tree.insert("", "end", values=(
+                r["type"], fmt_money(r["net"]), fmt_money(r["selling"])))
+
+    def _preview(self):
+        data = self._collect()
+        G.open_preview(
+            self,
+            lambda p: export_group_pricing_pdf(data, p, company=self._company()),
+            "مسعّر المجموعات", "pdf")
 
 
 class RoomingWindow(Toplevel):

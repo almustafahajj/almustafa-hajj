@@ -646,5 +646,38 @@ _qm.destroy()
 rq.destroy()
 print("  OK: عرض السعر (Quotation) — مستند ومحرّر ونسخة يدوية")
 
+# === مسعّر المجموعات ===
+from hajj_app.pdf_io import export_group_pricing_pdf
+_gd = dict(makkah_rate="1426", makkah_nights="3", transport="50",
+           ticket="1265", water="46", gifts="150", admin="100", profit="200",
+           currency="درهم")
+_grows = umrah.group_pricing(_gd)
+_d2 = next(r for r in _grows if r["type"] == "ثنائي")
+assert _d2["net"] == 3750.0 and _d2["selling"] == 3950.0     # مطابقة الجدول
+_s1 = next(r for r in _grows if r["type"] == "مفرد")
+assert _s1["net"] == 5889.0                                  # المفرد = الغرفة كاملة
+_gp = WORK / "group.pdf"
+export_group_pricing_pdf(_gd, _gp)
+assert _gp.read_bytes()[:5] == b"%PDF-" and _gp.stat().st_size > 3000
+# نافذة المسعّر مع حساب حيّ
+rg = tk.Tk(); rg.withdraw()
+appg = _ug.UmrahApp(rg, session=None)
+appg.open_group_pricer()
+_gw = [w for w in rg.winfo_children()
+       if isinstance(w, _ug.GroupPricerWindow)][-1]
+_gw._f["makkah_rate"].set("1426"); _gw._f["makkah_nights"].set("3")
+_gw._f["transport"].set("50"); _gw._f["ticket"].set("1265")
+_gw._f["water"].set("46"); _gw._f["gifts"].set("150")
+_gw._f["admin"].set("100"); _gw._f["profit"].set("200")
+rg.update()
+_vals = {row[0]: row for row in
+         (_gw._tree.item(i, "values") for i in _gw._tree.get_children())}
+assert _vals["ثنائي"][1].replace(",", "") == "3750"
+assert _vals["ثنائي"][2].replace(",", "") == "3950"
+_gw._preview()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_gw.destroy(); rg.destroy()
+print("  OK: مسعّر المجموعات — حساب ومستند")
+
 app_mode.set_mode("hajj")
 print("\n*** UMRAH TESTS PASSED ***")

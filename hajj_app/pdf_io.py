@@ -3704,6 +3704,146 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     return path
 
 
+def export_group_pricing_pdf(data: dict, path: str | Path, *,
+                             company=None) -> Path:
+    """مسعّر المجموعات: جدول تفصيل كلفة الفرد وسعر البيع لكل نوع غرفة
+    (مفرد/ثنائي/ثلاثي/رباعي/طفل) — بنود الفنادق والوجبات والخدمات والربح."""
+    from .umrah import GROUP_ROOM_TYPES, _gnum, group_pricing
+
+    _register_fonts()
+    path = Path(path)
+    co = company_info(company)
+    rows = group_pricing(data)
+    cur = str(data.get("currency") or "درهم")
+
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=12 * mm, leftMargin=12 * mm,
+        topMargin=10 * mm, bottomMargin=14 * mm, title="مسعّر المجموعات",
+        author="ميسّر العمرة")
+    st = _styles()
+    W = doc.width
+    _DEEP = colors.HexColor("#6E543A")
+    story = []
+
+    def logo_cell(pathobj, h):
+        if not pathobj.is_file():
+            return ""
+        try:
+            iw, ih = ImageReader(str(pathobj)).getSize()
+            return RLImage(str(pathobj), width=h * iw / ih, height=h)
+        except Exception:
+            return ""
+
+    header = Table([[logo_cell(_NIRVANA_PATH, 60), logo_cell(_LOGO_PATH, 52)]],
+                   colWidths=[W / 2, W / 2])
+    header.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (0, 0), "LEFT"), ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 5))
+    band = Table([[Paragraph(ar("مسعّر المجموعات — تفصيل التكلفة"),
+                             ParagraphStyle("gt", fontName=_FONT_BOLD,
+                                            fontSize=15, alignment=1,
+                                            textColor=colors.white,
+                                            leading=19))]], colWidths=[W])
+    band.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+        ("LINEABOVE", (0, 0), (-1, 0), 2, _DEEP),
+        ("LINEBELOW", (0, -1), (-1, -1), 2, _DEEP),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(band)
+    story.append(Spacer(1, 6))
+
+    val = ParagraphStyle("gv", parent=st["cell"], alignment=2, fontSize=9.5,
+                         leading=14)
+
+    def line(text, bold=False):
+        s = ParagraphStyle("gl", parent=val, fontName=(
+            _FONT_BOLD if bold else _FONT))
+        return _ar_para("• " + text, s, W - 16)
+
+    pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
+    if pf or pt:
+        story.append(line(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
+    mk_h = str(data.get("makkah_hotel") or "")
+    md_h = str(data.get("madinah_hotel") or "")
+    mk_n = str(data.get("makkah_nights") or "")
+    md_n = str(data.get("madinah_nights") or "")
+    if mk_h:
+        story.append(line(f"مكة المكرّمة: {mk_h} ({ltr(mk_n)} ليالٍ)"))
+    if md_h:
+        story.append(line(f"المدينة المنوّرة: {md_h} ({ltr(md_n)} ليالٍ)"))
+    story.append(Spacer(1, 8))
+
+    # جدول التفصيل: البيان + عمود لكل نوع غرفة
+    types = [n for n, _ in GROUP_ROOM_TYPES]
+    heads = ["البيان"] + types
+    weights = list(reversed([150, 62, 62, 62, 62, 62]))
+    scale = W / sum(weights)
+    colw = [w * scale for w in weights]
+    avail = [w - 8 for w in colw]
+
+    def cell_row(vals, style):
+        return _ar_cells(list(reversed(vals)), style, avail)
+
+    body = [cell_row(heads, st["head"])]
+
+    def money_row(label, key_or_vals, bold=False, highlight=False):
+        if isinstance(key_or_vals, str):
+            vals = [fmt_money(_gnum(data.get(key_or_vals)))] * 5
+        else:
+            vals = [fmt_money(v) for v in key_or_vals]
+        cs = ParagraphStyle("gc", parent=st["cell"],
+                            fontName=(_FONT_BOLD if bold else _FONT))
+        return cell_row([label] + vals, cs)
+
+    body.append(money_row("كلفة مكة للفرد", [r["makkah"] for r in rows]))
+    body.append(money_row("كلفة المدينة للفرد", [r["madinah"] for r in rows]))
+    for label, key in (("النقل الداخلي", "transport"),
+                       ("نقل المطار", "transport_air"),
+                       ("التأشيرة", "visa"), ("تذكرة الطيران", "ticket"),
+                       ("ماء وعصير وتمر", "water"), ("الهدايا", "gifts"),
+                       ("المصاريف الإدارية", "admin")):
+        if _gnum(data.get(key)):
+            body.append(money_row(label, key))
+    body.append(money_row("التكلفة الصافية", [r["net"] for r in rows],
+                          bold=True))
+    if any(r["margin"] for r in rows):
+        body.append(money_row("الربح والمصاريف", [r["margin"] for r in rows]))
+    n_data = len(body)
+    body.append(money_row("سعر البيع للفرد", [r["selling"] for r in rows],
+                          bold=True))
+
+    t = Table(body, colWidths=colw)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, _ALT_ROW]),
+        # صفّ سعر البيع مميّز بلون الهوية
+        ("BACKGROUND", (0, -1), (-1, -1), _ACCENT),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("ROUNDEDCORNERS", [5, 5, 5, 5]),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 6))
+    story.append(_ar_para(f"العملة: {cur}", ParagraphStyle(
+        "gcur", parent=val, fontSize=9, textColor=colors.HexColor("#666666")),
+        W - 8))
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _footer_portrait(c, d, "مسعّر المجموعات"),
+        onLaterPages=lambda c, d: _footer_portrait(c, d, "مسعّر المجموعات"))
+    return path
+
+
 # ======================================================================
 #  الاستيكرات (للحقائب / للغرف / للأظرف)
 # ======================================================================

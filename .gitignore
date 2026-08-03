@@ -40,3 +40,5 @@ desktop.ini
 
 # ملفات مستندات خارجية تُسقط في tests/ (بيانات خاصة) — لا تُتعقّب
 tests/Hotel Voucher*
+tests/*.xls
+tests/APR 2023*
