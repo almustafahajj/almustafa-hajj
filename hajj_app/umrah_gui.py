@@ -2590,6 +2590,7 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         self._scroll_body()
 
         self._f: dict[str, StringVar] = {}
+        self._widgets: dict[str, object] = {}
         self._build_head()
         self._build_types()
         self._build_hotels()
@@ -2627,6 +2628,11 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         if isinstance(sel, list) and sel:
             for name, var in self._type_vars.items():
                 var.set(name in sel)
+        if "include_madinah" in data:
+            inc = str(data.get("include_madinah")).strip() not in (
+                "", "0", "False", "false")
+            self._inc_md.set(inc)
+            self._toggle_madinah()
         items = data.get("items")
         if isinstance(items, list):
             for entry in list(self._item_rows):
@@ -2659,6 +2665,7 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         else:
             w = ttk.Entry(parent, textvariable=v, width=width, justify="right")
         w.grid(row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
+        self._widgets[key] = w
         v.trace_add("write", lambda *a: self._recalc())
         return v
 
@@ -2694,6 +2701,9 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
                             command=self._recalc).pack(side=RIGHT, padx=8)
             var.trace_add("write", lambda *a: self._recalc())
 
+    _MADINAH_KEYS = ("madinah_hotel", "madinah_nights", "madinah_rate",
+                     "madinah_meals")
+
     def _build_hotels(self):
         lf = self._section("الفنادق (سعر الغرفة/الليلة + الوجبات للفرد)")
         nights = [str(i) for i in range(1, 16)]
@@ -2701,12 +2711,28 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         self._mfield(lf, "ليالي مكة", "makkah_nights", 0, 1, values=nights)
         self._mfield(lf, "سعر غرفة مكة/الليلة", "makkah_rate", 1, 0)
         self._mfield(lf, "وجبات مكة (للفرد)", "makkah_meals", 1, 1)
-        self._mfield(lf, "فندق المدينة", "madinah_hotel", 2, 0, width=22)
-        self._mfield(lf, "ليالي المدينة", "madinah_nights", 2, 1, values=nights)
-        self._mfield(lf, "سعر غرفة المدينة/الليلة", "madinah_rate", 3, 0)
-        self._mfield(lf, "وجبات المدينة (للفرد)", "madinah_meals", 3, 1)
+        # تضمين المدينة المنوّرة (يمكن حذفها لمجموعات مكة فقط)
+        self._inc_md = BooleanVar(value=True)
+        ttk.Checkbutton(lf, text="تضمين المدينة المنوّرة", variable=self._inc_md,
+                        command=self._toggle_madinah).grid(
+            row=2, column=0, columnspan=4, sticky="e", padx=(8, 4), pady=(8, 2))
+        self._mfield(lf, "فندق المدينة", "madinah_hotel", 3, 0, width=22)
+        self._mfield(lf, "ليالي المدينة", "madinah_nights", 3, 1, values=nights)
+        self._mfield(lf, "سعر غرفة المدينة/الليلة", "madinah_rate", 4, 0)
+        self._mfield(lf, "وجبات المدينة (للفرد)", "madinah_meals", 4, 1)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
+
+    def _toggle_madinah(self):
+        state = "normal" if self._inc_md.get() else "disabled"
+        for key in self._MADINAH_KEYS:
+            w = self._widgets.get(key)
+            if w is not None:
+                try:
+                    w.configure(state=state)
+                except Exception:
+                    pass
+        self._recalc()
 
     _DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة", "تذكرة الطيران",
                       "ماء وعصير وتمر", "الهدايا", "المصاريف الإدارية")
@@ -2796,6 +2822,9 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         data["room_types"] = [name for name, var
                               in getattr(self, "_type_vars", {}).items()
                               if var.get()]
+        # تضمين المدينة المنوّرة
+        data["include_madinah"] = "1" if getattr(
+            self, "_inc_md", None) and self._inc_md.get() else "0"
         return data
 
     def _recalc(self):

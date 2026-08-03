@@ -669,6 +669,14 @@ assert next(r for r in _gper if r["type"] == "ثنائي")["margin"] == 300.0
 _gsel = umrah.group_pricing({**_gd, "room_types": ["ثنائي", "ثلاثي"]})
 assert [r["type"] for r in _gsel] == ["ثنائي", "ثلاثي"]
 assert umrah.group_pricing({**_gd, "room_types": []}) == _grows   # فارغ = الكل
+# حذف المدينة أو تضمينها
+_gmd = {**_gd, "madinah_rate": "1000", "madinah_nights": "2"}
+assert all(r["madinah"] == 0.0
+           for r in umrah.group_pricing({**_gmd, "include_madinah": "0"}))
+assert next(r for r in umrah.group_pricing({**_gmd, "include_madinah": "1"})
+            if r["type"] == "ثنائي")["madinah"] == 1000.0
+assert next(r for r in umrah.group_pricing(_gmd)   # غياب المفتاح = مُضمّنة
+            if r["type"] == "ثنائي")["madinah"] == 1000.0
 _gp = WORK / "group.pdf"
 export_group_pricing_pdf(_gd, _gp)
 assert _gp.read_bytes()[:5] == b"%PDF-" and _gp.stat().st_size > 3000
@@ -706,6 +714,16 @@ assert "مفرد" not in _shown and "ثنائي" in _shown
 assert _gw._collect()["room_types"] == ["ثنائي", "ثلاثي", "رباعي", "طفل"]
 _gw._type_vars["مفرد"].set(True)
 rg.update()
+# حذف/تضمين المدينة
+_gw._f["madinah_rate"].set("1000"); _gw._f["madinah_nights"].set("2")
+_gw._inc_md.set(False); _gw._toggle_madinah(); rg.update()
+assert _gw._collect()["include_madinah"] == "0"
+assert str(_gw._widgets["madinah_rate"].cget("state")) == "disabled"
+_dbl2 = next(r for r in umrah.group_pricing(_gw._collect())
+             if r["type"] == "ثنائي")
+assert _dbl2["madinah"] == 0.0
+_gw._inc_md.set(True); _gw._toggle_madinah(); rg.update()
+assert str(_gw._widgets["madinah_rate"].cget("state")) == "normal"
 _gw._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 # حفظ التسعير داخل البرنامج واستعراضه لاحقاً

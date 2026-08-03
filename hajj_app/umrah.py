@@ -354,6 +354,9 @@ def group_pricing(data: dict) -> list:
     md_rate, md_n = _gnum(data.get("madinah_rate")), _gnum(data.get("madinah_nights"))
     mk_meals = _gnum(data.get("makkah_meals"))
     md_meals = _gnum(data.get("madinah_meals"))
+    # تضمين المدينة المنوّرة (يمكن حذفها لمجموعات مكة فقط)؛ غياب المفتاح = مُضمّنة
+    if str(data.get("include_madinah", "1")).strip() in ("", "0", "False", "false"):
+        md_rate = md_n = md_meals = 0.0
     # الخدمات: بنود ديناميكية [الاسم، المبلغ] إن وُجدت، وإلّا الحقول الثابتة
     items = data.get("items")
     if items is not None:

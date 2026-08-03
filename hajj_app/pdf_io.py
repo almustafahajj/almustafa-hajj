@@ -3769,13 +3769,15 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
     pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
     if pf or pt:
         story.append(line(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
+    inc_md = str(data.get("include_madinah", "1")).strip() not in (
+        "", "0", "False", "false")
     mk_h = str(data.get("makkah_hotel") or "")
     md_h = str(data.get("madinah_hotel") or "")
     mk_n = str(data.get("makkah_nights") or "")
     md_n = str(data.get("madinah_nights") or "")
     if mk_h:
         story.append(line(f"مكة المكرّمة: {mk_h} ({ltr(mk_n)} ليالٍ)"))
-    if md_h:
+    if inc_md and md_h:
         story.append(line(f"المدينة المنوّرة: {md_h} ({ltr(md_n)} ليالٍ)"))
     story.append(Spacer(1, 8))
 
@@ -3805,7 +3807,8 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
         return cell_row([label] + vals, cs)
 
     body.append(money_row("كلفة مكة للفرد", [r["makkah"] for r in rows]))
-    body.append(money_row("كلفة المدينة للفرد", [r["madinah"] for r in rows]))
+    if inc_md:
+        body.append(money_row("كلفة المدينة للفرد", [r["madinah"] for r in rows]))
     # البنود: ديناميكية إن وُجدت، وإلّا الحقول الثابتة
     items = data.get("items")
     if items is not None:
