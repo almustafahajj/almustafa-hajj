@@ -33,6 +33,7 @@
     <div class="form-actions">
       <a class="btn-ghost" href="{{ url_for('umrah_quotation_pdf', code=code, idx=idx, lang='ar') }}" target="_blank">👁 معاينة عربي</a>
       <a class="btn-ghost" href="{{ url_for('umrah_quotation_pdf', code=code, idx=idx, lang='en') }}" target="_blank">👁 Preview English</a>
+      <a class="btn-ghost" href="{{ url_for('umrah_quotation_edit', code=code, idx=idx) }}">✏️ تعديل الحقول</a>
       {% if can_edit %}<button type="submit" class="btn-primary">💾 حفظ العرض</button>{% endif %}
     </div>
   </form>

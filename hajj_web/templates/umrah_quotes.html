@@ -28,6 +28,7 @@
           <td class="rowacts">
             <a class="lnk" href="{{ url_for('umrah_saved_quote_pdf', code=trip.code, number=q.number, lang='ar') }}" target="_blank">عربي</a>
             <a class="lnk" href="{{ url_for('umrah_saved_quote_pdf', code=trip.code, number=q.number, lang='en') }}" target="_blank">EN</a>
+            {% if can_edit %}<a class="lnk" href="{{ url_for('umrah_saved_quote_edit', code=trip.code, number=q.number) }}">✏️</a>{% endif %}
           </td>
           {% if can_edit %}<td>
             <form method="post" class="inline"

@@ -796,6 +796,61 @@ assert all(not (getattr(x, "vehicle", "") or "")
 assert vw.post("/umrah/program/U1/transport/auto").status_code == 403
 print("  OK: توزيع المواصلات التفاعلي على الويب — تلقائي وتعديل ومسح")
 
+# --- المرحلة ١١: محرّر عرض السعر (تعديل الحقول) ---
+import json as _json
+from hajj_app import pdf_io as _pio
+_am.set_mode("umrah")
+_rcq, _ = storage.load_records(UDATA, admin)
+_rec0 = _um.trip_pilgrims(_rcq, "U1")[0]
+_tU1 = next(t for t in _um.load_trips(storage.load_settings()) if t.code == "U1")
+_base = _pio.build_quotation_data(_rec0, trip=_tU1, lang="ar")
+_bjson = _json.dumps(_base, ensure_ascii=False)
+# صفحة المحرّر تظهر بالحقول
+ed = um.get("/umrah/program/U1/pilgrim/0/quotation/edit").get_data(as_text=True)
+assert "تعديل عرض السعر" in ed and 'name="base"' in ed
+# معاينة بعد التعديل
+_common = {"base": _bjson, "lang": "ar", "addressed_to": "ضيف",
+           "addressed_title": "السيد", "currency": "ريال",
+           "pricing_type_0": "كبار", "pricing_room_0": "ثنائي",
+           "pricing_count_0": "2", "pricing_price_0": "1500", "note": "ملاحظة"}
+pv = um.post("/umrah/program/U1/pilgrim/0/quotation/edit",
+             data=dict(_common, action="preview", title="عرض معاينة"))
+assert pv.status_code == 200 and pv.data[:5] == b"%PDF-"
+# حفظ عرض معدّل (رقم جديد)
+sv = um.post("/umrah/program/U1/pilgrim/0/quotation/edit",
+             data=dict(_common, action="save", title="عرض محفوظ",
+                       addressed_to="ضيف مهم", pricing_price_0="1600"))
+assert sv.status_code == 302 and "/umrah/program/U1/quotes" in sv.headers["Location"]
+_am.set_mode("umrah")
+_q = _um.load_quotes(storage.load_settings(), "U1")[-1]
+assert _q["title"] == "عرض محفوظ" and _q["addressed_to"] == "ضيف مهم"
+assert _q["pricing"][0][3] == "1600"
+QE = str(_q["number"])
+# إعادة فتح المحفوظ في المحرّر
+ed2 = um.get(f"/umrah/quote/U1/{QE}/edit").get_data(as_text=True)
+assert "عرض محفوظ" in ed2 and "ضيف مهم" in ed2
+# تعديل وحفظ يُبقي نفس الرقم
+_b2 = _json.dumps(_q, ensure_ascii=False)
+sv2 = um.post(f"/umrah/quote/U1/{QE}/edit", data={
+    "base": _b2, "action": "save", "lang": "ar", "title": "عرض نهائي",
+    "currency": "درهم", "addressed_to": "ضيف", "pricing_type_0": "كبار",
+    "pricing_room_0": "ثنائي", "pricing_count_0": "2", "pricing_price_0": "1700"})
+assert sv2.status_code == 302
+_am.set_mode("umrah")
+_match = [x for x in _um.load_quotes(storage.load_settings(), "U1")
+          if str(x.get("number")) == QE]
+assert len(_match) == 1 and _match[0]["title"] == "عرض نهائي"
+assert _match[0]["pricing"][0][3] == "1700"       # لم يتكرّر، حُدّث بنفس الرقم
+# معاينة من المحرّر المحفوظ + رقم مجهول 404
+pv2 = um.post(f"/umrah/quote/U1/{QE}/edit",
+              data={"base": _b2, "action": "preview", "lang": "en", "title": "x"})
+assert pv2.status_code == 200 and pv2.data[:5] == b"%PDF-"
+assert um.get("/umrah/quote/U1/NOPE/edit").status_code == 404
+# المطّلع لا يحفظ عبر المحرّر
+assert vw.post("/umrah/program/U1/pilgrim/0/quotation/edit",
+               data={"base": "{}", "action": "save"}).status_code == 403
+print("  OK: محرّر عرض السعر — تعديل الحقول والتسعير، معاينة وحفظ (جديد ومحفوظ)")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

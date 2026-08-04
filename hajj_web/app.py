@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import io
+import json
 import os
 import secrets
 import tempfile
@@ -1057,6 +1058,95 @@ def create_app(auth_path: str | Path | None = None,
         _audit("حذف عرض سعر", number)
         flash("حُذف عرض السعر", "ok")
         return redirect(url_for("umrah_quotes", code=code))
+
+    # ---- محرّر عرض السعر (تعديل الحقول قبل المعاينة/الحفظ) ----
+    def _apply_quote_edits(base):
+        """يدمج تعديلات النموذج على بيانات العرض الأساسية (base)."""
+        f = request.form
+        d = dict(base)
+        d["lang"] = "en" if f.get("lang") == "en" else "ar"
+        for k in ("title", "addressed_title", "addressed_to", "currency",
+                  "validity", "validity_time"):
+            d[k] = (f.get(k) or "").strip()
+        d["note"] = (f.get("note") or "").strip()
+        pricing = []
+        for i in range(6):
+            row = [(f.get(f"pricing_type_{i}") or "").strip(),
+                   (f.get(f"pricing_room_{i}") or "").strip(),
+                   (f.get(f"pricing_count_{i}") or "").strip(),
+                   (f.get(f"pricing_price_{i}") or "").strip()]
+            if any(row):
+                pricing.append(row)
+        if pricing:
+            d["pricing"] = pricing
+        return d
+
+    def _quote_editor(base, action, code):
+        pricing = [[(list(r) + ["", "", "", ""])[j] for j in range(4)]
+                   for r in (base.get("pricing") or [])]
+        while len(pricing) < 3:
+            pricing.append(["", "", "", ""])
+        return render_template(
+            "umrah_quotation_edit.html",
+            base_json=json.dumps(base, ensure_ascii=False), data=base,
+            pricing=pricing, action=action, code=code,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit)
+
+    def _quote_editor_post(rec, code, fallback_number):
+        """يعالج POST المحرّر: معاينة PDF أو حفظ. يعيد استجابة Flask."""
+        try:
+            base = json.loads(request.form.get("base") or "{}")
+        except ValueError:
+            abort(400)
+        data = _apply_quote_edits(base)
+        if request.form.get("action") == "save":
+            if not g.session.can_edit:
+                abort(403)
+            with _WRITE_LOCK:
+                settings = storage.load_settings()
+                if not data.get("number"):
+                    data["number"] = (fallback_number
+                                      or umrah.next_quote_number(settings))
+                umrah.save_quote(settings, code, data)
+                storage.save_settings(settings)
+            _audit("حفظ عرض سعر", data.get("number", ""))
+            flash(f"حُفظ عرض السعر {data['number']}", "ok")
+            return redirect(url_for("umrah_quotes", code=code))
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_quotation_pdf(
+                rec, p, data=data, company=_company()),
+            f"عرض {data.get('number') or code}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/quotation/edit",
+               methods=["GET", "POST"])
+    @login_required
+    def umrah_quotation_edit(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        if request.method == "POST":
+            return _quote_editor_post(rec, code, fallback_number="")
+        lang = "en" if request.args.get("lang") == "en" else "ar"
+        base = pdf_io.build_quotation_data(rec, trip=trip, company=_company(),
+                                           lang=lang)
+        return _quote_editor(
+            base, url_for("umrah_quotation_edit", code=code, idx=idx), code)
+
+    @app.route("/umrah/quote/<code>/<number>/edit", methods=["GET", "POST"])
+    @login_required
+    def umrah_saved_quote_edit(code, number):
+        _trip_or_404(code)
+        if request.method == "POST":
+            return _quote_editor_post(PassportData(), code,
+                                      fallback_number=number)
+        q = next((x for x in umrah.load_quotes(storage.load_settings(), code)
+                  if str(x.get("number")) == number), None)
+        if q is None:
+            abort(404)
+        return _quote_editor(
+            dict(q), url_for("umrah_saved_quote_edit", code=code, number=number),
+            code)
 
     # ================ الفاوتشر وكشوف التسكين/المواصلات/الطيران ================
     @app.route("/umrah/program/<code>/rooming/<city>.pdf")

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}تعديل عرض السعر{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">✏️ تعديل عرض السعر</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_quotes', code=code) }}">📋 عروض البرنامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head"><h1>تعديل عرض السعر{% if data.get('number') %} — {{ data.get('number') }}{% endif %}</h1></div>
+  <p class="tip">تُعدَّل الحقول الرئيسية؛ وبقية التفاصيل (الإقامة والطيران والمواصلات) محفوظة كما بُنيت تلقائياً.</p>
+
+  <form method="post" action="{{ action }}" class="record-form">
+    <input type="hidden" name="base" value="{{ base_json }}">
+    <div class="cards">
+      <section class="card">
+        <h2>العرض والتوجيه</h2>
+        <div class="field"><label>اللغة</label>
+          <select name="lang">
+            <option value="ar" {% if data.get('lang') != 'en' %}selected{% endif %}>العربية</option>
+            <option value="en" {% if data.get('lang') == 'en' %}selected{% endif %}>الإنجليزية (English)</option>
+          </select></div>
+        <div class="field"><label>عنوان العرض</label>
+          <input type="text" name="title" value="{{ data.get('title','') }}"></div>
+        <div class="field"><label>اللقب</label>
+          <input type="text" name="addressed_title" value="{{ data.get('addressed_title','') }}"></div>
+        <div class="field"><label>موجّه إلى</label>
+          <input type="text" name="addressed_to" value="{{ data.get('addressed_to','') }}"></div>
+        <div class="field"><label>العملة</label>
+          <input type="text" name="currency" value="{{ data.get('currency','') }}"></div>
+        <div class="field"><label>صلاحية العرض</label>
+          <input type="text" name="validity" value="{{ data.get('validity','') }}"></div>
+        <div class="field"><label>وقت الصلاحية</label>
+          <input type="text" name="validity_time" value="{{ data.get('validity_time','') }}"></div>
+      </section>
+
+      <section class="card">
+        <h2>التسعير</h2>
+        <p class="muted">لكل صفّ: نوع الشخص · نوع الغرفة · العدد · سعر الفرد.</p>
+        {% for pr in pricing %}
+        <div class="field pair4">
+          <input type="text" name="pricing_type_{{ loop.index0 }}" value="{{ pr[0] }}" placeholder="نوع الشخص">
+          <input type="text" name="pricing_room_{{ loop.index0 }}" value="{{ pr[1] }}" placeholder="الغرفة">
+          <input type="text" inputmode="numeric" name="pricing_count_{{ loop.index0 }}" value="{{ pr[2] }}" placeholder="العدد">
+          <input type="text" inputmode="numeric" name="pricing_price_{{ loop.index0 }}" value="{{ pr[3] }}" placeholder="السعر">
+        </div>
+        {% endfor %}
+      </section>
+
+      <section class="card">
+        <h2>الملاحظات</h2>
+        <div class="field"><label>ملاحظات العرض</label>
+          <textarea name="note" rows="4">{{ data.get('note','') }}</textarea></div>
+      </section>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" name="action" value="preview" formtarget="_blank" class="btn-ghost">👁 معاينة PDF</button>
+      {% if can_edit %}<button type="submit" name="action" value="save" class="btn-primary">💾 حفظ العرض</button>{% endif %}
+    </div>
+  </form>
+</main>
+{% endblock %}
