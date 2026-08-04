@@ -485,6 +485,20 @@ assert um.get("/umrah/program/ZZ").status_code == 404
 # الملخّص المالي PDF للبرنامج
 fp = um.get("/umrah/program/U1/finance.pdf")
 assert fp.status_code == 200 and fp.data[:5] == b"%PDF-"
+# كشف المعتمرين PDF/إكسل + مستندات المعتمر (سند/فاتورة/عقد)
+assert "كشف المعتمرين PDF" in prog and "المستندات" in prog
+rpdf = um.get("/umrah/program/U1/roster.pdf")
+assert rpdf.status_code == 200 and rpdf.data[:5] == b"%PDF-"
+assert "inline" in rpdf.headers.get("Content-Disposition", "")   # معاينة
+rxls = um.get("/umrah/program/U1/roster.xlsx")
+assert rxls.status_code == 200 and rxls.data[:2] == b"PK"
+assert "attachment" in rxls.headers.get("Content-Disposition", "")  # تنزيل
+for _doc in ("receipt", "invoice", "contract"):
+    d = um.get(f"/umrah/program/U1/pilgrim/0/{_doc}.pdf")
+    assert d.status_code == 200 and d.data[:5] == b"%PDF-", _doc
+# معتمر خارج البرنامج / برنامج مجهول -> 404
+assert um.get("/umrah/program/U1/pilgrim/99/receipt.pdf").status_code == 404
+assert um.get("/umrah/program/ZZ/roster.pdf").status_code == 404
 # بيانات العمرة معزولة عن الحج: ملفّ umrah.json مستقلّ
 assert UDATA.is_file() and DATA.is_file() and UDATA != DATA
 

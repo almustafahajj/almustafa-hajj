@@ -25,8 +25,10 @@
   </div>
 
   <div class="exports">
-    <span class="exp-label">الإدارة المالية:</span>
-    <a class="exp-btn" href="{{ url_for('umrah_finance_pdf', code=trip.code) }}" target="_blank">📄 الملخّص المالي PDF</a>
+    <span class="exp-label">كشوف ومستندات:</span>
+    <a class="exp-btn" href="{{ url_for('umrah_roster_pdf', code=trip.code) }}" target="_blank">📄 كشف المعتمرين PDF</a>
+    <a class="exp-btn" href="{{ url_for('umrah_roster_xlsx', code=trip.code) }}">📊 إكسل</a>
+    <a class="exp-btn" href="{{ url_for('umrah_finance_pdf', code=trip.code) }}" target="_blank">💰 الملخّص المالي PDF</a>
     {% if can_edit %}
     <form method="post" class="inline" action="{{ url_for('umrah_program_delete', code=trip.code) }}"
           onsubmit="return confirm('حذف البرنامج «{{ trip.name or trip.code }}»؟');">
@@ -42,7 +44,7 @@
         <tr>
           <th class="idx">م</th><th>اسم المعتمر</th><th>رقم الجواز</th>
           <th>الغرفة</th><th>القيمة</th><th>المحصّل</th><th>المتبقّي</th><th>الحالة</th>
-          <th>الدفعات</th>{% if can_edit %}<th></th>{% endif %}
+          <th>الدفعات</th><th>المستندات</th>{% if can_edit %}<th></th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -53,6 +55,11 @@
           <td>{{ r.paid }}</td><td>{{ r.remaining }}</td>
           <td><span class="badge {{ r.cls }}">{{ r.status }}</span></td>
           <td><a class="lnk" href="{{ url_for('umrah_payments', code=trip.code, idx=r.idx) }}">💵 {{ r.npays }}</a></td>
+          <td class="rowacts">
+            <a class="lnk" title="سند قبض" href="{{ url_for('umrah_receipt_pdf', code=trip.code, idx=r.idx) }}" target="_blank">🧾</a>
+            <a class="lnk" title="فاتورة" href="{{ url_for('umrah_invoice_pdf', code=trip.code, idx=r.idx) }}" target="_blank">📄</a>
+            <a class="lnk" title="عقد" href="{{ url_for('umrah_contract_pdf', code=trip.code, idx=r.idx) }}" target="_blank">📜</a>
+          </td>
           {% if can_edit %}<td class="rowacts">
             <a class="lnk" href="{{ url_for('umrah_pilgrim_edit', code=trip.code, idx=r.idx) }}">✏️</a>
             <form method="post" class="inline" action="{{ url_for('umrah_pilgrim_delete', code=trip.code, idx=r.idx) }}"
@@ -63,7 +70,7 @@
           </td>{% endif %}
         </tr>
         {% else %}
-        <tr><td class="empty" colspan="{{ 10 if can_edit else 9 }}">لا معتمرين في هذا البرنامج.</td></tr>
+        <tr><td class="empty" colspan="{{ 11 if can_edit else 10 }}">لا معتمرين في هذا البرنامج.</td></tr>
         {% endfor %}
       </tbody>
     </table>

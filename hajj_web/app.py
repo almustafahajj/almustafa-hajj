@@ -675,6 +675,75 @@ def create_app(auth_path: str | Path | None = None,
         flash("حُذفت الدفعة", "ok")
         return redirect(url_for("umrah_payments", code=code, idx=idx))
 
+    # ---- كشف المعتمرين ومستنداتهم (PDF/إكسل) ----
+    def _program_pilgrims_or_login(code):
+        """يعيد (trip, pilgrims) لبرنامج، أو استجابة تحويل عند فشل التشفير."""
+        trip = _trip_or_404(code)
+        try:
+            records, _ = storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return None, redirect(url_for("login"))
+        return trip, umrah.trip_pilgrims(records, code)
+
+    @app.route("/umrah/program/<code>/roster.pdf")
+    @login_required
+    def umrah_roster_pdf(code):
+        trip, pilgrims = _program_pilgrims_or_login(code)
+        if trip is None:
+            return pilgrims                      # استجابة تحويل
+        if not pilgrims:
+            abort(404)
+        label = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_pdf(
+                pilgrims, p, program_name=label,
+                depart_date=trip.depart_date or ""),
+            f"معتمرو {trip.code}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/roster.xlsx")
+    @login_required
+    def umrah_roster_xlsx(code):
+        trip, pilgrims = _program_pilgrims_or_login(code)
+        if trip is None:
+            return pilgrims
+        if not pilgrims:
+            abort(404)
+        label = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        return _send_generated(
+            lambda p: excel_io.export_umrah_excel(pilgrims, p, program_name=label),
+            f"معتمرو {trip.code}.xlsx", _XLSX_MIME)
+
+    def _umrah_doc(code, idx, export_fn, base):
+        """يعاين مستند معتمر (سند/فاتورة/عقد) للبرنامج المحدّد بصيغة PDF."""
+        trip = _trip_or_404(code)
+        try:
+            records, _ = storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        rec = _pilgrim_in_program(records, code, idx)
+        label = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        ident = rec.reference_number or rec.passport_number or code
+        return _send_generated(
+            lambda p: export_fn(rec, p, program_name=label, company=_company()),
+            f"{base} {ident}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/receipt.pdf")
+    @login_required
+    def umrah_receipt_pdf(code, idx):
+        return _umrah_doc(code, idx, pdf_io.export_umrah_receipt_pdf, "سند")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/invoice.pdf")
+    @login_required
+    def umrah_invoice_pdf(code, idx):
+        return _umrah_doc(code, idx, pdf_io.export_umrah_invoice_pdf, "فاتورة")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/contract.pdf")
+    @login_required
+    def umrah_contract_pdf(code, idx):
+        return _umrah_doc(code, idx, pdf_io.export_umrah_contract_pdf, "عقد")
+
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
 
