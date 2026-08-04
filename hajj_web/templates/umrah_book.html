@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}حجز بالتسعير — {{ trip.name or trip.code }}{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">🧮 الحجز بالتسعير — «{{ trip.name or trip.code }}»</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_program', code=trip.code) }}">↩ رجوع للبرنامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head"><h1>الحجز بالتسعير</h1></div>
+  <p class="tip">تُحسب قيمة الفرد تلقائياً = سعر الغرفة + مجموع الخدمات المختارة.</p>
+
+  <form class="record-form" method="post" action="{{ url_for('umrah_book', code=trip.code) }}">
+    <div class="cards">
+      <section class="card">
+        <h2>بيانات المعتمر</h2>
+        <div class="field"><label>الاسم بالعربي</label><input type="text" name="full_name_ar"></div>
+        <div class="field"><label>الاسم بالإنجليزي</label><input type="text" name="full_name_en"></div>
+        <div class="field"><label>رقم الجواز</label><input type="text" name="passport_number"></div>
+        <div class="field"><label>الجنسية</label><input type="text" name="nationality_ar"></div>
+        <div class="field"><label>الهاتف</label><input type="text" name="phone"></div>
+        <div class="field"><label>عدد الأشخاص (لاقتراح النقل)</label>
+          <input type="text" inputmode="numeric" name="persons" id="persons" value="1"></div>
+      </section>
+
+      <section class="card">
+        <h2>الغرفة والخدمات</h2>
+        <div class="field"><label>نوع الغرفة</label>
+          <select name="room_type" id="room" onchange="calc()">
+            {% for r in rooms %}
+            <option value="{{ r.name }}" data-price="{{ r.price|replace(',','') }}">{{ r.name }} — {{ r.price }}</option>
+            {% endfor %}
+          </select></div>
+        <div class="field"><label>الخدمات الإضافية</label>
+          <div class="checks">
+            {% for s in svcs %}
+            <label class="chk-inline"><input type="checkbox" name="services" value="{{ s.name }}" data-price="{{ s.price|replace(',','') }}" onchange="calc()"> {{ s.name }} ({{ s.price }})</label>
+            {% else %}
+            <span class="muted">لا خدمات مسعّرة في هذا البرنامج.</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="field"><label>قيمة الفرد المحسوبة</label>
+          <input type="text" id="total" value="0" readonly></div>
+      </section>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">💾 حجز المعتمر</button>
+      <a class="btn-ghost" href="{{ url_for('umrah_program', code=trip.code) }}">إلغاء</a>
+    </div>
+  </form>
+</main>
+<script>
+  function calc(){
+    var room = document.getElementById('room');
+    var base = room && room.selectedOptions.length ? parseFloat(room.selectedOptions[0].dataset.price||0) : 0;
+    var extra = 0;
+    document.querySelectorAll('input[name="services"]:checked').forEach(function(c){
+      extra += parseFloat(c.dataset.price||0);
+    });
+    var t = (base + extra);
+    document.getElementById('total').value = t.toLocaleString('en-US');
+  }
+  calc();
+</script>
+{% endblock %}

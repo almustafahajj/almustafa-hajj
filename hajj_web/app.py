@@ -45,6 +45,15 @@ def _push_undo(records, label):
     _UNDO.append((label, copy.deepcopy(records)))
     del _UNDO[:-_UNDO_MAX]
 
+
+def _plain_amount(x) -> str:
+    """نصّ رقميّ بلا كسور إن كان عدداً صحيحاً (4200 لا 4200.0)."""
+    try:
+        v = float(x or 0)
+    except (TypeError, ValueError):
+        return "0"
+    return str(int(v)) if v.is_integer() else str(v)
+
 # أعمدة الجدول (المفتاح، العنوان) — عنوان مختصر مأخوذ من fields حيث أمكن
 COLUMNS = [
     ("full_name_ar", "اسم الحاج"),
@@ -613,6 +622,56 @@ def create_app(auth_path: str | Path | None = None,
         _audit("حذف معتمر", name)
         flash(f"حُذف المعتمر: {name}", "ok")
         return redirect(url_for("umrah_program", code=code))
+
+    # ---- الحجز بالتسعير (يحسب قيمة الفرد من الغرفة + الخدمات) ----
+    @app.route("/umrah/program/<code>/book", methods=["GET", "POST"])
+    @edit_required
+    def umrah_book(code):
+        trip = _trip_or_404(code)
+        smap = umrah.services_map(trip)
+        rooms = [{"name": n, "price": fields.format_amount(umrah.room_price(trip, k))}
+                 for k, n, _o in umrah.ROOM_TYPES]
+        svcs = [{"name": n, "price": fields.format_amount(p)}
+                for n, p in smap.items()]
+        if request.method == "POST":
+            room_name = (request.form.get("room_type") or "").strip()
+            room_key = next((k for k, n, _o in umrah.ROOM_TYPES if n == room_name),
+                            "price_double")
+            sel = request.form.getlist("services")
+            try:
+                persons = int(float(request.form.get("persons") or 1))
+            except ValueError:
+                persons = 1
+            per = umrah.package_per_person(trip, room_key, sel)
+            with _WRITE_LOCK:
+                records, _ = storage.load_records(_data_path(), g.session)
+                trip2 = next((t for t in umrah.load_trips(storage.load_settings())
+                              if t.code == code), trip)
+                rec = PassportData(source_file="حجز ويب")
+                rec.full_name_ar = (request.form.get("full_name_ar") or "").strip()
+                rec.full_name_en = (request.form.get("full_name_en") or "").strip()
+                rec.passport_number = (request.form.get("passport_number") or "").strip()
+                rec.phone = (request.form.get("phone") or "").strip()
+                rec.nationality_ar = (request.form.get("nationality_ar") or "").strip()
+                rec.room_type = room_name
+                rec.room_value = _plain_amount(umrah.room_price(trip2, room_key))
+                rec.program_value = _plain_amount(per)
+                rec.umrah_services = [{"name": n,
+                                       "price": _plain_amount(smap.get(n, 0))}
+                                      for n in sel]
+                rec.transport = umrah.suggest_transport(persons)
+                umrah.apply_trip_to_record(trip2, rec)
+                rec.trip = code
+                rec.reference_number = umrah.next_reference(trip2, records)
+                records.append(rec)
+                storage.save_records(records, _data_path(), g.session)
+            name = rec.full_name_ar or rec.passport_number or "—"
+            _audit("حجز معتمر بالتسعير", f"{name} — {_plain_amount(per)}")
+            flash(f"حُجز {name} بقيمة {fields.format_amount(per)}", "ok")
+            return redirect(url_for("umrah_program", code=code))
+        return render_template(
+            "umrah_book.html", trip=trip, rooms=rooms, svcs=svcs,
+            username=g.session.username, role=g.session.role_label)
 
     # ---- سجلّ الدفعات (الأقساط) للمعتمر ----
     @app.route("/umrah/program/<code>/pilgrim/<int:idx>/payments")

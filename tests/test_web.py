@@ -679,6 +679,36 @@ assert um.get("/umrah/program/U1/rooming/zzz.pdf").status_code == 404
 assert um.get("/umrah/program/U1/pilgrim/99/voucher.pdf").status_code == 404
 print("  OK: الفاوتشر وكشوف التسكين/المواصلات/الطيران/البطاقات على الويب")
 
+# --- المرحلة ٧: الحجز بالتسعير ---
+_am.set_mode("umrah")
+_s7 = storage.load_settings()
+_t7 = _um.load_trips(_s7)
+_t7.append(_um.UmrahTrip(code="BK", name="حجز", price_double="4000",
+           price_triple="3500",
+           services=[{"name": "تأمين طبّي", "price": "200"},
+                     {"name": "زيارة المدينة", "price": "300"}]))
+_um.save_trips(_s7, _t7)
+storage.save_settings(_s7)
+bk = um.get("/umrah/program/BK/book").get_data(as_text=True)
+assert "الحجز بالتسعير" in bk and "تأمين طبّي" in bk and "4,000" in bk
+# حجز بغرفة ثنائية + خدمة تأمين => القيمة = 4200 (4000 + 200)
+r = um.post("/umrah/program/BK/book", data={
+    "full_name_ar": "حاجز جديد", "passport_number": "BK-1",
+    "room_type": "ثنائي", "services": ["تأمين طبّي"], "persons": "2"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc, _ = storage.load_records(UDATA, admin)
+_bp = [x for x in _rc if x.trip == "BK"]
+assert len(_bp) == 1
+assert _bp[0].program_value == "4200" and _bp[0].room_type == "ثنائي"
+assert _bp[0].room_value == "4000"
+assert any(s["name"] == "تأمين طبّي" for s in _bp[0].umrah_services)
+assert "فورد" in _bp[0].transport                 # شخصان -> فورد
+assert _bp[0].reference_number.startswith("BK-")   # رقم مرجعي تلقائي
+# المطّلع ممنوع من الحجز
+assert vw.get("/umrah/program/BK/book").status_code == 403
+print("  OK: الحجز بالتسعير على الويب — قيمة الفرد محسوبة من الغرفة والخدمات")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

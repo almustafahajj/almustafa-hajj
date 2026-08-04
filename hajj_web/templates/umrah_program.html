@@ -5,7 +5,8 @@
   <div class="titles"><span class="app-title">💰 {{ trip.name or trip.code }}</span></div>
   <div class="spacer"></div>
   <div class="user">
-    {% if can_edit %}<a class="add-btn" href="{{ url_for('umrah_pilgrim_new', code=trip.code) }}">➕ إضافة معتمر</a>{% endif %}
+    {% if can_edit %}<a class="add-btn" href="{{ url_for('umrah_book', code=trip.code) }}">🧮 حجز بالتسعير</a>{% endif %}
+    {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('umrah_pilgrim_new', code=trip.code) }}">➕ إضافة يدوي</a>{% endif %}
     {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('umrah_program_edit', code=trip.code) }}">✏️ تعديل البرنامج</a>{% endif %}
     <a class="add-btn ghost-add" href="{{ url_for('umrah_programs') }}">🌙 كل البرامج</a>
     <span class="who">👤 {{ username }} · {{ role }}</span>
