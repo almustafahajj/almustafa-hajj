@@ -1231,6 +1231,75 @@ def create_app(auth_path: str | Path | None = None,
                 rec, p, data=data, company=_company()),
             f"فاوتشر {ident}.pdf", "application/pdf")
 
+    # ---- محرّر الفاوتشر (تعديل الحقول قبل المعاينة) ----
+    def _apply_voucher_edits(base):
+        f = request.form
+        d = dict(base)
+        d["lang"] = "en" if f.get("lang") == "en" else "ar"
+        for k in ("guest_ar", "guest_en", "booking_no", "program", "status"):
+            d[k] = (f.get(k) or "").strip()
+        stays = []
+        for i in range(4):
+            row = [(f.get(f"stay_city_{i}") or "").strip(),
+                   (f.get(f"stay_hotel_{i}") or "").strip(),
+                   (f.get(f"stay_room_{i}") or "").strip(),
+                   (f.get(f"stay_view_{i}") or "").strip(),
+                   (f.get(f"stay_cin_{i}") or "").strip(),
+                   (f.get(f"stay_cout_{i}") or "").strip(),
+                   (f.get(f"stay_nights_{i}") or "").strip(),
+                   (f.get(f"stay_meals_{i}") or "").strip()]
+            if any(row):
+                stays.append(row)
+        if stays:
+            d["stays"] = stays
+        trans = []
+        for i in range(3):
+            row = [(f.get(f"tr_car_{i}") or "").strip(),
+                   (f.get(f"tr_model_{i}") or "").strip(),
+                   (f.get(f"tr_dest_{i}") or "").strip()]
+            if any(row):
+                trans.append(row)
+        if trans:
+            d["transport_rows"] = trans
+        return d
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/voucher/edit",
+               methods=["GET", "POST"])
+    @login_required
+    def umrah_voucher_edit(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        if request.method == "POST":
+            try:
+                base = json.loads(request.form.get("base") or "{}")
+            except ValueError:
+                abort(400)
+            data = _apply_voucher_edits(base)
+            ident = data.get("number") or rec.reference_number or code
+            return _send_generated(
+                lambda p: pdf_io.export_umrah_voucher_pdf(
+                    rec, p, data=data, company=_company()),
+                f"فاوتشر {ident}.pdf", "application/pdf")
+        lang = "en" if request.args.get("lang") == "en" else "ar"
+        base = pdf_io.build_voucher_data(
+            rec, trip=trip, program_name=(trip.name or trip.code),
+            company=_company(), lang=lang)
+        stays = [[(list(r) + [""] * 8)[j] for j in range(8)]
+                 for r in (base.get("stays") or [])]
+        while len(stays) < 2:
+            stays.append([""] * 8)
+        trans = [[(list(r) + [""] * 3)[j] for j in range(3)]
+                 for r in (base.get("transport_rows") or [])]
+        while len(trans) < 1:
+            trans.append([""] * 3)
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        return render_template(
+            "umrah_voucher_edit.html",
+            base_json=json.dumps(base, ensure_ascii=False), data=base,
+            stays=stays, trans=trans, code=code, idx=idx, name=name,
+            username=g.session.username, role=g.session.role_label)
+
     # ---- التسكين التفاعلي (توزيع أرقام الغرف لكل مدينة) ----
     def _city_or_404(city):
         ct = next((c for c in umrah.CITIES if c[0] == city), None)

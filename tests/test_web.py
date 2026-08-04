@@ -851,6 +851,29 @@ assert vw.post("/umrah/program/U1/pilgrim/0/quotation/edit",
                data={"base": "{}", "action": "save"}).status_code == 403
 print("  OK: محرّر عرض السعر — تعديل الحقول والتسعير، معاينة وحفظ (جديد ومحفوظ)")
 
+# --- المرحلة ١٢: محرّر الفاوتشر (تعديل قبل الطباعة) ---
+_am.set_mode("umrah")
+_rcv, _ = storage.load_records(UDATA, admin)
+_recv = _um.trip_pilgrims(_rcv, "U1")[0]
+_bv = _pio.build_voucher_data(_recv, trip=_tU1, program_name="U1", lang="ar")
+_bvj = _json.dumps(_bv, ensure_ascii=False)
+ve = um.get("/umrah/program/U1/pilgrim/0/voucher/edit").get_data(as_text=True)
+assert "فاوتشر الفندق" in ve and 'name="base"' in ve and "الإقامة" in ve
+# معاينة بعد التعديل (عربي)
+pv = um.post("/umrah/program/U1/pilgrim/0/voucher/edit", data={
+    "base": _bvj, "lang": "ar", "guest_ar": "ضيف الفاوتشر", "booking_no": "BK-999",
+    "program": "U1", "status": "مؤكّد", "stay_city_0": "مكة المكرّمة",
+    "stay_hotel_0": "كونراد", "stay_room_0": "ثنائي", "stay_nights_0": "3",
+    "tr_car_0": "GMC"})
+assert pv.status_code == 200 and pv.data[:5] == b"%PDF-"
+# معاينة إنجليزي
+pv2 = um.post("/umrah/program/U1/pilgrim/0/voucher/edit",
+              data={"base": _bvj, "lang": "en"})
+assert pv2.status_code == 200 and pv2.data[:5] == b"%PDF-"
+# معتمر خارج المدى -> 404
+assert um.get("/umrah/program/U1/pilgrim/99/voucher/edit").status_code == 404
+print("  OK: محرّر الفاوتشر — تعديل الإقامة والنقل ومعاينة PDF ثنائية اللغة")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

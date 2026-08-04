@@ -203,6 +203,8 @@ tbody tr.fin-unpaid:hover{background:#f0cabf}
 .field.pair input:last-child{width:110px}
 .field.pair4{display:flex; gap:8px; flex-wrap:wrap}
 .field.pair4 input{flex:1; min-width:90px}
+.field.rowgrid{display:flex; gap:6px; flex-wrap:wrap}
+.field.rowgrid input{flex:1; min-width:80px}
 .muted{color:var(--muted); font-size:13px}
 .roomin{width:90px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; text-align:center}
 .sec-title .muted{font-weight:400}

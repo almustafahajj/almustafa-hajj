@@ -69,7 +69,7 @@
             <a class="lnk" title="فاتورة" href="{{ url_for('umrah_invoice_pdf', code=trip.code, idx=r.idx) }}" target="_blank">📄</a>
             <a class="lnk" title="عقد" href="{{ url_for('umrah_contract_pdf', code=trip.code, idx=r.idx) }}" target="_blank">📜</a>
             <a class="lnk" title="عرض سعر" href="{{ url_for('umrah_quotation', code=trip.code, idx=r.idx) }}">💲</a>
-            <a class="lnk" title="فاوتشر الفندق" href="{{ url_for('umrah_voucher_pdf', code=trip.code, idx=r.idx) }}" target="_blank">🏨</a>
+            <a class="lnk" title="فاوتشر الفندق" href="{{ url_for('umrah_voucher_edit', code=trip.code, idx=r.idx) }}">🏨</a>
           </td>
           {% if can_edit %}<td class="rowacts">
             <a class="lnk" href="{{ url_for('umrah_pilgrim_edit', code=trip.code, idx=r.idx) }}">✏️</a>

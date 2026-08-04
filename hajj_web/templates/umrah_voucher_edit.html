@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}فاوتشر الفندق — {{ name }}{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">🏨 فاوتشر الفندق: {{ name }}</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_program', code=code) }}">↩ رجوع للبرنامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <div class="detail-head"><h1>فاوتشر الفندق</h1></div>
+  <p class="tip">عدّل الحقول ثم اضغط «معاينة PDF». (جهات التواصل والشروط تُدرَج تلقائياً.)</p>
+
+  <form method="post" action="{{ url_for('umrah_voucher_edit', code=code, idx=idx) }}" class="record-form">
+    <input type="hidden" name="base" value="{{ base_json }}">
+    <div class="cards">
+      <section class="card">
+        <h2>بيانات الفاوتشر</h2>
+        <div class="field"><label>اللغة</label>
+          <select name="lang">
+            <option value="ar" {% if data.get('lang') != 'en' %}selected{% endif %}>العربية</option>
+            <option value="en" {% if data.get('lang') == 'en' %}selected{% endif %}>الإنجليزية (English)</option>
+          </select></div>
+        <div class="field"><label>الضيف (عربي)</label>
+          <input type="text" name="guest_ar" value="{{ data.get('guest_ar','') }}"></div>
+        <div class="field"><label>الضيف (إنجليزي)</label>
+          <input type="text" name="guest_en" value="{{ data.get('guest_en','') }}"></div>
+        <div class="field"><label>رقم الحجز</label>
+          <input type="text" name="booking_no" value="{{ data.get('booking_no','') }}"></div>
+        <div class="field"><label>البرنامج</label>
+          <input type="text" name="program" value="{{ data.get('program','') }}"></div>
+        <div class="field"><label>الحالة</label>
+          <input type="text" name="status" value="{{ data.get('status','') }}"></div>
+      </section>
+
+      <section class="card">
+        <h2>الإقامة</h2>
+        <p class="muted">لكل صف: المدينة · الفندق · الغرفة · الإطلالة · الدخول · المغادرة · الليالي · الوجبات.</p>
+        {% for s in stays %}
+        <div class="field rowgrid">
+          <input type="text" name="stay_city_{{ loop.index0 }}" value="{{ s[0] }}" placeholder="المدينة">
+          <input type="text" name="stay_hotel_{{ loop.index0 }}" value="{{ s[1] }}" placeholder="الفندق">
+          <input type="text" name="stay_room_{{ loop.index0 }}" value="{{ s[2] }}" placeholder="الغرفة">
+          <input type="text" name="stay_view_{{ loop.index0 }}" value="{{ s[3] }}" placeholder="الإطلالة">
+          <input type="text" name="stay_cin_{{ loop.index0 }}" value="{{ s[4] }}" placeholder="الدخول">
+          <input type="text" name="stay_cout_{{ loop.index0 }}" value="{{ s[5] }}" placeholder="المغادرة">
+          <input type="text" name="stay_nights_{{ loop.index0 }}" value="{{ s[6] }}" placeholder="الليالي">
+          <input type="text" name="stay_meals_{{ loop.index0 }}" value="{{ s[7] }}" placeholder="الوجبات">
+        </div>
+        {% endfor %}
+      </section>
+
+      <section class="card">
+        <h2>النقل</h2>
+        <p class="muted">لكل صف: نوع السيارة · الموديل · الوجهة.</p>
+        {% for t in trans %}
+        <div class="field rowgrid">
+          <input type="text" name="tr_car_{{ loop.index0 }}" value="{{ t[0] }}" placeholder="نوع السيارة">
+          <input type="text" name="tr_model_{{ loop.index0 }}" value="{{ t[1] }}" placeholder="الموديل">
+          <input type="text" name="tr_dest_{{ loop.index0 }}" value="{{ t[2] }}" placeholder="الوجهة">
+        </div>
+        {% endfor %}
+      </section>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" formtarget="_blank" class="btn-primary">👁 معاينة PDF</button>
+      <a class="btn-ghost" href="{{ url_for('umrah_program', code=code) }}">رجوع</a>
+    </div>
+  </form>
+</main>
+{% endblock %}
