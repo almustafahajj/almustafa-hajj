@@ -2747,8 +2747,9 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
 
     def table(heads, rows, weights, date_col=None):
         scale = W / sum(weights)
-        colw = [w * scale for w in weights]
-        avail = [w - 8 for w in colw]
+        # الأوزان بترتيب العناوين الطبيعي؛ نعكس العرض ليطابق الترتيب البصري RTL
+        colw = list(reversed([w * scale for w in weights]))
+        avail = [w - 6 for w in colw]           # يطابق حشو الخلية (3+3)
         body = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for r in rows:
             r = [str(x or "") for x in (list(r) + [""] * len(heads))[:len(heads)]]
@@ -2765,6 +2766,8 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
             ("ROUNDEDCORNERS", [4, 4, 4, 4])]))
         return t
 
@@ -2773,7 +2776,7 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     if bookings:
         story.append(sec("الحجوزات"))
         story.append(Spacer(1, 3))
-        story.append(table(TREQ_BOOK_HEADS, bookings, [80, 150, 70, 70]))
+        story.append(table(TREQ_BOOK_HEADS, bookings, [76, 168, 62, 64]))
         story.append(Spacer(1, 8))
 
     flights = [f for f in (data.get("flights") or [])
@@ -2790,7 +2793,7 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     story.append(sec("جدول الحركة  —  المواصلات المطلوبة"))
     story.append(Spacer(1, 3))
     story.append(table(TREQ_MOVE_HEADS, moves or [["", "", "", "", "", ""]],
-                       [78, 176, 32, 66, 50, 50], date_col=0))
+                       [66, 214, 26, 80, 38, 46], date_col=0))
     story.append(Spacer(1, 14))
 
     story.append(Paragraph(ar(TREQ_THANKS), ParagraphStyle(
