@@ -369,6 +369,11 @@ def create_app(auth_path: str | Path | None = None,
             abort(404)
         return trip
 
+    def _require_code(code):
+        """يتحقّق من رمز البرنامج، ويسمح بالرمز الخاصّ «_manual» للمستندات اليدوية."""
+        if code != "_manual":
+            _trip_or_404(code)
+
     def _finance_rows(indexed):
         """صفوف مالية لكل معتمر + إجماليات. ``indexed`` أزواج (الفهرس، السجلّ)."""
         rows = []
@@ -424,7 +429,17 @@ def create_app(auth_path: str | Path | None = None,
         except RuntimeError:
             sessions.destroy(request.cookies.get(_COOKIE))
             return redirect(url_for("login"))
-        trips = umrah.load_trips(storage.load_settings())
+        all_trips = umrah.load_trips(storage.load_settings())
+        # الموسم = سنة ميلادية (البرنامج بلا تاريخ يظهر في كل المواسم)
+        years = [str(y) for y in range(2024, 2036)]
+        season = (request.args.get("season") or "").strip() or str(date.today().year)
+        if season not in years and season != "all":
+            years = sorted(set(years) | {season})
+        if season == "all":
+            trips = all_trips
+        else:
+            trips = [t for t in all_trips
+                     if not umrah.trip_year(t) or umrah.trip_year(t) == season]
         rows = []
         for t in trips:
             pilgrims = umrah.trip_pilgrims(records, t.code)
@@ -439,6 +454,7 @@ def create_app(auth_path: str | Path | None = None,
             })
         return render_template(
             "umrah_programs.html", rows=rows, note=note,
+            years=years, season=season,
             username=g.session.username, role=g.session.role_label,
             can_edit=g.session.can_edit, is_admin=g.session.can_manage_accounts)
 
@@ -590,6 +606,66 @@ def create_app(auth_path: str | Path | None = None,
             action=url_for("umrah_pilgrim_new", code=code),
             fields=UMRAH_PILGRIM_FIELDS, rooms=_umrah_room_names(),
             rec=PassportData(), code=code, orig="", is_new=True,
+            username=g.session.username, role=g.session.role_label)
+
+    @app.route("/umrah/program/<code>/pilgrim/scan", methods=["GET", "POST"])
+    @edit_required
+    def umrah_pilgrim_scan(code):
+        """إضافة معتمر بقراءة جوازه: يقرأ البيانات ثم يعرض النموذج للمراجعة."""
+        _trip_or_404(code)
+        if request.method == "GET":
+            return render_template(
+                "umrah_scan.html", code=code,
+                username=g.session.username, role=g.session.role_label)
+        file = request.files.get("file")
+        if not file or not file.filename:
+            flash("اختر صورة أو ملف PDF للجواز", "error")
+            return redirect(url_for("umrah_pilgrim_scan", code=code))
+        try:
+            from hajj_app import ocr
+            from hajj_app.tesseract_setup import configure_tesseract
+            configure_tesseract()
+            ocr.ensure_tesseract()
+        except Exception:                              # noqa: BLE001
+            flash("قراءة الجواز تحتاج تثبيت Tesseract-OCR على جهاز الخادم.",
+                  "error")
+            return redirect(url_for("umrah_pilgrim_scan", code=code))
+        from hajj_app.mrz import MRZError
+        suffix = Path(file.filename).suffix.lower()
+        fd, tmp = tempfile.mkstemp(suffix=suffix or ".img")
+        os.close(fd)
+        rec, note = None, ""
+        try:
+            file.save(tmp)
+            if suffix == ".pdf":
+                from hajj_app import pdf_in
+                recs, _notes = pdf_in.extract_from_pdf(tmp)
+                if recs:
+                    rec = recs[0]
+            else:
+                try:
+                    rec = ocr.extract_passport(tmp)
+                except MRZError as exc:
+                    note = str(exc)
+        except Exception as exc:                       # noqa: BLE001
+            note = str(exc)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        if rec is None:
+            flash(note or "تعذّرت قراءة الجواز — أدخل البيانات يدوياً.", "error")
+            rec = PassportData()
+        else:
+            if note:
+                flash(note, "warn")
+            flash("راجع البيانات المقروءة ثم اضغط «حفظ».", "ok")
+        return render_template(
+            "umrah_pilgrim_form.html", title="مراجعة بيانات الجواز",
+            action=url_for("umrah_pilgrim_new", code=code),
+            fields=UMRAH_PILGRIM_FIELDS, rooms=_umrah_room_names(),
+            rec=rec, code=code, orig="", is_new=True,
             username=g.session.username, role=g.session.role_label)
 
     def _pilgrim_in_program(records, code, idx):
@@ -1016,25 +1092,52 @@ def create_app(auth_path: str | Path | None = None,
         flash(f"حُفظ عرض السعر {number}", "ok")
         return redirect(url_for("umrah_quotes", code=code))
 
-    @app.route("/umrah/program/<code>/quotes")
-    @login_required
-    def umrah_quotes(code):
-        trip = _trip_or_404(code)
+    def _quote_list_rows(code):
         rows = []
         for q in umrah.load_quotes(storage.load_settings(), code):
             rows.append({
                 "number": q.get("number", ""),
                 "title": q.get("addressed_to", "") or q.get("title", "") or "—",
                 "lang": q.get("lang", "ar"), "date": q.get("date", "")})
+        return rows
+
+    @app.route("/umrah/program/<code>/quotes")
+    @login_required
+    def umrah_quotes(code):
+        trip = _trip_or_404(code)
         return render_template(
-            "umrah_quotes.html", trip=trip, rows=rows,
+            "umrah_quotes.html", code=code, rows=_quote_list_rows(code),
+            heading=f"عروض الأسعار — «{trip.name or trip.code}»",
+            back_url=url_for("umrah_program", code=code), is_manual=False,
             username=g.session.username, role=g.session.role_label,
             can_edit=g.session.can_edit)
+
+    @app.route("/umrah/quotes/manual")
+    @login_required
+    def umrah_manual_quotes():
+        return render_template(
+            "umrah_quotes.html", code="_manual", rows=_quote_list_rows("_manual"),
+            heading="عروض الأسعار اليدوية", back_url=url_for("umrah_programs"),
+            is_manual=True, username=g.session.username,
+            role=g.session.role_label, can_edit=g.session.can_edit)
+
+    @app.route("/umrah/quotes/manual/new", methods=["GET", "POST"])
+    @login_required
+    def umrah_manual_quote_new(code=None):
+        if request.method == "POST":
+            return _quote_editor_post(PassportData(), "_manual", fallback_number="")
+        base = pdf_io.build_quotation_data(PassportData(), trip=None,
+                                           company=_company(), lang="ar")
+        return _quote_editor(base, url_for("umrah_manual_quote_new"), "_manual")
+
+    def _quotes_list_url(code):
+        return (url_for("umrah_manual_quotes") if code == "_manual"
+                else url_for("umrah_quotes", code=code))
 
     @app.route("/umrah/quote/<code>/<number>.pdf")
     @login_required
     def umrah_saved_quote_pdf(code, number):
-        _trip_or_404(code)
+        _require_code(code)
         q = next((x for x in umrah.load_quotes(storage.load_settings(), code)
                   if str(x.get("number")) == number), None)
         if q is None:
@@ -1057,7 +1160,7 @@ def create_app(auth_path: str | Path | None = None,
             storage.save_settings(settings)
         _audit("حذف عرض سعر", number)
         flash("حُذف عرض السعر", "ok")
-        return redirect(url_for("umrah_quotes", code=code))
+        return redirect(_quotes_list_url(code))
 
     # ---- محرّر عرض السعر (تعديل الحقول قبل المعاينة/الحفظ) ----
     def _apply_quote_edits(base):
@@ -1090,6 +1193,7 @@ def create_app(auth_path: str | Path | None = None,
             "umrah_quotation_edit.html",
             base_json=json.dumps(base, ensure_ascii=False), data=base,
             pricing=pricing, action=action, code=code,
+            list_url=_quotes_list_url(code),
             username=g.session.username, role=g.session.role_label,
             can_edit=g.session.can_edit)
 
@@ -1112,7 +1216,7 @@ def create_app(auth_path: str | Path | None = None,
                 storage.save_settings(settings)
             _audit("حفظ عرض سعر", data.get("number", ""))
             flash(f"حُفظ عرض السعر {data['number']}", "ok")
-            return redirect(url_for("umrah_quotes", code=code))
+            return redirect(_quotes_list_url(code))
         return _send_generated(
             lambda p: pdf_io.export_umrah_quotation_pdf(
                 rec, p, data=data, company=_company()),
@@ -1136,7 +1240,7 @@ def create_app(auth_path: str | Path | None = None,
     @app.route("/umrah/quote/<code>/<number>/edit", methods=["GET", "POST"])
     @login_required
     def umrah_saved_quote_edit(code, number):
-        _trip_or_404(code)
+        _require_code(code)
         if request.method == "POST":
             return _quote_editor_post(PassportData(), code,
                                       fallback_number=number)
@@ -1263,28 +1367,7 @@ def create_app(auth_path: str | Path | None = None,
             d["transport_rows"] = trans
         return d
 
-    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/voucher/edit",
-               methods=["GET", "POST"])
-    @login_required
-    def umrah_voucher_edit(code, idx):
-        trip, rec = _quote_pilgrim(code, idx)
-        if trip is None:
-            return rec
-        if request.method == "POST":
-            try:
-                base = json.loads(request.form.get("base") or "{}")
-            except ValueError:
-                abort(400)
-            data = _apply_voucher_edits(base)
-            ident = data.get("number") or rec.reference_number or code
-            return _send_generated(
-                lambda p: pdf_io.export_umrah_voucher_pdf(
-                    rec, p, data=data, company=_company()),
-                f"فاوتشر {ident}.pdf", "application/pdf")
-        lang = "en" if request.args.get("lang") == "en" else "ar"
-        base = pdf_io.build_voucher_data(
-            rec, trip=trip, program_name=(trip.name or trip.code),
-            company=_company(), lang=lang)
+    def _voucher_editor(base, rec, action, back_url, name):
         stays = [[(list(r) + [""] * 8)[j] for j in range(8)]
                  for r in (base.get("stays") or [])]
         while len(stays) < 2:
@@ -1293,12 +1376,58 @@ def create_app(auth_path: str | Path | None = None,
                  for r in (base.get("transport_rows") or [])]
         while len(trans) < 1:
             trans.append([""] * 3)
-        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
         return render_template(
             "umrah_voucher_edit.html",
             base_json=json.dumps(base, ensure_ascii=False), data=base,
-            stays=stays, trans=trans, code=code, idx=idx, name=name,
+            stays=stays, trans=trans, action=action, back_url=back_url, name=name,
             username=g.session.username, role=g.session.role_label)
+
+    def _voucher_preview(rec, code):
+        try:
+            base = json.loads(request.form.get("base") or "{}")
+        except ValueError:
+            abort(400)
+        data = _apply_voucher_edits(base)
+        ident = data.get("number") or getattr(rec, "reference_number", "") or code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_voucher_pdf(
+                rec, p, data=data, company=_company()),
+            f"فاوتشر {ident}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/voucher/edit",
+               methods=["GET", "POST"])
+    @login_required
+    def umrah_voucher_edit(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        if request.method == "POST":
+            return _voucher_preview(rec, code)
+        lang = "en" if request.args.get("lang") == "en" else "ar"
+        base = pdf_io.build_voucher_data(
+            rec, trip=trip, program_name=(trip.name or trip.code),
+            company=_company(), lang=lang)
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        return _voucher_editor(
+            base, rec, url_for("umrah_voucher_edit", code=code, idx=idx),
+            url_for("umrah_program", code=code), name)
+
+    @app.route("/umrah/voucher/manual", methods=["GET", "POST"])
+    @edit_required
+    def umrah_manual_voucher():
+        if request.method == "POST":
+            return _voucher_preview(PassportData(), "_manual")
+        lang = "en" if request.args.get("lang") == "en" else "ar"
+        with _WRITE_LOCK:
+            settings = storage.load_settings()
+            number = umrah.next_voucher_number(settings)
+            storage.save_settings(settings)
+        base = pdf_io.build_voucher_data(PassportData(), trip=None,
+                                         program_name="", company=_company(),
+                                         number=number, lang=lang)
+        return _voucher_editor(base, PassportData(),
+                               url_for("umrah_manual_voucher"),
+                               url_for("umrah_programs"), "فاوتشر يدوي")
 
     # ---- التسكين التفاعلي (توزيع أرقام الغرف لكل مدينة) ----
     def _city_or_404(city):

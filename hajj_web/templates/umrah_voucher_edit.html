@@ -5,7 +5,7 @@
   <div class="titles"><span class="app-title">🏨 فاوتشر الفندق: {{ name }}</span></div>
   <div class="spacer"></div>
   <div class="user">
-    <a class="add-btn ghost-add" href="{{ url_for('umrah_program', code=code) }}">↩ رجوع للبرنامج</a>
+    <a class="add-btn ghost-add" href="{{ back_url }}">↩ رجوع</a>
     <span class="who">👤 {{ username }} · {{ role }}</span>
     <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
   </div>
@@ -15,7 +15,7 @@
   <div class="detail-head"><h1>فاوتشر الفندق</h1></div>
   <p class="tip">عدّل الحقول ثم اضغط «معاينة PDF». (جهات التواصل والشروط تُدرَج تلقائياً.)</p>
 
-  <form method="post" action="{{ url_for('umrah_voucher_edit', code=code, idx=idx) }}" class="record-form">
+  <form method="post" action="{{ action }}" class="record-form">
     <input type="hidden" name="base" value="{{ base_json }}">
     <div class="cards">
       <section class="card">
@@ -69,7 +69,7 @@
 
     <div class="form-actions">
       <button type="submit" formtarget="_blank" class="btn-primary">👁 معاينة PDF</button>
-      <a class="btn-ghost" href="{{ url_for('umrah_program', code=code) }}">رجوع</a>
+      <a class="btn-ghost" href="{{ back_url }}">رجوع</a>
     </div>
   </form>
 </main>

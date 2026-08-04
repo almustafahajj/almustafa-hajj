@@ -874,6 +874,69 @@ assert pv2.status_code == 200 and pv2.data[:5] == b"%PDF-"
 assert um.get("/umrah/program/U1/pilgrim/99/voucher/edit").status_code == 404
 print("  OK: محرّر الفاوتشر — تعديل الإقامة والنقل ومعاينة PDF ثنائية اللغة")
 
+# --- المرحلة ١٣: مطابقة كاملة (موسم، عروض/فاوتشر يدوي، قراءة جواز) ---
+# فلتر الموسم في قائمة البرامج
+_am.set_mode("umrah")
+_sy = storage.load_settings()
+_ty = _um.load_trips(_sy)
+_ty.append(_um.UmrahTrip(code="Y27", name="موسم ٢٠٢٧", depart_date="2027-05-01"))
+_um.save_trips(_sy, _ty)
+storage.save_settings(_sy)
+p26 = um.get("/umrah/programs?season=2026").get_data(as_text=True)
+assert "رمضان" in p26 and "موسم ٢٠٢٧" not in p26        # U1 مغادرته 2026
+p27 = um.get("/umrah/programs?season=2027").get_data(as_text=True)
+assert "موسم ٢٠٢٧" in p27 and "رمضان" not in p27
+pall = um.get("/umrah/programs?season=all").get_data(as_text=True)
+assert "رمضان" in pall and "موسم ٢٠٢٧" in pall
+# عرض سعر يدوي: إنشاء وحفظ تحت «_manual» ثم استعراضه في القائمة اليدوية
+mn = um.get("/umrah/quotes/manual/new").get_data(as_text=True)
+assert "تعديل عرض السعر" in mn and 'name="base"' in mn
+_mbase = _pio.build_quotation_data(PassportData(), trip=None, lang="ar")
+_mbj = _json.dumps(_mbase, ensure_ascii=False)
+sv = um.post("/umrah/quotes/manual/new", data={
+    "base": _mbj, "action": "save", "lang": "ar", "title": "عرض يدوي",
+    "addressed_to": "عميل يدوي", "currency": "درهم",
+    "pricing_type_0": "كبار", "pricing_room_0": "ثنائي",
+    "pricing_count_0": "2", "pricing_price_0": "1800"})
+assert sv.status_code == 302 and "/umrah/quotes/manual" in sv.headers["Location"]
+_am.set_mode("umrah")
+_mq = _um.load_quotes(storage.load_settings(), "_manual")
+assert _mq and _mq[-1]["addressed_to"] == "عميل يدوي"
+MQN = str(_mq[-1]["number"])
+ml = um.get("/umrah/quotes/manual").get_data(as_text=True)
+assert "عروض الأسعار اليدوية" in ml and MQN in ml
+# استعراض/تعديل/حذف اليدوي
+assert um.get(f"/umrah/quote/_manual/{MQN}.pdf").data[:5] == b"%PDF-"
+assert MQN in um.get(f"/umrah/quote/_manual/{MQN}/edit").get_data(as_text=True)
+assert um.post(f"/umrah/quote/_manual/{MQN}/delete").status_code == 302
+_am.set_mode("umrah")
+assert not any(str(q.get("number")) == MQN
+               for q in _um.load_quotes(storage.load_settings(), "_manual"))
+# فاوتشر يدوي: صفحة + معاينة PDF
+mv = um.get("/umrah/voucher/manual").get_data(as_text=True)
+assert "فاوتشر الفندق" in mv and 'name="base"' in mv
+_vbase = _pio.build_voucher_data(PassportData(), trip=None, program_name="", lang="ar")
+mvp = um.post("/umrah/voucher/manual", data={
+    "base": _json.dumps(_vbase, ensure_ascii=False), "lang": "ar",
+    "guest_ar": "ضيف يدوي", "stay_city_0": "مكة", "stay_hotel_0": "فندق"})
+assert mvp.status_code == 200 and mvp.data[:5] == b"%PDF-"
+# قراءة جواز المعتمر (صفحة + رفع آمن)
+assert "قراءة جواز" in um.get("/umrah/program/U1/pilgrim/scan").get_data(as_text=True)
+assert um.post("/umrah/program/U1/pilgrim/scan").status_code == 302   # بلا ملف
+from PIL import Image as _ImgU
+import io as _iou
+_bb = _iou.BytesIO(); _ImgU.new("RGB", (600, 400), (235, 235, 235)).save(_bb, "PNG")
+_sc = um.post("/umrah/program/U1/pilgrim/scan",
+              data={"file": (_iou.BytesIO(_bb.getvalue()), "jaz.png")},
+              content_type="multipart/form-data")
+assert _sc.status_code in (200, 302)          # نموذج للمراجعة أو رجوع (بلا Tesseract)
+# المطّلع: يستعرض لكن لا يحفظ اليدوي، وممنوع من الفاوتشر اليدوي والقراءة
+assert vw.post("/umrah/quotes/manual/new",
+               data={"base": "{}", "action": "save"}).status_code == 403
+assert vw.get("/umrah/voucher/manual").status_code == 403
+assert vw.get("/umrah/program/U1/pilgrim/scan").status_code == 403
+print("  OK: مطابقة كاملة — الموسم والعروض/الفاوتشر اليدوي وقراءة الجواز")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

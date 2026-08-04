@@ -15,13 +15,25 @@
 <nav class="nav">
   <a href="{{ url_for('umrah_pricer') }}">🧮 مسعّر المجموعات</a>
   <a href="{{ url_for('umrah_pricings') }}">🗂 التسعيرات المحفوظة</a>
+  <a href="{{ url_for('umrah_manual_quotes') }}">📁 العروض اليدوية</a>
+  {% if can_edit %}<a href="{{ url_for('umrah_manual_quote_new') }}">💲 عرض سعر يدوي</a>{% endif %}
+  {% if can_edit %}<a href="{{ url_for('umrah_manual_voucher') }}">🏨 فاوتشر يدوي</a>{% endif %}
   <a href="{{ url_for('account_password') }}">🔑 كلمة المرور</a>
   <a href="{{ url_for('account_recovery') }}">🗝 مفتاح استرداد</a>
 </nav>
 
 <main class="content">
   {% if note %}<div class="note">{{ note }}</div>{% endif %}
-  <h2 class="sec-title">برامج العمرة — {{ rows|length }} برنامج</h2>
+  <form class="filters" method="get" action="{{ url_for('umrah_programs') }}">
+    <label>الموسم:</label>
+    <select name="season" onchange="this.form.submit()">
+      <option value="all" {% if season == 'all' %}selected{% endif %}>كل المواسم</option>
+      {% for y in years %}<option value="{{ y }}" {% if season == y %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit">تطبيق</button></noscript>
+  </form>
+  <h2 class="sec-title">برامج العمرة — {{ rows|length }} برنامج
+    <span class="muted">({% if season == 'all' %}كل المواسم{% else %}موسم {{ season }}{% endif %})</span></h2>
   <div class="table-wrap">
     <table>
       <thead>
