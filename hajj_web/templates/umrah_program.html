@@ -29,6 +29,11 @@
     <a class="exp-btn" href="{{ url_for('umrah_roster_pdf', code=trip.code) }}" target="_blank">📄 كشف المعتمرين PDF</a>
     <a class="exp-btn" href="{{ url_for('umrah_roster_xlsx', code=trip.code) }}">📊 إكسل</a>
     <a class="exp-btn" href="{{ url_for('umrah_finance_pdf', code=trip.code) }}" target="_blank">💰 الملخّص المالي PDF</a>
+    <a class="exp-btn" href="{{ url_for('umrah_rooming_pdf', code=trip.code, city='makkah') }}" target="_blank">🏨 تسكين مكة</a>
+    <a class="exp-btn" href="{{ url_for('umrah_rooming_pdf', code=trip.code, city='madinah') }}" target="_blank">🏨 تسكين المدينة</a>
+    <a class="exp-btn" href="{{ url_for('umrah_transport_pdf', code=trip.code) }}" target="_blank">🚐 المواصلات</a>
+    <a class="exp-btn" href="{{ url_for('umrah_airline_pdf', code=trip.code) }}" target="_blank">✈ الطيران</a>
+    <a class="exp-btn" href="{{ url_for('umrah_cards_pdf', code=trip.code) }}" target="_blank">🪪 البطاقات</a>
     <a class="exp-btn" href="{{ url_for('umrah_quotes', code=trip.code) }}">📋 عروض الأسعار</a>
     {% if can_edit %}
     <form method="post" class="inline" action="{{ url_for('umrah_program_delete', code=trip.code) }}"
@@ -61,6 +66,7 @@
             <a class="lnk" title="فاتورة" href="{{ url_for('umrah_invoice_pdf', code=trip.code, idx=r.idx) }}" target="_blank">📄</a>
             <a class="lnk" title="عقد" href="{{ url_for('umrah_contract_pdf', code=trip.code, idx=r.idx) }}" target="_blank">📜</a>
             <a class="lnk" title="عرض سعر" href="{{ url_for('umrah_quotation', code=trip.code, idx=r.idx) }}">💲</a>
+            <a class="lnk" title="فاوتشر الفندق" href="{{ url_for('umrah_voucher_pdf', code=trip.code, idx=r.idx) }}" target="_blank">🏨</a>
           </td>
           {% if can_edit %}<td class="rowacts">
             <a class="lnk" href="{{ url_for('umrah_pilgrim_edit', code=trip.code, idx=r.idx) }}">✏️</a>

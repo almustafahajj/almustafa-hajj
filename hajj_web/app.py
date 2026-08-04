@@ -979,6 +979,89 @@ def create_app(auth_path: str | Path | None = None,
         flash("حُذف عرض السعر", "ok")
         return redirect(url_for("umrah_quotes", code=code))
 
+    # ================ الفاوتشر وكشوف التسكين/المواصلات/الطيران ================
+    @app.route("/umrah/program/<code>/rooming/<city>.pdf")
+    @login_required
+    def umrah_rooming_pdf(code, city):
+        ct = next((c for c in umrah.CITIES if c[0] == city), None)
+        if ct is None:
+            abort(404)
+        trip, pilgrims = _program_pilgrims_or_login(code)
+        if trip is None:
+            return pilgrims
+        if not pilgrims:
+            abort(404)
+        _k, label, room_field, hotel_f, nights_f, _rf = ct
+        prog = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_rooming_pdf(
+                pilgrims, p, city_label=label,
+                hotel=str(getattr(trip, hotel_f, "") or ""),
+                nights=str(getattr(trip, nights_f, "") or ""),
+                program_name=prog, room_field=room_field),
+            f"تسكين {label} {trip.code}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/transport.pdf")
+    @login_required
+    def umrah_transport_pdf(code):
+        trip, pilgrims = _program_pilgrims_or_login(code)
+        if trip is None:
+            return pilgrims
+        if not pilgrims:
+            abort(404)
+        prog = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_transport_pdf(
+                pilgrims, p, program_name=prog,
+                transport_pnr=str(getattr(trip, "transport_pnr", "") or "")),
+            f"مواصلات {trip.code}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/airline.pdf")
+    @login_required
+    def umrah_airline_pdf(code):
+        trip, pilgrims = _program_pilgrims_or_login(code)
+        if trip is None:
+            return pilgrims
+        if not pilgrims:
+            abort(404)
+        return _send_generated(
+            lambda p: pdf_io.export_airline_pdf(
+                pilgrims, p, title=f"Flight Manifest — {trip.code}"),
+            f"airline {trip.code}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/cards.pdf")
+    @login_required
+    def umrah_cards_pdf(code):
+        trip, pilgrims = _program_pilgrims_or_login(code)
+        if trip is None:
+            return pilgrims
+        if not pilgrims:
+            abort(404)
+        prog = f"{trip.code} — {trip.name}" if trip.name else trip.code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_cards_pdf(
+                pilgrims, p, program_name=prog, company=_company(),
+                session=g.session,
+                emergency_uae=str(getattr(trip, "emergency_uae", "") or ""),
+                emergency_ksa=str(getattr(trip, "emergency_ksa", "") or "")),
+            f"بطاقات {trip.code}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/voucher.pdf")
+    @login_required
+    def umrah_voucher_pdf(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        lang = "en" if request.args.get("lang") == "en" else "ar"
+        prog = trip.name or trip.code
+        data = pdf_io.build_voucher_data(rec, trip=trip, program_name=prog,
+                                         company=_company(), lang=lang)
+        ident = data.get("number") or rec.reference_number or code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_voucher_pdf(
+                rec, p, data=data, company=_company()),
+            f"فاوتشر {ident}.pdf", "application/pdf")
+
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
 

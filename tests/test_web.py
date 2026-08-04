@@ -662,6 +662,23 @@ assert vw.post("/umrah/program/U1/pilgrim/0/quotation/save",
 assert vw.post("/umrah/quote/U1/X/delete").status_code == 403
 print("  OK: عروض الأسعار على الويب — معاينة ثنائية اللغة وحفظ واستعراض وترجمة وحذف")
 
+# --- المرحلة ٦: الفاوتشر وكشوف التسكين/المواصلات/الطيران/البطاقات ---
+prog3 = um.get("/umrah/program/U1").get_data(as_text=True)
+assert "تسكين مكة" in prog3 and "المواصلات" in prog3 and "الطيران" in prog3
+for _p in ("/umrah/program/U1/rooming/makkah.pdf",
+           "/umrah/program/U1/rooming/madinah.pdf",
+           "/umrah/program/U1/transport.pdf",
+           "/umrah/program/U1/airline.pdf",
+           "/umrah/program/U1/cards.pdf",
+           "/umrah/program/U1/pilgrim/0/voucher.pdf",
+           "/umrah/program/U1/pilgrim/0/voucher.pdf?lang=en"):
+    d = um.get(_p)
+    assert d.status_code == 200 and d.data[:5] == b"%PDF-", _p
+# مدينة غير معروفة / معتمر خارج المدى -> 404
+assert um.get("/umrah/program/U1/rooming/zzz.pdf").status_code == 404
+assert um.get("/umrah/program/U1/pilgrim/99/voucher.pdf").status_code == 404
+print("  OK: الفاوتشر وكشوف التسكين/المواصلات/الطيران/البطاقات على الويب")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)
