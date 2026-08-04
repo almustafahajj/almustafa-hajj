@@ -2536,50 +2536,48 @@ def voucher_car_models() -> list:
 
 
 # ---- طلب/تأكيد حجز المواصلات (خطاب رسمي لشركة النقل) ----
-TREQ_FLIGHT_HEADS = ("النـاقـل", "رقـم الرحلة", "خـط الســير", "الـتـاريـخ",
-                     "وقت الإقلاع", "وقت الوصول")
-TREQ_MOVE_HEADS = ("التـاريـخ", "خـط الســيـر", "عدد", "نوع السيارة",
-                   "موديل", "الـوقــت")
+# جدول الطيران بمخطّط متوافق مع قراءة الأماديوس: [التاريخ، الناقل، الإقلاع، من،
+# الوصول، إلى] — فيُملأ مباشرةً من قارئ صورة حجز الأماديوس.
+TREQ_FLIGHT_HEADS = ("التاريخ", "الناقل", "الإقلاع", "من", "الوصول", "إلى")
+TREQ_MOVE_HEADS = ("التاريخ", "خط السير", "عدد", "نوع السيارة", "موديل", "الوقت")
+TREQ_BOOK_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "الإطلالة")
+TREQ_HONORIFICS = ("السيد", "السيدة", "السادة", "الأخ", "الأخت")
+TREQ_THANKS = "ولكم جزيل الشكر ،،"
 
 
-def build_transport_request_data(rec, *, trip=None, program_name: str = "",
-                                 company=None, number: str = "",
-                                 date_str: str = "", recipient: str = "") -> dict:
-    """يبني بيانات طلب حجز المواصلات (قاموس قابل للتعديل) من المعتمر والبرنامج.
-    يُمرَّر إلى :func:`export_umrah_transport_request_pdf` عبر الوسيط ``data``."""
+def build_transport_request_data(rec, *, trip=None, program_name="",
+                                 company=None, number="", date_str="",
+                                 recipient=""):
+    """يبني بيانات طلب حجز المواصلات (قاموس قابل للتعديل) من المعتمر والبرنامج."""
     company_info(company)
-    number = str(number or "MA0001")
+    number = str(number or "MA-T0001")
     if not date_str:
         date_str = date.today().isoformat()
 
     def T(field):
         return str(getattr(trip, field, "") or "") if trip else ""
 
-    # الحجوزات: من فنادق البرنامج ونوع غرفة المعتمر
     room = str(getattr(rec, "room_type", "") or "")
-    parts = []
-    for label, hf in (("المدينة المنوّرة", "madinah_hotel"),
-                      ("مكة المكرّمة", "makkah_hotel")):
+    # الحجوزات: صفّ لكل مدينة [المدينة، الفندق، نوع الغرفة، الإطلالة]
+    bookings = []
+    for label, hf in (("مكة المكرّمة", "makkah_hotel"),
+                      ("المدينة المنوّرة", "madinah_hotel")):
         hotel = T(hf)
         if hotel:
-            parts.append(f"{label}: {hotel}" + (f" – {room}" if room else ""))
-    reservations = "   /   ".join(parts)
+            bookings.append([label, hotel, room, ""])
 
     dep, ret = T("depart_date"), T("return_date")
     airline = T("airline")
     flights = []
     if trip:
         flights = [
-            [airline, T("flight_out"), "", dep, T("out_depart_time"),
-             T("out_arrive_time")],
-            [airline, T("flight_ret"), "", ret, T("ret_depart_time"),
-             T("ret_arrive_time")],
+            [dep, airline, T("out_depart_time"), "", T("out_arrive_time"), ""],
+            [ret, airline, T("ret_depart_time"), "", T("ret_arrive_time"), ""],
         ]
 
     car = next((c for c in VOUCHER_CAR_TYPES
                 if c.lower() in T("transport").lower()), "FORD")
     model = voucher_car_models()[0]
-    # جدول الحركة الافتراضي (قابل للتعديل بالكامل في المحرّر)
     movements = [
         [dep, "من مطار جدة إلى فندق مكة", "1", car, model, ""],
         ["", "من فندق مكة إلى محطة قطار مكة", "1", car, model, ""],
@@ -2590,11 +2588,12 @@ def build_transport_request_data(rec, *, trip=None, program_name: str = "",
         "number": number,
         "date": date_str,
         "recipient": recipient or "",
+        "honorific": "السيد",
         "guest_ar": str(getattr(rec, "full_name_ar", "") or ""),
         "nationality": str(getattr(rec, "nationality_ar", "") or ""),
         "phone": str(getattr(rec, "phone", "") or ""),
         "persons": "",
-        "reservations": reservations,
+        "bookings": bookings,
         "flights": flights,
         "movements": movements,
         "office_manager": QUOTE_OFFICE_NAME,
@@ -2602,14 +2601,22 @@ def build_transport_request_data(rec, *, trip=None, program_name: str = "",
     }
 
 
-def export_umrah_transport_request_pdf(rec, path: str | Path, *, trip=None,
-                                       program_name: str = "", company=None,
-                                       number: str = "", date_str: str = "",
-                                       recipient: str = "",
-                                       data: dict | None = None) -> Path:
+def _treq_fmt_date(v):
+    """يعرض التاريخ ISO بصيغة DD/MM/YYYY (وإلّا يبقى كما كُتب)."""
+    s = str(v or "").strip()
+    try:
+        y, m, d = s.split("-")
+        return f"{int(d):02d}/{int(m):02d}/{y}"
+    except (ValueError, AttributeError):
+        return s
+
+
+def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
+                                       company=None, number="", date_str="",
+                                       recipient="", data=None):
     """طلب/تأكيد حجز مواصلات: خطاب رسمي (A4 عمودي، عربي) موجّه لشركة النقل،
-    يضمّ بيانات الضيف والحجوزات وجدولَي الطيران والحركة (المواصلات المطلوبة)
-    وتوقيع مدير المكتب. عند تمرير ``data`` يُبنى المستند من محتواه."""
+    يضمّ الجهة والضيف والحجوزات (مكة/المدينة) وجدولَي الطيران والحركة وعبارة
+    الشكر وتوقيع مدير المكتب. عند تمرير ``data`` يُبنى المستند من محتواه."""
     _register_fonts()
     path = Path(path)
     if data is None:
@@ -2621,8 +2628,8 @@ def export_umrah_transport_request_pdf(rec, path: str | Path, *, trip=None,
     co = company_info(company)
 
     doc = SimpleDocTemplate(
-        str(path), pagesize=A4, rightMargin=15 * mm, leftMargin=15 * mm,
-        topMargin=10 * mm, bottomMargin=16 * mm, title="طلب حجز مواصلات",
+        str(path), pagesize=A4, rightMargin=16 * mm, leftMargin=16 * mm,
+        topMargin=9 * mm, bottomMargin=18 * mm, title="طلب حجز مواصلات",
         author="ميسّر العمرة")
     st = _styles()
     story = []
@@ -2638,7 +2645,7 @@ def export_umrah_transport_request_pdf(rec, path: str | Path, *, trip=None,
         except Exception:
             return ""
 
-    header = Table([[_logo(_NIRVANA_PATH, 52), _logo(_LOGO_PATH, 42)]],
+    header = Table([[_logo(_NIRVANA_PATH, 50), _logo(_LOGO_PATH, 40)]],
                    colWidths=[W / 2, W / 2])
     header.setStyle(TableStyle([
         ("ALIGN", (0, 0), (0, 0), "LEFT"), ("ALIGN", (1, 0), (1, 0), "RIGHT"),
@@ -2648,54 +2655,105 @@ def export_umrah_transport_request_pdf(rec, path: str | Path, *, trip=None,
     story.append(header)
     story.append(Spacer(1, 6))
 
-    # شريط العنوان
+    # شريط العنوان (بلون الهوية) + سطر إنجليزي أنيق
     band = Table([[Paragraph(ar("طلب حجز مواصلات"), ParagraphStyle(
-        "tbt", fontName=_FONT_BOLD, fontSize=15, alignment=1,
-        textColor=colors.white, leading=19))]], colWidths=[W])
+                       "tbt", fontName=_FONT_BOLD, fontSize=16, alignment=1,
+                       textColor=colors.white, leading=20))],
+                  [Paragraph(co["name_en"].upper() + "   ·   TRANSPORTATION "
+                             "REQUEST", ParagraphStyle(
+                       "tbs", fontName=_FONT, fontSize=8, alignment=1,
+                       textColor=colors.HexColor("#EFE6D8"), leading=11))]],
+                 colWidths=[W])
     band.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
         ("LINEABOVE", (0, 0), (-1, 0), 1.6, _DEEP),
         ("LINEBELOW", (0, -1), (-1, -1), 1.6, _DEEP),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+        ("TOPPADDING", (0, 1), (-1, 1), 0),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 5)]))
     story.append(band)
+    story.append(Spacer(1, 7))
+
+    lbl = ParagraphStyle("tl", parent=st["cell"], fontName=_FONT_BOLD,
+                         textColor=_ACCENT, alignment=2, fontSize=9.5)
+    valc = ParagraphStyle("tvc", parent=st["cell"], alignment=1, fontSize=9.5)
+    # بطاقة الرقم والتاريخ (يمين→يسار: رقم الطلب | القيمة | التاريخ | القيمة)
+    meta = Table([[_ar_para(ltr(_treq_fmt_date(date_str)), valc, W * 0.34 - 12),
+                   _ar_para("التاريخ", lbl, W * 0.16 - 12),
+                   _ar_para(number, valc, W * 0.34 - 12),
+                   _ar_para("رقم الطلب", lbl, W * 0.16 - 12)]],
+                 colWidths=[W * 0.34, W * 0.16, W * 0.34, W * 0.16])
+    meta.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("BACKGROUND", (1, 0), (1, 0), _ALT_ROW),
+        ("BACKGROUND", (3, 0), (3, 0), _ALT_ROW),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    story.append(meta)
     story.append(Spacer(1, 8))
 
     rp = ParagraphStyle("trp", parent=st["cell"], alignment=2, fontSize=10.5,
-                        leading=18)
+                        leading=19)
     rpb = ParagraphStyle("trpb", parent=rp, fontName=_FONT_BOLD)
 
     def line(text, bold=False):
         return Paragraph(ar(text), rpb if bold else rp)
 
-    story.append(Paragraph(ar(f"التاريخ: {ltr(date_str)}") +
-                           f"   —   {ar('رقم')}: {number}", rp))
-    story.append(line(f"السادة / {data.get('recipient') or '—'}   المحترمين",
+    story.append(line(f"السادة / {data.get('recipient') or '—'}    المحترمين",
                       bold=True))
     story.append(line("تحية طيبة وبعد ،،"))
     story.append(Spacer(1, 3))
-    story.append(line("الموضوع: تأكيد مواصلات", bold=True))
-    story.append(Spacer(1, 4))
+    # الموضوع في شريط مميّز
+    subj = Table([[Paragraph(ar("الموضوع:  تأكيد حجز مواصلات"), ParagraphStyle(
+                       "tsub", fontName=_FONT_BOLD, fontSize=11, alignment=2,
+                       textColor=_DEEP, leading=15))]], colWidths=[W])
+    subj.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _ALT_ROW),
+        ("LINEBEFORE", (0, 0), (0, -1), 3, _ACCENT),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8)]))
+    story.append(subj)
+    story.append(Spacer(1, 6))
 
-    guest = data.get("guest_ar") or "—"
-    nat = data.get("nationality") or ""
-    story.append(line("اسم الضيف: " + guest + (f" ({nat})" if nat else ""),
-                      bold=True))
-    if data.get("phone"):
-        story.append(line(f"جوال رقم: {ltr(data.get('phone'))}"))
+    hon = str(data.get("honorific") or "").strip()
+    guest = str(data.get("guest_ar") or "—").strip()
+    nat = str(data.get("nationality") or "").strip()
+    who = (hon + " " if hon else "") + guest + (f"  ({nat})" if nat else "")
+    story.append(line("اسم الضيف:  " + who, bold=True))
+    info_bits = []
+    if str(data.get("phone") or "").strip():
+        info_bits.append(f"جوال رقم: {ltr(data.get('phone'))}")
     if str(data.get("persons") or "").strip():
-        story.append(line(f"عدد الأشخاص: ( {ltr(data.get('persons'))} ) أشخاص"))
-    if data.get("reservations"):
-        story.append(line("الحجوزات: " + str(data.get("reservations"))))
+        info_bits.append(f"عدد الأشخاص: ( {ltr(data.get('persons'))} ) أشخاص")
+    if info_bits:
+        story.append(line("     ·     ".join(info_bits)))
     story.append(Spacer(1, 8))
 
-    def _table(heads, rows, weights, empty_ok=True):
+    def sec(title):
+        p = Paragraph(ar(title), ParagraphStyle(
+            "tsec", fontName=_FONT_BOLD, fontSize=11, alignment=2,
+            textColor=_DEEP, leading=14))
+        t = Table([[p]], colWidths=[W])
+        t.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+        return t
+
+    def table(heads, rows, weights, date_col=None):
         scale = W / sum(weights)
         colw = [w * scale for w in weights]
         avail = [w - 8 for w in colw]
         body = [_ar_cells(list(reversed(heads)), st["head"], avail)]
         for r in rows:
             r = [str(x or "") for x in (list(r) + [""] * len(heads))[:len(heads)]]
+            if date_col is not None:
+                r[date_col] = _treq_fmt_date(r[date_col])
             body.append(_ar_cells(list(reversed(r)), st["cell"], avail))
         t = Table(body, colWidths=colw, repeatRows=1)
         t.setStyle(TableStyle([
@@ -2706,31 +2764,41 @@ def export_umrah_transport_request_pdf(rec, path: str | Path, *, trip=None,
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4])]))
         return t
 
-    sec = ParagraphStyle("tsec", fontName=_FONT_BOLD, fontSize=11, alignment=2,
-                         textColor=_DEEP, spaceBefore=6, spaceAfter=4)
+    bookings = [b for b in (data.get("bookings") or [])
+                if any(str(x or "").strip() for x in b)]
+    if bookings:
+        story.append(sec("الحجوزات"))
+        story.append(Spacer(1, 3))
+        story.append(table(TREQ_BOOK_HEADS, bookings, [80, 150, 70, 70]))
+        story.append(Spacer(1, 8))
 
     flights = [f for f in (data.get("flights") or [])
                if any(str(x or "").strip() for x in f)]
-    story.append(Paragraph(ar("أ‌- جدول الطيران:"), sec))
-    story.append(_table(TREQ_FLIGHT_HEADS,
-                        flights or [["", "", "", "", "", ""]],
-                        [64, 60, 150, 78, 62, 62]))
-    story.append(Spacer(1, 6))
+    if flights:
+        story.append(sec("جدول الطيران"))
+        story.append(Spacer(1, 3))
+        story.append(table(TREQ_FLIGHT_HEADS, flights,
+                           [72, 78, 60, 78, 60, 78], date_col=0))
+        story.append(Spacer(1, 8))
 
     moves = [m for m in (data.get("movements") or [])
              if any(str(x or "").strip() for x in m)]
-    story.append(Paragraph(ar("جدول الحركة  —  المواصلات المطلوبة:"), sec))
-    story.append(_table(TREQ_MOVE_HEADS,
-                        moves or [["", "", "", "", "", ""]],
-                        [78, 172, 34, 66, 50, 52]))
-    story.append(Spacer(1, 18))
+    story.append(sec("جدول الحركة  —  المواصلات المطلوبة"))
+    story.append(Spacer(1, 3))
+    story.append(table(TREQ_MOVE_HEADS, moves or [["", "", "", "", "", ""]],
+                       [78, 176, 32, 66, 50, 50], date_col=0))
+    story.append(Spacer(1, 14))
 
-    # التوقيع
+    story.append(Paragraph(ar(TREQ_THANKS), ParagraphStyle(
+        "tthx", parent=rpb, alignment=2, fontSize=11)))
+    story.append(Spacer(1, 16))
+
     sig = ParagraphStyle("tsig", parent=st["cell"], alignment=1, fontSize=11,
-                         fontName=_FONT_BOLD, leading=18)
+                         fontName=_FONT_BOLD, leading=17)
     story.append(Paragraph(ar(data.get("office_title") or "مدير المكتب"), sig))
     story.append(Spacer(1, 2))
     story.append(Paragraph(ar(data.get("office_manager") or ""), sig))
@@ -2740,7 +2808,6 @@ def export_umrah_transport_request_pdf(rec, path: str | Path, *, trip=None,
         onFirstPage=lambda c, d: _footer_portrait(c, d, "طلب حجز مواصلات"),
         onLaterPages=lambda c, d: _footer_portrait(c, d, "طلب حجز مواصلات"))
     return path
-
 
 def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                              program_name: str = "", company=None,

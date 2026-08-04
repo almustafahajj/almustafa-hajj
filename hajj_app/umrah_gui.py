@@ -32,7 +32,7 @@ from .pdf_io import (
     QUOTE_GUEST_TYPES, QUOTE_HOTELS, QUOTE_LOCATIONS, QUOTE_MEALS, QUOTE_NIGHTS,
     QUOTE_NOTES, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE,
     QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
-    TREQ_FLIGHT_HEADS, TREQ_MOVE_HEADS,
+    TREQ_BOOK_HEADS, TREQ_FLIGHT_HEADS, TREQ_HONORIFICS, TREQ_MOVE_HEADS,
     VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
     VOUCHER_VIEW_OPTIONS, build_quotation_data, build_transport_request_data,
     build_voucher_data,
@@ -199,6 +199,7 @@ class UmrahApp:
         ))
         self._menu_button(bar, "🚖  الطلبات", (
             ("🚖  طلب حجز مواصلات", self.new_transport_request),
+            ("🗂  الطلبات المحفوظة", self.open_transport_requests),
         ))
 
     def _menu_button(self, bar, label, items):
@@ -366,7 +367,7 @@ class UmrahApp:
         """طلب حجز مواصلات لأي حجز — يُملأ يدوياً بالكامل (خارج البرامج)."""
         co = self._settings.get("company")
         co = co if isinstance(co, dict) else None
-        number = umrah.next_voucher_number(self._settings)
+        number = umrah.next_transport_number(self._settings)
         try:
             save_settings(self._settings)
         except OSError:
@@ -374,7 +375,12 @@ class UmrahApp:
         rec = PassportData()
         data = build_transport_request_data(rec, trip=None, program_name="",
                                             company=co, number=number)
-        TransportRequestEditorDialog(self.root, rec, None, data, company=co)
+        TransportRequestEditorDialog(self.root, rec, None, data, company=co,
+                                     app=self)
+
+    def open_transport_requests(self) -> None:
+        """قائمة طلبات المواصلات المحفوظة (فتح/تعديل، معاينة، حذف)."""
+        TransportRequestsListWindow(self.root, self)
 
     def open_quotes(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة للبرنامج المحدّد."""
@@ -1268,7 +1274,7 @@ class TripPilgrimsWindow(Toplevel):
             messagebox.showinfo("طلب مواصلات", "اختر معتمراً أولاً.", parent=self)
             return
         prog = self.trip.name or self.trip.code
-        number = umrah.next_voucher_number(self.app._settings)
+        number = umrah.next_transport_number(self.app._settings)
         try:
             save_settings(self.app._settings)
         except OSError:
@@ -1277,7 +1283,8 @@ class TripPilgrimsWindow(Toplevel):
         data = build_transport_request_data(rec, trip=self.trip,
                                             program_name=prog, company=company,
                                             number=number)
-        TransportRequestEditorDialog(self, rec, self.trip, data, company=company)
+        TransportRequestEditorDialog(self, rec, self.trip, data, company=company,
+                                     app=self.app)
 
     def do_quotation(self) -> None:
         """فتح محرّر عرض السعر للبرنامج (يأخذ نوع غرفة المعتمر المحدّد إن وُجد)."""
@@ -1706,6 +1713,150 @@ class _EditorMixin:
         finally:
             m.grab_release()
 
+    # ---- خلايا الصفوف (قائمة منسدلة / تاريخ) ----
+    def _cell(self, parent, label, value, options, width, readonly=True):
+        """خلية بعنوان صغير فوق قائمة منسدلة، ضمن صفّ أفقي."""
+        sub = ttk.Frame(parent)
+        sub.pack(side=RIGHT, padx=2)
+        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
+        var = StringVar(value=str(value or ""))
+        ttk.Combobox(sub, textvariable=var, values=list(options), width=width,
+                     state="readonly" if readonly else "normal").pack()
+        return var
+
+    def _date_cell(self, parent, label, iso, width=9):
+        """خلية تاريخ بتقويم منبثق (مع كتابة يدوية)، بعنوان صغير، ضمن صفّ أفقي."""
+        sub = ttk.Frame(parent)
+        sub.pack(side=RIGHT, padx=2)
+        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
+        dp = DatePicker(sub, iso=iso, width=width)
+        dp.pack()
+        return dp
+
+    # ---- قراءة رحلات أماديوس (صورة/حافظة/لقطة/سحب وإفلات) ----
+    #  يتطلّب المحرِّر أن يوفّر ``self._flight_rows`` و``self._add_flight_row``
+    #  بمخطّط الصف [التاريخ، الناقل، الإقلاع، من، الوصول، إلى].
+    def _enable_drop(self, widget):
+        """يفعّل السحب والإفلات على ``widget`` عبر tkdnd (مستقرّ مع Tkinter)."""
+        try:
+            from tkinterdnd2 import DND_FILES, TkinterDnD
+            TkinterDnD._require(widget)
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", self._on_drop_amadeus)
+            return True
+        except Exception:
+            return False
+
+    def _on_drop_amadeus(self, event):
+        try:
+            paths = list(self.tk.splitlist(event.data))
+        except Exception:
+            paths = [event.data]
+        paths = [p for p in paths if str(p).strip()]
+        if not paths:
+            return
+        self.after(50, lambda: self._apply_amadeus(paths[0]))
+
+    def _amadeus_year(self):
+        for src in (getattr(self, "_pf", None), getattr(self, "_d", None)):
+            v = src.get() if src is not None and hasattr(src, "get") else None
+            if v and "-" in str(v):
+                try:
+                    return int(str(v).split("-")[0])
+                except ValueError:
+                    pass
+        return None
+
+    def _apply_amadeus(self, image_path):
+        """يشغّل OCR على الصورة ويملأ جدول الطيران بالرحلات المقروءة."""
+        try:
+            from .ocr import read_amadeus_text
+            text = read_amadeus_text(image_path)
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        rows = umrah.parse_amadeus_flights(text, year=self._amadeus_year())
+        if not rows:
+            messagebox.showinfo(
+                "قراءة أماديوس",
+                "تعذّر التعرّف على رحلات في الصورة. تأكّد من وضوح اللقطة "
+                "وأنّ أسطر الرحلات ظاهرة كاملةً.", parent=self)
+            return
+        for entry in list(self._flight_rows):
+            entry[0].destroy()
+        self._flight_rows.clear()
+        for r in rows:
+            self._add_flight_row(r)
+        messagebox.showinfo("قراءة أماديوس", f"تمّت قراءة {len(rows)} رحلة.",
+                            parent=self)
+
+    def _amadeus_file(self):
+        path = filedialog.askopenfilename(
+            parent=self, title="صورة حجز أماديوس",
+            filetypes=[("صور", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
+                       ("كل الملفّات", "*.*")])
+        if path:
+            self._apply_amadeus(path)
+
+    def _save_temp_image(self, img):
+        import os
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        img.save(path)
+        return path
+
+    def _amadeus_clipboard(self):
+        """يقرأ صورة أماديوس ملصوقة في الحافظة (بعد Win+Shift+S مثلاً)."""
+        try:
+            from PIL import Image, ImageGrab
+            grabbed = ImageGrab.grabclipboard()
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس",
+                                 f"تعذّر قراءة الحافظة: {exc}", parent=self)
+            return
+        img = None
+        if isinstance(grabbed, list) and grabbed:
+            img = Image.open(grabbed[0])
+        elif grabbed is not None and hasattr(grabbed, "save"):
+            img = grabbed
+        if img is None:
+            messagebox.showinfo(
+                "قراءة أماديوس",
+                "لا توجد صورة في الحافظة. التقط لقطة (Win+Shift+S) ثم أعد "
+                "المحاولة.", parent=self)
+            return
+        self._apply_amadeus(self._save_temp_image(img))
+
+    def _amadeus_screen(self):
+        """يلتقط لقطة شاشة كاملة ويقرأ منها رحلات أماديوس."""
+        try:
+            from PIL import ImageGrab
+        except Exception as exc:
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        self.withdraw()
+        self.after(400, lambda: self._grab_screen(ImageGrab))
+
+    def _grab_screen(self, ImageGrab):
+        try:
+            img = ImageGrab.grab()
+        except Exception as exc:
+            self.deiconify()
+            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
+            return
+        self.deiconify()
+        self._apply_amadeus(self._save_temp_image(img))
+
+    def _amadeus_bar(self, parent):
+        """صفّ أزرار قراءة أماديوس + منطقة سحب وإفلات (يعيد إطار الأزرار)."""
+        amz = ttk.Frame(parent)
+        for text, cmd in (("📷 من صورة", self._amadeus_file),
+                          ("📋 من الحافظة", self._amadeus_clipboard),
+                          ("📸 لقطة شاشة", self._amadeus_screen)):
+            ttk.Button(amz, text=text, command=cmd).pack(side=LEFT, padx=2)
+        return amz
+
 
 class VoucherEditorDialog(Toplevel, _EditorMixin):
     """محرّر فاوتشر الفندق: تعديل كل الخلايا، وإضافة/حذف صفوف الإقامات وجهات
@@ -1965,28 +2116,34 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
 
 
 class TransportRequestEditorDialog(Toplevel, _EditorMixin):
-    """محرّر طلب حجز المواصلات: خطاب رسمي لشركة النقل — تعديل الجهة المرسل إليها
-    وبيانات الضيف والحجوزات وجدولَي الطيران والحركة قبل المعاينة."""
+    """محرّر طلب حجز المواصلات: خطاب رسمي لشركة النقل — الجهة واللقب والضيف،
+    حجوزات مكة/المدينة (فندق/غرفة/إطلالة)، جدول الطيران (بقراءة أماديوس سحباً
+    وإفلاتاً)، وجدول الحركة، مع الحفظ في النظام والمعاينة."""
 
-    def __init__(self, parent, rec, trip, data: dict, *, company=None) -> None:
+    def __init__(self, parent, rec, trip, data, *, company=None, app=None,
+                 on_saved=None) -> None:
         super().__init__(parent)
         self.parent = parent
         self.rec = rec
         self.trip = trip
         self._company_dict = company
+        self._app = app
+        self._on_saved = on_saved
+        self._number = str(data.get("number") or "")
         self.title("محرّر طلب حجز المواصلات")
         self.configure(bg=G.BG)
-        self.geometry("960x700")
-        self.minsize(760, 500)
+        self.geometry("980x720")
+        self.minsize(780, 520)
         self.transient(parent)
         self._scroll_body()
 
         self._meta: dict[str, StringVar] = {}
-        self._flight_rows: list[list] = []
-        self._move_rows: list[list] = []
-        self._number = str(data.get("number") or "")
+        self._book_rows: list = []
+        self._flight_rows: list = []
+        self._move_rows: list = []
 
-        self._build_meta(data)
+        self._build_head(data)
+        self._build_bookings(data)
         self._build_flights(data)
         self._build_moves(data)
         self._attach_clipboard(self.body)
@@ -1995,6 +2152,8 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
         bar.pack(fill=X)
         ttk.Button(bar, text="🖨  معاينة PDF",
                    command=self._preview).pack(side=RIGHT)
+        ttk.Button(bar, text="💾  حفظ الطلب",
+                   command=self._save).pack(side=RIGHT, padx=6)
         ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
                                                                  padx=6)
         try:
@@ -2003,19 +2162,24 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
             pass
         self.grab_set()
 
-    def _mrow(self, lf, label, key, r, c, data, width=26):
+    def _mrow(self, lf, label, key, r, c, data, width=26, values=None):
         ttk.Label(lf, text=label).grid(row=r, column=c * 2, sticky="e",
                                        padx=(8, 4), pady=3)
         var = StringVar(value=str(data.get(key) or ""))
         self._meta[key] = var
-        ttk.Entry(lf, textvariable=var, width=width, justify="right").grid(
-            row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
+        if values:
+            ttk.Combobox(lf, textvariable=var, values=list(values),
+                         width=width).grid(row=r, column=c * 2 + 1, sticky="we",
+                                           padx=(0, 8), pady=3)
+        else:
+            ttk.Entry(lf, textvariable=var, width=width, justify="right").grid(
+                row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
         return var
 
-    def _build_meta(self, data):
+    def _build_head(self, data):
         lf = self._section("بيانات الطلب")
-        ttk.Label(lf, text="الرقم").grid(row=0, column=0, sticky="e",
-                                         padx=(8, 4), pady=3)
+        ttk.Label(lf, text="رقم الطلب").grid(row=0, column=0, sticky="e",
+                                             padx=(8, 4), pady=3)
         ttk.Label(lf, text=self._number, foreground=G.ACCENT,
                   font=("Segoe UI", 10, "bold")).grid(row=0, column=1,
                                                        sticky="w", pady=3)
@@ -2023,60 +2187,116 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
                                            padx=(8, 4), pady=3)
         self._build_date_picker(lf, data.get("date"), row=0, col=3)
         self._mrow(lf, "الجهة (السادة/…)", "recipient", 1, 0, data, width=40)
-        self._mrow(lf, "اسم الضيف", "guest_ar", 2, 0, data)
-        self._mrow(lf, "الجنسية", "nationality", 2, 1, data, width=14)
-        self._mrow(lf, "جوال رقم", "phone", 3, 0, data)
-        self._mrow(lf, "عدد الأشخاص", "persons", 3, 1, data, width=8)
-        self._mrow(lf, "الحجوزات", "reservations", 4, 0, data, width=40)
+        self._mrow(lf, "اللقب", "honorific", 2, 0, data, width=12,
+                   values=TREQ_HONORIFICS)
+        self._mrow(lf, "اسم الضيف", "guest_ar", 2, 1, data)
+        self._mrow(lf, "الجنسية", "nationality", 3, 0, data, width=14)
+        self._mrow(lf, "جوال رقم", "phone", 3, 1, data)
+        self._mrow(lf, "عدد الأشخاص", "persons", 4, 0, data, width=8)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
 
-    def _row_table(self, title, heads, widths, rows, store, box_attr, add_label):
-        lf = self._section(title)
-        hdr = ttk.Frame(lf)
-        hdr.pack(fill=X)
-        for w, h in zip(widths, heads):
-            ttk.Label(hdr, text=h, width=w, anchor="center",
-                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
-        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
-        box = ttk.Frame(lf)
-        box.pack(fill=X)
-        setattr(self, box_attr, box)
-        for r in rows:
-            self._add_row(list(r), heads, widths, store, box)
-        ttk.Button(lf, text=add_label,
-                   command=lambda: self._add_row(None, heads, widths, store,
-                                                 box)).pack(anchor="e",
-                                                            pady=(4, 0))
+    def _build_bookings(self, data):
+        lf = self._section("الحجوزات (المدينة / الفندق / نوع الغرفة / الإطلالة)")
+        self._book_box = ttk.Frame(lf)
+        self._book_box.pack(fill=X)
+        for r in data.get("bookings", []):
+            self._add_book_row(list(r))
+        ttk.Button(lf, text="＋ إضافة حجز",
+                   command=lambda: self._add_book_row()).pack(anchor="e",
+                                                              pady=(4, 0))
 
-    def _add_row(self, values, heads, widths, store, box):
-        values = list(values or []) + [""] * len(heads)
-        fr = ttk.Frame(box)
-        fr.pack(fill=X, pady=1)
-        cells = []
-        for i, w in enumerate(widths):
-            var = StringVar(value=str(values[i] or ""))
-            ttk.Entry(fr, textvariable=var, width=w, justify="right").pack(
-                side=RIGHT, padx=1)
-            cells.append(var)
-        entry = [fr, cells]
+    def _add_book_row(self, values=None):
+        values = list(values or []) + ["", "", "", ""]
+        fr = ttk.Frame(self._book_box)
+        fr.pack(fill=X, pady=2)
+        city = self._cell(fr, "المدينة", values[0], QUOTE_CITY_OPTIONS, 12,
+                          False)
+        hotel = self._cell(fr, "الفندق", values[1], QUOTE_HOTELS, 22, False)
+        room = self._cell(fr, "نوع الغرفة", values[2], QUOTE_ROOM_TYPES, 13,
+                          False)
+        view = self._cell(fr, "الإطلالة", values[3], QUOTE_VIEWS, 12, False)
+        entry = [fr, [city, hotel, room, view]]
         ttk.Button(fr, text="حذف", width=5,
-                   command=lambda: self._del_row(store, entry)).pack(
-            side=RIGHT, padx=(4, 1))
-        store.append(entry)
+                   command=lambda: self._del_row(self._book_rows, entry)).pack(
+            side=RIGHT, padx=(4, 2))
+        self._book_rows.append(entry)
         self._attach_clipboard(fr)
 
     def _build_flights(self, data):
-        self._row_table("جدول الطيران (الناقل/رقم الرحلة/خط السير/التاريخ/"
-                        "الإقلاع/الوصول)", TREQ_FLIGHT_HEADS,
-                        (10, 9, 16, 10, 8, 8), data.get("flights", []),
-                        self._flight_rows, "_flight_box", "＋ إضافة رحلة")
+        lf = self._section("جدول الطيران — اقرأ من صورة حجز أماديوس أو أدخل "
+                           "يدوياً")
+        self._amadeus_bar(lf).pack(anchor="e", pady=(0, 4))
+        self._drop = ttk.Label(
+            lf, text="⬇ اسحب صورة حجز الأماديوس هنا وأفلتها لقراءتها",
+            anchor="center", relief="groove", padding=6)
+        self._drop.pack(fill=X, pady=(0, 4))
+        if not self._enable_drop(self._drop):
+            self._drop.configure(text="📷 استخدم أزرار القراءة أعلاه "
+                                      "(السحب والإفلات غير متاح)")
+        self._flight_box = ttk.Frame(lf)
+        self._flight_box.pack(fill=X)
+        for r in data.get("flights", []):
+            self._add_flight_row(list(r))
+        ttk.Button(lf, text="＋ إضافة رحلة",
+                   command=lambda: self._add_flight_row()).pack(anchor="e",
+                                                                pady=(4, 0))
+
+    def _add_flight_row(self, values=None):
+        # [التاريخ، الناقل، الإقلاع، من، الوصول، إلى]
+        values = list(values or []) + [""] * 6
+        fr = ttk.Frame(self._flight_box)
+        fr.pack(fill=X, pady=2)
+        dp = self._date_cell(fr, "التاريخ", values[0])
+        specs = [("الناقل", QUOTE_CARRIERS, 10, False),
+                 ("الإقلاع", quote_times(), 7, False),
+                 ("من", QUOTE_AIRPORT_CITIES, 8, False),
+                 ("الوصول", quote_times(), 7, False),
+                 ("إلى", QUOTE_AIRPORT_CITIES, 8, False)]
+        cells = [self._cell(fr, lbl, values[i], opts, w, ro)
+                 for i, (lbl, opts, w, ro) in enumerate(specs, start=1)]
+        entry = [fr, dp, cells]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._flight_rows, entry)).pack(
+            side=RIGHT, padx=(4, 2))
+        self._flight_rows.append(entry)
+        self._attach_clipboard(fr)
 
     def _build_moves(self, data):
-        self._row_table("جدول الحركة — المواصلات المطلوبة (التاريخ/خط السير/"
-                        "عدد/نوع السيارة/موديل/الوقت)", TREQ_MOVE_HEADS,
-                        (11, 22, 5, 10, 8, 8), data.get("movements", []),
-                        self._move_rows, "_move_box", "＋ إضافة حركة")
+        lf = self._section("جدول الحركة — المواصلات المطلوبة (التاريخ / خط "
+                           "السير / عدد / نوع السيارة / موديل / الوقت)")
+        self._move_box = ttk.Frame(lf)
+        self._move_box.pack(fill=X)
+        for r in data.get("movements", []):
+            self._add_move_row(list(r))
+        ttk.Button(lf, text="＋ إضافة حركة",
+                   command=lambda: self._add_move_row()).pack(anchor="e",
+                                                              pady=(4, 0))
+
+    def _add_move_row(self, values=None):
+        # [التاريخ، خط السير، عدد، نوع السيارة، موديل، الوقت]
+        values = list(values or []) + [""] * 6
+        fr = ttk.Frame(self._move_box)
+        fr.pack(fill=X, pady=2)
+        dp = self._date_cell(fr, "التاريخ", values[0])
+        route = StringVar(value=str(values[1] or ""))
+        sub = ttk.Frame(fr)
+        sub.pack(side=RIGHT, padx=2)
+        ttk.Label(sub, text="خط السير", font=("Segoe UI", 7)).pack()
+        ttk.Entry(sub, textvariable=route, width=26, justify="right").pack()
+        count = self._cell(fr, "عدد", values[2] or "1",
+                           [str(i) for i in range(1, 11)], 4, False)
+        car = self._cell(fr, "نوع السيارة", values[3], VOUCHER_CAR_TYPES, 9,
+                         False)
+        model = self._cell(fr, "موديل", values[4], voucher_car_models(), 7,
+                           False)
+        tm = self._cell(fr, "الوقت", values[5], quote_times(), 7, False)
+        entry = [fr, dp, route, [count, car, model, tm]]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(self._move_rows, entry)).pack(
+            side=RIGHT, padx=(4, 2))
+        self._move_rows.append(entry)
+        self._attach_clipboard(fr)
 
     def _collect(self) -> dict:
         data = {k: v.get().strip() for k, v in self._meta.items()}
@@ -2084,13 +2304,33 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
         data["date"] = self._d.get()
         data["office_manager"] = QUOTE_OFFICE_NAME
         data["office_title"] = QUOTE_OFFICE_TITLE
-        data["flights"] = [[c.get().strip() for c in cells]
-                           for _fr, cells in self._flight_rows
-                           if any(c.get().strip() for c in cells)]
-        data["movements"] = [[c.get().strip() for c in cells]
-                             for _fr, cells in self._move_rows
-                             if any(c.get().strip() for c in cells)]
+        data["bookings"] = [[c.get().strip() for c in cells]
+                            for _fr, cells in self._book_rows
+                            if any(c.get().strip() for c in cells)]
+        data["flights"] = [[dp.get()] + [c.get().strip() for c in cells]
+                           for _fr, dp, cells in self._flight_rows
+                           if dp.get() or any(c.get().strip() for c in cells)]
+        data["movements"] = [
+            [dp.get(), route.get().strip()] + [c.get().strip() for c in cells]
+            for _fr, dp, route, cells in self._move_rows
+            if dp.get() or route.get().strip()
+            or any(c.get().strip() for c in cells)]
         return data
+
+    def _save(self):
+        if self._app is None:
+            messagebox.showinfo("حفظ", "تعذّر تحديد النظام للحفظ.", parent=self)
+            return
+        data = self._collect()
+        umrah.save_transport_request(self._app._settings, data)
+        try:
+            save_settings(self._app._settings)
+        except OSError:
+            pass
+        messagebox.showinfo("الطلبات", f"تم حفظ الطلب {self._number}.",
+                            parent=self)
+        if callable(self._on_saved):
+            self._on_saved()
 
     def _preview(self):
         data = self._collect()
@@ -3315,6 +3555,102 @@ class PricingsListWindow(Toplevel):
                                    parent=self):
             return
         umrah.delete_pricing(self.app._settings, p.get("number", ""))
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.refresh()
+
+
+class TransportRequestsListWindow(Toplevel):
+    """قائمة طلبات المواصلات المحفوظة: فتح/تعديل، معاينة، حذف."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("طلبات المواصلات المحفوظة")
+        self.configure(bg=G.BG)
+        self.geometry("760x430")
+        self.transient(parent)
+        outer = ttk.Frame(self, padding=8)
+        outer.pack(fill=BOTH, expand=True)
+        cols = ("number", "recipient", "guest", "date")
+        heads = {"number": "الرقم", "recipient": "الجهة", "guest": "الضيف",
+                 "date": "التاريخ"}
+        widths = {"number": 100, "recipient": 260, "guest": 220, "date": 110}
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings",
+                                 selectmode="browse")
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c],
+                             anchor="e" if c in ("recipient", "guest")
+                             else "center")
+        vs = ttk.Scrollbar(outer, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vs.set)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        vs.pack(side=RIGHT, fill="y")
+        bar = ttk.Frame(self, padding=(8, 6))
+        bar.pack(fill=X)
+        for text, cmd in (("✏ فتح/تعديل", self.open_sel),
+                          ("👁 معاينة", self.preview_sel),
+                          ("🗑 حذف", self.delete_sel), ("↻ تحديث", self.refresh)):
+            ttk.Button(bar, text=G.rtl(text), command=cmd).pack(side=RIGHT,
+                                                                padx=3)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=LEFT,
+                                                                 padx=3)
+        self.tree.bind("<Double-1>", lambda e: self.open_sel())
+        self._items: list = []
+        self.refresh()
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    def refresh(self) -> None:
+        self._items = umrah.load_transport_requests(self.app._settings)
+        self.tree.delete(*self.tree.get_children())
+        for i, q in enumerate(self._items):
+            self.tree.insert("", "end", iid=str(i), values=(
+                q.get("number", ""), q.get("recipient", "") or "—",
+                q.get("guest_ar", "") or "—", q.get("date", "") or "—"))
+
+    def _sel(self):
+        s = self.tree.selection()
+        return self._items[int(s[0])] if s else None
+
+    def _company(self):
+        co = self.app._settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def open_sel(self) -> None:
+        q = self._sel()
+        if q is None:
+            messagebox.showinfo("الطلبات", "اختر طلباً أولاً.", parent=self)
+            return
+        TransportRequestEditorDialog(self, PassportData(), None, dict(q),
+                                     company=self._company(), app=self.app,
+                                     on_saved=self.refresh)
+
+    def preview_sel(self) -> None:
+        q = self._sel()
+        if q is None:
+            return
+        G.open_preview(
+            self,
+            lambda path: export_umrah_transport_request_pdf(
+                PassportData(), path, data=q, company=self._company()),
+            f"مواصلات {q.get('number', '')}", "pdf")
+
+    def delete_sel(self) -> None:
+        q = self._sel()
+        if q is None:
+            return
+        if not messagebox.askyesno("حذف",
+                                   f"حذف الطلب {q.get('number', '')}؟",
+                                   parent=self):
+            return
+        umrah.delete_transport_request(self.app._settings, q.get("number", ""))
         try:
             save_settings(self.app._settings)
         except OSError:

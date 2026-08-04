@@ -505,18 +505,22 @@ assert "title_ar" not in _data          # العنوان محذوف من الت�
 _ed._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _ed.destroy()
-# طلب حجز مواصلات: خطاب لشركة النقل (بيانات الضيف + جدولا الطيران والحركة)
+# طلب حجز مواصلات: خطاب لشركة النقل (حجوزات + طيران + حركة + لقب + شكر)
 from hajj_app.pdf_io import (build_transport_request_data,
                              export_umrah_transport_request_pdf)
 _trb = build_transport_request_data(_recv, trip=tripv, program_name="ديسمبر",
                                     number="MA-T0001", recipient="جنى")
 assert _trb["guest_ar"] == "خالد" and _trb["recipient"] == "جنى"
 assert len(_trb["movements"]) == 4 and len(_trb["flights"]) == 2
-assert "جميرا مكة" in _trb["reservations"]
+# الحجوزات مُهيكلة: مكة/المدينة بفندق ونوع غرفة
+assert len(_trb["bookings"]) == 2
+assert any("جميرا مكة" in b[1] for b in _trb["bookings"])
+assert _trb["bookings"][0][2] == "ثنائي"          # نوع الغرفة من المعتمر
+assert _trb["honorific"] == "السيد"
 _ptr = WORK / "treq.pdf"
 export_umrah_transport_request_pdf(_recv, _ptr, data=_trb)
 assert _ptr.read_bytes()[:5] == b"%PDF-" and _ptr.stat().st_size > 3000
-# المحرّر: يفتح من نافذة المعتمرين ويعاين بعد التعديل
+# المحرّر: يفتح من نافذة المعتمرين (رقم خاص MA-T)، يعدّل ويحفظ ويعاين
 w9.do_transport_request()
 _tr = [w for w in w9.winfo_children()
        if isinstance(w, _ug.TransportRequestEditorDialog)] or \
@@ -524,19 +528,42 @@ _tr = [w for w in w9.winfo_children()
        if isinstance(w, _ug.TransportRequestEditorDialog)]
 assert _tr, "محرّر طلب المواصلات لم يُفتح"
 _trd = _tr[-1]
-assert _trd._number.startswith("MA") and _trd._meta["guest_ar"].get()
+assert _trd._number.startswith("MA-T") and _trd._meta["guest_ar"].get()
 _trd._meta["recipient"].set("جنى عبد الله السكيت")
+_trd._meta["honorific"].set("السيدة")
 _nm = len(_trd._move_rows)
-_trd._add_row(["2026-08-09", "من الفندق إلى المطار", "1", "FORD", "2026",
-               "10:00"], _ug.TREQ_MOVE_HEADS, (11, 22, 5, 10, 8, 8),
-              _trd._move_rows, _trd._move_box)
+_trd._add_move_row(["2026-08-09", "من الفندق إلى المطار", "1", "FORD", "2026",
+                    "10:00"])
 assert len(_trd._move_rows) == _nm + 1
+_trd._add_book_row(["مكة المكرّمة", "فندق", "ثلاثي", "كعبة"])
+_trd._add_flight_row(["2026-08-07", "الاتحاد", "16:30", "JED", "18:15", "MED"])
 _trc = _trd._collect()
 assert _trc["recipient"] == "جنى عبد الله السكيت" and _trc["movements"]
+assert _trc["honorific"] == "السيدة" and _trc["bookings"] and _trc["flights"]
 assert _trc["office_manager"] == "أيمن الشهابي"
 _trd._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+# الحفظ في النظام واستعراضه في نافذة مستقلّة ثم حذفه
+_trd._save()
+_saved = umrah.load_transport_requests(app9._settings)
+assert _saved and _saved[-1]["number"] == _trd._number
 _trd.destroy()
+app9.open_transport_requests()
+_tlw = [w for w in r9.winfo_children()
+        if isinstance(w, _ug.TransportRequestsListWindow)][-1]
+assert len(_tlw.tree.get_children()) == len(_saved)
+_tlw.tree.selection_set("0")
+_tlw.preview_sel()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_tlw.open_sel()                              # يعيد فتح المحرّر للتعديل
+_reopen = [w for w in _tlw.winfo_children()
+           if isinstance(w, _ug.TransportRequestEditorDialog)][-1]
+assert _reopen._number == _saved[0]["number"]
+_reopen.destroy()
+umrah.delete_transport_request(app9._settings, _trd._number)
+assert all(q["number"] != _trd._number
+           for q in umrah.load_transport_requests(app9._settings))
+_tlw.destroy()
 # فاوتشر يدوي لأي حجز خارج البرامج (rec/trip فارغان)
 app9.new_manual_voucher()
 _mv = [w for w in r9.winfo_children()

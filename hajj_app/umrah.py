@@ -470,6 +470,45 @@ def delete_pricing(settings: dict, number: str) -> None:
             p for p in lst if str(p.get("number") or "") != str(number)]
 
 
+def next_transport_number(settings: dict) -> str:
+    """يخصّص رقماً مرجعياً لطلب المواصلات تسلسلياً (MA-T0001…)."""
+    try:
+        seq = int(settings.get("transport_seq", 0) or 0)
+    except (TypeError, ValueError):
+        seq = 0
+    seq += 1
+    settings["transport_seq"] = seq
+    return f"MA-T{seq:04d}"
+
+
+def load_transport_requests(settings: dict) -> list:
+    """يعيد طلبات حجز المواصلات المحفوظة."""
+    lst = settings.get("umrah_transport_requests")
+    return list(lst) if isinstance(lst, list) else []
+
+
+def save_transport_request(settings: dict, req: dict) -> None:
+    """يحفظ طلب مواصلات؛ يحدّث الموجود بنفس الرقم."""
+    lst = settings.get("umrah_transport_requests")
+    if not isinstance(lst, list):
+        lst = []
+        settings["umrah_transport_requests"] = lst
+    num = str(req.get("number") or "")
+    for i, q in enumerate(lst):
+        if str(q.get("number") or "") == num and num:
+            lst[i] = dict(req)
+            return
+    lst.append(dict(req))
+
+
+def delete_transport_request(settings: dict, number: str) -> None:
+    """يحذف طلب مواصلات بحسب رقمه."""
+    lst = settings.get("umrah_transport_requests")
+    if isinstance(lst, list):
+        settings["umrah_transport_requests"] = [
+            q for q in lst if str(q.get("number") or "") != str(number)]
+
+
 def next_quote_number(settings: dict) -> str:
     """يخصّص رقم عرض سعر تسلسلياً (MA-Q0001…) ويحدّث العدّاد في الإعدادات."""
     try:
