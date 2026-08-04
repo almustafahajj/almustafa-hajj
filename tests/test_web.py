@@ -768,6 +768,34 @@ assert um.post("/umrah/program/U1/rooming/zzz/auto").status_code == 404
 assert vw.post("/umrah/program/U1/rooming/makkah/auto").status_code == 403
 print("  OK: التسكين التفاعلي على الويب — توزيع تلقائي وتعديل يدوي ومسح")
 
+# --- المرحلة ١٠: توزيع المواصلات التفاعلي ---
+tp = um.get("/umrah/program/U1/transport").get_data(as_text=True)
+assert "المواصلات" in tp and "توزيع المركبات" in tp
+r = um.post("/umrah/program/U1/transport/auto")
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc, _ = storage.load_records(UDATA, admin)
+_u1 = _um.trip_pilgrims(_rc, "U1")
+assert all("جيمس" in (getattr(x, "vehicle", "") or "") for x in _u1)  # 3 -> جيمس
+assert len({x.vehicle for x in _u1}) == 1
+# تعديل يدوي وحفظ
+_idxs = [i for i, x in enumerate(_rc) if x.trip == "U1"]
+r = um.post("/umrah/program/U1/transport/save",
+            data={f"vehicle_{_idxs[0]}": "فورد خاص"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc2, _ = storage.load_records(UDATA, admin)
+assert "فورد خاص" in {x.vehicle for x in _um.trip_pilgrims(_rc2, "U1")}
+# مسح
+r = um.post("/umrah/program/U1/transport/clear")
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc3, _ = storage.load_records(UDATA, admin)
+assert all(not (getattr(x, "vehicle", "") or "")
+           for x in _um.trip_pilgrims(_rc3, "U1"))
+assert vw.post("/umrah/program/U1/transport/auto").status_code == 403
+print("  OK: توزيع المواصلات التفاعلي على الويب — تلقائي وتعديل ومسح")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

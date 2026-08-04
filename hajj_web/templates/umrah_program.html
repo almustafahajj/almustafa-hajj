@@ -8,6 +8,7 @@
     {% if can_edit %}<a class="add-btn" href="{{ url_for('umrah_book', code=trip.code) }}">🧮 حجز بالتسعير</a>{% endif %}
     {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('umrah_pilgrim_new', code=trip.code) }}">➕ إضافة يدوي</a>{% endif %}
     <a class="add-btn ghost-add" href="{{ url_for('umrah_rooming', code=trip.code) }}">🛏 التسكين</a>
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_transport', code=trip.code) }}">🚐 المواصلات</a>
     {% if can_edit %}<a class="add-btn ghost-add" href="{{ url_for('umrah_program_edit', code=trip.code) }}">✏️ تعديل البرنامج</a>{% endif %}
     <a class="add-btn ghost-add" href="{{ url_for('umrah_programs') }}">🌙 كل البرامج</a>
     <span class="who">👤 {{ username }} · {{ role }}</span>

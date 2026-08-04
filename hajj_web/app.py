@@ -1231,6 +1231,64 @@ def create_app(auth_path: str | Path | None = None,
         flash("مُسح توزيع الغرف", "ok")
         return redirect(url_for("umrah_rooming", code=code))
 
+    # ---- توزيع المواصلات التفاعلي (فورد/جيمس) ----
+    @app.route("/umrah/program/<code>/transport")
+    @login_required
+    def umrah_transport(code):
+        trip = _trip_or_404(code)
+        try:
+            records, _ = storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        rows = [{"idx": i, "name": r.full_name_ar or r.full_name_en or "—",
+                 "phone": r.phone or "—",
+                 "vehicle": str(getattr(r, "vehicle", "") or "")}
+                for i, r in _program_indexed(records, code)]
+        vehicles = len({x["vehicle"] for x in rows if x["vehicle"]})
+        return render_template(
+            "umrah_transport.html", trip=trip, rows=rows, vehicles=vehicles,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit)
+
+    @app.route("/umrah/program/<code>/transport/auto", methods=["POST"])
+    @edit_required
+    def umrah_transport_auto(code):
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            num = umrah.auto_assign_vehicles(umrah.trip_pilgrims(records, code))
+            storage.save_records(records, _data_path(), g.session)
+        _audit("توزيع مواصلات", f"{code}: {num}")
+        flash(f"وُزّعت {num} مركبة", "ok")
+        return redirect(url_for("umrah_transport", code=code))
+
+    @app.route("/umrah/program/<code>/transport/save", methods=["POST"])
+    @edit_required
+    def umrah_transport_save(code):
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            for i, r in _program_indexed(records, code):
+                r.vehicle = (request.form.get(f"vehicle_{i}") or "").strip()
+            storage.save_records(records, _data_path(), g.session)
+        _audit("حفظ المواصلات", code)
+        flash("حُفظت المركبات", "ok")
+        return redirect(url_for("umrah_transport", code=code))
+
+    @app.route("/umrah/program/<code>/transport/clear", methods=["POST"])
+    @edit_required
+    def umrah_transport_clear(code):
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            for r in umrah.trip_pilgrims(records, code):
+                r.vehicle = ""
+            storage.save_records(records, _data_path(), g.session)
+        _audit("مسح المواصلات", code)
+        flash("مُسح توزيع المواصلات", "ok")
+        return redirect(url_for("umrah_transport", code=code))
+
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
 
