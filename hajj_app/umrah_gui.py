@@ -196,6 +196,7 @@ class UmrahApp:
         ))
         self._menu_button(bar, "🏨  مستندات", (
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
+            ("🗂  الفاوتشرات المحفوظة", self.open_vouchers),
         ))
         self._menu_button(bar, "🚖  الطلبات", (
             ("🚖  طلب حجز مواصلات", self.new_transport_request),
@@ -361,7 +362,7 @@ class UmrahApp:
         data = build_voucher_data(rec, trip=None, program_name="",
                                   company=co, number=number)
         VoucherEditorDialog(self.root, rec, None, data, program="",
-                            company=co)
+                            company=co, app=self)
 
     def new_transport_request(self) -> None:
         """طلب حجز مواصلات لأي حجز — يُملأ يدوياً بالكامل (خارج البرامج)."""
@@ -381,6 +382,10 @@ class UmrahApp:
     def open_transport_requests(self) -> None:
         """قائمة طلبات المواصلات المحفوظة (فتح/تعديل، معاينة، حذف)."""
         TransportRequestsListWindow(self.root, self)
+
+    def open_vouchers(self) -> None:
+        """قائمة الفاوتشرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
+        VouchersListWindow(self.root, self)
 
     def open_quotes(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة للبرنامج المحدّد."""
@@ -1265,7 +1270,7 @@ class TripPilgrimsWindow(Toplevel):
         data = build_voucher_data(rec, trip=self.trip, program_name=prog,
                                   company=company, number=number)
         VoucherEditorDialog(self, rec, self.trip, data, program=prog,
-                            company=company)
+                            company=company, app=self.app)
 
     def do_transport_request(self) -> None:
         """فتح محرّر طلب حجز المواصلات (خطاب لشركة النقل) للمعتمر المحدّد."""
@@ -1863,13 +1868,15 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
     التواصل وبنود الشروط، قبل المعاينة."""
 
     def __init__(self, parent, rec, trip, data: dict, *, program: str = "",
-                 company=None) -> None:
+                 company=None, app=None, on_saved=None) -> None:
         super().__init__(parent)
         self.parent = parent
         self.rec = rec
         self.trip = trip
         self._program = program
         self._company_dict = company
+        self._app = app
+        self._on_saved = on_saved
         self._lang = str(data.get("lang") or "ar")
         self.title("محرّر فاوتشر الفندق")
         self.configure(bg=G.BG)
@@ -1909,6 +1916,9 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         bar.pack(fill=X)
         ttk.Button(bar, text="🖨  معاينة PDF",
                    command=self._preview).pack(side=RIGHT)
+        if self._app is not None:
+            ttk.Button(bar, text="💾  حفظ الفاوتشر",
+                       command=self._save).pack(side=RIGHT, padx=6)
         ttk.Button(bar, text="إغلاق",
                    command=self.destroy).pack(side=RIGHT, padx=6)
 
@@ -1917,6 +1927,25 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         except Exception:
             pass
         self.grab_set()
+
+    def _persist(self, data):
+        """يخزّن الفاوتشر ضمن «الفاوتشرات المحفوظة» (يحدّث الموجود بنفس الرقم)."""
+        if self._app is None:
+            return
+        umrah.save_voucher(self._app._settings, data)
+        try:
+            save_settings(self._app._settings)
+        except OSError:
+            pass
+        if callable(self._on_saved):
+            self._on_saved()
+
+    def _save(self):
+        if self._app is None:
+            return
+        self._persist(self._collect())
+        messagebox.showinfo("الفاوتشرات",
+                            f"تم حفظ الفاوتشر {self._number}.", parent=self)
 
     # ---- أقسام النموذج -------------------------------------------------
     def _on_lang_change(self, _event=None) -> None:
@@ -1932,9 +1961,10 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         parent = self.parent
         rec, trip = self.rec, self.trip
         program, company = self._program, self._company_dict
+        app, on_saved = self._app, self._on_saved
         self.destroy()
         VoucherEditorDialog(parent, rec, trip, data, program=program,
-                            company=company)
+                            company=company, app=app, on_saved=on_saved)
 
     def _build_meta(self, data: dict) -> None:
         lf = self._section("البيانات الأساسية")
@@ -2108,6 +2138,7 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
 
     def _preview(self) -> None:
         data = self._collect()
+        self._persist(data)          # كل معاينة تُحفظ تلقائياً في الفاوتشرات
         code = getattr(self.trip, "code", "") or "يدوي"
         G.open_preview(
             self,
@@ -2317,23 +2348,29 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
             or any(c.get().strip() for c in cells)]
         return data
 
-    def _save(self):
+    def _persist(self, data):
+        """يخزّن الطلب ضمن «طلبات المواصلات» (يحدّث الموجود بنفس الرقم)."""
         if self._app is None:
-            messagebox.showinfo("حفظ", "تعذّر تحديد النظام للحفظ.", parent=self)
             return
-        data = self._collect()
         umrah.save_transport_request(self._app._settings, data)
         try:
             save_settings(self._app._settings)
         except OSError:
             pass
-        messagebox.showinfo("الطلبات", f"تم حفظ الطلب {self._number}.",
-                            parent=self)
         if callable(self._on_saved):
             self._on_saved()
 
+    def _save(self):
+        if self._app is None:
+            messagebox.showinfo("حفظ", "تعذّر تحديد النظام للحفظ.", parent=self)
+            return
+        self._persist(self._collect())
+        messagebox.showinfo("الطلبات", f"تم حفظ الطلب {self._number}.",
+                            parent=self)
+
     def _preview(self):
         data = self._collect()
+        self._persist(data)          # كل معاينة تُحفظ تلقائياً في الطلبات
         code = getattr(self.trip, "code", "") or "يدوي"
         G.open_preview(
             self,
@@ -3651,6 +3688,102 @@ class TransportRequestsListWindow(Toplevel):
                                    parent=self):
             return
         umrah.delete_transport_request(self.app._settings, q.get("number", ""))
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        self.refresh()
+
+
+class VouchersListWindow(Toplevel):
+    """قائمة فاوتشرات الفنادق المحفوظة: فتح/تعديل، معاينة، حذف."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("الفاوتشرات المحفوظة")
+        self.configure(bg=G.BG)
+        self.geometry("760x430")
+        self.transient(parent)
+        outer = ttk.Frame(self, padding=8)
+        outer.pack(fill=BOTH, expand=True)
+        cols = ("number", "guest", "booking", "date")
+        heads = {"number": "الرقم", "guest": "الضيف", "booking": "رقم الحجز",
+                 "date": "التاريخ"}
+        widths = {"number": 100, "guest": 260, "booking": 140, "date": 110}
+        self.tree = ttk.Treeview(outer, columns=cols, show="headings",
+                                 selectmode="browse")
+        for c in cols:
+            self.tree.heading(c, text=heads[c])
+            self.tree.column(c, width=widths[c],
+                             anchor="e" if c == "guest" else "center")
+        vs = ttk.Scrollbar(outer, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vs.set)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        vs.pack(side=RIGHT, fill="y")
+        bar = ttk.Frame(self, padding=(8, 6))
+        bar.pack(fill=X)
+        for text, cmd in (("✏ فتح/تعديل", self.open_sel),
+                          ("👁 معاينة", self.preview_sel),
+                          ("🗑 حذف", self.delete_sel), ("↻ تحديث", self.refresh)):
+            ttk.Button(bar, text=G.rtl(text), command=cmd).pack(side=RIGHT,
+                                                                padx=3)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=LEFT,
+                                                                 padx=3)
+        self.tree.bind("<Double-1>", lambda e: self.open_sel())
+        self._items: list = []
+        self.refresh()
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    def refresh(self) -> None:
+        self._items = umrah.load_vouchers(self.app._settings)
+        self.tree.delete(*self.tree.get_children())
+        for i, v in enumerate(self._items):
+            self.tree.insert("", "end", iid=str(i), values=(
+                v.get("number", ""),
+                v.get("guest_ar", "") or v.get("guest_en", "") or "—",
+                v.get("booking_no", "") or "—", v.get("date", "") or "—"))
+
+    def _sel(self):
+        s = self.tree.selection()
+        return self._items[int(s[0])] if s else None
+
+    def _company(self):
+        co = self.app._settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def open_sel(self) -> None:
+        v = self._sel()
+        if v is None:
+            messagebox.showinfo("الفاوتشرات", "اختر فاوتشراً أولاً.", parent=self)
+            return
+        VoucherEditorDialog(self, PassportData(), None, dict(v),
+                            company=self._company(), app=self.app,
+                            on_saved=self.refresh)
+
+    def preview_sel(self) -> None:
+        v = self._sel()
+        if v is None:
+            return
+        G.open_preview(
+            self,
+            lambda path: export_umrah_voucher_pdf(
+                PassportData(), path, data=v, company=self._company()),
+            f"فاوتشر {v.get('number', '')}", "pdf")
+
+    def delete_sel(self) -> None:
+        v = self._sel()
+        if v is None:
+            return
+        if not messagebox.askyesno("حذف",
+                                   f"حذف الفاوتشر {v.get('number', '')}؟",
+                                   parent=self):
+            return
+        umrah.delete_voucher(self.app._settings, v.get("number", ""))
         try:
             save_settings(self.app._settings)
         except OSError:

@@ -504,7 +504,19 @@ assert _data["number"] == _ed._number and "-" in _data["date"]
 assert "title_ar" not in _data          # العنوان محذوف من التعديل
 _ed._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+# المعاينة تحفظ الفاوتشر تلقائياً في النظام
+_vsaved = umrah.load_vouchers(app9._settings)
+assert any(v["number"] == _ed._number for v in _vsaved)
 _ed.destroy()
+# نافذة الفاوتشرات المحفوظة تستعرضها (فتح/معاينة/حذف)
+app9.open_vouchers()
+_vlw = [w for w in r9.winfo_children()
+        if isinstance(w, _ug.VouchersListWindow)][-1]
+assert len(_vlw.tree.get_children()) == len(_vsaved)
+_vlw.tree.selection_set("0")
+_vlw.preview_sel()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_vlw.destroy()
 # طلب حجز مواصلات: خطاب لشركة النقل (حجوزات + طيران + حركة + لقب + شكر)
 from hajj_app.pdf_io import (build_transport_request_data,
                              export_umrah_transport_request_pdf)
@@ -543,10 +555,10 @@ assert _trc["honorific"] == "السيدة" and _trc["bookings"] and _trc["flight
 assert _trc["office_manager"] == "أيمن الشهابي"
 _trd._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
-# الحفظ في النظام واستعراضه في نافذة مستقلّة ثم حذفه
-_trd._save()
+# المعاينة تحفظ الطلب تلقائياً في النظام (بلا زرّ حفظ)
 _saved = umrah.load_transport_requests(app9._settings)
-assert _saved and _saved[-1]["number"] == _trd._number
+assert any(q["number"] == _trd._number for q in _saved)
+# واستعراضه في نافذة مستقلّة
 _trd.destroy()
 app9.open_transport_requests()
 _tlw = [w for w in r9.winfo_children()

@@ -509,6 +509,34 @@ def delete_transport_request(settings: dict, number: str) -> None:
             q for q in lst if str(q.get("number") or "") != str(number)]
 
 
+def load_vouchers(settings: dict) -> list:
+    """يعيد فاوتشرات الفنادق المحفوظة."""
+    lst = settings.get("umrah_vouchers")
+    return list(lst) if isinstance(lst, list) else []
+
+
+def save_voucher(settings: dict, voucher: dict) -> None:
+    """يحفظ فاوتشر فندق؛ يحدّث الموجود بنفس الرقم."""
+    lst = settings.get("umrah_vouchers")
+    if not isinstance(lst, list):
+        lst = []
+        settings["umrah_vouchers"] = lst
+    num = str(voucher.get("number") or "")
+    for i, v in enumerate(lst):
+        if str(v.get("number") or "") == num and num:
+            lst[i] = dict(voucher)
+            return
+    lst.append(dict(voucher))
+
+
+def delete_voucher(settings: dict, number: str) -> None:
+    """يحذف فاوتشر فندق بحسب رقمه."""
+    lst = settings.get("umrah_vouchers")
+    if isinstance(lst, list):
+        settings["umrah_vouchers"] = [
+            v for v in lst if str(v.get("number") or "") != str(number)]
+
+
 def next_quote_number(settings: dict) -> str:
     """يخصّص رقم عرض سعر تسلسلياً (MA-Q0001…) ويحدّث العدّاد في الإعدادات."""
     try:
