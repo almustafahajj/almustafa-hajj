@@ -141,11 +141,17 @@ for _m in getattr(app, "_menus", []):
         except Exception:
             pass
 _utxt = " ".join(_ulabels)
-assert len(app._menus) == 3                                  # ثلاث قوائم مبسّطة
+assert len(app._menus) == 4                                  # أربع قوائم مبسّطة
 for _need in ("تعديل البرنامج", "حذف البرنامج", "عروض الأسعار المحفوظة",
               "عرض سعر يدوي", "العروض اليدوية", "مسعّر المجموعات",
-              "التسعيرات المحفوظة", "فاوتشر فندق يدوي"):
+              "التسعيرات المحفوظة", "فاوتشر فندق يدوي", "طلب حجز مواصلات"):
     assert _need in _utxt, _need
+# بند «الطلبات» يفتح محرّر طلب المواصلات (يدوي، خارج البرامج)
+app.new_transport_request()
+_mtr = [w for w in root.winfo_children()
+        if isinstance(w, ug.TransportRequestEditorDialog)]
+assert _mtr and _mtr[-1].trip is None and _mtr[-1]._number.startswith("MA")
+_mtr[-1].destroy()
 root.destroy()
 print("  OK: التسعير والسفر والرقم المرجعي، السعة، رمز البرنامج، وموسم السنة")
 

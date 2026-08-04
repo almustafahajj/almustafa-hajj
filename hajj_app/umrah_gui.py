@@ -197,6 +197,9 @@ class UmrahApp:
         self._menu_button(bar, "🏨  مستندات", (
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
         ))
+        self._menu_button(bar, "🚖  الطلبات", (
+            ("🚖  طلب حجز مواصلات", self.new_transport_request),
+        ))
 
     def _menu_button(self, bar, label, items):
         """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر) أو None لفاصل."""
@@ -358,6 +361,20 @@ class UmrahApp:
                                   company=co, number=number)
         VoucherEditorDialog(self.root, rec, None, data, program="",
                             company=co)
+
+    def new_transport_request(self) -> None:
+        """طلب حجز مواصلات لأي حجز — يُملأ يدوياً بالكامل (خارج البرامج)."""
+        co = self._settings.get("company")
+        co = co if isinstance(co, dict) else None
+        number = umrah.next_voucher_number(self._settings)
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        rec = PassportData()
+        data = build_transport_request_data(rec, trip=None, program_name="",
+                                            company=co, number=number)
+        TransportRequestEditorDialog(self.root, rec, None, data, company=co)
 
     def open_quotes(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة للبرنامج المحدّد."""
