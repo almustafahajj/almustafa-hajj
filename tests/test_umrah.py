@@ -499,6 +499,38 @@ assert "title_ar" not in _data          # العنوان محذوف من الت�
 _ed._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _ed.destroy()
+# طلب حجز مواصلات: خطاب لشركة النقل (بيانات الضيف + جدولا الطيران والحركة)
+from hajj_app.pdf_io import (build_transport_request_data,
+                             export_umrah_transport_request_pdf)
+_trb = build_transport_request_data(_recv, trip=tripv, program_name="ديسمبر",
+                                    number="MA-T0001", recipient="جنى")
+assert _trb["guest_ar"] == "خالد" and _trb["recipient"] == "جنى"
+assert len(_trb["movements"]) == 4 and len(_trb["flights"]) == 2
+assert "جميرا مكة" in _trb["reservations"]
+_ptr = WORK / "treq.pdf"
+export_umrah_transport_request_pdf(_recv, _ptr, data=_trb)
+assert _ptr.read_bytes()[:5] == b"%PDF-" and _ptr.stat().st_size > 3000
+# المحرّر: يفتح من نافذة المعتمرين ويعاين بعد التعديل
+w9.do_transport_request()
+_tr = [w for w in w9.winfo_children()
+       if isinstance(w, _ug.TransportRequestEditorDialog)] or \
+      [w for w in app9.root.winfo_children()
+       if isinstance(w, _ug.TransportRequestEditorDialog)]
+assert _tr, "محرّر طلب المواصلات لم يُفتح"
+_trd = _tr[-1]
+assert _trd._number.startswith("MA") and _trd._meta["guest_ar"].get()
+_trd._meta["recipient"].set("جنى عبد الله السكيت")
+_nm = len(_trd._move_rows)
+_trd._add_row(["2026-08-09", "من الفندق إلى المطار", "1", "FORD", "2026",
+               "10:00"], _ug.TREQ_MOVE_HEADS, (11, 22, 5, 10, 8, 8),
+              _trd._move_rows, _trd._move_box)
+assert len(_trd._move_rows) == _nm + 1
+_trc = _trd._collect()
+assert _trc["recipient"] == "جنى عبد الله السكيت" and _trc["movements"]
+assert _trc["office_manager"] == "أيمن الشهابي"
+_trd._preview()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+_trd.destroy()
 # فاوتشر يدوي لأي حجز خارج البرامج (rec/trip فارغان)
 app9.new_manual_voucher()
 _mv = [w for w in r9.winfo_children()
@@ -510,7 +542,7 @@ _mv._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _mv.destroy()
 r9.destroy()
-print("  OK: سند وفاتورة وعقد وفاوتشر الفندق لكل معتمر بمسمّيات العمرة")
+print("  OK: سند وفاتورة وعقد وفاوتشر الفندق وطلب المواصلات لكل معتمر")
 
 # === عرض السعر (Quotation) ===
 from hajj_app.pdf_io import build_quotation_data, export_umrah_quotation_pdf

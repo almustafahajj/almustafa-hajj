@@ -32,13 +32,16 @@ from .pdf_io import (
     QUOTE_GUEST_TYPES, QUOTE_HOTELS, QUOTE_LOCATIONS, QUOTE_MEALS, QUOTE_NIGHTS,
     QUOTE_NOTES, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE,
     QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
+    TREQ_FLIGHT_HEADS, TREQ_MOVE_HEADS,
     VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
-    VOUCHER_VIEW_OPTIONS, build_quotation_data, build_voucher_data,
+    VOUCHER_VIEW_OPTIONS, build_quotation_data, build_transport_request_data,
+    build_voucher_data,
     export_airline_pdf, export_group_pricing_pdf, export_umrah_cards_pdf,
     export_umrah_contract_pdf, export_umrah_finance_pdf, export_umrah_invoice_pdf,
     export_umrah_pdf,
     export_umrah_quotation_pdf, export_umrah_receipt_pdf, export_umrah_rooming_pdf,
-    export_umrah_transport_pdf, export_umrah_voucher_pdf, fmt_money,
+    export_umrah_transport_pdf, export_umrah_transport_request_pdf,
+    export_umrah_voucher_pdf, fmt_money,
     quotation_pricing, quote_times, translate_quotation_data, voucher_car_models,
 )
 from .storage import load_records, load_settings, save_records, save_settings
@@ -869,7 +872,8 @@ class TripPilgrimsWindow(Toplevel):
                           ("📜  عقد", self.do_contract),
                           ("💲  عرض سعر", self.do_quotation),
                           ("📋  عروض الأسعار", self.do_quotes_list),
-                          ("🏨  فاوتشر الفندق", self.do_voucher)):
+                          ("🏨  فاوتشر الفندق", self.do_voucher),
+                          ("🚖  طلب مواصلات", self.do_transport_request)):
             ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",
                        command=cmd).pack(side=LEFT, padx=3)
         ttk.Button(bar, text=G.rtl("👁  معاينة PDF"), style="Ghost.TButton",
@@ -1239,6 +1243,24 @@ class TripPilgrimsWindow(Toplevel):
                                   company=company, number=number)
         VoucherEditorDialog(self, rec, self.trip, data, program=prog,
                             company=company)
+
+    def do_transport_request(self) -> None:
+        """فتح محرّر طلب حجز المواصلات (خطاب لشركة النقل) للمعتمر المحدّد."""
+        rec = self._selected()
+        if rec is None:
+            messagebox.showinfo("طلب مواصلات", "اختر معتمراً أولاً.", parent=self)
+            return
+        prog = self.trip.name or self.trip.code
+        number = umrah.next_voucher_number(self.app._settings)
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
+        company = self._company()
+        data = build_transport_request_data(rec, trip=self.trip,
+                                            program_name=prog, company=company,
+                                            number=number)
+        TransportRequestEditorDialog(self, rec, self.trip, data, company=company)
 
     def do_quotation(self) -> None:
         """فتح محرّر عرض السعر للبرنامج (يأخذ نوع غرفة المعتمر المحدّد إن وُجد)."""
@@ -1923,6 +1945,143 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
             self,
             lambda p: export_umrah_voucher_pdf(self.rec, p, data=data),
             f"فاوتشر {code}", "pdf")
+
+
+class TransportRequestEditorDialog(Toplevel, _EditorMixin):
+    """محرّر طلب حجز المواصلات: خطاب رسمي لشركة النقل — تعديل الجهة المرسل إليها
+    وبيانات الضيف والحجوزات وجدولَي الطيران والحركة قبل المعاينة."""
+
+    def __init__(self, parent, rec, trip, data: dict, *, company=None) -> None:
+        super().__init__(parent)
+        self.parent = parent
+        self.rec = rec
+        self.trip = trip
+        self._company_dict = company
+        self.title("محرّر طلب حجز المواصلات")
+        self.configure(bg=G.BG)
+        self.geometry("960x700")
+        self.minsize(760, 500)
+        self.transient(parent)
+        self._scroll_body()
+
+        self._meta: dict[str, StringVar] = {}
+        self._flight_rows: list[list] = []
+        self._move_rows: list[list] = []
+        self._number = str(data.get("number") or "")
+
+        self._build_meta(data)
+        self._build_flights(data)
+        self._build_moves(data)
+        self._attach_clipboard(self.body)
+
+        bar = ttk.Frame(self, padding=(10, 6))
+        bar.pack(fill=X)
+        ttk.Button(bar, text="🖨  معاينة PDF",
+                   command=self._preview).pack(side=RIGHT)
+        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
+                                                                 padx=6)
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+
+    def _mrow(self, lf, label, key, r, c, data, width=26):
+        ttk.Label(lf, text=label).grid(row=r, column=c * 2, sticky="e",
+                                       padx=(8, 4), pady=3)
+        var = StringVar(value=str(data.get(key) or ""))
+        self._meta[key] = var
+        ttk.Entry(lf, textvariable=var, width=width, justify="right").grid(
+            row=r, column=c * 2 + 1, sticky="we", padx=(0, 8), pady=3)
+        return var
+
+    def _build_meta(self, data):
+        lf = self._section("بيانات الطلب")
+        ttk.Label(lf, text="الرقم").grid(row=0, column=0, sticky="e",
+                                         padx=(8, 4), pady=3)
+        ttk.Label(lf, text=self._number, foreground=G.ACCENT,
+                  font=("Segoe UI", 10, "bold")).grid(row=0, column=1,
+                                                       sticky="w", pady=3)
+        ttk.Label(lf, text="التاريخ").grid(row=0, column=2, sticky="e",
+                                           padx=(8, 4), pady=3)
+        self._build_date_picker(lf, data.get("date"), row=0, col=3)
+        self._mrow(lf, "الجهة (السادة/…)", "recipient", 1, 0, data, width=40)
+        self._mrow(lf, "اسم الضيف", "guest_ar", 2, 0, data)
+        self._mrow(lf, "الجنسية", "nationality", 2, 1, data, width=14)
+        self._mrow(lf, "جوال رقم", "phone", 3, 0, data)
+        self._mrow(lf, "عدد الأشخاص", "persons", 3, 1, data, width=8)
+        self._mrow(lf, "الحجوزات", "reservations", 4, 0, data, width=40)
+        lf.columnconfigure(1, weight=1)
+        lf.columnconfigure(3, weight=1)
+
+    def _row_table(self, title, heads, widths, rows, store, box_attr, add_label):
+        lf = self._section(title)
+        hdr = ttk.Frame(lf)
+        hdr.pack(fill=X)
+        for w, h in zip(widths, heads):
+            ttk.Label(hdr, text=h, width=w, anchor="center",
+                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+        ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
+        box = ttk.Frame(lf)
+        box.pack(fill=X)
+        setattr(self, box_attr, box)
+        for r in rows:
+            self._add_row(list(r), heads, widths, store, box)
+        ttk.Button(lf, text=add_label,
+                   command=lambda: self._add_row(None, heads, widths, store,
+                                                 box)).pack(anchor="e",
+                                                            pady=(4, 0))
+
+    def _add_row(self, values, heads, widths, store, box):
+        values = list(values or []) + [""] * len(heads)
+        fr = ttk.Frame(box)
+        fr.pack(fill=X, pady=1)
+        cells = []
+        for i, w in enumerate(widths):
+            var = StringVar(value=str(values[i] or ""))
+            ttk.Entry(fr, textvariable=var, width=w, justify="right").pack(
+                side=RIGHT, padx=1)
+            cells.append(var)
+        entry = [fr, cells]
+        ttk.Button(fr, text="حذف", width=5,
+                   command=lambda: self._del_row(store, entry)).pack(
+            side=RIGHT, padx=(4, 1))
+        store.append(entry)
+        self._attach_clipboard(fr)
+
+    def _build_flights(self, data):
+        self._row_table("جدول الطيران (الناقل/رقم الرحلة/خط السير/التاريخ/"
+                        "الإقلاع/الوصول)", TREQ_FLIGHT_HEADS,
+                        (10, 9, 16, 10, 8, 8), data.get("flights", []),
+                        self._flight_rows, "_flight_box", "＋ إضافة رحلة")
+
+    def _build_moves(self, data):
+        self._row_table("جدول الحركة — المواصلات المطلوبة (التاريخ/خط السير/"
+                        "عدد/نوع السيارة/موديل/الوقت)", TREQ_MOVE_HEADS,
+                        (11, 22, 5, 10, 8, 8), data.get("movements", []),
+                        self._move_rows, "_move_box", "＋ إضافة حركة")
+
+    def _collect(self) -> dict:
+        data = {k: v.get().strip() for k, v in self._meta.items()}
+        data["number"] = self._number
+        data["date"] = self._d.get()
+        data["office_manager"] = QUOTE_OFFICE_NAME
+        data["office_title"] = QUOTE_OFFICE_TITLE
+        data["flights"] = [[c.get().strip() for c in cells]
+                           for _fr, cells in self._flight_rows
+                           if any(c.get().strip() for c in cells)]
+        data["movements"] = [[c.get().strip() for c in cells]
+                             for _fr, cells in self._move_rows
+                             if any(c.get().strip() for c in cells)]
+        return data
+
+    def _preview(self):
+        data = self._collect()
+        code = getattr(self.trip, "code", "") or "يدوي"
+        G.open_preview(
+            self,
+            lambda p: export_umrah_transport_request_pdf(self.rec, p, data=data),
+            f"مواصلات {code}", "pdf")
 
 
 class QuotationEditorDialog(Toplevel, _EditorMixin):
