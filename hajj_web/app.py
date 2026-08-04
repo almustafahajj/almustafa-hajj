@@ -877,6 +877,108 @@ def create_app(auth_path: str | Path | None = None,
         flash("حُذف التسعير", "ok")
         return redirect(url_for("umrah_pricings"))
 
+    # ============================= عروض الأسعار =============================
+    def _quote_pilgrim(code, idx):
+        """يعيد (trip, rec) لمعتمر ضمن برنامج، أو (None, redirect) عند فشل التشفير."""
+        trip = _trip_or_404(code)
+        try:
+            records, _ = storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return None, redirect(url_for("login"))
+        return trip, _pilgrim_in_program(records, code, idx)
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/quotation")
+    @login_required
+    def umrah_quotation(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        return render_template(
+            "umrah_quotation.html", code=code, idx=idx, name=name,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit)
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/quotation.pdf")
+    @login_required
+    def umrah_quotation_pdf(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        lang = "en" if request.args.get("lang") == "en" else "ar"
+        pax = (request.args.get("pax") or "").strip()
+        data = pdf_io.build_quotation_data(rec, trip=trip, company=_company(),
+                                           pax=pax, lang=lang)
+        ident = data.get("number") or rec.reference_number or code
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_quotation_pdf(
+                rec, p, data=data, company=_company()),
+            f"عرض {ident}.pdf", "application/pdf")
+
+    @app.route("/umrah/program/<code>/pilgrim/<int:idx>/quotation/save",
+               methods=["POST"])
+    @edit_required
+    def umrah_quotation_save(code, idx):
+        trip, rec = _quote_pilgrim(code, idx)
+        if trip is None:
+            return rec
+        lang = "en" if request.form.get("lang") == "en" else "ar"
+        pax = (request.form.get("pax") or "").strip()
+        with _WRITE_LOCK:
+            settings = storage.load_settings()
+            number = umrah.next_quote_number(settings)
+            data = pdf_io.build_quotation_data(rec, trip=trip, company=_company(),
+                                               number=number, pax=pax, lang=lang)
+            umrah.save_quote(settings, code, data)
+            storage.save_settings(settings)
+        _audit("حفظ عرض سعر", number)
+        flash(f"حُفظ عرض السعر {number}", "ok")
+        return redirect(url_for("umrah_quotes", code=code))
+
+    @app.route("/umrah/program/<code>/quotes")
+    @login_required
+    def umrah_quotes(code):
+        trip = _trip_or_404(code)
+        rows = []
+        for q in umrah.load_quotes(storage.load_settings(), code):
+            rows.append({
+                "number": q.get("number", ""),
+                "title": q.get("addressed_to", "") or q.get("title", "") or "—",
+                "lang": q.get("lang", "ar"), "date": q.get("date", "")})
+        return render_template(
+            "umrah_quotes.html", trip=trip, rows=rows,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit)
+
+    @app.route("/umrah/quote/<code>/<number>.pdf")
+    @login_required
+    def umrah_saved_quote_pdf(code, number):
+        _trip_or_404(code)
+        q = next((x for x in umrah.load_quotes(storage.load_settings(), code)
+                  if str(x.get("number")) == number), None)
+        if q is None:
+            abort(404)
+        data = dict(q)
+        lang = request.args.get("lang")
+        if lang in ("ar", "en") and lang != data.get("lang"):
+            data = pdf_io.translate_quotation_data(data, lang)
+        return _send_generated(
+            lambda p: pdf_io.export_umrah_quotation_pdf(
+                PassportData(), p, data=data, company=_company()),
+            f"عرض {number}.pdf", "application/pdf")
+
+    @app.route("/umrah/quote/<code>/<number>/delete", methods=["POST"])
+    @edit_required
+    def umrah_quote_delete(code, number):
+        with _WRITE_LOCK:
+            settings = storage.load_settings()
+            umrah.delete_quote(settings, code, number)
+            storage.save_settings(settings)
+        _audit("حذف عرض سعر", number)
+        flash("حُذف عرض السعر", "ok")
+        return redirect(url_for("umrah_quotes", code=code))
+
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
 

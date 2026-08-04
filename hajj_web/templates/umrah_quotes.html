@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}عروض الأسعار — {{ trip.name or trip.code }}{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">📋 عروض الأسعار — «{{ trip.name or trip.code }}»</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_program', code=trip.code) }}">↩ رجوع للبرنامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <h2 class="sec-title">عروض الأسعار المحفوظة — {{ rows|length }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>الرقم</th><th>العميل/العنوان</th><th>اللغة</th><th>التاريخ</th>
+        <th>معاينة</th>{% if can_edit %}<th></th>{% endif %}</tr>
+      </thead>
+      <tbody>
+        {% for q in rows %}
+        <tr>
+          <td>{{ q.number }}</td><td>{{ q.title }}</td>
+          <td>{{ 'إنجليزي' if q.lang == 'en' else 'عربي' }}</td>
+          <td>{{ q.date }}</td>
+          <td class="rowacts">
+            <a class="lnk" href="{{ url_for('umrah_saved_quote_pdf', code=trip.code, number=q.number, lang='ar') }}" target="_blank">عربي</a>
+            <a class="lnk" href="{{ url_for('umrah_saved_quote_pdf', code=trip.code, number=q.number, lang='en') }}" target="_blank">EN</a>
+          </td>
+          {% if can_edit %}<td>
+            <form method="post" class="inline"
+                  action="{{ url_for('umrah_quote_delete', code=trip.code, number=q.number) }}"
+                  onsubmit="return confirm('حذف عرض السعر {{ q.number }}؟');">
+              <button type="submit" class="btn-danger small">🗑</button>
+            </form>
+          </td>{% endif %}
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="{{ 6 if can_edit else 5 }}">لا عروض أسعار محفوظة لهذا البرنامج.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

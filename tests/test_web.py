@@ -627,6 +627,41 @@ assert vw.post("/umrah/pricer", data={"action": "save"}).status_code == 403
 assert vw.post("/umrah/pricings/ANY/delete").status_code == 403
 print("  OK: مسعّر المجموعات على الويب — حساب واختيار غرف وحفظ واستعراض وPDF وحذف")
 
+# --- المرحلة ٥: عروض الأسعار على الويب ---
+qp = um.get("/umrah/program/U1/pilgrim/0/quotation").get_data(as_text=True)
+assert "عرض سعر" in qp and "معاينة عربي" in qp
+# معاينة عربي/إنجليزي (PDF)
+qar = um.get("/umrah/program/U1/pilgrim/0/quotation.pdf?lang=ar")
+assert qar.status_code == 200 and qar.data[:5] == b"%PDF-"
+qen = um.get("/umrah/program/U1/pilgrim/0/quotation.pdf?lang=en")
+assert qen.status_code == 200 and qen.data[:5] == b"%PDF-"
+# حفظ عرض سعر ثم استعراضه في قائمة البرنامج
+sv = um.post("/umrah/program/U1/pilgrim/0/quotation/save", data={"lang": "ar"})
+assert sv.status_code == 302 and "/umrah/program/U1/quotes" in sv.headers["Location"]
+_am.set_mode("umrah")
+_qs = _um.load_quotes(storage.load_settings(), "U1")
+assert _qs and str(_qs[-1].get("number"))
+QN = str(_qs[-1]["number"])
+ql = um.get("/umrah/program/U1/quotes").get_data(as_text=True)
+assert "عروض الأسعار" in ql and QN in ql
+# استعراض العرض المحفوظ بالعربي والإنجليزي (ترجمة عند اختلاف اللغة)
+for _lg in ("ar", "en"):
+    d = um.get(f"/umrah/quote/U1/{QN}.pdf?lang={_lg}")
+    assert d.status_code == 200 and d.data[:5] == b"%PDF-", _lg
+# رقم غير موجود -> 404
+assert um.get("/umrah/quote/U1/NOPE.pdf").status_code == 404
+# حذف العرض
+r = um.post(f"/umrah/quote/U1/{QN}/delete")
+assert r.status_code == 302
+_am.set_mode("umrah")
+assert not any(str(q.get("number")) == QN
+               for q in _um.load_quotes(storage.load_settings(), "U1"))
+# المطّلع ممنوع من الحفظ والحذف
+assert vw.post("/umrah/program/U1/pilgrim/0/quotation/save",
+               data={"lang": "ar"}).status_code == 403
+assert vw.post("/umrah/quote/U1/X/delete").status_code == 403
+print("  OK: عروض الأسعار على الويب — معاينة ثنائية اللغة وحفظ واستعراض وترجمة وحذف")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)
