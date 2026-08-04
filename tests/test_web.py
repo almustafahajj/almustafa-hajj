@@ -580,6 +580,53 @@ assert vw.post("/umrah/program/U1/pilgrim/new").status_code == 403
 assert vw.post("/umrah/program/U1/pilgrim/0/payments/add").status_code == 403
 print("  OK: إدارة برامج العمرة ومعتمريها ودفعاتهم على الويب، والمطّلع ممنوع")
 
+# --- المرحلة ٤: مسعّر المجموعات على الويب ---
+pform = um.get("/umrah/pricer").get_data(as_text=True)
+assert "مسعّر المجموعات" in pform and "أنواع الغرف" in pform
+assert "النقل الداخلي" in pform                # بند افتراضي معروض
+# حساب: مطابقة جدول الإكسل (ثنائي: صافي 3750 / بيع 3950)
+PDATA = {"title": "تسعير رمضان", "currency": "درهم",
+         "makkah_rate": "1426", "makkah_nights": "3", "profit": "200",
+         "item_name_0": "النقل الداخلي", "item_amount_0": "50",
+         "item_name_1": "تذكرة الطيران", "item_amount_1": "1265",
+         "item_name_2": "ماء وعصير وتمر", "item_amount_2": "46",
+         "item_name_3": "الهدايا", "item_amount_3": "150",
+         "item_name_4": "المصاريف الإدارية", "item_amount_4": "100",
+         "room_types": ["مفرد", "ثنائي", "ثلاثي", "رباعي", "طفل"]}
+res = um.post("/umrah/pricer", data=dict(PDATA, action="compute"))
+rbody = res.get_data(as_text=True)
+assert res.status_code == 200 and "3,750" in rbody and "3,950" in rbody
+# اختيار أنواع الغرف: لو ثنائي فقط لا يظهر المفرد (5889)
+only2 = um.post("/umrah/pricer",
+                data={**{k: v for k, v in PDATA.items() if k != "room_types"},
+                      "room_types": ["ثنائي"], "action": "compute"}).get_data(as_text=True)
+assert "3,950" in only2 and "5,889" not in only2
+# حفظ التسعير ثم استعراضه
+sv = um.post("/umrah/pricer", data=dict(PDATA, action="save"))
+assert sv.status_code == 302 and "/umrah/pricings" in sv.headers["Location"]
+_am.set_mode("umrah")
+_prs = _um.load_pricings(storage.load_settings())
+assert _prs and _prs[-1]["title"] == "تسعير رمضان"
+PN = _prs[-1]["number"]
+assert PN.startswith("MA-P")
+plist = um.get("/umrah/pricings").get_data(as_text=True)
+assert "التسعيرات المحفوظة" in plist and PN in plist and "3,950" in plist
+# فتح المحفوظ يملأ النموذج ويعرض النتيجة
+edit = um.get(f"/umrah/pricer?number={PN}").get_data(as_text=True)
+assert PN in edit and "تسعير رمضان" in edit and "3,750" in edit
+# معاينة PDF
+ppdf = um.post("/umrah/pricer/pdf", data=PDATA)
+assert ppdf.status_code == 200 and ppdf.data[:5] == b"%PDF-"
+# حذف التسعير
+dl = um.post(f"/umrah/pricings/{PN}/delete")
+assert dl.status_code == 302
+_am.set_mode("umrah")
+assert not any(p["number"] == PN for p in _um.load_pricings(storage.load_settings()))
+# المطّلع ممنوع من الحفظ والحذف
+assert vw.post("/umrah/pricer", data={"action": "save"}).status_code == 403
+assert vw.post("/umrah/pricings/ANY/delete").status_code == 403
+print("  OK: مسعّر المجموعات على الويب — حساب واختيار غرف وحفظ واستعراض وPDF وحذف")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

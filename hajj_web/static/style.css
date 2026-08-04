@@ -198,6 +198,11 @@ tbody tr.fin-unpaid{background:#f6d9d0}
 tbody tr.fin-paid:hover{background:#d7ecdd}
 tbody tr.fin-partial:hover{background:#f5e6c8}
 tbody tr.fin-unpaid:hover{background:#f0cabf}
+.field.pair{display:flex; gap:8px}
+.field.pair input:first-child{flex:1}
+.field.pair input:last-child{width:110px}
+.checks{display:flex; flex-wrap:wrap; gap:14px}
+.chk-inline{color:var(--ink); font-size:14px; white-space:nowrap}
 .lnk{color:var(--bronze); font-weight:700; white-space:nowrap}
 .rowacts{white-space:nowrap}
 .rowacts .lnk{margin-inline-end:8px}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}التسعيرات المحفوظة — العمرة{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="titles"><span class="app-title">🗂 التسعيرات المحفوظة</span></div>
+  <div class="spacer"></div>
+  <div class="user">
+    {% if can_edit %}<a class="add-btn" href="{{ url_for('umrah_pricer') }}">➕ تسعير جديد</a>{% endif %}
+    <a class="add-btn ghost-add" href="{{ url_for('umrah_programs') }}">🌙 البرامج</a>
+    <span class="who">👤 {{ username }} · {{ role }}</span>
+    <a class="logout" href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+  </div>
+</header>
+
+<main class="content">
+  <h2 class="sec-title">التسعيرات المحفوظة — {{ rows|length }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>الرقم</th><th>العنوان</th><th>العملة</th><th>بيع الثنائي/فرد</th>
+        <th>فتح</th>{% if can_edit %}<th></th>{% endif %}</tr>
+      </thead>
+      <tbody>
+        {% for p in rows %}
+        <tr>
+          <td>{{ p.number }}</td><td>{{ p.title }}</td><td>{{ p.currency }}</td>
+          <td>{{ p.double }}</td>
+          <td><a class="lnk" href="{{ url_for('umrah_pricer', number=p.number) }}">✏️ فتح</a></td>
+          {% if can_edit %}<td>
+            <form method="post" class="inline"
+                  action="{{ url_for('umrah_pricing_delete', number=p.number) }}"
+                  onsubmit="return confirm('حذف التسعير {{ p.number }}؟');">
+              <button type="submit" class="btn-danger small">🗑</button>
+            </form>
+          </td>{% endif %}
+        </tr>
+        {% else %}
+        <tr><td class="empty" colspan="{{ 6 if can_edit else 5 }}">لا تسعيرات محفوظة بعد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

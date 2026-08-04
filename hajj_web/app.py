@@ -132,6 +132,18 @@ UMRAH_PILGRIM_FIELDS = [
 ]
 PAYMENT_METHODS = ["نقد", "تحويل بنكي", "شبكة/مدى", "شيك", "رابط دفع", "أخرى"]
 
+# ---- مسعّر المجموعات (ويب) ----
+GROUP_DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة", "تذكرة الطيران",
+                       "ماء وعصير وتمر", "الهدايا", "المصاريف الإدارية")
+GROUP_ITEM_ROWS = 10        # صفوف البنود المعروضة (الافتراضية + إضافية فارغة)
+GROUP_TEXT_FIELDS = ["title", "makkah_hotel", "madinah_hotel",
+                     "period_from", "period_to"]
+GROUP_NUM_FIELDS = ["makkah_nights", "makkah_rate", "makkah_meals",
+                    "madinah_nights", "madinah_rate", "madinah_meals",
+                    "profit_pct", "other", "profit", "profit_single",
+                    "profit_double", "profit_triple", "profit_quad",
+                    "profit_child"]
+
 
 def create_app(auth_path: str | Path | None = None,
                data_path: str | Path | None = None) -> Flask:
@@ -743,6 +755,127 @@ def create_app(auth_path: str | Path | None = None,
     @login_required
     def umrah_contract_pdf(code, idx):
         return _umrah_doc(code, idx, pdf_io.export_umrah_contract_pdf, "عقد")
+
+    # ============================ مسعّر المجموعات ============================
+    def _blank_pricer():
+        return {
+            "number": "", "title": "", "currency": "درهم",
+            "include_madinah": "1",
+            "room_types": [n for n, _o in umrah.GROUP_ROOM_TYPES],
+            "items": [[n, ""] for n in GROUP_DEFAULT_ITEMS],
+        }
+
+    def _parse_pricer_form():
+        f = request.form
+        data = {"number": (f.get("number") or "").strip(),
+                "currency": (f.get("currency") or "درهم").strip()}
+        for k in GROUP_TEXT_FIELDS + GROUP_NUM_FIELDS:
+            data[k] = (f.get(k) or "").strip()
+        data["include_madinah"] = "1" if f.get("include_madinah") else "0"
+        data["room_types"] = f.getlist("room_types")
+        items = []
+        for i in range(GROUP_ITEM_ROWS):
+            nm = (f.get(f"item_name_{i}") or "").strip()
+            amt = (f.get(f"item_amount_{i}") or "").strip()
+            if nm or amt:
+                items.append([nm, amt])
+        data["items"] = items
+        return data
+
+    def _pricer_view(data, computed):
+        """يجهّز سياق قالب المسعّر: صفوف النتائج والبنود المبطّنة والاختيارات."""
+        rows = []
+        if computed:
+            for r in umrah.group_pricing(data):
+                rows.append({
+                    "type": r["type"], "net": fields.format_amount(r["net"]),
+                    "margin": fields.format_amount(r["margin"]),
+                    "pct": f"{r['margin_pct']:.1f}%",
+                    "selling": fields.format_amount(r["selling"])})
+        items = [list(x) + ["", ""] for x in (data.get("items") or [])]
+        items = [[x[0], x[1]] for x in items]
+        while len(items) < GROUP_ITEM_ROWS:
+            items.append(["", ""])
+        room_all = [n for n, _o in umrah.GROUP_ROOM_TYPES]
+        room_sel = set(data.get("room_types") or room_all)
+        inc_md = str(data.get("include_madinah", "1")).strip() not in (
+            "", "0", "False", "false")
+        return {
+            "data": data, "rows": rows, "items": items,
+            "room_types": umrah.GROUP_ROOM_TYPES, "room_sel": room_sel,
+            "profit_keys": umrah.GROUP_PROFIT_KEYS, "inc_madinah": inc_md,
+            "currencies": ["درهم", "ريال", "دولار"],
+        }
+
+    @app.route("/umrah/pricer", methods=["GET", "POST"])
+    @login_required
+    def umrah_pricer():
+        if request.method == "POST":
+            data = _parse_pricer_form()
+            if request.form.get("action") == "save":
+                if not g.session.can_edit:
+                    abort(403)
+                with _WRITE_LOCK:
+                    settings = storage.load_settings()
+                    if not data.get("number"):
+                        data["number"] = umrah.next_pricing_number(settings)
+                    umrah.save_pricing(settings, data)
+                    storage.save_settings(settings)
+                _audit("حفظ تسعير مجموعة", data.get("number", ""))
+                flash(f"حُفظ التسعير {data['number']}", "ok")
+                return redirect(url_for("umrah_pricings"))
+            ctx = _pricer_view(data, computed=True)
+            return render_template(
+                "umrah_pricer.html", username=g.session.username,
+                role=g.session.role_label, can_edit=g.session.can_edit, **ctx)
+        # GET: نموذج فارغ أو تحميل تسعير محفوظ عبر ?number=
+        number = (request.args.get("number") or "").strip()
+        data, computed = _blank_pricer(), False
+        if number:
+            for p in umrah.load_pricings(storage.load_settings()):
+                if str(p.get("number")) == number:
+                    data, computed = dict(p), True
+                    break
+        ctx = _pricer_view(data, computed=computed)
+        return render_template(
+            "umrah_pricer.html", username=g.session.username,
+            role=g.session.role_label, can_edit=g.session.can_edit, **ctx)
+
+    @app.route("/umrah/pricer/pdf", methods=["POST"])
+    @login_required
+    def umrah_pricer_pdf():
+        data = _parse_pricer_form()
+        base = (data.get("title") or "تسعير المجموعات").strip()
+        return _send_generated(
+            lambda p: pdf_io.export_group_pricing_pdf(data, p, company=_company()),
+            f"{base}.pdf", "application/pdf")
+
+    @app.route("/umrah/pricings")
+    @login_required
+    def umrah_pricings():
+        rows = []
+        for p in umrah.load_pricings(storage.load_settings()):
+            gp = umrah.group_pricing(p)
+            dbl = next((r for r in gp if r["type"] == "ثنائي"), None)
+            rows.append({
+                "number": p.get("number", ""),
+                "title": p.get("title", "") or "—",
+                "currency": p.get("currency", "درهم"),
+                "double": fields.format_amount(dbl["selling"]) if dbl else "—"})
+        return render_template(
+            "umrah_pricings.html", rows=rows, username=g.session.username,
+            role=g.session.role_label, can_edit=g.session.can_edit)
+
+    @app.route("/umrah/pricings/<number>/delete", methods=["POST"])
+    @edit_required
+    def umrah_pricing_delete(number):
+        with _WRITE_LOCK:
+            settings = storage.load_settings()
+            umrah.delete_pricing(settings, number)
+            storage.save_settings(settings)
+        _audit("حذف تسعير مجموعة", number)
+        flash("حُذف التسعير", "ok")
+        return redirect(url_for("umrah_pricings"))
 
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
