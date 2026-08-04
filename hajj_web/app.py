@@ -140,6 +140,7 @@ UMRAH_PILGRIM_FIELDS = [
     ("notes", "ملاحظات", "textarea"),
 ]
 PAYMENT_METHODS = ["نقد", "تحويل بنكي", "شبكة/مدى", "شيك", "رابط دفع", "أخرى"]
+TRIP_SERVICE_ROWS = 14      # صفوف خدمات البرنامج المعروضة في النموذج
 
 # ---- مسعّر المجموعات (ويب) ----
 GROUP_DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة", "تذكرة الطيران",
@@ -477,7 +478,24 @@ def create_app(auth_path: str | Path | None = None,
     def _apply_trip_form(trip):
         for key, _l, _t in UMRAH_TRIP_FIELDS:
             setattr(trip, key, (request.form.get(key) or "").strip())
+        svcs = []
+        for i in range(TRIP_SERVICE_ROWS):
+            nm = (request.form.get(f"service_name_{i}") or "").strip()
+            pr = (request.form.get(f"service_price_{i}") or "").strip()
+            if nm:
+                svcs.append({"name": nm, "price": pr})
+        trip.services = svcs
         return trip
+
+    def _trip_service_rows(trip):
+        """صفوف خدمات مبطّنة للنموذج؛ للبرنامج الجديد تُقترح الخدمات الافتراضية."""
+        rows = [[s.get("name", ""), s.get("price", "")]
+                for s in (getattr(trip, "services", None) or [])]
+        if not rows:
+            rows = [[n, ""] for n in umrah.DEFAULT_SERVICES]
+        while len(rows) < TRIP_SERVICE_ROWS:
+            rows.append(["", ""])
+        return rows[:TRIP_SERVICE_ROWS]
 
     @app.route("/umrah/program/new", methods=["GET", "POST"])
     @edit_required
@@ -493,10 +511,11 @@ def create_app(auth_path: str | Path | None = None,
             _audit("إضافة برنامج عمرة", trip.name or trip.code)
             flash(f"أُضيف البرنامج: {trip.name or trip.code}", "ok")
             return redirect(url_for("umrah_program", code=trip.code))
+        _newtrip = umrah.UmrahTrip()
         return render_template(
             "umrah_program_form.html", title="برنامج عمرة جديد",
             action=url_for("umrah_program_new"), fields=UMRAH_TRIP_FIELDS,
-            trip=umrah.UmrahTrip(), is_new=True,
+            trip=_newtrip, services=_trip_service_rows(_newtrip), is_new=True,
             username=g.session.username, role=g.session.role_label)
 
     @app.route("/umrah/program/<code>/edit", methods=["GET", "POST"])
@@ -518,7 +537,8 @@ def create_app(auth_path: str | Path | None = None,
         return render_template(
             "umrah_program_form.html", title="تعديل البرنامج",
             action=url_for("umrah_program_edit", code=code),
-            fields=UMRAH_TRIP_FIELDS, trip=trip, is_new=False,
+            fields=UMRAH_TRIP_FIELDS, trip=trip,
+            services=_trip_service_rows(trip), is_new=False,
             username=g.session.username, role=g.session.role_label)
 
     @app.route("/umrah/program/<code>/delete", methods=["POST"])

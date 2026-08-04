@@ -709,6 +709,32 @@ assert _bp[0].reference_number.startswith("BK-")   # رقم مرجعي تلقا�
 assert vw.get("/umrah/program/BK/book").status_code == 403
 print("  OK: الحجز بالتسعير على الويب — قيمة الفرد محسوبة من الغرفة والخدمات")
 
+# --- المرحلة ٨: تحرير خدمات البرنامج على الويب ---
+nf = um.get("/umrah/program/new").get_data(as_text=True)
+assert "خدمات البرنامج" in nf and "تأمين طبّي" in nf     # خدمات افتراضية مقترحة
+r = um.post("/umrah/program/new", data={
+    "name": "مع خدمات", "price_double": "4000",
+    "service_name_0": "تأمين طبّي", "service_price_0": "200",
+    "service_name_1": "زيارة", "service_price_1": "300"})
+assert r.status_code == 302
+NC8 = r.headers["Location"].rstrip("/").split("/")[-1]
+_am.set_mode("umrah")
+_t8 = next(t for t in _um.load_trips(storage.load_settings()) if t.code == NC8)
+assert {s["name"] for s in _t8.services} == {"تأمين طبّي", "زيارة"}
+assert _um.services_map(_t8)["تأمين طبّي"] == 200
+# الخدمات المُدخلة تظهر في صفحة الحجز بالتسعير
+bk8 = um.get(f"/umrah/program/{NC8}/book").get_data(as_text=True)
+assert "تأمين طبّي" in bk8 and "زيارة" in bk8
+# التعديل يحدّث الخدمات (إبقاء واحدة بسعر جديد)
+r = um.post(f"/umrah/program/{NC8}/edit", data={
+    "name": "مع خدمات", "price_double": "4000",
+    "service_name_0": "تأمين طبّي", "service_price_0": "250"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_t8b = next(t for t in _um.load_trips(storage.load_settings()) if t.code == NC8)
+assert len(_t8b.services) == 1 and _um.services_map(_t8b)["تأمين طبّي"] == 250
+print("  OK: تحرير خدمات البرنامج على الويب وظهورها في الحجز بالتسعير")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)

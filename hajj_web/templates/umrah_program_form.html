@@ -32,6 +32,17 @@
         </div>
         {% endfor %}
       </section>
+
+      <section class="card">
+        <h2>خدمات البرنامج (الاسم + السعر للفرد)</h2>
+        <p class="muted">تظهر هذه الخدمات في «الحجز بالتسعير» فتُضاف لقيمة الفرد.</p>
+        {% for s in services %}
+        <div class="field pair">
+          <input type="text" name="service_name_{{ loop.index0 }}" value="{{ s[0] }}" placeholder="اسم الخدمة">
+          <input type="text" inputmode="numeric" name="service_price_{{ loop.index0 }}" value="{{ s[1] }}" placeholder="السعر">
+        </div>
+        {% endfor %}
+      </section>
     </div>
     <div class="form-actions">
       <button type="submit" class="btn-primary">💾 حفظ البرنامج</button>
