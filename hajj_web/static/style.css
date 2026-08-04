@@ -202,6 +202,8 @@ tbody tr.fin-unpaid:hover{background:#f0cabf}
 .field.pair input:first-child{flex:1}
 .field.pair input:last-child{width:110px}
 .muted{color:var(--muted); font-size:13px}
+.roomin{width:90px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; text-align:center}
+.sec-title .muted{font-weight:400}
 .checks{display:flex; flex-wrap:wrap; gap:14px}
 .chk-inline{color:var(--ink); font-size:14px; white-space:nowrap}
 .lnk{color:var(--bronze); font-weight:700; white-space:nowrap}

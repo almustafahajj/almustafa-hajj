@@ -1141,6 +1141,96 @@ def create_app(auth_path: str | Path | None = None,
                 rec, p, data=data, company=_company()),
             f"فاوتشر {ident}.pdf", "application/pdf")
 
+    # ---- التسكين التفاعلي (توزيع أرقام الغرف لكل مدينة) ----
+    def _city_or_404(city):
+        ct = next((c for c in umrah.CITIES if c[0] == city), None)
+        if ct is None:
+            abort(404)
+        return ct
+
+    @app.route("/umrah/program/<code>/rooming")
+    @login_required
+    def umrah_rooming(code):
+        trip = _trip_or_404(code)
+        try:
+            records, _ = storage.load_records(_data_path(), g.session)
+        except auth.AuthError:
+            sessions.destroy(request.cookies.get(_COOKIE))
+            return redirect(url_for("login"))
+        indexed = _program_indexed(records, code)
+        cities = []
+        for key, label, room_field, hotel_f, nights_f, rooms_f in umrah.CITIES:
+            rows = [{"idx": i,
+                     "name": r.full_name_ar or r.full_name_en or "—",
+                     "room_type": r.room_type or "—",
+                     "room": str(getattr(r, room_field, "") or "")}
+                    for i, r in indexed]
+            try:
+                avail = int(float(str(getattr(trip, rooms_f, "") or "").strip() or 0))
+            except ValueError:
+                avail = 0
+            used = len({x["room"] for x in rows if x["room"]})
+            cities.append({"key": key, "label": label,
+                           "hotel": str(getattr(trip, hotel_f, "") or ""),
+                           "rows": rows, "avail": avail, "used": used})
+        return render_template(
+            "umrah_rooming.html", trip=trip, cities=cities,
+            username=g.session.username, role=g.session.role_label,
+            can_edit=g.session.can_edit)
+
+    @app.route("/umrah/program/<code>/rooming/<city>/auto", methods=["POST"])
+    @edit_required
+    def umrah_rooming_auto(code, city):
+        _k, _lbl, room_field, _hf, _nf, rooms_f = _city_or_404(city)
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            trip = next((t for t in umrah.load_trips(storage.load_settings())
+                         if t.code == code), None)
+            if trip is None:
+                abort(404)
+            try:
+                mx = int(float(str(getattr(trip, rooms_f, "") or "").strip() or 0))
+            except ValueError:
+                mx = 0
+            num, overflow = umrah.auto_assign_rooms(
+                umrah.trip_pilgrims(records, code), room_field, mx)
+            storage.save_records(records, _data_path(), g.session)
+        msg = f"وُزّعت {num} غرفة"
+        if overflow:
+            msg += f" — {overflow} بلا غرفة (الفندق ممتلئ)"
+        _audit("توزيع غرف", f"{city}: {num}")
+        flash(msg, "warn" if overflow else "ok")
+        return redirect(url_for("umrah_rooming", code=code))
+
+    @app.route("/umrah/program/<code>/rooming/<city>/save", methods=["POST"])
+    @edit_required
+    def umrah_rooming_save(code, city):
+        _k, _lbl, room_field, _hf, _nf, _rf = _city_or_404(city)
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            for i, r in _program_indexed(records, code):
+                setattr(r, room_field, (request.form.get(f"room_{i}") or "").strip())
+            storage.save_records(records, _data_path(), g.session)
+        _audit("حفظ أرقام الغرف", city)
+        flash("حُفظت أرقام الغرف", "ok")
+        return redirect(url_for("umrah_rooming", code=code))
+
+    @app.route("/umrah/program/<code>/rooming/<city>/clear", methods=["POST"])
+    @edit_required
+    def umrah_rooming_clear(code, city):
+        _k, _lbl, room_field, _hf, _nf, _rf = _city_or_404(city)
+        _trip_or_404(code)
+        with _WRITE_LOCK:
+            records, _ = storage.load_records(_data_path(), g.session)
+            for r in umrah.trip_pilgrims(records, code):
+                setattr(r, room_field, "")
+            storage.save_records(records, _data_path(), g.session)
+        _audit("مسح توزيع الغرف", city)
+        flash("مُسح توزيع الغرف", "ok")
+        return redirect(url_for("umrah_rooming", code=code))
+
     def _send_generated(make_fn, download_name, mimetype):
         """يولّد ملفاً مؤقّتاً عبر make_fn(path) ثم يرسله ويحذفه.
 

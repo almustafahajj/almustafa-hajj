@@ -735,6 +735,39 @@ _t8b = next(t for t in _um.load_trips(storage.load_settings()) if t.code == NC8)
 assert len(_t8b.services) == 1 and _um.services_map(_t8b)["تأمين طبّي"] == 250
 print("  OK: تحرير خدمات البرنامج على الويب وظهورها في الحجز بالتسعير")
 
+# --- المرحلة ٩: التسكين التفاعلي (توزيع أرقام الغرف) ---
+rm = um.get("/umrah/program/U1/rooming").get_data(as_text=True)
+assert "التسكين" in rm and "مكة المكرّمة" in rm and "المدينة المنوّرة" in rm
+# توزيع تلقائي لمكة: كل معتمر (مفرد/ثنائي/ثلاثي) يأخذ غرفة مرقّمة
+r = um.post("/umrah/program/U1/rooming/makkah/auto")
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc, _ = storage.load_records(UDATA, admin)
+_u1 = _um.trip_pilgrims(_rc, "U1")
+assert all(str(getattr(x, "makkah_room", "") or "") for x in _u1)
+assert len({x.makkah_room for x in _u1}) == 3
+# تعديل يدوي لأرقام الغرف ثم الحفظ
+_idxs = [i for i, x in enumerate(_rc) if x.trip == "U1"]
+r = um.post("/umrah/program/U1/rooming/makkah/save", data={
+    f"room_{_idxs[0]}": "101", f"room_{_idxs[1]}": "101",
+    f"room_{_idxs[2]}": "202"})
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc2, _ = storage.load_records(UDATA, admin)
+assert sorted(x.makkah_room for x in _um.trip_pilgrims(_rc2, "U1")) == \
+    ["101", "101", "202"]
+# مسح التوزيع
+r = um.post("/umrah/program/U1/rooming/makkah/clear")
+assert r.status_code == 302
+_am.set_mode("umrah")
+_rc3, _ = storage.load_records(UDATA, admin)
+assert all(not (getattr(x, "makkah_room", "") or "")
+           for x in _um.trip_pilgrims(_rc3, "U1"))
+# مدينة غير معروفة -> 404، والمطّلع ممنوع
+assert um.post("/umrah/program/U1/rooming/zzz/auto").status_code == 404
+assert vw.post("/umrah/program/U1/rooming/makkah/auto").status_code == 403
+print("  OK: التسكين التفاعلي على الويب — توزيع تلقائي وتعديل يدوي ومسح")
+
 # التبديل عائداً إلى الحج يعيد كشف الحج
 um.get("/mode/hajj")
 assert "برنامج موسم الحج" in um.get("/").get_data(as_text=True)
