@@ -17,9 +17,6 @@ datas += collect_data_files("arabic_reshaper")
 # tkinterdnd2 يضمّ امتداد tkdnd (مكتبات + Tcl) للسحب والإفلات
 _dnd_datas, _dnd_binaries, _dnd_hidden = collect_all("tkinterdnd2")
 datas += _dnd_datas
-# نسخة الويب: القوالب والأصول (Flask يقرأها من _MEIPASS في وضع exe)
-datas += [("hajj_web/templates", "hajj_web/templates"),
-          ("hajj_web/static", "hajj_web/static")]
 # محرّك Tesseract المضمّن (إن وُجد مجلد vendor/tesseract) — لقراءة الجوازات
 if os.path.isdir("vendor/tesseract"):
     datas += [("vendor/tesseract", "tesseract")]
@@ -29,11 +26,9 @@ a = Analysis(
     pathex=[],
     binaries=_dnd_binaries,
     datas=datas,
-    # مُلقّم tkinter داخل PIL + مكتبات نسخة الويب (تُستورد بكسل أحياناً)
+    # مُلقّم tkinter داخل PIL + امتداد السحب والإفلات
     hiddenimports=[
         "PIL._tkinter_finder", "tkinterdnd2", *_dnd_hidden,
-        "hajj_web", "hajj_web.app", "hajj_web.server", "hajj_web.sessions",
-        "flask", "waitress", "qrcode", "jinja2",
     ],
     hookspath=[],
     hooksconfig={},
