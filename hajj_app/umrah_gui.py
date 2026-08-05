@@ -2821,24 +2821,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                      state="readonly" if readonly else "normal").grid(
             row=r, column=c * 2 + 1, sticky="w", pady=3)
 
-    def _cell(self, parent, label, value, options, width, readonly=True):
-        """خلية بعنوان صغير فوق قائمة منسدلة، ضمن صفّ أفقي."""
-        sub = ttk.Frame(parent)
-        sub.pack(side=RIGHT, padx=2)
-        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
-        var = StringVar(value=str(value or ""))
-        ttk.Combobox(sub, textvariable=var, values=list(options), width=width,
-                     state="readonly" if readonly else "normal").pack()
-        return var
-
-    def _date_cell(self, parent, label, iso, width=9):
-        """خلية تاريخ بتقويم منبثق، بعنوان صغير، ضمن صفّ أفقي."""
-        sub = ttk.Frame(parent)
-        sub.pack(side=RIGHT, padx=2)
-        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
-        dp = DatePicker(sub, iso=iso, width=width)
-        dp.pack()
-        return dp
+    # ``_cell`` و``_date_cell`` موروثتان من ``_EditorMixin``.
 
     # ---- البيانات الأساسية ----
     def _build_head(self, data):
@@ -3003,120 +2986,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                    command=lambda: self._add_flight_row()).grid(
             row=3, column=0, columnspan=4, sticky="e", pady=(4, 0))
 
-    def _enable_drop(self, widget):
-        """يفعّل السحب والإفلات على ``widget`` عبر tkdnd (مستقرّ مع Tkinter)."""
-        try:
-            from tkinterdnd2 import DND_FILES, TkinterDnD
-            TkinterDnD._require(widget)      # تحميل حزمة tkdnd في المفسّر
-            widget.drop_target_register(DND_FILES)
-            widget.dnd_bind("<<Drop>>", self._on_drop_amadeus)
-            return True
-        except Exception:
-            return False
-
-    def _on_drop_amadeus(self, event):
-        """يُستدعى عند إفلات صورة على منطقة السحب — يقرأ رحلات الأماديوس."""
-        try:
-            paths = list(self.tk.splitlist(event.data))
-        except Exception:
-            paths = [event.data]
-        paths = [p for p in paths if str(p).strip()]
-        if not paths:
-            return
-        # نؤجّل القراءة قليلاً كي يكتمل حدث الإفلات قبل تشغيل OCR
-        self.after(50, lambda: self._apply_amadeus(paths[0]))
-
-    # ---- قراءة رحلات أماديوس (صورة / حافظة / لقطة شاشة) ----
-    def _amadeus_year(self):
-        for src in (self._pf.get(), self._d.get()):
-            if src and "-" in src:
-                try:
-                    return int(src.split("-")[0])
-                except ValueError:
-                    pass
-        return None
-
-    def _apply_amadeus(self, image_path):
-        """يشغّل OCR على الصورة ويملأ جدول الطيران بالرحلات المقروءة."""
-        try:
-            from .ocr import read_amadeus_text
-            text = read_amadeus_text(image_path)
-        except Exception as exc:
-            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
-            return
-        rows = umrah.parse_amadeus_flights(text, year=self._amadeus_year())
-        if not rows:
-            messagebox.showinfo(
-                "قراءة أماديوس",
-                "تعذّر التعرّف على رحلات في الصورة. تأكّد من وضوح اللقطة "
-                "وأنّ أسطر الرحلات ظاهرة كاملةً.",
-                parent=self)
-            return
-        for entry in list(self._flight_rows):
-            entry[0].destroy()
-        self._flight_rows.clear()
-        for r in rows:
-            self._add_flight_row(r)
-        messagebox.showinfo("قراءة أماديوس", f"تمّت قراءة {len(rows)} رحلة.",
-                            parent=self)
-
-    def _amadeus_file(self):
-        path = filedialog.askopenfilename(
-            parent=self, title="صورة حجز أماديوس",
-            filetypes=[("صور", "*.png *.jpg *.jpeg *.bmp *.tif *.tiff"),
-                       ("كل الملفّات", "*.*")])
-        if path:
-            self._apply_amadeus(path)
-
-    def _save_temp_image(self, img):
-        import tempfile
-        fd, path = tempfile.mkstemp(suffix=".png")
-        import os
-        os.close(fd)
-        img.save(path)
-        return path
-
-    def _amadeus_clipboard(self):
-        """يقرأ صورة أماديوس ملصوقة في الحافظة (بعد Win+Shift+S مثلاً)."""
-        try:
-            from PIL import Image, ImageGrab
-            grabbed = ImageGrab.grabclipboard()
-        except Exception as exc:
-            messagebox.showerror("قراءة أماديوس",
-                                 f"تعذّر قراءة الحافظة: {exc}", parent=self)
-            return
-        img = None
-        if isinstance(grabbed, list) and grabbed:
-            img = Image.open(grabbed[0])
-        elif grabbed is not None and hasattr(grabbed, "save"):
-            img = grabbed
-        if img is None:
-            messagebox.showinfo(
-                "قراءة أماديوس",
-                "لا توجد صورة في الحافظة. التقط لقطة (Win+Shift+S) ثم أعد "
-                "المحاولة.", parent=self)
-            return
-        self._apply_amadeus(self._save_temp_image(img))
-
-    def _amadeus_screen(self):
-        """يلتقط لقطة شاشة كاملة ويقرأ منها رحلات أماديوس."""
-        try:
-            from PIL import ImageGrab
-        except Exception as exc:
-            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
-            return
-        self.withdraw()
-        self.after(400, lambda: self._grab_screen(ImageGrab))
-
-    def _grab_screen(self, ImageGrab):
-        try:
-            img = ImageGrab.grab()
-        except Exception as exc:
-            self.deiconify()
-            messagebox.showerror("قراءة أماديوس", str(exc), parent=self)
-            return
-        self.deiconify()
-        self._apply_amadeus(self._save_temp_image(img))
+    # مجموعة قراءة أماديوس (السحب/الحافظة/اللقطة) موروثة من ``_EditorMixin``.
 
     def _add_flight_row(self, values=None):
         values = list(values or []) + [""] * 6

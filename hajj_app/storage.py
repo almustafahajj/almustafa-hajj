@@ -15,7 +15,10 @@ from datetime import datetime
 from pathlib import Path
 
 from .auth import AuthError, Session
+from .logging_setup import get_logger
 from .mrz import PassportData
+
+_log = get_logger(__name__)
 
 SCHEMA_VERSION = 1
 
@@ -274,6 +277,7 @@ def load_records(
         raise
     except (json.JSONDecodeError, ValueError, OSError, UnicodeDecodeError) as exc:
         problem = str(exc)
+        _log.warning("ملف البيانات تالف (%s): %s", path, problem)
 
     # الملف تالف — نحاول النسخة الاحتياطية
     backup = path.with_suffix(".bak")
@@ -295,7 +299,7 @@ def load_records(
                 f"الملف التالف محفوظ في: {salvaged.name}"
             )
         except Exception:
-            pass
+            _log.exception("فشلت الاستعادة من النسخة الاحتياطية: %s", backup)
 
     return [], (
         f"تعذّرت قراءة ملف البيانات ({problem}).\n"

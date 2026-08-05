@@ -7451,6 +7451,9 @@ def _mode_loop(session, open_mode: bool) -> str | None:
 
 
 def main() -> None:
+    from .logging_setup import setup_logging, install_tk_excepthook
+    setup_logging()
+    install_tk_excepthook(tk)
     if OPEN_MODE_NO_LOGIN:
         _mode_loop(None, True)
         return
