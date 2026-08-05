@@ -257,6 +257,27 @@ def _footer_portrait(canvas, doc, title_text: str) -> None:
     canvas.restoreState()
 
 
+def _umrah_page(canvas, doc, title_text: str) -> None:
+    """خلفية مائية خفيفة بشعار الشركة + الترويسة السفلية — لمستندات العمرة.
+
+    الشعار الباهت يُرسَم خلف المحتوى (يظهر بلطف في الفراغات والهوامش) فيمنح
+    المستند طابعاً رسمياً أنيقاً دون التشويش على القراءة."""
+    wm = _faint_logo_reader()
+    if wm is not None:
+        try:
+            W, H = A4
+            iw, ih = wm.getSize()
+            ww = W * 0.52
+            hh = ww * ih / iw
+            canvas.saveState()
+            canvas.drawImage(wm, (W - ww) / 2, (H - hh) / 2, ww, hh,
+                             preserveAspectRatio=True, mask="auto")
+            canvas.restoreState()
+        except Exception:                              # noqa: BLE001
+            pass
+    _footer_portrait(canvas, doc, title_text)
+
+
 def _grouped_rooms(
     records: list[PassportData],
 ) -> list[tuple[str, int, list[PassportData]]]:
@@ -1152,8 +1173,8 @@ def export_umrah_finance_pdf(records: list, path: str | Path, *,
                                st["subtitle"]))
 
     doc.build(story,
-              onFirstPage=lambda c, d: _footer_portrait(c, d, "الملخّص المالي"),
-              onLaterPages=lambda c, d: _footer_portrait(c, d, "الملخّص المالي"))
+              onFirstPage=lambda c, d: _umrah_page(c, d, "الملخّص المالي"),
+              onLaterPages=lambda c, d: _umrah_page(c, d, "الملخّص المالي"))
     return path
 
 
@@ -2864,8 +2885,8 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
 
     doc.build(
         story,
-        onFirstPage=lambda c, d: _footer_portrait(c, d, "طلب حجز مواصلات"),
-        onLaterPages=lambda c, d: _footer_portrait(c, d, "طلب حجز مواصلات"))
+        onFirstPage=lambda c, d: _umrah_page(c, d, "طلب حجز مواصلات"),
+        onLaterPages=lambda c, d: _umrah_page(c, d, "طلب حجز مواصلات"))
     return path
 
 
@@ -4190,8 +4211,8 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
 
     doc.build(
         story,
-        onFirstPage=lambda c, d: _footer_portrait(c, d, "مسعّر المجموعات"),
-        onLaterPages=lambda c, d: _footer_portrait(c, d, "مسعّر المجموعات"))
+        onFirstPage=lambda c, d: _umrah_page(c, d, "مسعّر المجموعات"),
+        onLaterPages=lambda c, d: _umrah_page(c, d, "مسعّر المجموعات"))
     return path
 
 
