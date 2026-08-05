@@ -228,6 +228,23 @@ def _footer(canvas, doc, title_text: str) -> None:
     canvas.restoreState()
 
 
+def _qr_drawing(data: str, size: float):
+    """يبني رمز QR كعنصر رسمٍ (Drawing) قابل للإدراج في المستندات — للتحقّق.
+
+    يعيد ``None`` إن تعذّر (فلا يكسر بناء المستند)."""
+    try:
+        from reportlab.graphics.barcode import qr
+        from reportlab.graphics.shapes import Drawing
+        widget = qr.QrCodeWidget(str(data or "-"))
+        b = widget.getBounds()
+        bw, bh = (b[2] - b[0]) or 1, (b[3] - b[1]) or 1
+        d = Drawing(size, size, transform=[size / bw, 0, 0, size / bh, 0, 0])
+        d.add(widget)
+        return d
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
 def _footer_portrait(canvas, doc, title_text: str) -> None:
     """ترويسة سفلية لصفحات A4 العمودية (عرض مختلف عن العرضية)."""
     canvas.saveState()
@@ -2798,19 +2815,35 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
 
     story.append(Paragraph(ar(TREQ_THANKS), ParagraphStyle(
         "tthx", parent=rpb, alignment=2, fontSize=11)))
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 14))
 
+    # التوقيع (يميناً) + رمز تحقّق QR (يساراً) — لمسة توثيق عصرية
     sig = ParagraphStyle("tsig", parent=st["cell"], alignment=1, fontSize=11,
                          fontName=_FONT_BOLD, leading=17)
-    story.append(Paragraph(ar(data.get("office_title") or "مدير المكتب"), sig))
-    story.append(Spacer(1, 2))
-    story.append(Paragraph(ar(data.get("office_manager") or ""), sig))
+    cap = ParagraphStyle("tqc", parent=st["cell"], alignment=1, fontSize=7.5,
+                         textColor=colors.HexColor("#888888"), leading=10)
+    sig_cell = [Paragraph(ar(data.get("office_title") or "مدير المكتب"), sig),
+                Spacer(1, 2),
+                Paragraph(ar(data.get("office_manager") or ""), sig)]
+    guest = str(data.get("guest_ar") or "").strip()
+    qr = _qr_drawing(f"{co['name_ar']} | مواصلات {number} | {guest} | "
+                     f"{date_str}", 58)
+    qr_cell = [qr, Spacer(1, 2), Paragraph(ar("رمز التحقّق"), cap)] if qr else ""
+    sig_tbl = Table([[qr_cell, sig_cell]], colWidths=[W * 0.32, W * 0.68])
+    sig_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("ALIGN", (1, 0), (1, 0), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(sig_tbl)
 
     doc.build(
         story,
         onFirstPage=lambda c, d: _footer_portrait(c, d, "طلب حجز مواصلات"),
         onLaterPages=lambda c, d: _footer_portrait(c, d, "طلب حجز مواصلات"))
     return path
+
 
 def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
                              program_name: str = "", company=None,
