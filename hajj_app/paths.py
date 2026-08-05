@@ -48,8 +48,15 @@ def data_dir() -> Path:
         # نسخة محمولة قائمة مسبقاً، أو مجلد يمكن الكتابة فيه -> بجوار البرنامج
         if beside_exe.is_dir() or _is_writable(exe_dir):
             return beside_exe
-        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
-        base_dir = Path(base) if base else Path.home()
+        # مجلد بيانات المستخدم حسب النظام (نسخة مثبّتة للقراءة فقط)
+        win = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if win:
+            return Path(win) / "HajjApp" / "data"
+        if sys.platform == "darwin":
+            return (Path.home() / "Library" / "Application Support"
+                    / "HajjApp" / "data")
+        xdg = os.environ.get("XDG_DATA_HOME")
+        base_dir = Path(xdg) if xdg else Path.home() / ".local" / "share"
         return base_dir / "HajjApp" / "data"
     return Path(__file__).resolve().parent.parent / "data"
 

@@ -8,31 +8,47 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import pytesseract
 
-_CANDIDATES = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
-)
+# اسم الملف التنفيذي حسب النظام (ويندوز يضيف .exe)
+_EXE = "tesseract.exe" if os.name == "nt" else "tesseract"
+
+# أماكن التثبيت المعتادة لكل نظام (تُفحص إن لم يُوجد في PATH)
+if os.name == "nt":
+    _CANDIDATES = (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+    )
+elif sys.platform == "darwin":
+    # ماك: Homebrew (Apple Silicon/Intel) وMacPorts
+    _CANDIDATES = (
+        "/opt/homebrew/bin/tesseract",
+        "/usr/local/bin/tesseract",
+        "/opt/local/bin/tesseract",
+        "/usr/bin/tesseract",
+    )
+else:
+    _CANDIDATES = ("/usr/bin/tesseract", "/usr/local/bin/tesseract")
 
 _LANG_CACHE: set[str] | None = None
 
 
 def _bundled_candidates() -> list[Path]:
-    """مسارات Tesseract المضمّنة مع نسخة exe المبنيّة (إن وُجدت)."""
+    """مسارات Tesseract المضمّنة مع النسخة المبنيّة (exe/‏.app إن وُجدت)."""
     out: list[Path] = []
     try:
-        import sys
-
         from .paths import is_frozen, resource_dir
         if is_frozen():
-            out.append(resource_dir() / "tesseract" / "tesseract.exe")
+            out.append(resource_dir() / "tesseract" / _EXE)
             exe_dir = Path(sys.executable).resolve().parent
-            out.append(exe_dir / "tesseract" / "tesseract.exe")
-            out.append(exe_dir / "_internal" / "tesseract" / "tesseract.exe")
+            out.append(exe_dir / "tesseract" / _EXE)
+            out.append(exe_dir / "_internal" / "tesseract" / _EXE)
+            # حزمة ماك .app: الموارد في Contents/Resources بجوار MacOS/
+            out.append(exe_dir.parent / "Resources" / "tesseract" / _EXE)
     except Exception:                                  # noqa: BLE001
         pass
     return out

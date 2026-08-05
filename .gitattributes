@@ -1,0 +1,3 @@
+# سكربتات ماك/يونكس يجب أن تبقى بنهايات أسطر LF وإلّا فشلت في bash
+*.sh text eol=lf
+*.command text eol=lf

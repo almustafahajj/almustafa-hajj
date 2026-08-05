@@ -31,6 +31,25 @@ from .storage import (
     default_data_path, load_records, load_settings, save_records, save_settings,
 )
 
+
+def open_in_viewer(path) -> None:
+    """يفتح ملفاً في العارض الافتراضي للنظام (ويندوز/ماك/لينكس).
+
+    يوحّد سلوك ``os.startfile`` (ويندوز فقط) عبر الأنظمة: ``open`` على ماك،
+    و``xdg-open`` على لينكس. يرفع ``OSError`` إن تعذّر الفتح لتُعالَج كما كانت.
+    """
+    import os
+    import subprocess
+    import sys
+    p = str(path)
+    if sys.platform == "darwin":
+        subprocess.run(["open", p], check=False)
+    elif os.name == "nt":
+        os.startfile(p)                      # type: ignore[attr-defined]
+    else:
+        subprocess.run(["xdg-open", p], check=False)
+
+
 _IMG_EXT = "*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp"
 SCAN_TYPES = (
     ("صور وملفات PDF", f"{_IMG_EXT} *.pdf"),
@@ -243,7 +262,7 @@ def open_preview(parent, export_fn, base_name: str, ext: str):
         messagebox.showerror("خطأ في التجهيز", str(exc), parent=parent)
         return None
     try:
-        os.startfile(path)
+        open_in_viewer(path)
     except OSError as exc:
         messagebox.showerror("تعذّر فتح المعاينة", str(exc), parent=parent)
         return None
@@ -2112,7 +2131,7 @@ class HajjApp:
         # نفتح المعاينة في عارض PDF؛ منها يطبع المستخدم ويختار الطابعة —
         # بلا نافذة «حفظ باسم» ولا طباعة صامتة.
         try:
-            os.startfile(path)
+            open_in_viewer(path)
         except OSError as exc:
             messagebox.showerror(
                 "تعذّر فتح المعاينة",
@@ -2225,7 +2244,7 @@ class HajjApp:
                 pass
 
         try:
-            os.startfile(pdf_path)
+            open_in_viewer(pdf_path)
         except OSError as exc:
             messagebox.showerror("تعذّر فتح المعاينة", str(exc))
             return
@@ -2257,7 +2276,7 @@ class HajjApp:
             messagebox.showerror("خطأ في الاستيكرات", str(exc))
             return
         try:
-            os.startfile(path)
+            open_in_viewer(path)
         except OSError as exc:
             messagebox.showerror("تعذّر فتح المعاينة", str(exc))
             return
@@ -2388,7 +2407,7 @@ class HajjApp:
             except OSError:
                 pass
         try:
-            os.startfile(out)
+            open_in_viewer(out)
         except OSError as exc:
             messagebox.showerror("تعذّر فتح المعاينة", str(exc))
             return
@@ -2893,7 +2912,7 @@ class HajjApp:
             except OSError:
                 pass
         try:
-            os.startfile(out)
+            open_in_viewer(out)
         except OSError as exc:
             messagebox.showerror("تعذّر فتح المعاينة", str(exc))
             return
@@ -6581,7 +6600,7 @@ class ReceiptDialog(Toplevel):
             messagebox.showerror("خطأ في السند", str(exc), parent=self)
             return
         try:
-            os.startfile(str(path))            # يفتح في العارض الافتراضي للمعاينة
+            open_in_viewer(str(path))            # يفتح في العارض الافتراضي للمعاينة
         except Exception as exc:
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 
@@ -6698,7 +6717,7 @@ class InvoiceDialog(Toplevel):
             messagebox.showerror("خطأ في الفاتورة", str(exc), parent=self)
             return
         try:
-            os.startfile(str(path))
+            open_in_viewer(str(path))
         except Exception as exc:
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 
@@ -6722,7 +6741,7 @@ class InvoiceDialog(Toplevel):
             messagebox.showerror("خطأ في ملف XML", str(exc), parent=self)
             return
         try:
-            os.startfile(str(path))
+            open_in_viewer(str(path))
         except Exception as exc:
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 
@@ -6818,7 +6837,7 @@ class ContractDialog(Toplevel):
             messagebox.showerror("خطأ في العقد", str(exc), parent=self)
             return
         try:
-            os.startfile(str(path))
+            open_in_viewer(str(path))
         except Exception as exc:
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 
