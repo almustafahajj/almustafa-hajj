@@ -1751,6 +1751,21 @@ def export_receipt_pdf(rec, path: str | Path, *,
     # ----- الفراغ الأوسط -----
     y = yb_title
     yb_gap = y - h_gap
+    # رمز تحقّق QR في يسار الفراغ الأوسط (طابع توثيق) — لا يزاحم أي محتوى
+    try:
+        from reportlab.graphics import renderPDF
+        qd = _qr_drawing(f"{company} | سند {number} | {name} | "
+                         f"AED {amount:,.2f} | {date_str}", 62)
+        if qd is not None and h_gap > 70:
+            qx = x0 + 26
+            qy = (y + yb_gap) / 2 - 31
+            renderPDF.draw(qd, c, qx, qy)
+            c.setFont(AF, 8)
+            c.setFillColor(colors.HexColor("#888888"))
+            c.drawCentredString(qx + 31, qy - 11, ar("رمز التحقّق"))
+            c.setFillColor(ink)
+    except Exception:                                  # noqa: BLE001
+        pass
     hline(yb_gap)
 
     # حقل «تسمية: قيمة» فوق خطّ سفلي
@@ -2086,7 +2101,16 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     ]
     tot.setStyle(TableStyle(tstyle))
 
-    side_cell = ""
+    # رمز تحقّق QR بجانب الإجماليات (كما في فواتير الضريبة الرسمية)
+    _name = rec.full_name_ar or rec.full_name_en or "—"
+    _qr = _qr_drawing(f"{co['name_ar']} | فاتورة {number} | {_name} | "
+                      f"{money(total)} AED | {date_str}", 66)
+    if _qr is not None:
+        _qr.hAlign = "CENTER"
+    _qcap = ParagraphStyle("iqc", parent=st["cell"], alignment=1, fontSize=7.5,
+                           textColor=colors.HexColor("#888888"), leading=10)
+    side_cell = ([_qr, Spacer(1, 3), Paragraph(ar("رمز التحقّق"), _qcap)]
+                 if _qr is not None else "")
     if electronic:
         from .einvoice import PINT_AE_CUSTOMIZATION
         info = ParagraphStyle("pep", parent=st["cell"], alignment=2,

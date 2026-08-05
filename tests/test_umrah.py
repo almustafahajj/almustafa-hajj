@@ -483,6 +483,9 @@ for _fn, _nm in [(export_umrah_receipt_pdf, "r"), (export_umrah_invoice_pdf, "i"
     _pp = WORK / f"doc_{_nm}.pdf"
     _fn(recd, _pp, program_name="ديسمبر")
     assert _pp.read_bytes()[:5] == b"%PDF-" and _pp.stat().st_size > 3000
+# رمز التحقّق QR (السند/الفاتورة/طلب المواصلات) — مساعد reportlab المضمّن
+from hajj_app.pdf_io import _qr_drawing as _qrd
+assert _qrd("MHU | سند 0007 | خالد | AED 2,000.00", 60) is not None
 # أزرار المستندات للمعتمر المحدّد في نافذة المعتمرين
 import hajj_app.gui as _g3
 _g3.open_preview = lambda parent, fn, name, ext: (fn(str(WORK / "sel.pdf")), "x")[1]
