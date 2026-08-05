@@ -114,8 +114,45 @@ class UmrahApp:
 
         self._build_header()
         self._build_toolbar()
+        self._build_statusbar()
         self._build_table()
+        self._bind_shortcuts()
         self._reload()
+
+    # ---- شريط الحالة السفلي (ملخّص حيّ للموسم) ----
+    def _build_statusbar(self) -> None:
+        bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 6))
+        bar.pack(fill=X, side="bottom")
+        self._status = ttk.Label(bar, text="", font=(G._FUI, 10),
+                                 foreground=G.TEXT, background=G.BG)
+        self._status.pack(side=RIGHT)
+        ttk.Label(bar, background=G.BG, foreground=G.MUTED, font=(G._FUI, 9),
+                  text=G.rtl("⌨  Ctrl+N برنامج · Enter المعتمرون · "
+                             "F5 تحديث · Del حذف")).pack(side=LEFT)
+
+    # ---- اختصارات لوحة المفاتيح ----
+    def _bind_shortcuts(self) -> None:
+        r = self.root
+        r.bind("<Control-n>", lambda e: self.new_trip())
+        r.bind("<Control-N>", lambda e: self.new_trip())
+        r.bind("<Control-e>", lambda e: self.edit_trip())
+        r.bind("<F5>", lambda e: self._reload())
+        r.bind("<Return>", self._shortcut_open)
+        r.bind("<Delete>", self._shortcut_delete)
+
+    def _editing_now(self) -> bool:
+        """هل التركيز داخل حقل كتابة؟ (فلا نلتقط اختصارات النافذة)."""
+        w = self.root.focus_get()
+        return w is not None and w.winfo_class() in (
+            "TEntry", "Entry", "TCombobox", "Text")
+
+    def _shortcut_open(self, _e=None):
+        if not self._editing_now() and self.tree.selection():
+            self.open_pilgrims()
+
+    def _shortcut_delete(self, _e=None):
+        if not self._editing_now() and self.tree.selection():
+            self.delete_trip()
 
     # ---- الحفظ ----
     def save(self) -> None:
@@ -177,15 +214,19 @@ class UmrahApp:
         bar.pack(fill=X)
         self._menus: list = []
         # الأكثر استخداماً — أزرار مباشرة
-        ttk.Button(bar, text=G.rtl("➕  برنامج جديد"), style="Primary.TButton",
-                   command=self.new_trip).pack(side=RIGHT, padx=3)
-        ttk.Button(bar, text=G.rtl("👤  المعتمرون"), style="Act.TButton",
-                   command=self.open_pilgrims).pack(side=RIGHT, padx=3)
+        b_new = ttk.Button(bar, text=G.rtl("➕  برنامج جديد"),
+                           style="Primary.TButton", command=self.new_trip)
+        b_new.pack(side=RIGHT, padx=3)
+        G.add_tooltip(b_new, G.rtl("إضافة برنامج عمرة جديد  (Ctrl+N)"))
+        b_pil = ttk.Button(bar, text=G.rtl("👤  المعتمرون"), style="Act.TButton",
+                           command=self.open_pilgrims)
+        b_pil.pack(side=RIGHT, padx=3)
+        G.add_tooltip(b_pil, G.rtl("فتح معتمري البرنامج المحدَّد  (Enter)"))
         # قوائم منسدلة تجمع الأدوات ذات الصلة لتخفيف الازدحام
         self._menu_button(bar, "✏️  البرنامج", (
             ("✏️  تعديل البرنامج", self.edit_trip),
             ("🗑  حذف البرنامج", self.delete_trip),
-        ))
+        ), tip="تعديل أو حذف البرنامج المحدَّد  (Ctrl+E / Del)")
         self._menu_button(bar, "💰  التسعير والعروض", (
             ("📋  عروض الأسعار المحفوظة", self.open_quotes),
             ("💲  عرض سعر يدوي جديد", self.new_manual_quotation),
@@ -193,7 +234,7 @@ class UmrahApp:
             None,
             ("🧮  مسعّر المجموعات", self.open_group_pricer),
             ("🗂  التسعيرات المحفوظة", self.open_pricings),
-        ))
+        ), tip="عروض الأسعار، المسعّر، والتسعيرات المحفوظة")
         self._menu_button(bar, "📄  مستندات وكشوف", (
             ("💰  الملخّص المالي", self.prog_finance),
             ("🛏  التسكين", self.prog_rooming),
@@ -208,13 +249,13 @@ class UmrahApp:
             None,
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
             ("🗂  الفاوتشرات المحفوظة", self.open_vouchers),
-        ))
+        ), tip="كشوف البرنامج المحدَّد ومستنداته (مالية/تسكين/مواصلات/طيران/بطاقات)")
         self._menu_button(bar, "🚖  الطلبات", (
             ("🚖  طلب حجز مواصلات", self.new_transport_request),
             ("🗂  الطلبات المحفوظة", self.open_transport_requests),
-        ))
+        ), tip="طلب حجز مواصلات (خطاب لشركة النقل) والطلبات المحفوظة")
 
-    def _menu_button(self, bar, label, items):
+    def _menu_button(self, bar, label, items, tip=""):
         """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر) أو None لفاصل."""
         mb = ttk.Menubutton(bar, text=G.rtl(label), style="Ghost.TMenubutton",
                             direction="below")
@@ -228,6 +269,8 @@ class UmrahApp:
         mb["menu"] = menu
         self._menus.append(menu)          # مرجع يمنع جمع القمامة
         mb.pack(side=RIGHT, padx=3)
+        if tip:
+            G.add_tooltip(mb, G.rtl(tip))
         return mb
 
     # ---- جدول البرامج ----
@@ -257,8 +300,11 @@ class UmrahApp:
         self.tree.bind("<Double-1>", lambda _e: self.open_pilgrims())
 
         self._empty = ttk.Label(
-            self.root, text=G.rtl("لا برامج بعد — ابدأ بـ «➕ برنامج جديد»."),
-            font=(G._FUI, 11), foreground=G.MUTED, background=G.BG)
+            self.root, justify="center", background=G.BG, foreground=G.MUTED,
+            font=(G._FUI, 12),
+            text=G.rtl("🌙  لا برامج في هذا الموسم بعد.\n\n"
+                       "ابدأ بـ «➕ برنامج جديد» لإنشاء أوّل برنامج عمرة،\n"
+                       "أو غيّر «الموسم» أعلى النافذة لعرض موسمٍ آخر."))
 
     def _season_text(self) -> str:
         y = self._season.get()
@@ -283,8 +329,14 @@ class UmrahApp:
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
         shown = self._season_trips()
+        n_pil = 0
+        total = paid = 0.0
         for i, t in enumerate(shown):
             pilgrims = umrah.trip_pilgrims(self.records, t.code)
+            n_pil += len(pilgrims)
+            for r in pilgrims:
+                total += parse_amount(r.program_value) or 0.0
+                paid += parse_amount(r.paid_amount) or 0.0
             try:
                 cap = int(float(str(t.capacity or "").strip() or 0))
             except ValueError:
@@ -296,8 +348,13 @@ class UmrahApp:
                 len(pilgrims), t.capacity or "—",
                 seats_left if seats_left is not None else "—"),
                 tags=("odd",) if i % 2 else ())
+        if hasattr(self, "_status"):
+            self._status.configure(text=(
+                f"🗂 البرامج: {len(shown)}    ·    👤 المعتمرون: {n_pil}"
+                f"    ·    💰 المحصّل: {format_amount(paid)}"
+                f"    ·    ⏳ المتبقّي: {format_amount(total - paid)}"))
         if not shown:
-            self._empty.pack(pady=8)
+            self._empty.pack(pady=24)
         else:
             self._empty.pack_forget()
 

@@ -128,6 +128,17 @@ app._season.set("2027"); app._reload()
 c27 = set(app.tree.get_children())
 assert "B" in c27 and "A" not in c27 and "P1" not in c27
 assert "١ يناير" in app._season_text() and "2027" in app._season_text()
+# لمسات: شريط الحالة السفلي يلخّص الموسم (برامج/معتمرون/محصّل/متبقّي)
+app._season.set("2026"); app._reload()
+_stx = app._status.cget("text")
+assert "البرامج:" in _stx and "المعتمرون:" in _stx and "المتبقّي:" in _stx
+# اختصار Enter يفتح المعتمرين للبرنامج المحدَّد (بلا كتابة في حقل)
+app.tree.selection_set("P1")
+app._shortcut_open()
+assert any(isinstance(w, ug.TripPilgrimsWindow) for w in root.winfo_children())
+for w in root.winfo_children():
+    if isinstance(w, ug.TripPilgrimsWindow):
+        w.destroy()
 # واجهة مبسّطة: الأدوات مجمّعة في قوائم منسدلة (Menubutton + Menu)
 _ulabels = set()
 for _m in getattr(app, "_menus", []):
