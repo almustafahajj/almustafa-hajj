@@ -150,6 +150,20 @@ app._query.set("")                            # مسح البحث يعيد ال�
 assert {"P1", "A"} <= set(app.tree.get_children())
 # تلوين الصفّ حسب السعة: P1 (3 معتمرين / سعة 3) = مكتمل «full»
 assert "full" in app.tree.item("P1", "tags")
+# فرز الجدول بالنقر على رأس عمود «المعتمرون» (تصاعدي ثم تنازلي)
+app._sort_by("count")
+assert app._sort == ("count", False)
+app._sort_by("count")
+assert app._sort == ("count", True)          # نقرة ثانية تعكس الاتجاه
+app._sort = None; app._reload()
+# لوحة الموسم: إحصاءات + فتح النافذة
+_drows, _dtot = app._season_stats()
+assert _dtot["programs"] >= 1 and "%" in _dtot["pct"]
+app.open_dashboard()
+assert any(isinstance(w, ug.SeasonDashboard) for w in root.winfo_children())
+for w in root.winfo_children():
+    if isinstance(w, ug.SeasonDashboard):
+        w.destroy()
 # واجهة مبسّطة: الأدوات مجمّعة في قوائم منسدلة (Menubutton + Menu)
 _ulabels = set()
 for _m in getattr(app, "_menus", []):

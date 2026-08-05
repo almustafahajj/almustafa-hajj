@@ -195,6 +195,10 @@ class UmrahApp:
         ttk.Button(bar, text=G.rtl(f"🕋  التبديل إلى {other}"),
                    style="Ghost.TButton",
                    command=self.switch_mode).pack(side=LEFT, padx=(0, 8))
+        _dash = ttk.Button(bar, text=G.rtl("📊  لوحة الموسم"),
+                           style="Ghost.TButton", command=self.open_dashboard)
+        _dash.pack(side=LEFT, padx=(0, 8))
+        G.add_tooltip(_dash, G.rtl("نظرة سريعة على برامج الموسم والتحصيل"))
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
@@ -302,10 +306,13 @@ class UmrahApp:
         widths = {"code": 56, "name": 200, "depart": 96, "return": 96,
                   "makkah": 150, "madinah": 150, "count": 84, "capacity": 62,
                   "remaining": 96}
+        self._cols, self._heads = cols, heads
+        self._sort = None                  # (العمود، معكوس) — للفرز بالنقر
         self.tree = ttk.Treeview(holder, columns=cols, show="headings",
                                  selectmode="browse")
         for c in cols:
-            self.tree.heading(c, text=heads[c])
+            self.tree.heading(c, text=heads[c],
+                              command=lambda col=c: self._sort_by(col))
             anchor = "e" if c in ("name", "makkah", "madinah") else "center"
             self.tree.column(c, width=widths[c], anchor=anchor)
         vs = ttk.Scrollbar(holder, orient="vertical", command=self.tree.yview)
@@ -357,14 +364,46 @@ class UmrahApp:
                      or q in (t.madinah_hotel or "").lower()]
         return trips
 
+    def _sort_by(self, col: str) -> None:
+        """يفرز البرامج حسب عمودٍ عند النقر على رأسه (يبدّل الاتجاه بالنقر ثانيةً)."""
+        if self._sort and self._sort[0] == col:
+            self._sort = (col, not self._sort[1])
+        else:
+            self._sort = (col, False)
+        self._reload()
+
+    def _update_headings(self) -> None:
+        for c in self._cols:
+            txt = self._heads[c]
+            if self._sort and self._sort[0] == c:
+                txt += "  " + ("▼" if self._sort[1] else "▲")
+            self.tree.heading(c, text=txt)
+
+    def _apply_sort(self, rows: list) -> list:
+        if not self._sort:
+            return rows
+        col, rev = self._sort
+        def key(row):
+            t = row["t"]
+            return {
+                "count": row["n"], "capacity": row["cap"],
+                "remaining": (row["seats"] if row["seats"] is not None else -1),
+                "code": (t.code or "").lower(), "name": (t.name or "").lower(),
+                "depart": t.depart_date or "", "return": t.return_date or "",
+                "makkah": (t.makkah_hotel or "").lower(),
+                "madinah": (t.madinah_hotel or "").lower(),
+            }.get(col, "")
+        return sorted(rows, key=key, reverse=rev)
+
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
-        shown = self._visible_trips()
+        rows = []
         n_pil = 0
         total = paid = 0.0
-        for i, t in enumerate(shown):
+        for t in self._visible_trips():
             pilgrims = umrah.trip_pilgrims(self.records, t.code)
-            n_pil += len(pilgrims)
+            n = len(pilgrims)
+            n_pil += n
             for r in pilgrims:
                 total += parse_amount(r.program_value) or 0.0
                 paid += parse_amount(r.paid_amount) or 0.0
@@ -372,9 +411,14 @@ class UmrahApp:
                 cap = int(float(str(t.capacity or "").strip() or 0))
             except ValueError:
                 cap = 0
-            seats_left = (cap - len(pilgrims)) if cap else None   # السعة − المعتمرين
+            rows.append({"t": t, "n": n, "cap": cap,
+                         "seats": (cap - n) if cap else None})
+        rows = self._apply_sort(rows)
+        self._update_headings()
+        for i, row in enumerate(rows):
+            t, n, cap, seats_left = row["t"], row["n"], row["cap"], row["seats"]
             # تلوين الصفّ: متجاوز السعة (أحمر) / مكتمل (أخضر) / تخطيط متناوب
-            if cap and len(pilgrims) > cap:
+            if cap and n > cap:
                 tag = "over"
             elif cap and seats_left == 0:
                 tag = "full"
@@ -383,9 +427,10 @@ class UmrahApp:
             self.tree.insert("", END, iid=t.code, values=(
                 t.code, t.name or "—", t.depart_date or "—", t.return_date or "—",
                 t.makkah_hotel or "—", t.madinah_hotel or "—",
-                len(pilgrims), t.capacity or "—",
+                n, t.capacity or "—",
                 seats_left if seats_left is not None else "—"),
                 tags=(tag,) if tag else ())
+        shown = rows
         if hasattr(self, "_status"):
             self._status.configure(text=(
                 f"🗂 البرامج: {len(shown)}    ·    👤 المعتمرون: {n_pil}"
@@ -502,6 +547,36 @@ class UmrahApp:
     def open_vouchers(self) -> None:
         """قائمة الفاوتشرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
         VouchersListWindow(self.root, self)
+
+    def _season_stats(self):
+        """إحصاءات برامج الموسم المعروض: صفوف لكل برنامج + إجماليات."""
+        rows = []
+        tot_total = tot_paid = 0.0
+        tot_pil = 0
+        for t in self._visible_trips():
+            pilgrims = umrah.trip_pilgrims(self.records, t.code)
+            total = sum(parse_amount(r.program_value) or 0.0 for r in pilgrims)
+            paid = sum(parse_amount(r.paid_amount) or 0.0 for r in pilgrims)
+            rows.append({"name": t.name or t.code, "count": len(pilgrims),
+                         "total": total, "paid": paid})
+            tot_total += total
+            tot_paid += paid
+            tot_pil += len(pilgrims)
+        totals = {
+            "programs": len(rows), "pilgrims": tot_pil,
+            "paid": format_amount(tot_paid),
+            "remaining": format_amount(tot_total - tot_paid),
+            "pct": f"{(tot_paid / tot_total * 100):.0f}%" if tot_total else "0%"}
+        return rows, totals
+
+    def open_dashboard(self) -> None:
+        """لوحة الموسم: نظرة سريعة على البرامج والتحصيل برسوم بسيطة."""
+        rows, totals = self._season_stats()
+        if not rows:
+            messagebox.showinfo("لوحة الموسم", "لا برامج في هذا الموسم.",
+                                parent=self.root)
+            return
+        SeasonDashboard(self.root, self._season.get(), rows, totals)
 
     # ---- كشوف ومستندات البرنامج المحدَّد (من الواجهة الرئيسية) ----
     def _company_dict(self):
@@ -3844,6 +3919,85 @@ class PricingsListWindow(Toplevel):
         except OSError:
             pass
         self.refresh()
+
+
+class SeasonDashboard(Toplevel):
+    """لوحة الموسم: بطاقات ملخّص + رسم بياني للتحصيل لكل برنامج (Canvas)."""
+
+    def __init__(self, parent, season, rows, totals) -> None:
+        super().__init__(parent)
+        self._rows = rows
+        self.title(f"لوحة موسم العمرة {season}")
+        self.configure(bg=G.BG)
+        self.geometry("760x580")
+        self.minsize(560, 420)
+        self.transient(parent)
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 12, 16, 4))
+        head.pack(fill=X)
+        ttk.Label(head, text=f"📊 لوحة موسم العمرة {season}",
+                  font=(G._FSB, 15), foreground=G.TEXT,
+                  background=G.BG).pack(side=RIGHT)
+
+        cards = ttk.Frame(self, style="Panel.TFrame", padding=(16, 10))
+        cards.pack(fill=X)
+        for label, val in (("البرامج", totals["programs"]),
+                           ("المعتمرون", totals["pilgrims"]),
+                           ("المحصّل", totals["paid"]),
+                           ("المتبقّي", totals["remaining"]),
+                           ("نسبة التحصيل", totals["pct"])):
+            box = ttk.Frame(cards, style="Panel.TFrame")
+            box.pack(side=RIGHT, expand=True, fill=X, padx=4)
+            ttk.Label(box, text=str(val), font=(G._FSB, 16),
+                      foreground=G.ACCENT, background=G.BG).pack()
+            ttk.Label(box, text=label, font=(G._FUI, 9), foreground=G.MUTED,
+                      background=G.BG).pack()
+
+        self._cv = Canvas(self, bg="#FFFFFF", highlightthickness=0)
+        self._cv.pack(fill=BOTH, expand=True, padx=16, pady=(6, 16))
+        self._cv.bind("<Configure>", lambda _e: self._draw())
+        try:
+            G.enable_minmax(self)
+        except Exception:
+            pass
+        self.grab_set()
+        self.after(60, self._draw)
+
+    def _draw(self) -> None:
+        cv = self._cv
+        cv.delete("all")
+        W = max(cv.winfo_width(), 400)
+        H = max(cv.winfo_height(), 200)
+        pad = 18
+        cv.create_text(W - pad, pad, anchor="ne",
+                       text="التحصيل لكل برنامج (المحصّل من الإجمالي)",
+                       font=(G._FSB, 12), fill="#6E543A")
+        rows = self._rows
+        top = pad + 26
+        avail = H - top - pad
+        row_h = min(46, avail / max(len(rows), 1))
+        label_w = 140
+        bx0 = pad + 44
+        bx1 = W - pad - label_w
+        for i, r in enumerate(rows):
+            y = top + i * row_h + row_h / 2
+            if y > H - pad:
+                break
+            cv.create_text(W - pad, y, anchor="e",
+                           text=(r["name"][:22]), font=(G._FUI, 10),
+                           fill="#333333")
+            cv.create_rectangle(bx0, y - 10, bx1, y + 10, fill="#EFE9DF",
+                                outline="#E0D8CB")
+            pct = (r["paid"] / r["total"]) if r["total"] else 0.0
+            fillw = (bx1 - bx0) * min(pct, 1.0)
+            if fillw > 0:                     # التعبئة من اليمين (RTL)
+                cv.create_rectangle(bx1 - fillw, y - 10, bx1, y + 10,
+                                    fill="#8A6E4B", outline="")
+            cv.create_text((bx0 + bx1) / 2, y,
+                           text=f"{pct * 100:.0f}%   ·   {r['count']} معتمر",
+                           font=(G._FUI, 9), fill="#1A1A1A")
+            cv.create_text(pad, y, anchor="w", text=str(r["count"]),
+                           font=(G._FSB, 10), fill="#6E543A")
 
 
 class TransportRequestsListWindow(Toplevel):
