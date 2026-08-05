@@ -277,6 +277,22 @@ class UmrahApp:
     def _build_table(self) -> None:
         wrap = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 4, 16, 14))
         wrap.pack(fill=BOTH, expand=True)
+
+        # صفّ بحث فوري في البرامج (بالرمز/الاسم/الفندق)
+        filt = ttk.Frame(wrap, style="Toolbar.TFrame")
+        filt.pack(fill=X, pady=(0, 6))
+        ttk.Label(filt, text=G.rtl("🔎  بحث:"), background=G.BG,
+                  foreground=G.TEXT).pack(side=RIGHT, padx=(0, 6))
+        self._query = StringVar(master=self.root, value="")
+        ent = ttk.Entry(filt, textvariable=self._query, width=32,
+                        justify="right")
+        ent.pack(side=RIGHT)
+        self._query.trace_add("write", lambda *a: self._reload())
+        ttk.Button(filt, text="مسح", style="Ghost.TButton",
+                   command=lambda: self._query.set("")).pack(side=RIGHT, padx=6)
+
+        holder = ttk.Frame(wrap, style="Toolbar.TFrame")
+        holder.pack(fill=BOTH, expand=True)
         cols = ("code", "name", "depart", "return", "makkah", "madinah",
                 "count", "capacity", "remaining")
         heads = {"code": "الرمز", "name": "اسم البرنامج", "depart": "المغادرة",
@@ -286,17 +302,20 @@ class UmrahApp:
         widths = {"code": 56, "name": 200, "depart": 96, "return": 96,
                   "makkah": 150, "madinah": 150, "count": 84, "capacity": 62,
                   "remaining": 96}
-        self.tree = ttk.Treeview(wrap, columns=cols, show="headings",
+        self.tree = ttk.Treeview(holder, columns=cols, show="headings",
                                  selectmode="browse")
         for c in cols:
             self.tree.heading(c, text=heads[c])
             anchor = "e" if c in ("name", "makkah", "madinah") else "center"
             self.tree.column(c, width=widths[c], anchor=anchor)
-        vs = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
+        vs = ttk.Scrollbar(holder, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vs.set)
         self.tree.pack(side=LEFT, fill=BOTH, expand=True)
         vs.pack(side=RIGHT, fill="y")
         self.tree.tag_configure("odd", background=G.PANEL)
+        # تلوين حسب حالة السعة: مكتمل (أخضر باهت) / متجاوز (أحمر باهت)
+        self.tree.tag_configure("full", background="#E6F1E9")
+        self.tree.tag_configure("over", background="#F6D9D0")
         self.tree.bind("<Double-1>", lambda _e: self.open_pilgrims())
 
         self._empty = ttk.Label(
@@ -326,9 +345,21 @@ class UmrahApp:
         return [t for t in self.trips
                 if not umrah.trip_year(t) or umrah.trip_year(t) == season]
 
+    def _visible_trips(self) -> list:
+        """برامج الموسم بعد تطبيق بحث الفلترة الفوري (رمز/اسم/فندق)."""
+        trips = self._season_trips()
+        q = (self._query.get() if hasattr(self, "_query") else "").strip().lower()
+        if q:
+            trips = [t for t in trips
+                     if q in (t.code or "").lower()
+                     or q in (t.name or "").lower()
+                     or q in (t.makkah_hotel or "").lower()
+                     or q in (t.madinah_hotel or "").lower()]
+        return trips
+
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
-        shown = self._season_trips()
+        shown = self._visible_trips()
         n_pil = 0
         total = paid = 0.0
         for i, t in enumerate(shown):
@@ -342,18 +373,35 @@ class UmrahApp:
             except ValueError:
                 cap = 0
             seats_left = (cap - len(pilgrims)) if cap else None   # السعة − المعتمرين
+            # تلوين الصفّ: متجاوز السعة (أحمر) / مكتمل (أخضر) / تخطيط متناوب
+            if cap and len(pilgrims) > cap:
+                tag = "over"
+            elif cap and seats_left == 0:
+                tag = "full"
+            else:
+                tag = "odd" if i % 2 else ""
             self.tree.insert("", END, iid=t.code, values=(
                 t.code, t.name or "—", t.depart_date or "—", t.return_date or "—",
                 t.makkah_hotel or "—", t.madinah_hotel or "—",
                 len(pilgrims), t.capacity or "—",
                 seats_left if seats_left is not None else "—"),
-                tags=("odd",) if i % 2 else ())
+                tags=(tag,) if tag else ())
         if hasattr(self, "_status"):
             self._status.configure(text=(
                 f"🗂 البرامج: {len(shown)}    ·    👤 المعتمرون: {n_pil}"
                 f"    ·    💰 المحصّل: {format_amount(paid)}"
                 f"    ·    ⏳ المتبقّي: {format_amount(total - paid)}"))
         if not shown:
+            q = (self._query.get() if hasattr(self, "_query") else "").strip()
+            if q:
+                self._empty.configure(text=G.rtl(
+                    f"🔎  لا برامج مطابقة لبحثك «{q}».\n\n"
+                    "جرّب كلمةً أخرى أو اضغط «مسح»."))
+            else:
+                self._empty.configure(text=G.rtl(
+                    "🌙  لا برامج في هذا الموسم بعد.\n\n"
+                    "ابدأ بـ «➕ برنامج جديد» لإنشاء أوّل برنامج عمرة،\n"
+                    "أو غيّر «الموسم» أعلى النافذة لعرض موسمٍ آخر."))
             self._empty.pack(pady=24)
         else:
             self._empty.pack_forget()

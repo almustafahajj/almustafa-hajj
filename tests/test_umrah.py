@@ -139,6 +139,17 @@ assert any(isinstance(w, ug.TripPilgrimsWindow) for w in root.winfo_children())
 for w in root.winfo_children():
     if isinstance(w, ug.TripPilgrimsWindow):
         w.destroy()
+# بحث فوري يفلتر البرامج بالاسم/الرمز (موسم 2026 فيه P1 وA)
+app._query.set("رمضان")                       # يطابق «رمضان ١» (P1)
+assert set(app.tree.get_children()) == {"P1"}
+app._query.set("A")                           # يطابق الرمز A
+assert "A" in set(app.tree.get_children())
+app._query.set("لا يوجد إطلاقاً")
+assert app.tree.get_children() == () and "لا برامج مطابقة" in app._empty.cget("text")
+app._query.set("")                            # مسح البحث يعيد الكل
+assert {"P1", "A"} <= set(app.tree.get_children())
+# تلوين الصفّ حسب السعة: P1 (3 معتمرين / سعة 3) = مكتمل «full»
+assert "full" in app.tree.item("P1", "tags")
 # واجهة مبسّطة: الأدوات مجمّعة في قوائم منسدلة (Menubutton + Menu)
 _ulabels = set()
 for _m in getattr(app, "_menus", []):
