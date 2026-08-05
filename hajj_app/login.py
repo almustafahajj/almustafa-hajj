@@ -25,6 +25,24 @@ from .paths import resource_dir
 
 ASSETS = resource_dir() / "assets"
 
+# عائلة الخطّ لشاشة الدخول — تُكتشف عند أول نافذة (Dubai/Sakkal) وإلا Segoe UI.
+# نُبقيها محلّية كي لا نستورد وحدة الواجهة (gui يستورد login فيقع دَوَران).
+_FUI = "Segoe UI"
+
+
+def detect_font(root) -> None:
+    """يختار أجمل خطّ عربي متوفّر لشاشة الدخول (مطابق لاختيار الواجهة)."""
+    global _FUI
+    try:
+        from tkinter import font as _tkfont
+        fams = set(_tkfont.families(root))
+    except Exception:
+        return
+    for fam in ("Dubai", "Sakkal Majalla", "Segoe UI"):
+        if fam in fams:
+            _FUI = fam
+            return
+
 # Tk لا يطبّق خوارزمية الاتجاه الثنائي (bidi)، فالنص العربي الذي يحوي
 # حروفاً لاتينية أو علامة ترقيم في آخره يظهر مقلوباً: "إكسل وPDF" تُعرض
 # "PDFإكسل و". تغليف النص بعلامتي التضمين من اليمين لليسار يثبّت الاتجاه.
@@ -96,14 +114,14 @@ class RecoveryKeyDialog(tk.Toplevel):
         outer.pack()
 
         tk.Label(outer, text="🔑  احفظ مفتاح الاسترداد", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 15, "bold")).pack()
+                 font=(_FUI, 15, "bold")).pack()
 
         reason = (
             "أُنشئ حسابك بنجاح" if is_new
             else "حسابك كان بلا مفتاح استرداد — وأُنشئ له واحد الآن"
         )
         tk.Label(
-            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 10), justify="center",
+            outer, bg=PAPER, fg=MUTED, font=(_FUI, 10), justify="center",
             wraplength=420,
             text=rtl(
                 f"{reason}\n\n"
@@ -124,7 +142,7 @@ class RecoveryKeyDialog(tk.Toplevel):
         key_box.pack(fill="x", ipady=9)
 
         tk.Label(
-            outer, bg=PAPER, fg=BRONZE, font=("Segoe UI", 9), justify="center",
+            outer, bg=PAPER, fg=BRONZE, font=(_FUI, 9), justify="center",
             wraplength=420,
             text=rtl("اطبعه أو اكتبه على ورق، واحفظه في مكان آمن بعيد عن الجهاز"),
         ).pack(pady=(10, 14))
@@ -134,20 +152,20 @@ class RecoveryKeyDialog(tk.Toplevel):
         self._button(buttons, "📋  نسخ", self._copy).pack(side="right", expand=True, fill="x", padx=3)
         self._button(buttons, "💾  حفظ في ملف", self._save).pack(side="right", expand=True, fill="x", padx=3)
 
-        self.feedback = tk.Label(outer, text="", bg=PAPER, fg=BRONZE, font=("Segoe UI", 9))
+        self.feedback = tk.Label(outer, text="", bg=PAPER, fg=BRONZE, font=(_FUI, 9))
         self.feedback.pack(pady=(10, 0))
 
         self.confirmed = tk.BooleanVar(value=False)
         tk.Checkbutton(
             outer, variable=self.confirmed, bg=PAPER, fg=INK, activebackground=PAPER,
-            font=("Segoe UI", 10), command=self._toggle, anchor="e",
+            font=(_FUI, 10), command=self._toggle, anchor="e",
             text=rtl("حفظتُ المفتاح في مكان آمن"),
         ).pack(pady=(14, 0), fill="x")
 
         self.done = tk.Button(
             outer, text="متابعة", command=self.destroy, state="disabled",
             bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
-            disabledforeground="#AAAAAA", font=("Segoe UI", 11, "bold"),
+            disabledforeground="#AAAAAA", font=(_FUI, 11, "bold"),
             relief="flat", padx=24, pady=8, cursor="hand2",
         )
         self.done.pack(pady=(12, 0), fill="x")
@@ -161,7 +179,7 @@ class RecoveryKeyDialog(tk.Toplevel):
         return tk.Button(
             parent, text=text, command=command, bg="#EFE9E1", fg=INK,
             activebackground=BRONZE, activeforeground=PAPER, relief="flat",
-            font=("Segoe UI", 10), pady=7, cursor="hand2",
+            font=(_FUI, 10), pady=7, cursor="hand2",
         )
 
     def _toggle(self) -> None:
@@ -218,39 +236,39 @@ class _ResetDialog(tk.Toplevel):
         outer.pack()
 
         tk.Label(outer, text="إعادة تعيين كلمة المرور", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 14, "bold")).pack()
+                 font=(_FUI, 14, "bold")).pack()
         tk.Label(
-            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="center",
+            outer, bg=PAPER, fg=MUTED, font=(_FUI, 9), justify="center",
             wraplength=380,
             text=rtl("أدخل مفتاح الاسترداد الذي حفظته عند إنشاء الحساب\n"
                      "بياناتك ستبقى كما هي"),
         ).pack(pady=(8, 16))
 
         tk.Label(outer, text="مفتاح الاسترداد", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 10), anchor="e").pack(fill="x")
+                 font=(_FUI, 10), anchor="e").pack(fill="x")
         self.key = ttk.Entry(outer, width=34, justify="center", font=("Consolas", 12))
         self.key.pack(fill="x", pady=(2, 10))
 
         tk.Label(outer, text="كلمة المرور الجديدة", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 10), anchor="e").pack(fill="x")
+                 font=(_FUI, 10), anchor="e").pack(fill="x")
         self.password = ttk.Entry(outer, width=34, justify="right", show="●",
-                                  font=("Segoe UI", 11))
+                                  font=(_FUI, 11))
         self.password.pack(fill="x", pady=(2, 10))
 
         tk.Label(outer, text="تأكيد كلمة المرور", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 10), anchor="e").pack(fill="x")
+                 font=(_FUI, 10), anchor="e").pack(fill="x")
         self.confirm = ttk.Entry(outer, width=34, justify="right", show="●",
-                                 font=("Segoe UI", 11))
+                                 font=(_FUI, 11))
         self.confirm.pack(fill="x", pady=(2, 0))
 
         self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
-                                font=("Segoe UI", 9), wraplength=380, justify="center")
+                                font=(_FUI, 9), wraplength=380, justify="center")
         self.message.pack(pady=(12, 0))
 
         tk.Button(
             outer, text="تعيين كلمة المرور والدخول", command=self._submit,
             bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
-            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=9,
+            font=(_FUI, 11, "bold"), relief="flat", padx=20, pady=9,
             cursor="hand2",
         ).pack(pady=(14, 0), fill="x")
 
@@ -300,28 +318,28 @@ class NewRecoveryKeyDialog(tk.Toplevel):
         outer.pack()
 
         tk.Label(outer, text="مفتاح استرداد جديد", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 14, "bold")).pack()
+                 font=(_FUI, 14, "bold")).pack()
         tk.Label(
-            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="center",
+            outer, bg=PAPER, fg=MUTED, font=(_FUI, 9), justify="center",
             wraplength=360,
             text=rtl("أدخل كلمة المرور الحالية ليُنشئ البرنامج مفتاحاً جديداً\n"
                      "المفتاح القديم سيبطل فوراً، وبياناتك لن تتأثر"),
         ).pack(pady=(8, 16))
 
         tk.Label(outer, text="كلمة المرور الحالية", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 10), anchor="e").pack(fill="x", pady=(0, 2))
+                 font=(_FUI, 10), anchor="e").pack(fill="x", pady=(0, 2))
         self.password = ttk.Entry(outer, width=32, justify="right", show="●",
-                                  font=("Segoe UI", 11))
+                                  font=(_FUI, 11))
         self.password.pack(fill="x")
 
         self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
-                                font=("Segoe UI", 9), wraplength=360, justify="center")
+                                font=(_FUI, 9), wraplength=360, justify="center")
         self.message.pack(pady=(12, 0))
 
         tk.Button(
             outer, text="إنشاء المفتاح", command=self._submit,
             bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
-            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=9,
+            font=(_FUI, 11, "bold"), relief="flat", padx=20, pady=9,
             cursor="hand2",
         ).pack(pady=(14, 0), fill="x")
 
@@ -366,9 +384,9 @@ class ChangePasswordDialog(tk.Toplevel):
         outer.pack()
 
         tk.Label(outer, text="تغيير كلمة المرور", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 14, "bold")).pack()
+                 font=(_FUI, 14, "bold")).pack()
         tk.Label(
-            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="center",
+            outer, bg=PAPER, fg=MUTED, font=(_FUI, 9), justify="center",
             wraplength=360,
             text=rtl(f"المستخدم: {username}\n"
                      "بياناتك لن تتأثر، ومفتاح الاسترداد يبقى صالحاً"),
@@ -379,13 +397,13 @@ class ChangePasswordDialog(tk.Toplevel):
         self.confirm = self._field(outer, "تأكيد كلمة المرور الجديدة")
 
         self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
-                                font=("Segoe UI", 9), wraplength=360, justify="center")
+                                font=(_FUI, 9), wraplength=360, justify="center")
         self.message.pack(pady=(12, 0))
 
         tk.Button(
             outer, text="حفظ", command=self._submit,
             bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
-            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=9,
+            font=(_FUI, 11, "bold"), relief="flat", padx=20, pady=9,
             cursor="hand2",
         ).pack(pady=(14, 0), fill="x")
 
@@ -399,10 +417,10 @@ class ChangePasswordDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
     def _field(self, parent: tk.Frame, label: str) -> ttk.Entry:
-        tk.Label(parent, text=label, bg=PAPER, fg=INK, font=("Segoe UI", 10),
+        tk.Label(parent, text=label, bg=PAPER, fg=INK, font=(_FUI, 10),
                  anchor="e").pack(fill="x", pady=(6, 2))
         entry = ttk.Entry(parent, width=32, justify="right", show="●",
-                          font=("Segoe UI", 11))
+                          font=(_FUI, 11))
         entry.pack(fill="x")
         return entry
 
@@ -441,9 +459,9 @@ class _AddAccountDialog(tk.Toplevel):
         outer = tk.Frame(self, bg=PAPER, padx=36, pady=26)
         outer.pack()
         tk.Label(outer, text="إضافة حساب جديد", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 14, "bold")).pack()
+                 font=(_FUI, 14, "bold")).pack()
         tk.Label(
-            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="center",
+            outer, bg=PAPER, fg=MUTED, font=(_FUI, 9), justify="center",
             wraplength=380,
             text=rtl("سيفتح الحساب الجديد نفس بيانات الحجّاج بكلمة مروره\n"
                      "سيُعرض له مفتاح استرداد مرة واحدة — احفظه له"),
@@ -453,23 +471,23 @@ class _AddAccountDialog(tk.Toplevel):
         self.password = self._field(outer, "كلمة المرور", secret=True)
         self.confirm = self._field(outer, "تأكيد كلمة المرور", secret=True)
 
-        tk.Label(outer, text="الصلاحية", bg=PAPER, fg=INK, font=("Segoe UI", 10),
+        tk.Label(outer, text="الصلاحية", bg=PAPER, fg=INK, font=(_FUI, 10),
                  anchor="e").pack(fill="x", pady=(8, 2))
         self._roles = [r for r in auth.ROLES]
         self.role = ttk.Combobox(
-            outer, state="readonly", justify="right", font=("Segoe UI", 11),
+            outer, state="readonly", justify="right", font=(_FUI, 11),
             values=[auth.ROLE_LABELS[r] for r in self._roles],
         )
         self.role.current(self._roles.index("viewer"))
         self.role.pack(fill="x")
 
         self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
-                                font=("Segoe UI", 9), wraplength=380, justify="center")
+                                font=(_FUI, 9), wraplength=380, justify="center")
         self.message.pack(pady=(12, 0))
         tk.Button(
             outer, text="إضافة الحساب", command=self._submit,
             bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
-            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=9,
+            font=(_FUI, 11, "bold"), relief="flat", padx=20, pady=9,
             cursor="hand2",
         ).pack(pady=(14, 0), fill="x")
 
@@ -483,10 +501,10 @@ class _AddAccountDialog(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
 
     def _field(self, parent: tk.Frame, label: str, *, secret: bool = False) -> ttk.Entry:
-        tk.Label(parent, text=label, bg=PAPER, fg=INK, font=("Segoe UI", 10),
+        tk.Label(parent, text=label, bg=PAPER, fg=INK, font=(_FUI, 10),
                  anchor="e").pack(fill="x", pady=(6, 2))
         entry = ttk.Entry(parent, width=32, justify="right",
-                          show="●" if secret else "", font=("Segoe UI", 11))
+                          show="●" if secret else "", font=(_FUI, 11))
         entry.pack(fill="x")
         return entry
 
@@ -523,9 +541,9 @@ class AccountsDialog(tk.Toplevel):
         outer = tk.Frame(self, bg=PAPER, padx=28, pady=22)
         outer.pack(fill="both", expand=True)
         tk.Label(outer, text="👥  إدارة الحسابات", bg=PAPER, fg=INK,
-                 font=("Segoe UI", 15, "bold")).pack(anchor="e")
+                 font=(_FUI, 15, "bold")).pack(anchor="e")
         tk.Label(
-            outer, bg=PAPER, fg=MUTED, font=("Segoe UI", 9), justify="right",
+            outer, bg=PAPER, fg=MUTED, font=(_FUI, 9), justify="right",
             text=rtl("كل الحسابات تفتح البيانات نفسها؛ الدور يحدّد ما يُسمح به"),
         ).pack(anchor="e", pady=(4, 12))
 
@@ -540,7 +558,7 @@ class AccountsDialog(tk.Toplevel):
         self.tree.pack(fill="both", expand=True)
 
         self.message = tk.Label(outer, text="", bg=PAPER, fg=DANGER,
-                                font=("Segoe UI", 9), justify="right", wraplength=430)
+                                font=(_FUI, 9), justify="right", wraplength=430)
         self.message.pack(anchor="e", pady=(8, 0))
 
         row = tk.Frame(outer, bg=PAPER)
@@ -562,7 +580,7 @@ class AccountsDialog(tk.Toplevel):
         return tk.Button(
             parent, text=text, command=command, bg="#EFE9E1", fg=INK,
             activebackground=BRONZE, activeforeground=PAPER, relief="flat",
-            font=("Segoe UI", 10), padx=12, pady=7, cursor="hand2",
+            font=(_FUI, 10), padx=12, pady=7, cursor="hand2",
         )
 
     def _reload(self) -> None:
@@ -641,7 +659,7 @@ class _RolePickDialog(tk.Toplevel):
         outer = tk.Frame(self, bg=PAPER, padx=32, pady=24)
         outer.pack()
         tk.Label(outer, text=rtl(f"صلاحية «{username}»"), bg=PAPER, fg=INK,
-                 font=("Segoe UI", 13, "bold")).pack(pady=(0, 14))
+                 font=(_FUI, 13, "bold")).pack(pady=(0, 14))
         self._roles = [r for r in auth.ROLES]
         self._var = tk.StringVar(value="viewer")
         descs = {
@@ -653,14 +671,14 @@ class _RolePickDialog(tk.Toplevel):
             tk.Radiobutton(
                 outer, variable=self._var, value=r, bg=PAPER, fg=INK,
                 activebackground=PAPER, anchor="e", justify="right",
-                font=("Segoe UI", 11), selectcolor=PAPER,
+                font=(_FUI, 11), selectcolor=PAPER,
                 text=rtl(f"{auth.ROLE_LABELS[r]} — {descs[r]}"),
             ).pack(fill="x", pady=2)
 
         tk.Button(
             outer, text="حفظ", command=self._ok, bg=INK, fg=PAPER,
             activebackground=BRONZE, activeforeground=INK,
-            font=("Segoe UI", 11, "bold"), relief="flat", padx=20, pady=8,
+            font=(_FUI, 11, "bold"), relief="flat", padx=20, pady=8,
             cursor="hand2",
         ).pack(pady=(16, 0), fill="x")
         self.bind("<Escape>", lambda _e: self.destroy())
@@ -689,6 +707,7 @@ class _AuthWindow:
         self.root.configure(bg=PAPER)
         self.root.resizable(False, False)
         apply_window_icon(self.root)
+        detect_font(self.root)        # اختيار أجمل خطّ عربي متوفّر قبل بناء الواجهة
 
         self._build()
         self._center()
@@ -704,12 +723,12 @@ class _AuthWindow:
         else:
             tk.Label(
                 outer, text="المصطفى للحج والعمرة", bg=PAPER, fg=INK,
-                font=("Segoe UI", 20, "bold"),
+                font=(_FUI, 20, "bold"),
             ).pack(pady=(0, 18))
 
         title = "إنشاء حساب المسؤول" if self.setup_mode else "تسجيل الدخول"
         tk.Label(
-            outer, text=title, bg=PAPER, fg=INK, font=("Segoe UI", 15, "bold")
+            outer, text=title, bg=PAPER, fg=INK, font=(_FUI, 15, "bold")
         ).pack()
 
         subtitle = (
@@ -719,7 +738,7 @@ class _AuthWindow:
             "أدخل بياناتك لفتح كشف الحجاج"
         )
         tk.Label(
-            outer, text=rtl(subtitle), bg=PAPER, fg=MUTED, font=("Segoe UI", 9),
+            outer, text=rtl(subtitle), bg=PAPER, fg=MUTED, font=(_FUI, 9),
             justify="center",
         ).pack(pady=(6, 16))
 
@@ -737,7 +756,7 @@ class _AuthWindow:
             self.username.insert(0, prefill)
 
         self.message = tk.Label(
-            outer, text="", bg=PAPER, fg=DANGER, font=("Segoe UI", 9),
+            outer, text="", bg=PAPER, fg=DANGER, font=(_FUI, 9),
             wraplength=330, justify="center",
         )
         self.message.pack(pady=(12, 0))
@@ -747,7 +766,7 @@ class _AuthWindow:
             text="إنشاء الحساب والدخول" if self.setup_mode else "دخول",
             command=self._submit,
             bg=INK, fg=PAPER, activebackground=BRONZE, activeforeground=INK,
-            font=("Segoe UI", 11, "bold"), relief="flat",
+            font=(_FUI, 11, "bold"), relief="flat",
             padx=24, pady=9, cursor="hand2",
         )
         action.pack(pady=(16, 0), fill="x")
@@ -755,7 +774,7 @@ class _AuthWindow:
         if not self.setup_mode:
             forgot = tk.Label(
                 outer, text="نسيت كلمة المرور؟", bg=PAPER, fg=BRONZE,
-                font=("Segoe UI", 9, "underline"), cursor="hand2",
+                font=(_FUI, 9, "underline"), cursor="hand2",
             )
             forgot.pack(pady=(12, 0))
             forgot.bind("<Button-1>", lambda _e: self._forgot())
@@ -763,7 +782,7 @@ class _AuthWindow:
             # أول تشغيل: بدل إنشاء حساب جديد، يمكن استيراد حسابات مُعدّة مسبقاً
             imp = tk.Label(
                 outer, text="لديّ حساب معدّ مسبقاً — استيراد ملف الحسابات",
-                bg=PAPER, fg=BRONZE, font=("Segoe UI", 9, "underline"),
+                bg=PAPER, fg=BRONZE, font=(_FUI, 9, "underline"),
                 cursor="hand2",
             )
             imp.pack(pady=(12, 0))
@@ -771,7 +790,7 @@ class _AuthWindow:
 
         tk.Label(
             outer, text=rtl("المصطفى للحج والعمرة © جميع الحقوق محفوظة"),
-            bg=PAPER, fg=MUTED, font=("Segoe UI", 8),
+            bg=PAPER, fg=MUTED, font=(_FUI, 8),
         ).pack(pady=(18, 0))
 
         self.root.bind("<Return>", lambda _e: self._submit())
@@ -783,12 +802,12 @@ class _AuthWindow:
 
     def _field(self, parent: tk.Frame, row: int, label: str, *, secret: bool = False):
         tk.Label(
-            parent, text=label, bg=PAPER, fg=INK, font=("Segoe UI", 10),
+            parent, text=label, bg=PAPER, fg=INK, font=(_FUI, 10),
             anchor="e",
         ).grid(row=row * 2, column=0, sticky="ew", pady=(8, 2))
         entry = ttk.Entry(
             parent, width=32, justify="right", show="●" if secret else "",
-            font=("Segoe UI", 11),
+            font=(_FUI, 11),
         )
         entry.grid(row=row * 2 + 1, column=0, sticky="ew")
         parent.columnconfigure(0, weight=1)
