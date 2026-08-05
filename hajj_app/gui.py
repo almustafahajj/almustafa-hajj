@@ -12,6 +12,7 @@ from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, StringVar, Tk, Toplevel, filedialog, messagebox, ttk
 
 from . import app_mode
+from .logging_setup import get_logger
 from .excel_io import export_excel, import_excel
 from .fields import (
     DATE_KEYS, DIAG_FIELDS, EDITABLE, FIELDS, MONEY_KEYS, MRZ_FILLED, TIME_KEYS,
@@ -30,6 +31,9 @@ from .login import (
 from .storage import (
     default_data_path, load_records, load_settings, save_records, save_settings,
 )
+
+
+_log = get_logger(__name__)
 
 
 def open_in_viewer(path) -> None:
@@ -259,11 +263,13 @@ def open_preview(parent, export_fn, base_name: str, ext: str):
                              parent=parent)
         return None
     except Exception as exc:
+        _log.exception("فشل توليد المستند: %s", path)
         messagebox.showerror("خطأ في التجهيز", str(exc), parent=parent)
         return None
     try:
         open_in_viewer(path)
     except OSError as exc:
+        _log.warning("تعذّر فتح المعاينة %s: %s", path, exc)
         messagebox.showerror("تعذّر فتح المعاينة", str(exc), parent=parent)
         return None
     return path
@@ -2055,6 +2061,7 @@ class HajjApp:
         try:
             records, notes = import_excel(path)
         except Exception as exc:
+            _log.exception("فشل استيراد إكسل: %s", path)
             messagebox.showerror("خطأ في الاستيراد", f"تعذّر قراءة الملف:\n\n{exc}")
             return
 
