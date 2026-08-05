@@ -96,6 +96,7 @@ class UmrahApp:
             G.apply_window_icon(root)
         except Exception:
             pass
+        G.detect_fonts(root)          # اختيار أجمل خطّ عربي متوفّر قبل بناء الأنماط
         self._build_styles()
 
         try:
@@ -1858,7 +1859,7 @@ class _CalendarPopup(Toplevel):
             side=LEFT)
         ttk.Button(hdr, text="‹", width=2, command=self._prev).pack(side=LEFT)
         ttk.Label(hdr, text=f"{_MONTHS_EN[self._m - 1]} {self._y}",
-                  font=("Segoe UI", 10, "bold")).pack(side=LEFT, expand=True)
+                  font=(G._FUI, 10, "bold")).pack(side=LEFT, expand=True)
         ttk.Button(hdr, text="›", width=2, command=self._next).pack(side=LEFT)
         ttk.Button(hdr, text="»", width=2, command=self._next_year).pack(
             side=LEFT)
@@ -1868,7 +1869,7 @@ class _CalendarPopup(Toplevel):
         g.pack()
         for i, wd in enumerate(("Su", "Mo", "Tu", "We", "Th", "Fr", "Sa")):
             ttk.Label(g, text=wd, width=3, anchor="center",
-                      font=("Segoe UI", 8, "bold")).grid(row=0, column=i, padx=1)
+                      font=(G._FUI, 8, "bold")).grid(row=0, column=i, padx=1)
         weeks = _calmod.Calendar(firstweekday=6).monthdayscalendar(self._y,
                                                                    self._m)
         for r, week in enumerate(weeks, start=1):
@@ -2045,7 +2046,7 @@ class _EditorMixin:
         """خلية بعنوان صغير فوق قائمة منسدلة، ضمن صفّ أفقي."""
         sub = ttk.Frame(parent)
         sub.pack(side=RIGHT, padx=2)
-        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
+        ttk.Label(sub, text=label, font=(G._FUI, 7)).pack()
         var = StringVar(value=str(value or ""))
         ttk.Combobox(sub, textvariable=var, values=list(options), width=width,
                      state="readonly" if readonly else "normal").pack()
@@ -2055,7 +2056,7 @@ class _EditorMixin:
         """خلية تاريخ بتقويم منبثق (مع كتابة يدوية)، بعنوان صغير، ضمن صفّ أفقي."""
         sub = ttk.Frame(parent)
         sub.pack(side=RIGHT, padx=2)
-        ttk.Label(sub, text=label, font=("Segoe UI", 7)).pack()
+        ttk.Label(sub, text=label, font=(G._FUI, 7)).pack()
         dp = DatePicker(sub, iso=iso, width=width)
         dp.pack()
         return dp
@@ -2210,7 +2211,7 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         top = ttk.Frame(self, padding=(12, 8, 12, 0))
         top.pack(fill=X)
         ttk.Label(top, text="لغة الفاوتشر:",
-                  font=("Segoe UI", 10, "bold")).pack(side=RIGHT, padx=(0, 6))
+                  font=(G._FUI, 10, "bold")).pack(side=RIGHT, padx=(0, 6))
         self._lang_var = StringVar(
             value="English" if self._lang == "en" else "عربي")
         lang_cb = ttk.Combobox(top, textvariable=self._lang_var, width=10,
@@ -2294,7 +2295,7 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         ttk.Label(lf, text="رقم الفاوتشر").grid(row=0, column=0, sticky="e",
                                                 padx=(8, 4), pady=3)
         ttk.Label(lf, text=self._number, foreground=G.ACCENT,
-                  font=("Segoe UI", 10, "bold")).grid(row=0, column=1,
+                  font=(G._FUI, 10, "bold")).grid(row=0, column=1,
                                                        sticky="w", pady=3)
         # التاريخ: يوم / شهر / سنة من قوائم منسدلة
         ttk.Label(lf, text="التاريخ").grid(row=0, column=2, sticky="e",
@@ -2325,7 +2326,7 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         hdr.pack(fill=X)
         for w, h in zip(self._stay_widths, VOUCHER_STAY_HEADS):
             ttk.Label(hdr, text=h, width=w, anchor="center",
-                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+                      font=(G._FUI, 8, "bold")).pack(side=RIGHT, padx=1)
         ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
         self._stay_box = ttk.Frame(lf)
         self._stay_box.pack(fill=X)
@@ -2364,7 +2365,7 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         hdr.pack(fill=X)
         for w, h in zip((14, 9, 34), VOUCHER_TRANSPORT_HEADS):
             ttk.Label(hdr, text=h, width=w, anchor="center",
-                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+                      font=(G._FUI, 8, "bold")).pack(side=RIGHT, padx=1)
         ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
         self._transport_box = ttk.Frame(lf)
         self._transport_box.pack(fill=X)
@@ -2534,7 +2535,7 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
         ttk.Label(lf, text="رقم الطلب").grid(row=0, column=0, sticky="e",
                                              padx=(8, 4), pady=3)
         ttk.Label(lf, text=self._number, foreground=G.ACCENT,
-                  font=("Segoe UI", 10, "bold")).grid(row=0, column=1,
+                  font=(G._FUI, 10, "bold")).grid(row=0, column=1,
                                                        sticky="w", pady=3)
         ttk.Label(lf, text="التاريخ").grid(row=0, column=2, sticky="e",
                                            padx=(8, 4), pady=3)
@@ -2635,7 +2636,7 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
         route = StringVar(value=str(values[1] or ""))
         sub = ttk.Frame(fr)
         sub.pack(side=RIGHT, padx=2)
-        ttk.Label(sub, text="خط السير", font=("Segoe UI", 7)).pack()
+        ttk.Label(sub, text="خط السير", font=(G._FUI, 7)).pack()
         ttk.Entry(sub, textvariable=route, width=26, justify="right").pack()
         count = self._cell(fr, "عدد", values[2] or "1",
                            [str(i) for i in range(1, 11)], 4, False)
@@ -2724,7 +2725,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         top = ttk.Frame(self, padding=(12, 8, 12, 0))
         top.pack(fill=X)
         ttk.Label(top, text="لغة العرض:",
-                  font=("Segoe UI", 10, "bold")).pack(side=RIGHT, padx=(0, 6))
+                  font=(G._FUI, 10, "bold")).pack(side=RIGHT, padx=(0, 6))
         self._lang_var = StringVar(
             value="English" if self._lang == "en" else "عربي")
         cb = ttk.Combobox(top, textvariable=self._lang_var, width=10,
@@ -2829,7 +2830,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         ttk.Label(lf, text="رقم العرض").grid(row=0, column=0, sticky="e",
                                              padx=(8, 4), pady=3)
         ttk.Label(lf, text=self._number, foreground=G.ACCENT,
-                  font=("Segoe UI", 10, "bold")).grid(row=0, column=1,
+                  font=(G._FUI, 10, "bold")).grid(row=0, column=1,
                                                        sticky="w", pady=3)
         ttk.Label(lf, text="التاريخ").grid(row=0, column=2, sticky="e",
                                            padx=(8, 4), pady=3)
@@ -2913,7 +2914,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
                    command=lambda: self._del_guest(fr)).pack(side=RIGHT,
                                                              padx=(4, 1))
         ttk.Label(fr, text=f"  {values[0]} {values[1]}",
-                  font=("Segoe UI", 10)).pack(side=RIGHT)
+                  font=(G._FUI, 10)).pack(side=RIGHT)
         self._guests.append([fr, cvar, tvar])
 
     def _del_guest(self, fr):
@@ -2994,7 +2995,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         fr.pack(fill=X, pady=2)
         wrap = ttk.Frame(fr)
         wrap.pack(side=RIGHT, padx=2)
-        ttk.Label(wrap, text="اليوم", font=("Segoe UI", 7)).pack()
+        ttk.Label(wrap, text="اليوم", font=(G._FUI, 7)).pack()
         dp = DatePicker(wrap, iso=values[0], width=9)
         dp.pack()
         specs = [("الناقل", QUOTE_CARRIERS, 10, True),
@@ -3041,7 +3042,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         fr.pack(fill=X, pady=2)
         wrap = ttk.Frame(fr)
         wrap.pack(side=RIGHT, padx=2)
-        ttk.Label(wrap, text="التاريخ", font=("Segoe UI", 7)).pack()
+        ttk.Label(wrap, text="التاريخ", font=(G._FUI, 7)).pack()
         dp = DatePicker(wrap, iso=values[0], width=9)
         dp.pack()
         cells = []
@@ -3120,7 +3121,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         hdr.pack(fill=X)
         for label, w in self._price_heads:
             ttk.Label(hdr, text=label, width=w, anchor="center",
-                      font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=1)
+                      font=(G._FUI, 8, "bold")).pack(side=RIGHT, padx=1)
         ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
         self._price_box = ttk.Frame(lf)
         self._price_box.pack(fill=X)
@@ -3134,10 +3135,10 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         tot.pack(fill=X, pady=(8, 0))
         self._total_var = StringVar(value="0")
         ttk.Label(tot, textvariable=self._total_var,
-                  font=("Segoe UI", 13, "bold"),
+                  font=(G._FUI, 13, "bold"),
                   foreground=G.ACCENT).pack(side=RIGHT, padx=6)
         ttk.Label(tot, text="التكلفة الإجمالية:",
-                  font=("Segoe UI", 11, "bold")).pack(side=RIGHT)
+                  font=(G._FUI, 11, "bold")).pack(side=RIGHT)
         ttk.Combobox(tot, textvariable=self._currency,
                      values=["درهم", "ريال", "دولار"], width=7).pack(side=LEFT)
         ttk.Label(tot, text="العملة:").pack(side=LEFT)
@@ -3204,7 +3205,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         ttk.Entry(fr, textvariable=price, width=10, justify="center").pack(
             side=RIGHT, padx=1)
         ttk.Label(fr, textvariable=sub, width=11, anchor="center",
-                  font=("Segoe UI", 9, "bold"),
+                  font=(G._FUI, 9, "bold"),
                   foreground=G.ACCENT).pack(side=RIGHT, padx=1)
         entry = [fr, [pt, rt, cnt, price], sub]
         ttk.Button(fr, text="حذف", width=5,
@@ -3238,7 +3239,7 @@ class QuotationEditorDialog(Toplevel, _EditorMixin):
         fixed = (f"{QUOTE_OFFICE_TITLE} — {QUOTE_OFFICE_NAME} — "
                  f"{QUOTE_OFFICE_PHONE}")
         ttk.Label(lf, text=fixed, foreground=G.ACCENT,
-                  font=("Segoe UI", 9, "bold")).grid(row=2, column=1,
+                  font=(G._FUI, 9, "bold")).grid(row=2, column=1,
                                                      columnspan=3, sticky="w",
                                                      pady=(8, 3))
         lf.columnconfigure(1, weight=1)
@@ -3517,7 +3518,7 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         ttk.Label(lf, text="رقم التسعير").grid(row=0, column=2, sticky="e",
                                                padx=(8, 4), pady=3)
         ttk.Label(lf, text=self._number, foreground=G.ACCENT,
-                  font=("Segoe UI", 10, "bold")).grid(row=0, column=3,
+                  font=(G._FUI, 10, "bold")).grid(row=0, column=3,
                                                        sticky="w", pady=3)
         self._mfield(lf, "عنوان التسعير", "title", 0, 0, width=40)
         ttk.Label(lf, text="من").grid(row=1, column=0, sticky="e", padx=(8, 4),
@@ -3586,9 +3587,9 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         hdr = ttk.Frame(lf)
         hdr.pack(fill=X)
         ttk.Label(hdr, text="المبلغ", width=14, anchor="center",
-                  font=("Segoe UI", 8, "bold")).pack(side=RIGHT, padx=2)
+                  font=(G._FUI, 8, "bold")).pack(side=RIGHT, padx=2)
         ttk.Label(hdr, text="البند", anchor="center",
-                  font=("Segoe UI", 8, "bold")).pack(side=RIGHT, fill=X,
+                  font=(G._FUI, 8, "bold")).pack(side=RIGHT, fill=X,
                                                      expand=True, padx=2)
         ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
         self._item_box = ttk.Frame(lf)
@@ -3623,7 +3624,7 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         self._mfield(lf, "مصاريف أخرى", "other", 0, 1)
         self._mfield(lf, "ربح عام (لكل الأنواع)", "profit", 1, 0)
         ttk.Label(lf, text="أو مبلغ ربح لكل نوع غرفة:",
-                  font=("Segoe UI", 8, "italic")).grid(row=2, column=0,
+                  font=(G._FUI, 8, "italic")).grid(row=2, column=0,
                                                        columnspan=4, sticky="e",
                                                        padx=(8, 4), pady=(6, 0))
         self._mfield(lf, "مفرد", "profit_single", 3, 0, width=10)
