@@ -194,7 +194,18 @@ class UmrahApp:
             ("🧮  مسعّر المجموعات", self.open_group_pricer),
             ("🗂  التسعيرات المحفوظة", self.open_pricings),
         ))
-        self._menu_button(bar, "🏨  مستندات", (
+        self._menu_button(bar, "📄  مستندات وكشوف", (
+            ("💰  الملخّص المالي", self.prog_finance),
+            ("🛏  التسكين", self.prog_rooming),
+            ("🚐  المواصلات", self.prog_transport),
+            ("✈  كشف الطيران", self.prog_airline),
+            ("🪪  بطاقات العمرة", self.prog_cards),
+            None,
+            ("🧾  سند قبض", self.prog_receipt),
+            ("🧾  فاتورة", self.prog_invoice),
+            ("📜  عقد", self.prog_contract),
+            ("💲  عرض سعر", self.prog_quotation),
+            None,
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
             ("🗂  الفاوتشرات المحفوظة", self.open_vouchers),
         ))
@@ -386,6 +397,146 @@ class UmrahApp:
     def open_vouchers(self) -> None:
         """قائمة الفاوتشرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
         VouchersListWindow(self.root, self)
+
+    # ---- كشوف ومستندات البرنامج المحدَّد (من الواجهة الرئيسية) ----
+    def _company_dict(self):
+        co = self._settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def _sel_trip_or_warn(self, title):
+        t = self._selected_trip()
+        if t is None:
+            messagebox.showinfo(title, "اختر برنامجاً من القائمة أولاً.",
+                                parent=self.root)
+        return t
+
+    def _prog_recs(self, trip, title):
+        recs = umrah.trip_pilgrims(self.records, trip.code)
+        if not recs:
+            messagebox.showinfo(title, "لا معتمرين في هذا البرنامج.",
+                                parent=self.root)
+        return recs
+
+    def _prog_name(self, trip):
+        return f"{trip.code} — {trip.name}" if trip.name else trip.code
+
+    def prog_finance(self):
+        t = self._sel_trip_or_warn("الملخّص المالي")
+        if t is None or not self._prog_recs(t, "الملخّص المالي"):
+            return
+        UmrahFinanceWindow(self.root, self, t, on_change=self._reload)
+
+    def prog_rooming(self):
+        t = self._sel_trip_or_warn("التسكين")
+        if t is None or not self._prog_recs(t, "التسكين"):
+            return
+        RoomingWindow(self, t)
+
+    def prog_transport(self):
+        t = self._sel_trip_or_warn("المواصلات")
+        if t is None or not self._prog_recs(t, "المواصلات"):
+            return
+        TransportWindow(self, t)
+
+    def prog_airline(self):
+        t = self._sel_trip_or_warn("كشف الطيران")
+        if t is None:
+            return
+        recs = self._prog_recs(t, "كشف الطيران")
+        if not recs:
+            return
+        G.open_preview(self.root, lambda p: export_airline_pdf(
+            recs, p, title=f"Flight Manifest — {t.code}"),
+            f"طيران {t.code}", "pdf")
+
+    def prog_cards(self):
+        t = self._sel_trip_or_warn("بطاقات العمرة")
+        if t is None:
+            return
+        recs = self._prog_recs(t, "بطاقات العمرة")
+        if not recs:
+            return
+        G.open_preview(self.root, lambda p: export_umrah_cards_pdf(
+            recs, p, program_name=self._prog_name(t),
+            company=self._company_dict(), session=self.session,
+            emergency_uae=str(getattr(t, "emergency_uae", "") or ""),
+            emergency_ksa=str(getattr(t, "emergency_ksa", "") or "")),
+            f"بطاقات {t.code}", "pdf")
+
+    def _pick_pilgrim(self, trip, title):
+        """يعرض منتقي معتمر لبرنامجٍ (يعيد السجلّ أو None)."""
+        recs = umrah.trip_pilgrims(self.records, trip.code)
+        if not recs:
+            messagebox.showinfo(title, "لا معتمرين في هذا البرنامج.",
+                                parent=self.root)
+            return None
+        if len(recs) == 1:
+            return recs[0]
+        win = Toplevel(self.root)
+        win.title(title)
+        win.configure(bg=G.BG)
+        win.transient(self.root)
+        frm = ttk.Frame(win, padding=12)
+        frm.pack(fill=BOTH, expand=True)
+        ttk.Label(frm, text="اختر المعتمر:").pack(anchor="e", pady=(0, 6))
+        names = [f"{i + 1}. "
+                 f"{r.full_name_ar or r.full_name_en or r.passport_number or '—'}"
+                 for i, r in enumerate(recs)]
+        var = StringVar(value=names[0])
+        ttk.Combobox(frm, textvariable=var, values=names, state="readonly",
+                     width=42).pack(fill=X)
+        chosen = {"rec": None}
+
+        def ok():
+            try:
+                chosen["rec"] = recs[names.index(var.get())]
+            except ValueError:
+                chosen["rec"] = recs[0]
+            win.destroy()
+        btns = ttk.Frame(frm)
+        btns.pack(fill=X, pady=(10, 0))
+        ttk.Button(btns, text="اختيار", command=ok).pack(side=RIGHT)
+        ttk.Button(btns, text="إلغاء", command=win.destroy).pack(side=RIGHT,
+                                                                 padx=6)
+        win.grab_set()
+        win.wait_window()
+        return chosen["rec"]
+
+    def _prog_doc(self, export_fn, base):
+        t = self._sel_trip_or_warn(base)
+        if t is None:
+            return
+        rec = self._pick_pilgrim(t, base)
+        if rec is None:
+            return
+        G.open_preview(self.root, lambda p: export_fn(
+            rec, p, program_name=self._prog_name(t),
+            company=self._company_dict()), f"{base} {t.code}", "pdf")
+
+    def prog_receipt(self):
+        self._prog_doc(export_umrah_receipt_pdf, "سند")
+
+    def prog_invoice(self):
+        self._prog_doc(export_umrah_invoice_pdf, "فاتورة")
+
+    def prog_contract(self):
+        self._prog_doc(export_umrah_contract_pdf, "عقد")
+
+    def prog_quotation(self):
+        t = self._sel_trip_or_warn("عرض سعر")
+        if t is None:
+            return
+        rec = self._pick_pilgrim(t, "عرض سعر")
+        if rec is None:
+            return
+        number = umrah.next_quote_number(self._settings)
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        co = self._company_dict()
+        data = build_quotation_data(rec, trip=t, company=co, number=number)
+        QuotationEditorDialog(self.root, rec, t, data, app=self, company=co)
 
     def open_quotes(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة للبرنامج المحدّد."""
@@ -879,27 +1030,18 @@ class TripPilgrimsWindow(Toplevel):
 
         bar = ttk.Frame(self, style="Panel.TFrame", padding=(14, 8, 14, 10))
         bar.pack(fill=X)
+        # الكشوف والمستندات على مستوى البرنامج نُقلت إلى الواجهة الرئيسية؛
+        # هنا تبقى إجراءات المعتمرين والمستندات ذات المحرّر (لكل معتمر محدَّد).
         for text, cmd, style in (
             ("📷  إضافة بقراءة الجواز", self.add_passport, "Primary.TButton"),
             ("🧮  إضافة حجز (تسعير)", self.add_booking, "Act.TButton"),
             ("➕  إضافة يدوي", self.add_manual, "Ghost.TButton"),
             ("✏️  تعديل", self.edit_selected, "Ghost.TButton"),
             ("🗑  حذف", self.delete_selected, "Ghost.TButton"),
-            ("🏨  التسكين", self.open_rooming, "Ghost.TButton"),
-            ("🚐  المواصلات", self.open_transport, "Ghost.TButton"),
-            ("✈  كشف الطيران", self.open_flights, "Ghost.TButton"),
         ):
             ttk.Button(bar, text=G.rtl(text), style=style,
                        command=cmd).pack(side=RIGHT, padx=3)
-        ttk.Button(bar, text=G.rtl("💰  الملخّص المالي"), style="Ghost.TButton",
-                   command=self.do_finance).pack(side=LEFT, padx=3)
-        ttk.Button(bar, text=G.rtl("🪪  بطاقات العمرة"), style="Ghost.TButton",
-                   command=self.do_cards).pack(side=LEFT, padx=3)
-        for text, cmd in (("🧾  سند قبض", self.do_receipt),
-                          ("🧾  فاتورة", self.do_invoice),
-                          ("📜  عقد", self.do_contract),
-                          ("💲  عرض سعر", self.do_quotation),
-                          ("📋  عروض الأسعار", self.do_quotes_list),
+        for text, cmd in (("📋  عروض الأسعار", self.do_quotes_list),
                           ("🏨  فاوتشر الفندق", self.do_voucher),
                           ("🚖  طلب مواصلات", self.do_transport_request)):
             ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",

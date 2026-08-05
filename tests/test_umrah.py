@@ -144,7 +144,9 @@ _utxt = " ".join(_ulabels)
 assert len(app._menus) == 4                                  # أربع قوائم مبسّطة
 for _need in ("تعديل البرنامج", "حذف البرنامج", "عروض الأسعار المحفوظة",
               "عرض سعر يدوي", "العروض اليدوية", "مسعّر المجموعات",
-              "التسعيرات المحفوظة", "فاوتشر فندق يدوي", "طلب حجز مواصلات"):
+              "التسعيرات المحفوظة", "فاوتشر فندق يدوي", "طلب حجز مواصلات",
+              "الملخّص المالي", "سند قبض", "فاتورة", "عقد", "كشف الطيران",
+              "التسكين", "المواصلات", "بطاقات العمرة"):
     assert _need in _utxt, _need
 # بند «الطلبات» يفتح محرّر طلب المواصلات (يدوي، خارج البرامج)
 app.new_transport_request()
@@ -587,7 +589,33 @@ _mv._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 _mv.destroy()
 r9.destroy()
-print("  OK: سند وفاتورة وعقد وفاوتشر الفندق وطلب المواصلات لكل معتمر")
+# كشوف ومستندات البرنامج من الواجهة الرئيسية (تعمل على البرنامج المحدَّد)
+r10 = tk.Tk(); r10.withdraw()
+app10 = _ug.UmrahApp(r10, session=None)
+t10 = umrah.UmrahTrip(code="DM", name="مستندات", makkah_hotel="فندق",
+                      airline="السعودية", depart_date="2026-06-01")
+app10.trips.append(t10)
+app10.records.append(PassportData(full_name_ar="ضيف الوثائق", trip="DM",
+                     room_type="ثنائي", program_value="5000",
+                     paid_amount="2000", passport_number="D1"))
+app10._season.set("2026")
+app10._reload()
+app10.tree.selection_set("DM")
+app10.prog_finance()
+assert any(isinstance(w, _ug.UmrahFinanceWindow)
+           for w in r10.winfo_children())
+app10.prog_airline()                    # كشف طيران (مانيفست) PDF
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+app10.prog_cards()                      # بطاقات العمرة PDF
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+# مستند لكل معتمر: برنامج فيه معتمر واحد يُختار تلقائياً (بلا منتقٍ)
+app10.prog_receipt()
+assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
+app10.prog_quotation()
+assert any(isinstance(w, _ug.QuotationEditorDialog)
+           for w in r10.winfo_children())
+r10.destroy()
+print("  OK: سند وفاتورة وعقد وفاوتشر ومواصلات ومستندات البرنامج من الرئيسية")
 
 # === عرض السعر (Quotation) ===
 from hajj_app.pdf_io import build_quotation_data, export_umrah_quotation_pdf
