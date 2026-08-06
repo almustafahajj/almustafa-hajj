@@ -130,13 +130,17 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
         rows = [[_name(r), names.get(getattr(r, "trip", ""), "—"),
                  _aed(_rem(r))] for r in late]
         total = sum(_rem(r) for r in late)
-        return _stat(
+        out = _stat(
             "المتأخرون عن السداد" + tail,
             f"{len(late)} معتمراً · المتبقّي {_aed(total)}" if late
             else "الحمد لله — لا متأخرات، الجميع سدّد بالكامل.",
             note=f"مرتّبون تنازلياً حسب المبلغ المتبقّي{tail}" if late else "",
             headers=["المعتمر", "البرنامج", "المتبقّي"] if late else None,
             rows=rows or None)
+        if late:                       # قائمة قابلة للتنفيذ: تذكير واتساب
+            out["action"] = "whatsapp_due"
+            out["records"] = late
+        return out
 
     # 2) المبلغ المتبقّي (رقم)
     if _has(q, "المتبقي", "كم باقي", "كم المتبقي", "الباقي", "المتبق",
@@ -243,6 +247,25 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
             rows=flagged or None)
 
     return _help()
+
+
+def due_reminder(rec, program_name: str = "",
+                 company_ar: str = "المصطفى للحج والعمرة") -> str:
+    """رسالة تذكير سداد عربية مهذّبة لمعتمرٍ متأخّر (لواتساب)."""
+    prog = f"«{program_name}»" if program_name else "برنامج العمرة"
+    return (f"السلام عليكم ورحمة الله، {_name(rec)} 🌙\n\n"
+            f"نذكّركم بلطف بأنّ المبلغ المتبقّي على {prog} هو {_aed(_rem(rec))}.\n"
+            f"يسعدنا إكماله لتأكيد حجزكم وضمان مقعدكم بإذن الله.\n\n"
+            f"مع خالص التقدير،\n{company_ar}")
+
+
+def due_wa_link(rec, program_name: str = "",
+                company_ar: str = "المصطفى للحج والعمرة",
+                cc: str = "971"):
+    """رابط واتساب مع رسالة التذكير، أو None إن كان رقم الهاتف غير صالح."""
+    from .whatsapp import wa_link
+    return wa_link(getattr(rec, "phone", ""),
+                   due_reminder(rec, program_name, company_ar), cc)
 
 
 def _rank_programs(trips: list, records: list) -> list:

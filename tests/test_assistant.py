@@ -75,6 +75,21 @@ h = ask("طقس مكة اليوم؟")
 assert h["kind"] == "help" and h["examples"], h
 print("  OK: يعرض أمثلة عند عدم الفهم")
 
+print("\n=== قائمة المتأخرين قابلة للتنفيذ (تذكير واتساب) ===")
+a = ask("مين ما سدّد؟")
+assert a.get("action") == "whatsapp_due" and a.get("records"), a
+assert len(a["records"]) == len(a["rows"]), "الصفوف والسجلّات غير متطابقة"
+r0 = a["records"][0]
+r0.phone = "0501234567"
+msg = A.due_reminder(r0, "عشر رمضان الأوائل", "المصطفى للحج والعمرة")
+assert "خالد" in msg and "18,000 AED" in msg and "عشر رمضان الأوائل" in msg, msg
+link = A.due_wa_link(r0, "عشر رمضان الأوائل", cc="971")
+assert link.startswith("https://wa.me/971501234567?text="), link
+# رقم غير صالح -> None
+from hajj_app.mrz import PassportData as _PD
+assert A.due_wa_link(_PD(full_name_ar="س", program_value="1", paid_amount="0")) is None
+print("  OK: رسالة عربية + رابط واتساب دولي + رفض الرقم غير الصالح")
+
 print("\n=== لا يتعثّر مع موسم فارغ ===")
 e = A.answer("مين ما سدّد؟", [], [])
 assert "لا متأخرات" in e["headline"] or e["kind"] in ("stat", "list", "help"), e

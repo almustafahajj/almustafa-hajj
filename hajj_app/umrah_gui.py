@@ -3983,28 +3983,73 @@ class AskWindow(Toplevel):
                       justify="right").pack(anchor="e", pady=(3, 0))
 
         if ans.get("rows"):
-            self._table(b, ans["headers"], ans["rows"])
+            self._table(b, ans["headers"], ans["rows"],
+                        ans.get("records") if ans.get("action") == "whatsapp_due"
+                        else None)
         if ans.get("kind") == "help" or ans.get("examples"):
             self._examples(b, ans.get("examples") or list(assistant.EXAMPLES))
 
-    def _table(self, parent, headers, rows) -> None:
+    def _table(self, parent, headers, rows, records=None) -> None:
         wrap = ttk.Frame(parent, style="Panel.TFrame", padding=6)
         wrap.pack(fill=BOTH, expand=True, pady=(14, 0))
         cols = [f"c{i}" for i in range(len(headers))]
-        tv = ttk.Treeview(wrap, columns=cols, show="headings", height=12)
+        tv = ttk.Treeview(wrap, columns=cols, show="headings", height=11)
         for c, h in zip(cols, headers):
             tv.heading(c, text=G.rtl(h))
             tv.column(c, anchor="e",
                       width=260 if c == "c0" else 150, stretch=True)
+        self._iid_rec = {}
         for i, r in enumerate(rows):
-            tv.insert("", "end",
-                      values=[G.rtl(str(v)) for v in r],
-                      tags=("odd",) if i % 2 else ())
+            iid = tv.insert("", "end",
+                            values=[G.rtl(str(v)) for v in r],
+                            tags=("odd",) if i % 2 else ())
+            if records is not None and i < len(records):
+                self._iid_rec[iid] = records[i]
         tv.tag_configure("odd", background=G.PANEL)
         vs = ttk.Scrollbar(wrap, orient="vertical", command=tv.yview)
         tv.configure(yscrollcommand=vs.set)
         vs.pack(side=LEFT, fill=Y)
         tv.pack(side=RIGHT, fill=BOTH, expand=True)
+
+        if records is not None:          # قائمة متأخرين -> إجراء تذكير واتساب
+            self._tv = tv
+            tv.bind("<Double-1>", lambda _e: self._wa_selected())
+            bar = ttk.Frame(parent, style="Toolbar.TFrame")
+            bar.pack(fill=X, pady=(10, 0))
+            ttk.Button(bar, text=G.rtl("📱  تذكير المحدَّد عبر واتساب"),
+                       style="Primary.TButton",
+                       command=self._wa_selected).pack(side=RIGHT)
+            ttk.Label(bar, text=G.rtl("أو انقر الاسم نقرتين"),
+                      font=(G._FUI, 9), foreground=G.MUTED,
+                      background=G.BG).pack(side=RIGHT, padx=(0, 10))
+
+    def _wa_selected(self) -> None:
+        """يفتح واتساب برسالة تذكير سداد للمعتمر المحدَّد في الجدول."""
+        sel = self._tv.selection()
+        if not sel:
+            messagebox.showinfo("تذكير واتساب",
+                                "اختر معتمراً من القائمة أولاً.", parent=self)
+            return
+        rec = self._iid_rec.get(sel[0])
+        if rec is None:
+            return
+        code = getattr(rec, "trip", "")
+        prog = next((t.name or t.code for t in self.app.trips
+                     if t.code == code), "")
+        co = self.app._company_dict() or {}
+        cc = str((self.app._settings or {}).get("whatsapp_cc", "971")).strip() or "971"
+        link = assistant.due_wa_link(rec, prog,
+                                     co.get("name_ar") or "المصطفى للحج والعمرة", cc)
+        if not link:
+            messagebox.showwarning(
+                "تذكير واتساب",
+                f"لا يوجد رقم هاتف صالح للمعتمر «{getattr(rec, 'full_name_ar', '')}».",
+                parent=self)
+            return
+        try:
+            G.open_in_viewer(link)
+        except OSError as exc:
+            messagebox.showerror("تذكير واتساب", str(exc), parent=self)
 
     def _examples(self, parent, examples) -> None:
         ttk.Label(parent, text=G.rtl("أمثلة — اضغط أيّها لتجربته:"),
