@@ -132,4 +132,35 @@ e = A.answer("مين ما سدّد؟", [], [])
 assert "لا متأخرات" in e["headline"] or e["kind"] in ("stat", "list", "help"), e
 print("  OK: الموسم الفارغ آمن")
 
+print("\n=== وضع الحج: التجميع بـ program + إبدال «معتمر» بـ«حاج» ===")
+
+
+class _P:
+    def __init__(self, name):
+        self.code = name; self.name = name; self.capacity = ""
+        self.makkah_hotel = ""; self.madinah_hotel = ""; self.depart_date = ""
+
+
+def hrec(prog, v, p, name, nat="سعودي"):
+    return PassportData(full_name_ar=name, passport_number="P", program=prog,
+                        program_value=str(v), paid_amount=str(p), nationality_ar=nat)
+
+
+hprogs = [_P("البرنامج الأول"), _P("البرنامج الثاني")]
+hrecs = [hrec("البرنامج الأول", 25000, 25000, "أحمد"),
+         hrec("البرنامج الأول", 25000, 12000, "سالم"),
+         hrec("البرنامج الثاني", 22000, 0, "خالد", "مصري")]
+la = A.answer("مين ما سدّد؟", hprogs, hrecs, group_attr="program")
+assert "حاج" in la["headline"] and "معتمر" not in la["headline"], la
+assert la["headers"][0] == "الحاج", la["headers"]          # لا «المعتمر»
+assert len(la["rows"]) == 2                                 # سالم + خالد بحقل program
+ca = A.answer("عدد الحجّاج", hprogs, hrecs, group_attr="program")
+assert "3 حاج" in ca["headline"], ca                        # صيغة الحج مفهومة
+na = A.answer("كم حاج مصري؟", hprogs, hrecs, group_attr="program")
+assert "1 حاج" in na["headline"] and "مصري" in na["title"], na
+# العمرة تبقى بمصطلح «معتمر»
+ua = A.answer("مين ما سدّد؟", trips, recs)
+assert "معتمر" in ua["headline"] and ua["headers"][0] == "المعتمر", ua
+print("  OK: الحج يعرض «حاج»/«الحاج» والعمرة تبقى «معتمر»/«المعتمر»")
+
 print("\n*** ASSISTANT TESTS PASSED ***")

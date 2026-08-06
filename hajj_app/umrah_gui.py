@@ -4034,6 +4034,8 @@ class _AssistCtx:
     """جسر بين المساعد والنافذة الرئيسية — يوحّد الاختلاف بين العمرة والحج."""
 
     group_attr = "trip"
+    n_def = "المعتمر"          # الاسم المعرّف (المعتمر/الحاج)
+    n_acc = "معتمراً"          # الاسم المنصوب المنكّر (معتمراً/حاجّاً)
 
     def __init__(self, app):
         self.app = app
@@ -4080,6 +4082,8 @@ class UmrahCtx(_AssistCtx):
 
 class HajjCtx(_AssistCtx):
     group_attr = "program"
+    n_def = "الحاج"
+    n_acc = "حاجّاً"
 
     def programs(self):
         return _hajj_programs(self.app)
@@ -4293,7 +4297,8 @@ class AskWindow(Toplevel):
         sel = self._tv.selection()
         if not sel:
             messagebox.showinfo("تذكير واتساب",
-                                "اختر معتمراً من القائمة أولاً.", parent=self)
+                                f"اختر {self.ctx.n_acc} من القائمة أولاً.",
+                                parent=self)
             return
         rec = self._iid_rec.get(sel[0])
         if rec is None:
@@ -4308,7 +4313,7 @@ class AskWindow(Toplevel):
         if not link:
             messagebox.showwarning(
                 "تذكير واتساب",
-                f"لا يوجد رقم هاتف صالح للمعتمر «{getattr(rec, 'full_name_ar', '')}».",
+                f"لا يوجد رقم هاتف صالح لـ«{getattr(rec, 'full_name_ar', '')}».",
                 parent=self)
             return
         try:
@@ -4386,7 +4391,8 @@ class DueFollowupWindow(Toplevel):
         body = ttk.Frame(self, style="Panel.TFrame", padding=6)
         body.pack(fill=BOTH, expand=True, padx=16, pady=(6, 10))
         cols = ("name", "prog", "rem", "phone", "last", "state")
-        heads = ("المعتمر", "البرنامج", "المتبقّي", "الهاتف", "آخر تذكير", "الحالة")
+        heads = (self.ctx.n_def, "البرنامج", "المتبقّي", "الهاتف",
+                 "آخر تذكير", "الحالة")
         widths = (175, 140, 100, 110, 110, 125)
         tv = ttk.Treeview(body, columns=cols, show="headings", height=11)
         for c, h, w in zip(cols, heads, widths):
@@ -4442,7 +4448,7 @@ class DueFollowupWindow(Toplevel):
         outstanding = sum(max(assistant._rem(r), 0) for r in self.records)
         remaining_cnt = sum(1 for r in self.records if assistant._rem(r) > 0.5)
         self._band.configure(text=G.rtl(
-            f"{remaining_cnt} معتمراً متأخّراً · إجمالي المتبقّي "
+            f"{remaining_cnt} {self.ctx.n_acc} متأخّراً · إجمالي المتبقّي "
             f"{format_amount(outstanding)} AED"))
 
     def _sel_index(self):
@@ -4458,7 +4464,7 @@ class DueFollowupWindow(Toplevel):
         i = self._sel_index()
         if i is None:
             messagebox.showinfo("متابعة التحصيل",
-                                "اختر معتمراً من القائمة.", parent=self)
+                                f"اختر {self.ctx.n_acc} من القائمة.", parent=self)
             return
         rec = self.records[i]
         prog = self._names.get(getattr(rec, self.ctx.group_attr, ""), "")
@@ -4466,7 +4472,7 @@ class DueFollowupWindow(Toplevel):
         if not link:
             messagebox.showwarning(
                 "متابعة التحصيل",
-                f"لا يوجد رقم صالح للمعتمر «{getattr(rec, 'full_name_ar', '')}».",
+                f"لا يوجد رقم صالح لـ«{getattr(rec, 'full_name_ar', '')}».",
                 parent=self)
             return
         try:
@@ -4488,13 +4494,13 @@ class DueFollowupWindow(Toplevel):
         i = self._sel_index()
         if i is None:
             messagebox.showinfo("تسجيل دفعة",
-                                "اختر معتمراً من القائمة.", parent=self)
+                                f"اختر {self.ctx.n_acc} من القائمة.", parent=self)
             return
         rec = self.records[i]
         rem = assistant._rem(rec)
         if rem <= 0.5:
             messagebox.showinfo("تسجيل دفعة",
-                                "هذا المعتمر سدّد بالكامل.", parent=self)
+                                f"هذا {self.ctx.n_def} سدّد بالكامل.", parent=self)
             return
         dlg = Toplevel(self)
         dlg.title("تسجيل دفعة")

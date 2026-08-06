@@ -141,13 +141,15 @@ def _relabel(out: dict) -> None:
     """يبدّل مصطلحات العمرة إلى الحج في نصوص الجواب (وضع الحج)."""
     def sub(s):
         return (str(s).replace("المعتمرين", "الحجّاج").replace("المعتمر", "الحاج")
-                .replace("معتمري", "حجّاج").replace("معتمراً", "حاجّاً")
-                .replace("معتمر", "حاج"))
+                .replace("معتمري", "حجّاج").replace("معتمرو", "حجّاج")
+                .replace("معتمراً", "حاجّاً").replace("معتمر", "حاج"))
     for k in ("title", "headline", "note"):
         if isinstance(out.get(k), str):
             out[k] = sub(out[k])
     if out.get("headers"):
         out["headers"] = [sub(h) for h in out["headers"]]
+    if out.get("examples"):
+        out["examples"] = [sub(e) for e in out["examples"]]
 
 
 def _answer_core(question: str, trips: list, records: list, *,
@@ -206,8 +208,8 @@ def _answer_core(question: str, trips: list, records: list, *,
                      note=f"قيمة برامج {len(scoped)} معتمراً{tail}")
 
     # 5) عدد المعتمرين (مع تصفية بالجنسية إن ذُكرت)
-    if _has(q, "كم معتمر", "عدد المعتمرين", "كم حاج", "كم شخص", "كم راكب",
-            "كم عدد", "كام معتمر"):
+    if _has(q, "كم معتمر", "عدد المعتمرين", "كم حاج", "عدد الحجاج", "كام حاج",
+            "كم الحجاج", "كم شخص", "كم راكب", "كم عدد", "كام معتمر"):
         nat = _match_nationality(q, scoped)
         if nat:
             n = sum(1 for r in scoped if _norm(
