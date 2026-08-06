@@ -15,6 +15,12 @@ from pathlib import Path
 
 _re_iso = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 
+
+def _dmy(s) -> str:
+    """يحوّل ISO (YYYY-MM-DD) إلى DD/MM/YYYY، وإلا يعيد النص كما هو."""
+    m = _re_iso.match(str(s or "").strip())
+    return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else str(s or "")
+
 import arabic_reshaper
 from bidi.algorithm import get_display
 from reportlab.lib import colors
@@ -3495,6 +3501,20 @@ QUOTE_HOTELS = ("جميرا مكة جبل عمر", "فيرمونت مكة", "ه�
 QUOTE_GREETING = "السلام عليكم ورحمة الله وبركاته،"
 QUOTE_CLOSING = ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
                  "ردّكم الكريم.")
+# بنود مختصرة تُذيَّل بها عروض الأسعار (ثابتة، تُعرض بلغة العرض)
+QUOTE_TERMS = (
+    "الأسعار قابلة للتغيّر حسب توفّر الغرف والمقاعد وقت تأكيد الحجز.",
+    "لا يشمل العرض ما لم يُذكر صراحةً فيه من خدمات أو رسوم.",
+    "يُعتمد الحجز بعد دفع العربون وتأكيد التوفّر، وتخضع التعديلات "
+    "والإلغاء لشروط الفنادق وشركات الطيران.",
+)
+QUOTE_TERMS_EN = (
+    "Prices are subject to change based on room and seat availability at the "
+    "time of booking confirmation.",
+    "The quotation excludes any services or fees not explicitly stated herein.",
+    "Booking is confirmed after paying the deposit and confirming availability; "
+    "amendments and cancellations are subject to hotel and airline policies.",
+)
 # ملاحظات جاهزة (تُترجم آلياً عند تحويل العرض للإنجليزية)
 QUOTE_NOTES = (
     "جميع الحجوزات غير قابلة للإلغاء أو التعديل.",
@@ -3883,10 +3903,10 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     val_l = ParagraphStyle("qvall", parent=val, alignment=0)     # يسار دائماً
     val_r = ParagraphStyle("qvalr", parent=val, alignment=2)     # يمين دائماً
 
-    # رقم العرض (يسار) والتاريخ (يمين) على الطرفين
+    # رقم العرض (يسار) والتاريخ (يمين) على الطرفين — التاريخ بصيغة يوم/شهر/سنة
     date_lbl = T("التاريخ", "Date")
     meta = Table([[_ar_para(ltr(number), val_l, W * 0.5 - 6),
-                   _ar_para(f"{date_lbl}: {ltr(date_str)}", val_r,
+                   _ar_para(f"{date_lbl}: {ltr(_dmy(date_str))}", val_r,
                             W * 0.5 - 6)]],
                  colWidths=[W * 0.5, W * 0.5])
     meta.setStyle(TableStyle([
@@ -4006,8 +4026,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         info_lines.append(qpara(f"{T('الضيوف', 'Guests')}: {guests_txt}",
                                 info_st, W - 24))
     if pf or pt:
-        ptxt = (f"Period: from {ltr(pf)} to {ltr(pt)}" if L
-                else f"الفترة: من {ltr(pf)} إلى {ltr(pt)}")
+        ptxt = (f"Period: from {ltr(_dmy(pf))} to {ltr(_dmy(pt))}" if L
+                else f"الفترة: من {ltr(_dmy(pf))} إلى {ltr(_dmy(pt))}")
         info_lines.append(qpara(ptxt, info_st, W - 24))
     if info_lines:
         card = Table([[info_lines]], colWidths=[W])
@@ -4090,8 +4110,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 continue
             day, carrier, dep_t, frm, arr_t, to = (list(r)[:6] +
                                                    [""] * (6 - len(r)))[:6]
-            flights.append([ltr(day), _qtr(carrier, "carriers", L), ltr(dep_t),
-                            _qtr(frm, "airports", L), ltr(arr_t),
+            flights.append([ltr(_dmy(day)), _qtr(carrier, "carriers", L),
+                            ltr(dep_t), _qtr(frm, "airports", L), ltr(arr_t),
                             _qtr(to, "airports", L)])
         story.append(data_table(fheads, [70, 70, 50, 60, 50, 60], flights))
         story.append(Spacer(1, 8))
@@ -4122,7 +4142,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 continue
             parts = []
             if d:
-                parts.append(f"{T('يوم', 'Day')} {ltr(d)}")
+                parts.append(f"{T('يوم', 'Day')} {ltr(_dmy(d))}")
             if frm:
                 parts.append(f"{T('من', 'from')} {_qtr(frm, 'locations', L)}")
             if to:
@@ -4153,7 +4173,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 [str(x or "").strip() for x in list(tr)[:7]] + [""] * 7)[:7]
             trows.append([tk_n, _qtr(tc, "classes", L),
                           _qtr(tf, "airports", L), _qtr(tt, "airports", L),
-                          ltr(tdate), ltr(tdep), ltr(tarr)])
+                          ltr(_dmy(tdate)), ltr(tdep), ltr(tarr)])
         story.append(data_table(theads, [40, 58, 54, 54, 60, 48, 48], trows))
         story.append(Spacer(1, 8))
 
@@ -4246,6 +4266,28 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         story.append(qpara(note, ParagraphStyle("qnote", parent=val,
                                                 fontSize=9.5, leading=14,
                                                 alignment=ALN), W - 8))
+        story.append(Spacer(1, 8))
+
+    # بند شروط مختصر (ثابت، بلغة العرض) — قبل عبارة الختام
+    if data.get("show_terms", True):
+        qterms = QUOTE_TERMS_EN if L else QUOTE_TERMS
+        story.append(section(T("شروط العرض", "Offer Terms")))
+        story.append(Spacer(1, 3))
+        tstyle = ParagraphStyle("qterm", parent=val, fontSize=8, leading=11,
+                                alignment=ALN, spaceAfter=2)
+        tflow = [qpara(f"{i}. {t}", tstyle, W - 18)
+                 for i, t in enumerate(qterms, 1)]
+        tbox = Table([[tflow]], colWidths=[W])
+        tbox.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FBF8F3")),
+            ("BOX", (0, 0), (-1, -1), 0.6, _GRID),
+            ("LEFTPADDING", (0, 0), (-1, -1), 9),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
+        ]))
+        story.append(tbox)
         story.append(Spacer(1, 8))
 
     closing = str(data.get("closing") or "")
