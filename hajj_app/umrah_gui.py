@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import calendar as _calmod
+import re
 from datetime import date
 from pathlib import Path
 from tkinter import (
@@ -200,6 +201,11 @@ class UmrahApp:
                            style="Ghost.TButton", command=self.open_dashboard)
         _dash.pack(side=LEFT, padx=(0, 8))
         G.add_tooltip(_dash, G.rtl("نظرة سريعة على برامج الموسم والتحصيل"))
+        _web = ttk.Button(bar, text=G.rtl("🌐  لوحة الموسم (ويب)"),
+                          style="Ghost.TButton", command=self.export_web_dashboard)
+        _web.pack(side=LEFT, padx=(0, 8))
+        G.add_tooltip(_web, G.rtl(
+            "تقرير موسم أنيق بصيغة ويب — يُفتح في المتصفّح ويُطبع أو يُشارك"))
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
@@ -578,6 +584,34 @@ class UmrahApp:
                                 parent=self.root)
             return
         SeasonDashboard(self.root, self._season.get(), rows, totals)
+
+    def export_web_dashboard(self) -> None:
+        """يولّد لوحة موسم أنيقة بصيغة ويب (HTML) ويفتحها في المتصفّح."""
+        from . import dashboard_html
+        trips = self._visible_trips()
+        if not trips:
+            messagebox.showinfo("لوحة الموسم (ويب)",
+                                "لا برامج في هذا الموسم.", parent=self.root)
+            return
+        import os
+        import tempfile
+        season = self._season.get()
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", f"لوحة الموسم {season}").strip()
+        path = os.path.join(tempfile.gettempdir(), f"{safe}.html")
+        try:
+            dashboard_html.export_season_dashboard_html(
+                trips, self.records, path,
+                season=season, company=self._company_dict())
+        except Exception as exc:
+            G._log.exception("فشل توليد لوحة الموسم (ويب)")
+            messagebox.showerror("لوحة الموسم (ويب)",
+                                 f"تعذّر توليد اللوحة:\n\n{exc}", parent=self.root)
+            return
+        try:
+            G.open_in_viewer(path)
+        except OSError as exc:
+            messagebox.showerror("لوحة الموسم (ويب)",
+                                 f"تعذّر فتح المتصفّح:\n\n{exc}", parent=self.root)
 
     # ---- كشوف ومستندات البرنامج المحدَّد (من الواجهة الرئيسية) ----
     def _company_dict(self):
