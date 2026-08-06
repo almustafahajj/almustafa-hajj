@@ -166,9 +166,16 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
         return _stat("إجمالي الإيراد المتوقّع" + tail, _aed(val),
                      note=f"قيمة برامج {len(scoped)} معتمراً{tail}")
 
-    # 5) عدد المعتمرين
+    # 5) عدد المعتمرين (مع تصفية بالجنسية إن ذُكرت)
     if _has(q, "كم معتمر", "عدد المعتمرين", "كم حاج", "كم شخص", "كم راكب",
             "كم عدد", "كام معتمر"):
+        nat = _match_nationality(q, scoped)
+        if nat:
+            n = sum(1 for r in scoped if _norm(
+                getattr(r, "nationality_ar", "") or getattr(r, "nationality", "")
+            ) == _norm(nat))
+            return _stat(f"معتمرو جنسية {nat}" + tail, f"{n} معتمراً",
+                         note=f"من أصل {len(scoped)} معتمراً{tail}")
         return _stat("عدد المعتمرين" + tail, f"{len(scoped)} معتمراً",
                      note=(f"في {len(sprogs)} برنامجاً" if not slabel else tail))
 
@@ -246,7 +253,73 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
             if flagged else None,
             rows=flagged or None)
 
+    # 11) توزيع الجنسيات
+    if _has(q, "جنسيه", "الجنسيه", "جنسيات", "الجنسيات", "توزيع الجنسيات"):
+        counts = {}
+        for r in scoped:
+            nat = (str(getattr(r, "nationality_ar", "") or "").strip()
+                   or str(getattr(r, "nationality", "") or "").strip() or "غير محدّد")
+            counts[nat] = counts.get(nat, 0) + 1
+        ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+        return _stat(
+            "توزيع الجنسيات" + tail,
+            f"{len(ordered)} جنسية · {len(scoped)} معتمراً",
+            note="عدد المعتمرين حسب الجنسية" + tail,
+            headers=["الجنسية", "العدد"] if ordered else None,
+            rows=[[nat, str(n)] for nat, n in ordered] or None)
+
+    # 12) بطاقة معتمرٍ بعينه (بالاسم) — إن ذُكر اسم يطابق أحد المعتمرين
+    who = _match_pilgrim(question, scoped)
+    if who is not None:
+        code = getattr(who, "trip", "")
+        rem = _rem(who)
+        rows = [["البرنامج", names.get(code, "—")],
+                ["قيمة البرنامج", _aed(_val(who))],
+                ["المدفوع", _aed(_paid(who))],
+                ["المتبقّي", _aed(rem)],
+                ["الحالة", "سدّد بالكامل ✓" if rem <= 0.5 else "عليه متبقٍّ"],
+                ["الجوال", str(getattr(who, "phone", "") or "—")]]
+        out = _stat(
+            "بطاقة المعتمر",
+            f"{_name(who)} — " + ("سدّد بالكامل" if rem <= 0.5
+                                  else f"متبقٍّ {_aed(rem)}"),
+            note=names.get(code, ""),
+            headers=["البند", "القيمة"], rows=rows)
+        if rem > 0.5:
+            out["action"] = "whatsapp_due"
+            out["records"] = [who]
+        return out
+
     return _help()
+
+
+def _match_nationality(question: str, records: list):
+    """جنسية وردت في السؤال وتطابق جنسية أحد المعتمرين — أو None."""
+    qn = _norm(question)
+    seen = {}
+    for r in records:
+        nat = (str(getattr(r, "nationality_ar", "") or "").strip()
+               or str(getattr(r, "nationality", "") or "").strip())
+        if nat:
+            seen.setdefault(_norm(nat), nat)
+    for norm_nat, original in seen.items():
+        if norm_nat and re.search(r"(?:^| )" + re.escape(norm_nat) + r"(?:$| )", qn):
+            return original
+    return None
+
+
+def _match_pilgrim(question: str, records: list):
+    """أقرب معتمرٍ اسمه (أو جزء منه) وارد في السؤال — أو None."""
+    qn = _norm(question)
+    best, best_score = None, 0
+    for r in records:
+        toks = [t for t in _norm(getattr(r, "full_name_ar", "")).split()
+                if len(t) >= 3]
+        score = sum(1 for t in toks
+                    if re.search(r"(?:^| )" + re.escape(t) + r"(?:$| )", qn))
+        if score > best_score:
+            best, best_score = r, score
+    return best if best_score >= 1 else None
 
 
 def due_reminder(rec, program_name: str = "",

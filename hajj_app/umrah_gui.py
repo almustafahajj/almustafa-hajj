@@ -4013,15 +4013,41 @@ class AskWindow(Toplevel):
 
         if records is not None:          # قائمة متأخرين -> إجراء تذكير واتساب
             self._tv = tv
+            self._due_records = records
             tv.bind("<Double-1>", lambda _e: self._wa_selected())
             bar = ttk.Frame(parent, style="Toolbar.TFrame")
             bar.pack(fill=X, pady=(10, 0))
             ttk.Button(bar, text=G.rtl("📱  تذكير المحدَّد عبر واتساب"),
                        style="Primary.TButton",
                        command=self._wa_selected).pack(side=RIGHT)
-            ttk.Label(bar, text=G.rtl("أو انقر الاسم نقرتين"),
+            ttk.Button(bar, text=G.rtl("📋  نسخ أرقام المتأخرين"),
+                       style="Ghost.TButton",
+                       command=self._copy_due_phones).pack(side=RIGHT, padx=(8, 0))
+            ttk.Label(bar, text=G.rtl("انقر الاسم نقرتين للتذكير"),
                       font=(G._FUI, 9), foreground=G.MUTED,
                       background=G.BG).pack(side=RIGHT, padx=(0, 10))
+
+    def _copy_due_phones(self) -> None:
+        """ينسخ أرقام كل المتأخرين بالصيغة الدولية إلى الحافظة (للبثّ الجماعي)."""
+        from .whatsapp import to_intl
+        cc = str((self.app._settings or {}).get("whatsapp_cc", "971")).strip() or "971"
+        nums, skipped = [], 0
+        for r in getattr(self, "_due_records", []):
+            n = to_intl(getattr(r, "phone", ""), cc)
+            if n:
+                nums.append(n)
+            else:
+                skipped += 1
+        if not nums:
+            messagebox.showinfo("نسخ الأرقام",
+                                "لا توجد أرقام صالحة في القائمة.", parent=self)
+            return
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(nums))
+        note = f"نُسخ {len(nums)} رقماً."
+        if skipped:
+            note += f" ({skipped} بلا رقم صالح)"
+        messagebox.showinfo("نسخ الأرقام", note, parent=self)
 
     def _wa_selected(self) -> None:
         """يفتح واتساب برسالة تذكير سداد للمعتمر المحدَّد في الجدول."""

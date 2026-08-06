@@ -75,6 +75,25 @@ h = ask("طقس مكة اليوم؟")
 assert h["kind"] == "help" and h["examples"], h
 print("  OK: يعرض أمثلة عند عدم الفهم")
 
+print("\n=== بطاقة معتمرٍ بالاسم ===")
+a = ask("كم دفع سالم؟")
+assert a["title"] == "بطاقة المعتمر" and "سالم" in a["headline"], a
+assert any(row[0] == "المتبقّي" for row in a["rows"]), a["rows"]
+assert a.get("action") == "whatsapp_due", a          # عليه متبقٍّ -> قابل للتذكير
+paid_ok = ask("بيانات أحمد")
+assert "أحمد" in paid_ok["headline"], paid_ok
+print("  OK: بطاقة تفصيلية + تذكير للمتبقّي عليه")
+
+print("\n=== توزيع الجنسيات وتصفية العدّ بالجنسية ===")
+natrecs = recs + [rec("U2", 15000, 15000, "محمد", exp="2030-01-01")]
+for r, nat in zip(natrecs, ["سعودي", "سعودي", "سعودي", "مصري", "مصري"]):
+    r.nationality_ar = nat
+dist = A.answer("توزيع الجنسيات", trips, natrecs)
+assert dist["kind"] == "list" and dist["rows"][0] == ["سعودي", "3"], dist["rows"]
+cnt = A.answer("كم معتمر مصري؟", trips, natrecs)
+assert "2 معتمر" in cnt["headline"] and "مصري" in cnt["title"], cnt
+print("  OK: توزيع صحيح + عدّ الجنسية المحددة")
+
 print("\n=== قائمة المتأخرين قابلة للتنفيذ (تذكير واتساب) ===")
 a = ask("مين ما سدّد؟")
 assert a.get("action") == "whatsapp_due" and a.get("records"), a
