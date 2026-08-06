@@ -3753,6 +3753,10 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
 
     _DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة", "تذكرة الطيران",
                       "ماء وعصير وتمر", "الهدايا", "المصاريف الإدارية")
+    # بنود افتراضية خاصة بالحج (المشاعر والهدي والتصريح والإعاشة...)
+    _HAJJ_ITEMS = ("تصريح الحج (نُسك)", "خدمات المشاعر (منى/عرفات/مزدلفة)",
+                   "مخيّم منى", "الهدي / الأضحية", "الإعاشة",
+                   "النقل والتنقّلات", "تذكرة الطيران", "المصاريف الإدارية")
 
     def _build_services(self):
         lf = self._section("البنود (للفرد) — يمكن الإضافة أو الحذف")
@@ -3767,7 +3771,8 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         ttk.Label(hdr, text="", width=5).pack(side=RIGHT)
         self._item_box = ttk.Frame(lf)
         self._item_box.pack(fill=X)
-        for name in self._DEFAULT_ITEMS:
+        defaults = self._HAJJ_ITEMS if app_mode.is_hajj() else self._DEFAULT_ITEMS
+        for name in defaults:
             self._add_item_row(name, "")
         ttk.Button(lf, text="＋ إضافة بند",
                    command=lambda: self._add_item_row()).pack(anchor="e",
