@@ -915,6 +915,9 @@ class HajjApp:
             ("📈  الرسوم البيانية", self.do_charts),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
             None,
+            ("🧮  مسعّر المجموعات", self.open_group_pricer),
+            ("🗂  التسعيرات المحفوظة", self.open_pricings),
+            None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
             ("🧮  المصروفات والمحاسبة", self.do_expenses),
             ("📄  كشف المتأخّرات المالية (معاينة)", self.do_arrears_report),
@@ -2467,6 +2470,16 @@ class HajjApp:
         """يفتح مساعد «اسأل بياناتك» لأسئلة موسم الحج بالعربية (مكيّف للحج)."""
         from . import umrah_gui as ug
         ug.AskWindow(self.root, ug.HajjCtx(self))
+
+    def open_group_pricer(self) -> None:
+        """مسعّر المجموعات: حساب كلفة الفرد وسعر البيع لكل نوع غرفة (للحج)."""
+        from . import umrah_gui as ug
+        ug.GroupPricerWindow(self.root, self)
+
+    def open_pricings(self) -> None:
+        """قائمة التسعيرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
+        from . import umrah_gui as ug
+        ug.PricingsListWindow(self.root, self)
 
     def copy_season_summary(self) -> None:
         """ينسخ ملخّص مؤشّرات موسم الحج إلى الحافظة، جاهزاً للمشاركة."""
