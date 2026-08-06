@@ -1221,6 +1221,214 @@ def _passport_reader(rec, session):
         return None
 
 
+def export_season_report_pdf(trips: list, records: list, path, *,
+                             season: str = "", company=None) -> Path:
+    """تقرير موسم فاخر بصيغة PDF بتصميم لوحة الموسم — للطباعة والأرشفة."""
+    from reportlab.pdfgen import canvas as _canvas
+    from . import dashboard_html as _dash
+    from .fields import format_amount
+
+    rows, totals = _dash.season_dashboard_stats(trips, records)
+    name_ar, name_en = _dash._company_names(company)
+    _register_fonts()
+
+    KISWAH = colors.HexColor("#141009")
+    GOLD = colors.HexColor("#C8A44A")
+    GOLD_DK = colors.HexColor("#B8912E")
+    BRONZE = colors.HexColor("#8A6E4B")
+    BRONZE_DK = colors.HexColor("#6F5738")
+    INK = colors.HexColor("#211A11")
+    MUTED = colors.HexColor("#6E6355")
+    LINE = colors.HexColor("#E7DCCA")
+    SURF2 = colors.HexColor("#F4EEE3")
+    SUCCESS = colors.HexColor("#2E7D5B")
+    DANGER = colors.HexColor("#BC4A43")
+    ON_DK = colors.HexColor("#F2E9D6")
+    ON_DK_MUTED = colors.HexColor("#B9A985")
+
+    W, H = A4
+    ML = 40
+    c = _canvas.Canvas(str(path), pagesize=A4)
+    c.setTitle(f"تقرير موسم {season} — {name_ar}")
+
+    def _bar(x, y, w, h, frac, color, track=SURF2):
+        c.setFillColor(track)
+        c.roundRect(x, y, w, h, h / 2, stroke=0, fill=1)
+        fw = max(0.0, min(frac, 1.0)) * w
+        if fw > 1:
+            c.setFillColor(color)
+            c.roundRect(x + w - fw, y, fw, h, h / 2, stroke=0, fill=1)  # RTL
+
+    def _status_color(cls):
+        return {"ok": SUCCESS, "mid": BRONZE, "low": DANGER}.get(cls, BRONZE)
+
+    def _header_band():
+        bh = 208
+        c.setFillColor(KISWAH)
+        c.rect(0, H - bh, W, bh, stroke=0, fill=1)
+        c.setStrokeColor(GOLD)
+        c.setLineWidth(0.6)
+        c.line(0, H - bh, W, H - bh)
+        # خاتم هندسي (مربعان متقاطعان) على اليسار
+        c.saveState()
+        c.setStrokeColor(GOLD)
+        c.setLineWidth(0.7)
+        cx, cy, s = 92, H - 96, 52
+        c.rect(cx - s / 2, cy - s / 2, s, s, stroke=1, fill=0)
+        c.translate(cx, cy)
+        c.rotate(45)
+        c.rect(-s / 2, -s / 2, s, s, stroke=1, fill=0)
+        c.restoreState()
+        # اسم الشركة والعنوان (يمين)
+        c.setFillColor(ON_DK)
+        c.setFont(_FONT_BOLD, 14)
+        c.drawRightString(W - ML, H - 44, ar(name_ar))
+        c.setFillColor(ON_DK_MUTED)
+        c.setFont(_FONT, 8)
+        c.drawRightString(W - ML, H - 58, name_en)
+        c.setFillColor(colors.HexColor("#F7EFDD"))
+        c.setFont(_FONT_BOLD, 24)
+        c.drawRightString(W - ML, H - 92, ar(f"لوحة موسم العمرة {season}"))
+        c.setFillColor(ON_DK_MUTED)
+        c.setFont(_FONT, 10)
+        c.drawRightString(W - ML, H - 110,
+                          ar("نظرة شاملة على البرامج والإشغال والتحصيل"))
+        # مؤشّرات الأداء (٤ خلايا)
+        kpis = [("إجمالي المعتمرين", f"{totals['pilgrims']}"),
+                ("نسبة الإشغال", f"{totals['occ_pct']:.0f}%"),
+                ("إجمالي الإيراد", f"{_dash._compact(totals['total'])} AED"),
+                ("نسبة التحصيل", f"{totals['col_pct']:.0f}%")]
+        kx, kw = ML, (W - 2 * ML) / 4
+        ky = H - 188
+        c.setStrokeColor(colors.HexColor("#3A3020"))
+        for i, (lbl, val) in enumerate(kpis):
+            x = kx + i * kw
+            if i:
+                c.line(x, ky, x, ky + 46)
+            c.setFillColor(ON_DK_MUTED)
+            c.setFont(_FONT, 8.5)
+            c.drawCentredString(x + kw / 2, ky + 34, ar(lbl))
+            c.setFillColor(GOLD)
+            c.setFont(_FONT_BOLD, 20)
+            c.drawCentredString(x + kw / 2, ky + 12, val)
+        return H - bh
+
+    def _watermark():
+        reader = _faint_logo_reader()
+        if reader is None:
+            return
+        ww = W * 0.5
+        try:
+            c.drawImage(reader, (W - ww) / 2, 240, width=ww,
+                        preserveAspectRatio=True, mask="auto")
+        except Exception:
+            pass
+
+    def _footer():
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.5)
+        c.line(ML, 44, W - ML, 44)
+        c.setFillColor(MUTED)
+        c.setFont(_FONT, 8)
+        c.drawRightString(W - ML, 32, ar(f"{name_ar} · تقرير الموسم"))
+        c.drawString(ML, 32, date.today().strftime("%Y-%m-%d"))
+        c.drawCentredString(W / 2, 32, ar(f"صفحة {c.getPageNumber()}"))
+
+    _watermark()                          # خلف المحتوى
+    y = _header_band() - 26
+
+    # ---- الملخّص المالي ----
+    def _fin_cell(x, w, label, value, vcolor):
+        c.setFillColor(colors.white)
+        c.setStrokeColor(LINE)
+        c.roundRect(x, y - 54, w, 54, 8, stroke=1, fill=1)
+        c.setFillColor(MUTED)
+        c.setFont(_FONT, 8.5)
+        c.drawRightString(x + w - 12, y - 20, ar(label))
+        c.setFillColor(vcolor)
+        c.setFont(_FONT_BOLD, 16)
+        c.drawRightString(x + w - 12, y - 42, value)
+
+    cw3 = (W - 2 * ML - 2 * 10) / 3
+    _fin_cell(ML, cw3, "الإيراد المتوقّع", f"{format_amount(totals['total'])} AED", INK)
+    _fin_cell(ML + cw3 + 10, cw3, "المحصّل", format_amount(totals['paid']), SUCCESS)
+    _fin_cell(ML + 2 * (cw3 + 10), cw3, "المتبقّي",
+              format_amount(totals['remaining']), DANGER)
+    y -= 54 + 12
+    # شريط تقدّم التحصيل
+    c.setFillColor(INK)
+    c.setFont(_FONT_BOLD, 11)
+    c.drawRightString(W - ML, y - 12, f"{totals['col_pct']:.0f}%")
+    _bar(ML, y - 16, W - 2 * ML - 46, 11, totals['col_pct'] / 100,
+         GOLD_DK)
+    y -= 34
+
+    # ---- عنوان القسم ----
+    def _section(title, yy):
+        c.setFillColor(BRONZE)
+        c.setFont(_FONT_BOLD, 13)
+        c.drawRightString(W - ML, yy, ar(title))
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.7)
+        c.line(ML, yy - 6, W - ML - 120, yy - 6)
+        return yy - 24
+
+    y = _section("برامج الموسم", y)
+
+    # ---- بطاقات البرامج ----
+    CARD_H = 66
+    for r in rows:
+        if y - CARD_H < 70:               # صفحة جديدة عند الحاجة
+            _footer()
+            c.showPage()
+            _watermark()
+            y = H - 60
+            y = _section("برامج الموسم (تابع)", y)
+        x0, x1 = ML, W - ML
+        c.setFillColor(SURF2)
+        c.setStrokeColor(LINE)
+        c.roundRect(x0, y - CARD_H, x1 - x0, CARD_H, 9, stroke=1, fill=1)
+        # الاسم يميناً
+        c.setFillColor(INK)
+        c.setFont(_FONT_BOLD, 12)
+        c.drawRightString(x1 - 12, y - 20, ar(r["name"]))
+        # شارة الحالة يساراً
+        sc = _status_color(r["status_cls"])
+        c.setFillColor(sc)
+        c.setFont(_FONT_BOLD, 8.5)
+        pill_w = c.stringWidth(ar(r["status"]), _FONT_BOLD, 8.5) + 16
+        c.roundRect(x0 + 12, y - 24, pill_w, 15, 7, stroke=0, fill=1)
+        c.setFillColor(colors.white)
+        c.drawCentredString(x0 + 12 + pill_w / 2, y - 20, ar(r["status"]))
+        # الفنادق
+        c.setFillColor(MUTED)
+        c.setFont(_FONT, 8.5)
+        c.drawRightString(x1 - 12, y - 34,
+                          ar(f"مكة: {r['makkah']}  ·  المدينة: {r['madinah']}"))
+        # شريطان: الإشغال والتحصيل
+        blx = x0 + 12
+        blw = (x1 - x0) - 24 - 150
+        c.setFillColor(INK)
+        c.setFont(_FONT, 8.5)
+        c.drawRightString(x1 - 12, y - 49,
+                          ar(f"الإشغال  {r['count']}/{r['capacity'] or '—'}"))
+        _bar(blx, y - 51, blw, 6, (r["occ_pct"] or 0) / 100, BRONZE_DK)
+        c.drawRightString(x1 - 12, y - 60,
+                          ar(f"التحصيل  {r['col_pct']:.0f}٪"))
+        _bar(blx, y - 62, blw, 6, r["col_pct"] / 100, GOLD_DK)
+        y -= CARD_H + 10
+
+    if not rows:
+        c.setFillColor(MUTED)
+        c.setFont(_FONT, 11)
+        c.drawCentredString(W / 2, y - 30, ar("لا توجد برامج في هذا الموسم بعد."))
+
+    _footer()
+    c.showPage()
+    c.save()
+    return Path(path)
+
+
 def export_umrah_cards_pdf(records: list, path: str | Path, *,
                            program_name: str = "", company=None, session=None,
                            emergency_uae: str = "", emergency_ksa: str = "") -> Path:

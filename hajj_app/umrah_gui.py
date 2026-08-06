@@ -197,15 +197,19 @@ class UmrahApp:
         ttk.Button(bar, text=G.rtl(f"🕋  التبديل إلى {other}"),
                    style="Ghost.TButton",
                    command=self.switch_mode).pack(side=LEFT, padx=(0, 8))
-        _dash = ttk.Button(bar, text=G.rtl("📊  لوحة الموسم"),
-                           style="Ghost.TButton", command=self.open_dashboard)
-        _dash.pack(side=LEFT, padx=(0, 8))
-        G.add_tooltip(_dash, G.rtl("نظرة سريعة على برامج الموسم والتحصيل"))
-        _web = ttk.Button(bar, text=G.rtl("🌐  لوحة الموسم (ويب)"),
-                          style="Ghost.TButton", command=self.export_web_dashboard)
-        _web.pack(side=LEFT, padx=(0, 8))
-        G.add_tooltip(_web, G.rtl(
-            "تقرير موسم أنيق بصيغة ويب — يُفتح في المتصفّح ويُطبع أو يُشارك"))
+        rep = ttk.Menubutton(bar, text=G.rtl("📊  لوحة الموسم"),
+                             style="Ghost.TMenubutton", direction="below")
+        rmenu = Menu(rep, tearoff=0, font=(G._FUI, 10))
+        rmenu.add_command(label=G.rtl("📊  نظرة سريعة"),
+                          command=self.open_dashboard)
+        rmenu.add_command(label=G.rtl("🌐  تقرير ويب (يُشارك برابط)"),
+                          command=self.export_web_dashboard)
+        rmenu.add_command(label=G.rtl("📄  تقرير PDF (للطباعة)"),
+                          command=self.export_season_pdf)
+        rep["menu"] = rmenu
+        self._report_menu = rmenu          # مرجع يمنع جمع القمامة
+        rep.pack(side=LEFT, padx=(0, 8))
+        G.add_tooltip(rep, G.rtl("تقارير الموسم: نظرة سريعة، ويب، وPDF"))
         _ask = ttk.Button(bar, text=G.rtl("🔎  اسأل بياناتك"),
                           style="Ghost.TButton", command=self.ask_data)
         _ask.pack(side=LEFT, padx=(0, 8))
@@ -617,6 +621,22 @@ class UmrahApp:
         except OSError as exc:
             messagebox.showerror("لوحة الموسم (ويب)",
                                  f"تعذّر فتح المتصفّح:\n\n{exc}", parent=self.root)
+
+    def export_season_pdf(self) -> None:
+        """يولّد تقرير الموسم الفاخر (PDF) بتصميم اللوحة، ويفتحه للمعاينة."""
+        from . import pdf_io
+        trips = self._visible_trips()
+        if not trips:
+            messagebox.showinfo("تقرير الموسم (PDF)",
+                                "لا برامج في هذا الموسم.", parent=self.root)
+            return
+        season = self._season.get()
+        G.open_preview(
+            self.root,
+            lambda p: pdf_io.export_season_report_pdf(
+                trips, self.records, p, season=season,
+                company=self._company_dict()),
+            f"تقرير الموسم {season}", "pdf")
 
     def ask_data(self) -> None:
         """يفتح مساعد «اسأل بياناتك» للإجابة عن أسئلة الموسم بالعربية."""

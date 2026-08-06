@@ -66,6 +66,20 @@ assert "{totals" not in htmltxt and "{_e(" not in htmltxt and "{r[" not in htmlt
 assert htmltxt.count("</html>") == 1
 print(f"  OK: {p.name} ({p.stat().st_size} بايت) — RTL، مستقلّة، بالأرقام الحقيقية")
 
+print("\n=== تقرير الموسم PDF (بنفس حسابات اللوحة) ===")
+from hajj_app import pdf_io
+pdf = _pl.Path(_OUTDIR) / "season_report.pdf"
+pp = pdf_io.export_season_report_pdf([t1, t2], records, pdf, season="١٤٤٧هـ",
+                                     company={"name_ar": "المصطفى للحج والعمرة"})
+assert pp.is_file() and pp.stat().st_size > 2000, pp.stat().st_size
+head = pp.read_bytes()[:5]
+assert head == b"%PDF-", head
+# لا ينكسر بلا برامج
+pe = pdf_io.export_season_report_pdf([], [], _pl.Path(_OUTDIR) / "season_report_empty.pdf",
+                                     season="١٤٤٧هـ")
+assert pe.read_bytes()[:5] == b"%PDF-"
+print(f"  OK: {pp.name} ({pp.stat().st_size} بايت) + الحالة الفارغة")
+
 print("\n=== الحالة الفارغة (لا برامج) لا تنكسر ===")
 empty = D.export_season_dashboard_html([], [], _pl.Path(_OUTDIR) / "season_empty.html",
                                        season="١٤٤٧ هـ")
