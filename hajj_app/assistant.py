@@ -206,13 +206,17 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
         if not best:
             return _stat("أفضل برنامج", "لا توجد برامج بعد.")
         top = best[0]
-        return _stat("أعلى البرامج تحصيلاً",
-                     f"{top['name']} · {top['pct']:.0f}٪",
-                     note=f"{top['count']} معتمراً · حُصّل {_aed(top['paid'])} "
-                          f"من {_aed(top['total'])}",
-                     headers=["البرنامج", "التحصيل", "المعتمرون"],
-                     rows=[[b["name"], f"{b['pct']:.0f}٪", str(b["count"])]
-                           for b in best])
+        out = _stat("أعلى البرامج تحصيلاً",
+                    f"{top['name']} · {top['pct']:.0f}٪",
+                    note=f"{top['count']} معتمراً · حُصّل {_aed(top['paid'])} "
+                         f"من {_aed(top['total'])}",
+                    headers=["البرنامج", "التحصيل", "المعتمرون"],
+                    rows=[[b["name"], f"{b['pct']:.0f}٪", str(b["count"])]
+                          for b in best])
+        out["chart"] = {"max": 100, "suffix": "٪",
+                        "items": [(b["name"], b["pct"], f"{b['pct']:.0f}٪")
+                                  for b in best]}
+        return out
 
     # 9) أضعف / أقل برنامج تحصيلاً
     if _has(q, "اقل", "اضعف", "اسوا", "اخر") and _has(
@@ -221,13 +225,17 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
         if not best:
             return _stat("أضعف برنامج", "لا توجد برامج بعد.")
         low = best[-1]
-        return _stat("أضعف البرامج تحصيلاً",
-                     f"{low['name']} · {low['pct']:.0f}٪",
-                     note=f"المتبقّي {_aed(low['total'] - low['paid'])}",
-                     headers=["البرنامج", "التحصيل", "المتبقّي"],
-                     rows=[[b["name"], f"{b['pct']:.0f}٪",
-                            _aed(b["total"] - b["paid"])]
-                           for b in reversed(best)])
+        out = _stat("أضعف البرامج تحصيلاً",
+                    f"{low['name']} · {low['pct']:.0f}٪",
+                    note=f"المتبقّي {_aed(low['total'] - low['paid'])}",
+                    headers=["البرنامج", "التحصيل", "المتبقّي"],
+                    rows=[[b["name"], f"{b['pct']:.0f}٪",
+                           _aed(b["total"] - b["paid"])]
+                          for b in reversed(best)])
+        out["chart"] = {"max": 100, "suffix": "٪",
+                        "items": [(b["name"], b["pct"], f"{b['pct']:.0f}٪")
+                                  for b in reversed(best)]}
+        return out
 
     # 10) صلاحية الجوازات (منتهية أو تنتهي قبل ٦ أشهر من السفر)
     if _has(q, "جواز", "جوازات", "صلاحيه", "تنتهي", "منتهي", "منتهيه",
@@ -261,12 +269,16 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
                    or str(getattr(r, "nationality", "") or "").strip() or "غير محدّد")
             counts[nat] = counts.get(nat, 0) + 1
         ordered = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
-        return _stat(
+        out = _stat(
             "توزيع الجنسيات" + tail,
             f"{len(ordered)} جنسية · {len(scoped)} معتمراً",
             note="عدد المعتمرين حسب الجنسية" + tail,
             headers=["الجنسية", "العدد"] if ordered else None,
             rows=[[nat, str(n)] for nat, n in ordered] or None)
+        if ordered:
+            out["chart"] = {"max": ordered[0][1],
+                            "items": [(nat, n, str(n)) for nat, n in ordered]}
+        return out
 
     # 12) بطاقة معتمرٍ بعينه (بالاسم) — إن ذُكر اسم يطابق أحد المعتمرين
     who = _match_pilgrim(question, scoped)

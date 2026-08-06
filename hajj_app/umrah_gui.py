@@ -4002,12 +4002,47 @@ class AskWindow(Toplevel):
                       foreground=G.MUTED, background=G.BG, wraplength=640,
                       justify="right").pack(anchor="e", pady=(3, 0))
 
+        if ans.get("chart"):
+            self._chart(b, ans["chart"])
         if ans.get("rows"):
             self._table(b, ans["headers"], ans["rows"],
                         ans.get("records") if ans.get("action") == "whatsapp_due"
                         else None)
         if ans.get("kind") == "help" or ans.get("examples"):
             self._examples(b, ans.get("examples") or list(assistant.EXAMPLES))
+
+    def _chart(self, parent, chart: dict) -> None:
+        """مخطّط أعمدة أفقي أنيق (RTL) لبيانات المخطّط في الإجابة."""
+        items = chart.get("items") or []
+        if not items:
+            return
+        mx = chart.get("max") or max((v for _, v, _ in items), default=1) or 1
+        cv = Canvas(parent, height=14 + len(items) * 28, bg=G.PANEL,
+                    highlightthickness=1, highlightbackground=G.BORDER)
+        cv.pack(fill=X, pady=(12, 0))
+
+        def draw(_e=None):
+            cv.delete("all")
+            w = cv.winfo_width() or 640
+            pad, label_w, val_w = 12, 170, 56
+            x_right = w - pad
+            bx1, bx0 = x_right - label_w, pad + val_w
+            for i, (label, val, disp) in enumerate(items):
+                y = 17 + i * 28
+                cv.create_text(x_right, y, anchor="e", text=G.rtl(str(label)),
+                               font=(G._FUI, 10), fill=G.TEXT)
+                cv.create_rectangle(bx0, y - 8, bx1, y + 8,
+                                    fill=G.ROW_ALT, outline="")
+                frac = max(0.0, min(val / mx, 1.0)) if mx else 0.0
+                fw = (bx1 - bx0) * frac
+                if fw > 1:
+                    cv.create_rectangle(bx1 - fw, y - 8, bx1, y + 8,
+                                        fill="#8A6E4B", outline="")   # RTL
+                cv.create_text(pad, y, anchor="w", text=G.rtl(str(disp)),
+                               font=(G._FSB, 10), fill="#6E543A")
+
+        cv.bind("<Configure>", draw)
+        self.after(30, draw)
 
     def _table(self, parent, headers, rows, records=None) -> None:
         wrap = ttk.Frame(parent, style="Panel.TFrame", padding=6)

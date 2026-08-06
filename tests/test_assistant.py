@@ -92,7 +92,11 @@ dist = A.answer("توزيع الجنسيات", trips, natrecs)
 assert dist["kind"] == "list" and dist["rows"][0] == ["سعودي", "3"], dist["rows"]
 cnt = A.answer("كم معتمر مصري؟", trips, natrecs)
 assert "2 معتمر" in cnt["headline"] and "مصري" in cnt["title"], cnt
-print("  OK: توزيع صحيح + عدّ الجنسية المحددة")
+# مخطّط أعمدة مرفق بالتوزيع والترتيب
+assert dist.get("chart") and dist["chart"]["items"][0][0] == "سعودي", dist.get("chart")
+rank = A.answer("أعلى برنامج تحصيلاً؟", trips, natrecs)
+assert rank.get("chart") and rank["chart"]["max"] == 100, rank.get("chart")
+print("  OK: توزيع صحيح + عدّ الجنسية + مخطّطات مرفقة")
 
 print("\n=== قائمة المتأخرين قابلة للتنفيذ (تذكير واتساب) ===")
 a = ask("مين ما سدّد؟")
