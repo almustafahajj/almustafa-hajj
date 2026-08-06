@@ -400,6 +400,39 @@ def _match_pilgrim(question: str, records: list):
     return best if best_score >= 1 else None
 
 
+def season_summary_text(trips: list, records: list, *, season: str = "",
+                        group_attr: str = "trip", company=None) -> str:
+    """ملخّص نصّي موجز لمؤشّرات الموسم — جاهز للنسخ والمشاركة (واتساب/إيميل)."""
+    global _GROUP
+    _GROUP = group_attr
+    codes = {t.code for t in trips}
+    scoped = [r for r in records
+              if not codes or str(getattr(r, _GROUP, "") or "") in codes]
+    total = sum(_val(r) for r in scoped)
+    paid = sum(_paid(r) for r in scoped)
+    late = sum(1 for r in scoped if _rem(r) > 0.5)
+    pct = (paid / total * 100) if total else 0
+    cap = sum(int(parse_amount(getattr(t, "capacity", "")) or 0) for t in trips)
+    is_hajj = group_attr != "trip"
+    noun_pl = "الحجّاج" if is_hajj else "المعتمرون"
+    kind = "الحج" if is_hajj else "العمرة"
+    name = (company.get("name_ar") if isinstance(company, dict) else None) \
+        or "المصطفى للحج والعمرة"
+    head = f"📊 ملخّص موسم {kind}" + (f" {season}" if season else "")
+    line2 = f"{noun_pl}: {len(scoped)}"
+    if cap:
+        line2 += f" · الإشغال: {len(scoped) / cap * 100:.0f}٪"
+    return "\n".join([
+        head,
+        line2,
+        f"الإيراد المتوقّع: {format_amount(total)} AED",
+        f"المحصّل: {format_amount(paid)} ({pct:.0f}٪)",
+        f"المتبقّي: {format_amount(total - paid)} AED",
+        f"المتأخرون عن السداد: {late}",
+        f"— {name}",
+    ])
+
+
 def due_reminder(rec, program_name: str = "",
                  company_ar: str = "المصطفى للحج والعمرة") -> str:
     """رسالة تذكير سداد عربية مهذّبة لمعتمرٍ متأخّر (لواتساب)."""

@@ -909,6 +909,7 @@ class HajjApp:
         fin_mb = self._menubutton(bar, "المالية والمحاسبة  ▾", [
             ("🔎  اسأل بياناتك (أسئلة بالعربية)", self.ask_data),
             ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
+            ("📋  نسخ ملخّص الموسم", self.copy_season_summary),
             None,
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📈  الرسوم البيانية", self.do_charts),
@@ -2466,6 +2467,20 @@ class HajjApp:
         """يفتح مساعد «اسأل بياناتك» لأسئلة موسم الحج بالعربية (مكيّف للحج)."""
         from . import umrah_gui as ug
         ug.AskWindow(self.root, ug.HajjCtx(self))
+
+    def copy_season_summary(self) -> None:
+        """ينسخ ملخّص مؤشّرات موسم الحج إلى الحافظة، جاهزاً للمشاركة."""
+        from . import assistant, umrah_gui as ug
+        co = self._settings.get("company")
+        text = assistant.season_summary_text(
+            ug._hajj_programs(self), self.records,
+            season=self.season_year.get(), group_attr="program",
+            company=co if isinstance(co, dict) else None)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        messagebox.showinfo("نسخ ملخّص الموسم",
+                            "نُسخ الملخّص — الصقه في واتساب أو الإيميل:\n\n"
+                            + text, parent=self.root)
 
     def open_collections(self) -> None:
         """يفتح متابعة تحصيل الحجّاج المتأخرين مباشرةً."""

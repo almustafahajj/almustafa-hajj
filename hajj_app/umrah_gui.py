@@ -250,6 +250,8 @@ class UmrahApp:
         rmenu.add_separator()
         rmenu.add_command(label=G.rtl("💰  متابعة التحصيل (المتأخرون)"),
                           command=self.open_collections)
+        rmenu.add_command(label=G.rtl("📋  نسخ ملخّص الموسم"),
+                          command=self.copy_season_summary)
         rep["menu"] = rmenu
         self._report_menu = rmenu          # مرجع يمنع جمع القمامة
         rep.pack(side=LEFT, padx=(0, 8))
@@ -691,6 +693,17 @@ class UmrahApp:
     def ask_data(self) -> None:
         """يفتح مساعد «اسأل بياناتك» للإجابة عن أسئلة الموسم بالعربية."""
         AskWindow(self.root, UmrahCtx(self))
+
+    def copy_season_summary(self) -> None:
+        """ينسخ ملخّص مؤشّرات الموسم إلى الحافظة، جاهزاً للمشاركة."""
+        text = assistant.season_summary_text(
+            self._visible_trips(), self.records, season=self._season.get(),
+            group_attr="trip", company=self._company_dict())
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        messagebox.showinfo("نسخ ملخّص الموسم",
+                            "نُسخ الملخّص — الصقه في واتساب أو الإيميل:\n\n"
+                            + text, parent=self.root)
 
     def open_collections(self) -> None:
         """يفتح متابعة التحصيل لكل متأخّري الموسم المعروض مباشرةً."""

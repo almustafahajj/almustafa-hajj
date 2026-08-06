@@ -177,4 +177,24 @@ ua = A.answer("مين ما سدّد؟", trips, recs)
 assert "معتمر" in ua["headline"] and ua["headers"][0] == "المعتمر", ua
 print("  OK: الحج يعرض «حاج»/«الحاج» والعمرة تبقى «معتمر»/«المعتمر»")
 
+print("\n=== ملخّص الموسم النصّي (للمشاركة) ===")
+
+
+class _PT:
+    def __init__(self, code, name, cap=""):
+        self.code = code; self.name = name; self.capacity = cap
+        self.makkah_hotel = ""; self.madinah_hotel = ""; self.depart_date = ""
+u_summary = A.season_summary_text(
+    [_PT("U1", "عشر رمضان", "10")],
+    [rec("U1", 18000, 18000, "أ"), rec("U1", 18000, 9000, "ب")],
+    season="2026", group_attr="trip", company={"name_ar": "المصطفى للحج والعمرة"})
+assert "ملخّص موسم العمرة 2026" in u_summary and "المعتمرون: 2" in u_summary
+assert "المحصّل: 27,000 (75٪)" in u_summary and "المتأخرون عن السداد: 1" in u_summary
+h_summary = A.season_summary_text(
+    [_P("البرنامج الأول")],
+    [hrec("البرنامج الأول", 25000, 25000, "أحمد")],
+    season="1447", group_attr="program")
+assert "ملخّص موسم الحج 1447" in h_summary and "الحجّاج: 1" in h_summary
+print("  OK: ملخّص العمرة والحج بالمصطلح والأرقام الصحيحة")
+
 print("\n*** ASSISTANT TESTS PASSED ***")
