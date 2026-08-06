@@ -23,7 +23,7 @@ from tkinter import (
 from . import app_mode, assistant, images as imgmod, umrah
 from . import gui as G
 from .excel_io import export_umrah_excel
-from .fields import format_amount, parse_amount
+from .fields import format_amount, parse_amount, payment_total
 from .mrz import MRZError, PassportData
 from .ocr import extract_passport
 from .pdf_in import PDFError, extract_from_pdf
@@ -4125,7 +4125,8 @@ class AskWindow(Toplevel):
 class DueFollowupWindow(Toplevel):
     """متابعة تحصيل المتأخرين: قائمة بكلٍّ منهم مع تذكير واتساب وتتبّع من ذُكِّر."""
 
-    _MARK = {"pending": "⏳ بانتظار", "done": "✓ ذُكِّر", "skip": "⤼ مؤجَّل"}
+    _MARK = {"pending": "⏳ بانتظار", "done": "✓ ذُكِّر", "skip": "⤼ مؤجَّل",
+             "paid": "💵 سُدِّد"}
 
     def __init__(self, parent, app, records: list) -> None:
         super().__init__(parent)
@@ -4156,13 +4157,11 @@ class DueFollowupWindow(Toplevel):
                                foreground=G.BRONZE, background=G.BG)
         self._prog.pack(side=LEFT)
 
-        total = sum(assistant._rem(r) for r in records)
         band = ttk.Frame(self, style="Panel.TFrame", padding=(18, 8))
         band.pack(fill=X)
-        ttk.Label(band, text=G.rtl(
-            f"{len(records)} معتمراً متأخّراً · إجمالي المتبقّي "
-            f"{format_amount(total)} AED"),
-            font=(G._FUI, 11), foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
+        self._band = ttk.Label(band, text="", font=(G._FUI, 11),
+                               foreground=G.TEXT, background=G.BG)
+        self._band.pack(side=RIGHT)
 
         body = ttk.Frame(self, style="Panel.TFrame", padding=6)
         body.pack(fill=BOTH, expand=True, padx=16, pady=(6, 10))
@@ -4174,8 +4173,9 @@ class DueFollowupWindow(Toplevel):
             tv.heading(c, text=G.rtl(h))
             tv.column(c, anchor="e", width=w, stretch=(c in ("name", "prog")))
         self._today = date.today().isoformat()
-        tv.tag_configure("done", background=G.SUCCESS_BG if hasattr(G, "SUCCESS_BG")
-                         else "#E6F1E9")
+        _green = G.SUCCESS_BG if hasattr(G, "SUCCESS_BG") else "#E6F1E9"
+        tv.tag_configure("done", background=_green)
+        tv.tag_configure("paid", background="#CDE9D6")
         tv.tag_configure("skip", background=G.WARN_BG if hasattr(G, "WARN_BG")
                          else "#FBF0DC")
         vs = ttk.Scrollbar(body, orient="vertical", command=tv.yview)
@@ -4190,10 +4190,13 @@ class DueFollowupWindow(Toplevel):
         actions.pack(fill=X)
         ttk.Button(actions, text=G.rtl("📱  تذكير المحدَّد"),
                    style="Primary.TButton", command=self._remind).pack(side=RIGHT)
+        ttk.Button(actions, text=G.rtl("💵  سجّل دفعة"),
+                   style="Act.TButton", command=self._record_payment).pack(
+                       side=RIGHT, padx=(8, 0))
         ttk.Button(actions, text=G.rtl("⤼  تأجيل"),
                    style="Ghost.TButton", command=self._skip).pack(side=RIGHT, padx=(8, 0))
-        ttk.Button(actions, text=G.rtl("⏭  التالي غير المُذكَّر"),
-                   style="Act.TButton", command=self._next_pending).pack(side=RIGHT, padx=(8, 0))
+        ttk.Button(actions, text=G.rtl("⏭  التالي"),
+                   style="Ghost.TButton", command=self._next_pending).pack(side=RIGHT, padx=(8, 0))
         ttk.Button(actions, text=G.rtl("إغلاق"), style="Ghost.TButton",
                    command=self.destroy).pack(side=LEFT)
         self._select_index(0)
@@ -4216,6 +4219,11 @@ class DueFollowupWindow(Toplevel):
             self._iids.append(iid)
         done = self.state.count("done")
         self._prog.configure(text=G.rtl(f"ذُكِّر {done} من {len(self.records)}"))
+        outstanding = sum(max(assistant._rem(r), 0) for r in self.records)
+        remaining_cnt = sum(1 for r in self.records if assistant._rem(r) > 0.5)
+        self._band.configure(text=G.rtl(
+            f"{remaining_cnt} معتمراً متأخّراً · إجمالي المتبقّي "
+            f"{format_amount(outstanding)} AED"))
 
     def _sel_index(self):
         sel = self._tv.selection()
@@ -4254,6 +4262,84 @@ class DueFollowupWindow(Toplevel):
             pass
         self._fill()
         self._next_pending()
+
+    def _record_payment(self) -> None:
+        """يسجّل دفعةً للمعتمر المحدَّد فيُغلق دينه ويُحدَّث الكشف الرئيسي."""
+        i = self._sel_index()
+        if i is None:
+            messagebox.showinfo("تسجيل دفعة",
+                                "اختر معتمراً من القائمة.", parent=self)
+            return
+        rec = self.records[i]
+        rem = assistant._rem(rec)
+        if rem <= 0.5:
+            messagebox.showinfo("تسجيل دفعة",
+                                "هذا المعتمر سدّد بالكامل.", parent=self)
+            return
+        dlg = Toplevel(self)
+        dlg.title("تسجيل دفعة")
+        dlg.configure(bg=G.BG)
+        dlg.resizable(False, False)
+        dlg.transient(self)
+        frm = ttk.Frame(dlg, style="Toolbar.TFrame", padding=18)
+        frm.pack(fill=BOTH, expand=True)
+        ttk.Label(frm, text=G.rtl(getattr(rec, "full_name_ar", "") or "—"),
+                  font=(G._FSB, 13), foreground=G.TEXT,
+                  background=G.BG).pack(anchor="e")
+        ttk.Label(frm, text=G.rtl(f"المتبقّي: {format_amount(rem)} AED"),
+                  font=(G._FUI, 11), foreground=G.DANGER if hasattr(G, "DANGER")
+                  else "#B23A3A", background=G.BG).pack(anchor="e", pady=(2, 10))
+        row = ttk.Frame(frm, style="Toolbar.TFrame")
+        row.pack(fill=X)
+        var = StringVar(value=format_amount(rem))
+        ent = ttk.Entry(row, textvariable=var, font=(G._FUI, 12),
+                        justify="right", width=16)
+        ent.pack(side=RIGHT)
+        ttk.Label(row, text=G.rtl("مبلغ الدفعة:"), font=(G._FUI, 10),
+                  foreground=G.MUTED, background=G.BG).pack(side=RIGHT, padx=(0, 8))
+        G.install_entry_editing(ent)
+        ent.focus_set()
+        ent.select_range(0, "end")
+
+        def commit(full=False):
+            amt = rem if full else parse_amount(var.get())
+            if not amt or amt <= 0:
+                messagebox.showwarning("مبلغ غير صالح",
+                                       "أدخل مبلغ الدفعة بالأرقام.", parent=dlg)
+                return
+            if not isinstance(getattr(rec, "payments", None), list):
+                rec.payments = []
+            # حفظ الرصيد المدفوع سابقاً كأول قيد كي لا يضيع عند اعتماد السجلّ
+            prior = parse_amount(getattr(rec, "paid_amount", "")) or 0
+            if not rec.payments and prior > 0:
+                rec.payments.append({"date": "", "amount": format_amount(prior),
+                                     "method": "", "note": "رصيد سابق"})
+            rec.payments.append({"date": self._today,
+                                 "amount": format_amount(amt),
+                                 "method": "", "note": "تحصيل بعد تذكير"})
+            rec.paid_amount = format_amount(payment_total(rec))
+            self.app.save()
+            try:
+                self.app._reload()
+            except Exception:
+                pass
+            if assistant._rem(rec) <= 0.5:
+                self.state[i] = "paid"
+            self._fill()
+            self._select_index(i)
+            dlg.destroy()
+
+        btns = ttk.Frame(frm, style="Toolbar.TFrame")
+        btns.pack(fill=X, pady=(14, 0))
+        ttk.Button(btns, text=G.rtl("💵  سدّد كامل المتبقّي"),
+                   style="Primary.TButton",
+                   command=lambda: commit(full=True)).pack(side=RIGHT)
+        ttk.Button(btns, text=G.rtl("تسجيل"), style="Act.TButton",
+                   command=lambda: commit(False)).pack(side=RIGHT, padx=(8, 0))
+        ttk.Button(btns, text=G.rtl("إلغاء"), style="Ghost.TButton",
+                   command=dlg.destroy).pack(side=LEFT)
+        ent.bind("<Return>", lambda _e: commit(False))
+        dlg.grab_set()
 
     def _skip(self) -> None:
         i = self._sel_index()
