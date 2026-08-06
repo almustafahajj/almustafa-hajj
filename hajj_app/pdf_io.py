@@ -3795,7 +3795,9 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         # التسعير: [[نوع الشخص، نوع الغرفة، العدد، سعر الفرد], …] والإجمالي تلقائي
         "pricing": pricing,
         "currency": T("درهم", "AED"),
-        "validity": "",
+        # صلاحية العرض الافتراضية: ٣ أيام من تاريخ الإصدار (قابلة للتعديل)
+        "validity": (_parse_date(date_str) + timedelta(days=3)).isoformat()
+        if _parse_date(date_str) else "",
         "validity_time": "",
         "note": "",
         "closing": T(QUOTE_CLOSING,
@@ -4035,7 +4037,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
         def _sh(iso):
             d = _pd(iso)
-            return f"{d.month:02d}/{d.day:02d}" if d else ""
+            return f"{d.day:02d}/{d.month:02d}" if d else ""      # يوم/شهر
 
         disp = []
         for row in stays_raw:
@@ -4049,11 +4051,11 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 cin = cur.isoformat()
             if not cout and cur and n:
                 cout = (cur + _td(days=n)).isoformat()
-            # المدى: في العربي يُقرأ يمين←يسار (الدخول يميناً)، وفي الإنجليزي
-            # يسار→يمين صريحاً (الدخول يساراً)
+            # المدى «الدخول – المغادرة» بصيغة يوم/شهر: الدخول أولاً في النصّ
+            # فيظهر في جهة بداية القراءة (يمين العربي/يسار الإنجليزي)
             if cin or cout:
-                rng = (ltr(f"{_sh(cin)} – {_sh(cout)}") if L
-                       else f"{_sh(cout)} – {_sh(cin)}")
+                core = f"{_sh(cin)} – {_sh(cout)}"
+                rng = ltr(core) if L else core
             else:
                 rng = ""
             nxt = _pd(cout)
@@ -4209,12 +4211,15 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     validity = str(data.get("validity") or "")
     if validity:
         vtime = str(data.get("validity_time") or "").strip()
+        _vm = _re_iso.match(validity.strip())
+        vdisp = (f"{_vm.group(3)}/{_vm.group(2)}/{_vm.group(1)}"
+                 if _vm else validity)
         if L:
-            vtxt = f"This offer is valid until {ltr(validity)}"
+            vtxt = f"This offer is valid until {ltr(vdisp)}"
             if vtime:
                 vtxt += f" at {ltr(vtime)}"
         else:
-            vtxt = f"هذا العرض صالح لغاية يوم {ltr(validity)}"
+            vtxt = f"هذا العرض صالح لغاية يوم {ltr(vdisp)}"
             if vtime:
                 vtxt += f" الساعة {ltr(vtime)}"
         vpar = qpara(vtxt + ".", ParagraphStyle(
