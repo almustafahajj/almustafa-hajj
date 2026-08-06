@@ -109,6 +109,20 @@ from hajj_app.mrz import PassportData as _PD
 assert A.due_wa_link(_PD(full_name_ar="س", program_value="1", paid_amount="0")) is None
 print("  OK: رسالة عربية + رابط واتساب دولي + رفض الرقم غير الصالح")
 
+print("\n=== سجلّ التذكير الدائم (متى ذُكِّر كل معتمر) ===")
+from hajj_app import umrah as _um
+_s = {}
+_r = PassportData(full_name_ar="أحمد", passport_number="P900", trip="U1")
+assert _um.last_reminded(_s, _r) is None
+_um.set_reminded(_s, _r, "2026-08-06")
+assert _um.last_reminded(_s, _r) == "2026-08-06"
+assert _s["umrah_reminders"]["P900"] == "2026-08-06"
+# بلا رقم جواز -> مفتاح الاسم+البرنامج
+_r2 = PassportData(full_name_ar="سالم", passport_number="", trip="U2")
+_um.set_reminded(_s, _r2, "2026-08-05")
+assert _um.last_reminded(_s, _r2) == "2026-08-05"
+print("  OK: يُحفظ بالجواز أو بالاسم+البرنامج ويُسترجع")
+
 print("\n=== لا يتعثّر مع موسم فارغ ===")
 e = A.answer("مين ما سدّد؟", [], [])
 assert "لا متأخرات" in e["headline"] or e["kind"] in ("stat", "list", "help"), e

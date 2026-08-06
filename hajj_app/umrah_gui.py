@@ -4166,13 +4166,14 @@ class DueFollowupWindow(Toplevel):
 
         body = ttk.Frame(self, style="Panel.TFrame", padding=6)
         body.pack(fill=BOTH, expand=True, padx=16, pady=(6, 10))
-        cols = ("name", "prog", "rem", "phone", "state")
-        heads = ("المعتمر", "البرنامج", "المتبقّي", "الهاتف", "الحالة")
-        widths = (190, 155, 105, 115, 140)
+        cols = ("name", "prog", "rem", "phone", "last", "state")
+        heads = ("المعتمر", "البرنامج", "المتبقّي", "الهاتف", "آخر تذكير", "الحالة")
+        widths = (175, 140, 100, 110, 110, 125)
         tv = ttk.Treeview(body, columns=cols, show="headings", height=11)
         for c, h, w in zip(cols, heads, widths):
             tv.heading(c, text=G.rtl(h))
             tv.column(c, anchor="e", width=w, stretch=(c in ("name", "prog")))
+        self._today = date.today().isoformat()
         tv.tag_configure("done", background=G.SUCCESS_BG if hasattr(G, "SUCCESS_BG")
                          else "#E6F1E9")
         tv.tag_configure("skip", background=G.WARN_BG if hasattr(G, "WARN_BG")
@@ -4200,12 +4201,16 @@ class DueFollowupWindow(Toplevel):
     def _fill(self) -> None:
         self._tv.delete(*self._tv.get_children())
         self._iids = []
+        settings = self.app._settings or {}
         for i, r in enumerate(self.records):
+            last = umrah.last_reminded(settings, r)
+            last_txt = "اليوم" if last == self._today else (last or "—")
             iid = self._tv.insert("", "end", values=[
                 G.rtl(getattr(r, "full_name_ar", "") or "—"),
                 G.rtl(self._names.get(getattr(r, "trip", ""), "—")),
                 G.rtl(f"{format_amount(assistant._rem(r))} AED"),
                 getattr(r, "phone", "") or "—",
+                G.rtl(last_txt),
                 G.rtl(self._MARK[self.state[i]]),
             ], tags=(self.state[i],) if self.state[i] != "pending" else ())
             self._iids.append(iid)
@@ -4242,6 +4247,11 @@ class DueFollowupWindow(Toplevel):
             messagebox.showerror("متابعة التحصيل", str(exc), parent=self)
             return
         self.state[i] = "done"
+        umrah.set_reminded(self.app._settings, rec, self._today)   # سجلّ دائم
+        try:
+            save_settings(self.app._settings)
+        except OSError:
+            pass
         self._fill()
         self._next_pending()
 

@@ -537,6 +537,35 @@ def delete_voucher(settings: dict, number: str) -> None:
             v for v in lst if str(v.get("number") or "") != str(number)]
 
 
+def reminder_key(rec) -> str:
+    """مفتاح ثابت لمعتمرٍ في سجلّ التذكير (رقم الجواز، وإلا الاسم+البرنامج)."""
+    pp = str(getattr(rec, "passport_number", "") or "").strip()
+    if pp:
+        return pp
+    return (f"{getattr(rec, 'full_name_ar', '')}|"
+            f"{getattr(rec, 'trip', '')}").strip()
+
+
+def reminder_log(settings: dict) -> dict:
+    """سجلّ آخر تذكير سداد لكل معتمر: {المفتاح: تاريخ ISO}."""
+    log = settings.get("umrah_reminders")
+    return log if isinstance(log, dict) else {}
+
+
+def set_reminded(settings: dict, rec, when_iso: str) -> None:
+    """يسجّل تاريخ تذكير معتمرٍ بالسداد (يُستبدل الأقدم)."""
+    log = settings.get("umrah_reminders")
+    if not isinstance(log, dict):
+        log = {}
+        settings["umrah_reminders"] = log
+    log[reminder_key(rec)] = str(when_iso)
+
+
+def last_reminded(settings: dict, rec) -> str | None:
+    """تاريخ آخر تذكير لهذا المعتمر (ISO)، أو None إن لم يُذكَّر بعد."""
+    return reminder_log(settings).get(reminder_key(rec))
+
+
 def next_quote_number(settings: dict) -> str:
     """يخصّص رقم عرض سعر تسلسلياً (MA-Q0001…) ويحدّث العدّاد في الإعدادات."""
     try:
