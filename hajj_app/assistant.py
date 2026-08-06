@@ -105,9 +105,9 @@ def _stat(title, headline, note="", headers=None, rows=None):
 
 EXAMPLES = (
     "مين ما سدّد؟",
-    "كم المتبقّي على رمضان؟",
-    "كم معتمر هذا الموسم؟",
+    "من سدّد اليوم؟",
     "كم المبلغ المحصّل؟",
+    "كم معتمر هذا الموسم؟",
     "كم مقعد باقٍ؟",
     "أعلى برنامج تحصيلاً؟",
     "جوازات تنتهي قريباً؟",
@@ -161,6 +161,31 @@ def _answer_core(question: str, trips: list, records: list, *,
     names = _prog_name_map(trips)
     scoped, sprogs, slabel = _scope(question, trips, records)
     tail = f" — {slabel}" if slabel else ""
+
+    # 0) تحصيل اليوم (دفعات سُجّلت بتاريخ اليوم)
+    if _has(q, "دفعات اليوم", "تحصيل اليوم", "حصلنا اليوم", "دفع اليوم",
+            "سدد اليوم", "من دفع اليوم", "من سدد اليوم", "الوارد اليوم"):
+        from datetime import date as _date
+        today = _date.today().isoformat()
+        paid_today = []
+        for r in scoped:
+            amt = sum(parse_amount(p.get("amount")) or 0.0
+                      for p in (getattr(r, "payments", None) or [])
+                      if isinstance(p, dict)
+                      and str(p.get("date", "")).strip() == today)
+            if amt > 0.5:
+                paid_today.append((r, amt))
+        paid_today.sort(key=lambda x: x[1], reverse=True)
+        total = sum(a for _r, a in paid_today)
+        rows = [[_name(r), names.get(getattr(r, _GROUP, ""), "—"), _aed(a)]
+                for r, a in paid_today]
+        return _stat(
+            "تحصيل اليوم" + tail,
+            f"{len(paid_today)} دفعة · {_aed(total)}" if paid_today
+            else "لا دفعات مسجّلة اليوم بعد.",
+            note="الدفعات المسجّلة بتاريخ اليوم" if paid_today else "",
+            headers=["المعتمر", "البرنامج", "دفعة اليوم"] if paid_today else None,
+            rows=rows or None)
 
     # 1) المتأخرون عن السداد (قائمة أسماء)
     if _has(q, "ما سدد", "لم يسدد", "ما دفع", "لم يدفع", "غير مسدد", "متاخر",

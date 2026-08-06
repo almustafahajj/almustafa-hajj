@@ -132,6 +132,20 @@ e = A.answer("مين ما سدّد؟", [], [])
 assert "لا متأخرات" in e["headline"] or e["kind"] in ("stat", "list", "help"), e
 print("  OK: الموسم الفارغ آمن")
 
+print("\n=== تحصيل اليوم (دفعات مؤرّخة باليوم) ===")
+from datetime import date as _date
+_today = _date.today().isoformat()
+_p1 = rec("U1", 18000, 9000, "أحمد")
+_p1.payments = [{"date": _today, "amount": "9000"}]
+_p2 = rec("U1", 18000, 18000, "سالم")
+_p2.payments = [{"date": _today, "amount": "6000"},
+                {"date": "2026-01-01", "amount": "12000"}]   # قديمة تُستبعد
+_td = A.answer("من سدّد اليوم؟", trips, [_p1, _p2])
+assert "15,000" in _td["headline"] and len(_td["rows"]) == 2, _td   # 9000+6000
+_none = A.answer("تحصيل اليوم", trips, [rec("U1", 18000, 0, "خالد")])
+assert "لا دفعات" in _none["headline"], _none
+print("  OK: يجمع دفعات اليوم فقط، ويتعرّف على عدم وجودها")
+
 print("\n=== وضع الحج: التجميع بـ program + إبدال «معتمر» بـ«حاج» ===")
 
 
