@@ -206,6 +206,9 @@ class UmrahApp:
                           command=self.export_web_dashboard)
         rmenu.add_command(label=G.rtl("📄  تقرير PDF (للطباعة)"),
                           command=self.export_season_pdf)
+        rmenu.add_separator()
+        rmenu.add_command(label=G.rtl("💰  متابعة التحصيل (المتأخرون)"),
+                          command=self.open_collections)
         rep["menu"] = rmenu
         self._report_menu = rmenu          # مرجع يمنع جمع القمامة
         rep.pack(side=LEFT, padx=(0, 8))
@@ -641,6 +644,23 @@ class UmrahApp:
     def ask_data(self) -> None:
         """يفتح مساعد «اسأل بياناتك» للإجابة عن أسئلة الموسم بالعربية."""
         AskWindow(self.root, self)
+
+    def open_collections(self) -> None:
+        """يفتح متابعة التحصيل لكل متأخّري الموسم المعروض مباشرةً."""
+        codes = {t.code for t in self._visible_trips()}
+
+        def rem(r):
+            return ((parse_amount(r.program_value) or 0)
+                    - (parse_amount(r.paid_amount) or 0))
+        late = [r for r in self.records
+                if str(getattr(r, "trip", "") or "") in codes and rem(r) > 0.5]
+        late.sort(key=rem, reverse=True)
+        if not late:
+            messagebox.showinfo("متابعة التحصيل",
+                                "لا متأخرات — الحمد لله، الجميع سدّد بالكامل.",
+                                parent=self.root)
+            return
+        DueFollowupWindow(self.root, self, late)
 
     # ---- كشوف ومستندات البرنامج المحدَّد (من الواجهة الرئيسية) ----
     def _company_dict(self):
