@@ -116,12 +116,53 @@ class UmrahApp:
 
         self._build_header()
         self._build_toolbar()
+        self._build_kpi()
         self._build_statusbar()
         self._build_table()
         self._bind_shortcuts()
         self._reload()
 
     # ---- شريط الحالة السفلي (ملخّص حيّ للموسم) ----
+    def _build_kpi(self) -> None:
+        """شريط مؤشّرات الموسم الحيّ (بطاقات) أسفل شريط الأدوات مباشرةً."""
+        wrap = ttk.Frame(self.root, style="Toolbar.TFrame",
+                         padding=(16, 2, 16, 8))
+        wrap.pack(fill=X)
+        self._kpi = {}
+        # (المفتاح، العنوان، لون القيمة، هل قابل للنقر لفتح المتابعة)
+        specs = [("pilgrims", "👤 المعتمرون", G.TEXT, False),
+                 ("occ", "🏨 نسبة الإشغال", G.TEXT, False),
+                 ("paid", "💰 المحصّل", G.SUCCESS_FG if hasattr(G, "SUCCESS_FG")
+                  else "#2E6B45", False),
+                 ("late", "⏳ المتأخرون", G.DANGER if hasattr(G, "DANGER")
+                  else "#B23A3A", True)]
+        for key, label, color, clickable in specs:
+            card = ttk.Frame(wrap, style="Panel.TFrame", padding=(14, 8))
+            card.pack(side=RIGHT, fill=X, expand=True, padx=(8, 0))
+            ttk.Label(card, text=G.rtl(label), font=(G._FUI, 9),
+                      foreground=G.MUTED, background=G.PANEL).pack(anchor="e")
+            val = ttk.Label(card, text="—", font=(G._FSB, 18),
+                            foreground=color, background=G.PANEL)
+            val.pack(anchor="e")
+            self._kpi[key] = val
+            if clickable:                       # المتأخرون: نقرة تفتح المتابعة
+                for w in (card, val):
+                    w.configure(cursor="hand2")
+                    w.bind("<Button-1>", lambda _e: self.open_collections())
+                self._kpi["late_card"] = card
+
+    def _update_kpi(self, pilgrims, cap_total, total, paid, late) -> None:
+        """يحدّث بطاقات المؤشّرات من أرقام الموسم الحالية."""
+        if not hasattr(self, "_kpi"):
+            return
+        occ = f"{pilgrims / cap_total * 100:.0f}٪" if cap_total else "—"
+        pct = f"{paid / total * 100:.0f}٪" if total else "—"
+        self._kpi["pilgrims"].configure(text=str(pilgrims))
+        self._kpi["occ"].configure(text=occ)
+        self._kpi["paid"].configure(
+            text=f"{format_amount(paid)}  ({pct})")
+        self._kpi["late"].configure(text=str(late))
+
     def _build_statusbar(self) -> None:
         bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 6))
         bar.pack(fill=X, side="bottom")
@@ -417,19 +458,24 @@ class UmrahApp:
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
         rows = []
-        n_pil = 0
+        n_pil = cap_total = late = 0
         total = paid = 0.0
         for t in self._visible_trips():
             pilgrims = umrah.trip_pilgrims(self.records, t.code)
             n = len(pilgrims)
             n_pil += n
             for r in pilgrims:
-                total += parse_amount(r.program_value) or 0.0
-                paid += parse_amount(r.paid_amount) or 0.0
+                pv = parse_amount(r.program_value) or 0.0
+                pd = parse_amount(r.paid_amount) or 0.0
+                total += pv
+                paid += pd
+                if pv - pd > 0.5:
+                    late += 1
             try:
                 cap = int(float(str(t.capacity or "").strip() or 0))
             except ValueError:
                 cap = 0
+            cap_total += cap
             rows.append({"t": t, "n": n, "cap": cap,
                          "seats": (cap - n) if cap else None})
         rows = self._apply_sort(rows)
@@ -455,6 +501,7 @@ class UmrahApp:
                 f"🗂 البرامج: {len(shown)}    ·    👤 المعتمرون: {n_pil}"
                 f"    ·    💰 المحصّل: {format_amount(paid)}"
                 f"    ·    ⏳ المتبقّي: {format_amount(total - paid)}"))
+        self._update_kpi(n_pil, cap_total, total, paid, late)
         if not shown:
             q = (self._query.get() if hasattr(self, "_query") else "").strip()
             if q:
