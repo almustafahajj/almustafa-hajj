@@ -20,7 +20,7 @@ from tkinter import (
     X, Y, filedialog, messagebox, ttk,
 )
 
-from . import app_mode, images as imgmod, umrah
+from . import app_mode, assistant, images as imgmod, umrah
 from . import gui as G
 from .excel_io import export_umrah_excel
 from .fields import format_amount, parse_amount
@@ -206,6 +206,11 @@ class UmrahApp:
         _web.pack(side=LEFT, padx=(0, 8))
         G.add_tooltip(_web, G.rtl(
             "تقرير موسم أنيق بصيغة ويب — يُفتح في المتصفّح ويُطبع أو يُشارك"))
+        _ask = ttk.Button(bar, text=G.rtl("🔎  اسأل بياناتك"),
+                          style="Ghost.TButton", command=self.ask_data)
+        _ask.pack(side=LEFT, padx=(0, 8))
+        G.add_tooltip(_ask, G.rtl(
+            "اكتب سؤالاً بالعربية عن معتمري الموسم فيجيبك من بياناتك فوراً"))
         if self.session is not None:
             info = ttk.Frame(bar, style="Toolbar.TFrame")
             info.pack(side=LEFT)
@@ -612,6 +617,10 @@ class UmrahApp:
         except OSError as exc:
             messagebox.showerror("لوحة الموسم (ويب)",
                                  f"تعذّر فتح المتصفّح:\n\n{exc}", parent=self.root)
+
+    def ask_data(self) -> None:
+        """يفتح مساعد «اسأل بياناتك» للإجابة عن أسئلة الموسم بالعربية."""
+        AskWindow(self.root, self)
 
     # ---- كشوف ومستندات البرنامج المحدَّد (من الواجهة الرئيسية) ----
     def _company_dict(self):
@@ -3903,6 +3912,114 @@ class SeasonDashboard(Toplevel):
                            font=(G._FUI, 9), fill="#1A1A1A")
             cv.create_text(pad, y, anchor="w", text=str(r["count"]),
                            font=(G._FSB, 10), fill="#6E543A")
+
+
+class AskWindow(Toplevel):
+    """مساعد «اسأل بياناتك»: سؤال عربي + جواب فوري محسوب من كشف الموسم."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.title("اسأل بياناتك")
+        self.configure(bg=G.BG)
+        self.geometry("720x580")
+        self.minsize(560, 460)
+        self.transient(parent)
+        try:
+            G.apply_window_icon(self)
+        except Exception:
+            pass
+        G.enable_minmax(self)
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(18, 14, 18, 6))
+        head.pack(fill=X)
+        ttk.Label(head, text="🔎 اسأل بياناتك", font=(G._FSB, 16),
+                  foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
+        ttk.Label(head, text=G.rtl("إجابات فورية من كشف الموسم — بلا إنترنت"),
+                  font=(G._FUI, 10), foreground=G.MUTED,
+                  background=G.BG).pack(side=RIGHT, padx=(0, 12))
+
+        row = ttk.Frame(self, style="Panel.TFrame", padding=(18, 12))
+        row.pack(fill=X)
+        self._q = StringVar()
+        ttk.Button(row, text=G.rtl("اسأل"), style="Primary.TButton",
+                   command=self._ask).pack(side=LEFT, padx=(0, 8))
+        entry = ttk.Entry(row, textvariable=self._q, font=(G._FUI, 13),
+                          justify="right")
+        entry.pack(side=RIGHT, fill=X, expand=True)
+        entry.bind("<Return>", lambda _e: self._ask())
+        G.install_entry_editing(entry)
+        entry.focus_set()
+        self._entry = entry
+
+        # منطقة النتيجة (تُعاد بناؤها مع كل سؤال)
+        self._body = ttk.Frame(self, style="Toolbar.TFrame", padding=(18, 8, 18, 16))
+        self._body.pack(fill=BOTH, expand=True)
+        self._render(assistant.answer("", self._trips(), self.app.records))
+
+    def _trips(self):
+        return self.app._visible_trips()
+
+    def _ask(self) -> None:
+        ans = assistant.answer(self._q.get(), self._trips(), self.app.records,
+                               season=self.app._season.get())
+        self._render(ans)
+
+    def _clear(self) -> None:
+        for w in self._body.winfo_children():
+            w.destroy()
+
+    def _render(self, ans: dict) -> None:
+        self._clear()
+        b = self._body
+        ttk.Label(b, text=G.rtl(ans.get("title", "")), font=(G._FUI, 11),
+                  foreground=G.BRONZE, background=G.BG).pack(anchor="e")
+        ttk.Label(b, text=G.rtl(ans.get("headline", "")), font=(G._FSB, 19),
+                  foreground=G.TEXT, background=G.BG, wraplength=640,
+                  justify="right").pack(anchor="e", pady=(2, 0))
+        if ans.get("note"):
+            ttk.Label(b, text=G.rtl(ans["note"]), font=(G._FUI, 10),
+                      foreground=G.MUTED, background=G.BG, wraplength=640,
+                      justify="right").pack(anchor="e", pady=(3, 0))
+
+        if ans.get("rows"):
+            self._table(b, ans["headers"], ans["rows"])
+        if ans.get("kind") == "help" or ans.get("examples"):
+            self._examples(b, ans.get("examples") or list(assistant.EXAMPLES))
+
+    def _table(self, parent, headers, rows) -> None:
+        wrap = ttk.Frame(parent, style="Panel.TFrame", padding=6)
+        wrap.pack(fill=BOTH, expand=True, pady=(14, 0))
+        cols = [f"c{i}" for i in range(len(headers))]
+        tv = ttk.Treeview(wrap, columns=cols, show="headings", height=12)
+        for c, h in zip(cols, headers):
+            tv.heading(c, text=G.rtl(h))
+            tv.column(c, anchor="e",
+                      width=260 if c == "c0" else 150, stretch=True)
+        for i, r in enumerate(rows):
+            tv.insert("", "end",
+                      values=[G.rtl(str(v)) for v in r],
+                      tags=("odd",) if i % 2 else ())
+        tv.tag_configure("odd", background=G.PANEL)
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=vs.set)
+        vs.pack(side=LEFT, fill=Y)
+        tv.pack(side=RIGHT, fill=BOTH, expand=True)
+
+    def _examples(self, parent, examples) -> None:
+        ttk.Label(parent, text=G.rtl("أمثلة — اضغط أيّها لتجربته:"),
+                  font=(G._FUI, 10), foreground=G.MUTED,
+                  background=G.BG).pack(anchor="e", pady=(16, 6))
+        chips = ttk.Frame(parent, style="Toolbar.TFrame")
+        chips.pack(fill=X)
+        for ex in examples:
+            ttk.Button(chips, text=G.rtl(ex), style="Ghost.TButton",
+                       command=lambda e=ex: self._run_example(e)
+                       ).pack(side=RIGHT, padx=4, pady=4)
+
+    def _run_example(self, ex: str) -> None:
+        self._q.set(ex)
+        self._ask()
 
 
 class TransportRequestsListWindow(Toplevel):
