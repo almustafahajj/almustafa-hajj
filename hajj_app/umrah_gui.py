@@ -4040,12 +4040,21 @@ class AskWindow(Toplevel):
             ttk.Button(bar, text=G.rtl("📱  تذكير المحدَّد عبر واتساب"),
                        style="Primary.TButton",
                        command=self._wa_selected).pack(side=RIGHT)
-            ttk.Button(bar, text=G.rtl("📋  نسخ أرقام المتأخرين"),
+            ttk.Button(bar, text=G.rtl("💰  متابعة كل المتأخرين"),
+                       style="Act.TButton",
+                       command=self._followup_all).pack(side=RIGHT, padx=(8, 0))
+            ttk.Button(bar, text=G.rtl("📋  نسخ الأرقام"),
                        style="Ghost.TButton",
                        command=self._copy_due_phones).pack(side=RIGHT, padx=(8, 0))
             ttk.Label(bar, text=G.rtl("انقر الاسم نقرتين للتذكير"),
                       font=(G._FUI, 9), foreground=G.MUTED,
                       background=G.BG).pack(side=RIGHT, padx=(0, 10))
+
+    def _followup_all(self) -> None:
+        """يفتح أداة متابعة التحصيل لكل المتأخرين مع تتبّع من ذُكِّر."""
+        recs = getattr(self, "_due_records", [])
+        if recs:
+            DueFollowupWindow(self, self.app, list(recs))
 
     def _copy_due_phones(self) -> None:
         """ينسخ أرقام كل المتأخرين بالصيغة الدولية إلى الحافظة (للبثّ الجماعي)."""
@@ -4111,6 +4120,156 @@ class AskWindow(Toplevel):
     def _run_example(self, ex: str) -> None:
         self._q.set(ex)
         self._ask()
+
+
+class DueFollowupWindow(Toplevel):
+    """متابعة تحصيل المتأخرين: قائمة بكلٍّ منهم مع تذكير واتساب وتتبّع من ذُكِّر."""
+
+    _MARK = {"pending": "⏳ بانتظار", "done": "✓ ذُكِّر", "skip": "⤼ مؤجَّل"}
+
+    def __init__(self, parent, app, records: list) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.records = records
+        self.state = ["pending"] * len(records)
+        self.title("متابعة تحصيل المتأخرين")
+        self.configure(bg=G.BG)
+        self.geometry("760x560")
+        self.minsize(600, 460)
+        self.transient(parent)
+        try:
+            G.apply_window_icon(self)
+        except Exception:
+            pass
+        G.enable_minmax(self)
+
+        self._names = {t.code: (t.name or t.code) for t in app.trips}
+        self._cc = str((app._settings or {}).get("whatsapp_cc", "971")).strip() or "971"
+        co = app._company_dict() or {}
+        self._company = co.get("name_ar") or "المصطفى للحج والعمرة"
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(18, 14, 18, 6))
+        head.pack(fill=X)
+        ttk.Label(head, text="💰 متابعة تحصيل المتأخرين", font=(G._FSB, 16),
+                  foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
+        self._prog = ttk.Label(head, text="", font=(G._FUI, 11),
+                               foreground=G.BRONZE, background=G.BG)
+        self._prog.pack(side=LEFT)
+
+        total = sum(assistant._rem(r) for r in records)
+        band = ttk.Frame(self, style="Panel.TFrame", padding=(18, 8))
+        band.pack(fill=X)
+        ttk.Label(band, text=G.rtl(
+            f"{len(records)} معتمراً متأخّراً · إجمالي المتبقّي "
+            f"{format_amount(total)} AED"),
+            font=(G._FUI, 11), foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
+
+        body = ttk.Frame(self, style="Panel.TFrame", padding=6)
+        body.pack(fill=BOTH, expand=True, padx=16, pady=(6, 10))
+        cols = ("name", "prog", "rem", "phone", "state")
+        heads = ("المعتمر", "البرنامج", "المتبقّي", "الهاتف", "الحالة")
+        widths = (190, 155, 105, 115, 140)
+        tv = ttk.Treeview(body, columns=cols, show="headings", height=11)
+        for c, h, w in zip(cols, heads, widths):
+            tv.heading(c, text=G.rtl(h))
+            tv.column(c, anchor="e", width=w, stretch=(c in ("name", "prog")))
+        tv.tag_configure("done", background=G.SUCCESS_BG if hasattr(G, "SUCCESS_BG")
+                         else "#E6F1E9")
+        tv.tag_configure("skip", background=G.WARN_BG if hasattr(G, "WARN_BG")
+                         else "#FBF0DC")
+        vs = ttk.Scrollbar(body, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=vs.set)
+        vs.pack(side=LEFT, fill=Y)
+        tv.pack(side=RIGHT, fill=BOTH, expand=True)
+        tv.bind("<Double-1>", lambda _e: self._remind())
+        self._tv = tv
+        self._fill()
+
+        actions = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 0, 16, 14))
+        actions.pack(fill=X)
+        ttk.Button(actions, text=G.rtl("📱  تذكير المحدَّد"),
+                   style="Primary.TButton", command=self._remind).pack(side=RIGHT)
+        ttk.Button(actions, text=G.rtl("⤼  تأجيل"),
+                   style="Ghost.TButton", command=self._skip).pack(side=RIGHT, padx=(8, 0))
+        ttk.Button(actions, text=G.rtl("⏭  التالي غير المُذكَّر"),
+                   style="Act.TButton", command=self._next_pending).pack(side=RIGHT, padx=(8, 0))
+        ttk.Button(actions, text=G.rtl("إغلاق"), style="Ghost.TButton",
+                   command=self.destroy).pack(side=LEFT)
+        self._select_index(0)
+
+    def _fill(self) -> None:
+        self._tv.delete(*self._tv.get_children())
+        self._iids = []
+        for i, r in enumerate(self.records):
+            iid = self._tv.insert("", "end", values=[
+                G.rtl(getattr(r, "full_name_ar", "") or "—"),
+                G.rtl(self._names.get(getattr(r, "trip", ""), "—")),
+                G.rtl(f"{format_amount(assistant._rem(r))} AED"),
+                getattr(r, "phone", "") or "—",
+                G.rtl(self._MARK[self.state[i]]),
+            ], tags=(self.state[i],) if self.state[i] != "pending" else ())
+            self._iids.append(iid)
+        done = self.state.count("done")
+        self._prog.configure(text=G.rtl(f"ذُكِّر {done} من {len(self.records)}"))
+
+    def _sel_index(self):
+        sel = self._tv.selection()
+        return self._iids.index(sel[0]) if sel and sel[0] in self._iids else None
+
+    def _select_index(self, i: int) -> None:
+        if 0 <= i < len(self._iids):
+            self._tv.selection_set(self._iids[i])
+            self._tv.see(self._iids[i])
+
+    def _remind(self) -> None:
+        i = self._sel_index()
+        if i is None:
+            messagebox.showinfo("متابعة التحصيل",
+                                "اختر معتمراً من القائمة.", parent=self)
+            return
+        rec = self.records[i]
+        prog = self._names.get(getattr(rec, "trip", ""), "")
+        link = assistant.due_wa_link(rec, prog, self._company, self._cc)
+        if not link:
+            messagebox.showwarning(
+                "متابعة التحصيل",
+                f"لا يوجد رقم صالح للمعتمر «{getattr(rec, 'full_name_ar', '')}».",
+                parent=self)
+            return
+        try:
+            G.open_in_viewer(link)
+        except OSError as exc:
+            messagebox.showerror("متابعة التحصيل", str(exc), parent=self)
+            return
+        self.state[i] = "done"
+        self._fill()
+        self._next_pending()
+
+    def _skip(self) -> None:
+        i = self._sel_index()
+        if i is None:
+            return
+        if self.state[i] != "done":
+            self.state[i] = "skip"
+        self._fill()
+        self._next_pending()
+
+    def _next_pending(self) -> None:
+        start = self._sel_index()
+        n = len(self.records)
+        if start is None:
+            start = -1
+        for step in range(1, n + 1):
+            j = (start + step) % n
+            if self.state[j] == "pending":
+                self._select_index(j)
+                return
+        # لا يوجد متبقٍّ
+        if all(s != "pending" for s in self.state):
+            done = self.state.count("done")
+            messagebox.showinfo(
+                "اكتملت المتابعة",
+                f"تمّت متابعة الجميع — ذُكِّر {done} من {n}.", parent=self)
 
 
 class TransportRequestsListWindow(Toplevel):
