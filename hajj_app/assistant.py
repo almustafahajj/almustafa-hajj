@@ -29,6 +29,16 @@ def _norm(s) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
+# حقل الربط بين المعتمر/الحاج وبرنامجه: «trip» في العمرة، «program» في الحج.
+# يُضبط عند كل نداء لـ answer()، والواجهة أحاديّة الخيط فلا تعارض.
+_GROUP = "trip"
+
+
+def _pilgrims(records: list, code: str) -> list:
+    """الحجّاج/المعتمرون المنتمون لبرنامجٍ حسب حقل الربط الحالي (_GROUP)."""
+    return [r for r in records if str(getattr(r, _GROUP, "") or "") == code]
+
+
 def _has(q: str, *words) -> bool:
     return any(w in q for w in words)
 
@@ -78,7 +88,7 @@ def _scope(q: str, trips: list, records: list):
     if not progs:
         return records, trips, ""
     codes = {t.code for t in progs}
-    recs = [r for r in records if str(getattr(r, "trip", "") or "") in codes]
+    recs = [r for r in records if str(getattr(r, _GROUP, "") or "") in codes]
     label = "، ".join(t.name or t.code for t in progs)
     return recs, progs, label
 
@@ -111,8 +121,37 @@ def _help():
             "rows": None, "examples": list(EXAMPLES)}
 
 
-def answer(question: str, trips: list, records: list, *, season: str = "") -> dict:
-    """يحلّل السؤال ويعيد جواباً موحّداً محسوباً من بيانات الموسم."""
+def answer(question: str, trips: list, records: list, *, season: str = "",
+           group_attr: str = "trip") -> dict:
+    """يحلّل السؤال ويعيد جواباً موحّداً محسوباً من بيانات الموسم.
+
+    ``trips`` قائمة برامج (لكلٍّ code/name/capacity/makkah_hotel/madinah_hotel/
+    depart_date). ``group_attr`` حقل ربط المعتمر/الحاج ببرنامجه: «trip» في
+    العمرة و«program» في الحج. في وضع الحج تُبدّل «معتمر» بـ«حاج» في النصوص.
+    """
+    global _GROUP
+    _GROUP = group_attr
+    out = _answer_core(question, trips, records, season=season)
+    if group_attr != "trip" and isinstance(out, dict):
+        _relabel(out)
+    return out
+
+
+def _relabel(out: dict) -> None:
+    """يبدّل مصطلحات العمرة إلى الحج في نصوص الجواب (وضع الحج)."""
+    def sub(s):
+        return (str(s).replace("المعتمرين", "الحجّاج").replace("المعتمر", "الحاج")
+                .replace("معتمري", "حجّاج").replace("معتمراً", "حاجّاً")
+                .replace("معتمر", "حاج"))
+    for k in ("title", "headline", "note"):
+        if isinstance(out.get(k), str):
+            out[k] = sub(out[k])
+    if out.get("headers"):
+        out["headers"] = [sub(h) for h in out["headers"]]
+
+
+def _answer_core(question: str, trips: list, records: list, *,
+                 season: str = "") -> dict:
     q = _norm(question)
     if not q:
         return _help()
@@ -127,7 +166,7 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
             "ناقص", "عليهم"):
         late = [r for r in scoped if _rem(r) > 0.5]
         late.sort(key=_rem, reverse=True)
-        rows = [[_name(r), names.get(getattr(r, "trip", ""), "—"),
+        rows = [[_name(r), names.get(getattr(r, _GROUP, ""), "—"),
                  _aed(_rem(r))] for r in late]
         total = sum(_rem(r) for r in late)
         out = _stat(
@@ -190,7 +229,7 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
         used = free = cap = 0
         for t in (sprogs if slabel else trips):
             c = int(parse_amount(t.capacity) or 0)
-            n = len(umrah.trip_pilgrims(records, t.code))
+            n = len(_pilgrims(records, t.code))
             cap += c
             used += n
             free += max(c - n, 0)
@@ -243,7 +282,7 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
         depart = {t.code: t.depart_date for t in trips}
         flagged = []
         for r in scoped:
-            code = getattr(r, "trip", "")
+            code = getattr(r, _GROUP, "")
             if umrah.passport_expired(r):
                 status = "منتهٍ"
             elif umrah.passport_expiry_soon(r, depart.get(code, ""), 6):
@@ -283,7 +322,7 @@ def answer(question: str, trips: list, records: list, *, season: str = "") -> di
     # 12) بطاقة معتمرٍ بعينه (بالاسم) — إن ذُكر اسم يطابق أحد المعتمرين
     who = _match_pilgrim(question, scoped)
     if who is not None:
-        code = getattr(who, "trip", "")
+        code = getattr(who, _GROUP, "")
         rem = _rem(who)
         rows = [["البرنامج", names.get(code, "—")],
                 ["قيمة البرنامج", _aed(_val(who))],
@@ -357,7 +396,7 @@ def _rank_programs(trips: list, records: list) -> list:
     """البرامج مرتّبة تنازلياً حسب نسبة التحصيل (يتجاهل ما بلا قيمة)."""
     out = []
     for t in trips:
-        pil = umrah.trip_pilgrims(records, t.code)
+        pil = _pilgrims(records, t.code)
         total = sum(_val(r) for r in pil)
         paid = sum(_paid(r) for r in pil)
         if total <= 0:

@@ -906,6 +906,9 @@ class HajjApp:
 
         # 💰 المالية والمحاسبة
         fin_mb = self._menubutton(bar, "المالية والمحاسبة  ▾", [
+            ("🔎  اسأل بياناتك (أسئلة بالعربية)", self.ask_data),
+            ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
+            None,
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📈  الرسوم البيانية", self.do_charts),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
@@ -2425,6 +2428,27 @@ class HajjApp:
     def do_dashboard(self) -> None:
         """يفتح لوحة التحكم الرئيسية (مؤشّرات سريعة قابلة للنقر)."""
         DashboardDialog(self.root, self)
+
+    def ask_data(self) -> None:
+        """يفتح مساعد «اسأل بياناتك» لأسئلة موسم الحج بالعربية (مكيّف للحج)."""
+        from . import umrah_gui as ug
+        ug.AskWindow(self.root, ug.HajjCtx(self))
+
+    def open_collections(self) -> None:
+        """يفتح متابعة تحصيل الحجّاج المتأخرين مباشرةً."""
+        from . import umrah_gui as ug
+        from .fields import parse_amount as _pa
+
+        def rem(r):
+            return (_pa(r.program_value) or 0) - (_pa(r.paid_amount) or 0)
+        late = sorted((r for r in self.records if rem(r) > 0.5),
+                      key=rem, reverse=True)
+        if not late:
+            messagebox.showinfo("متابعة التحصيل",
+                                "لا متأخرات — الحمد لله، الجميع سدّد بالكامل.",
+                                parent=self.root)
+            return
+        ug.DueFollowupWindow(self.root, ug.HajjCtx(self), late)
 
     def do_about(self) -> None:
         """يفتح نافذة «حول البرنامج»."""

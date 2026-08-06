@@ -643,7 +643,7 @@ class UmrahApp:
 
     def ask_data(self) -> None:
         """يفتح مساعد «اسأل بياناتك» للإجابة عن أسئلة الموسم بالعربية."""
-        AskWindow(self.root, self)
+        AskWindow(self.root, UmrahCtx(self))
 
     def open_collections(self) -> None:
         """يفتح متابعة التحصيل لكل متأخّري الموسم المعروض مباشرةً."""
@@ -660,7 +660,7 @@ class UmrahApp:
                                 "لا متأخرات — الحمد لله، الجميع سدّد بالكامل.",
                                 parent=self.root)
             return
-        DueFollowupWindow(self.root, self, late)
+        DueFollowupWindow(self.root, UmrahCtx(self), late)
 
     # ---- كشوف ومستندات البرنامج المحدَّد (من الواجهة الرئيسية) ----
     def _company_dict(self):
@@ -3954,12 +3954,116 @@ class SeasonDashboard(Toplevel):
                            font=(G._FSB, 10), fill="#6E543A")
 
 
+class _ProgAdapter:
+    """يمثّل برنامجاً بواجهة موحّدة يفهمها المساعد (code/name/سعة/فنادق/تاريخ)."""
+
+    def __init__(self, name, program=None):
+        self.code = name
+        self.name = name
+        self.capacity = str(getattr(program, "capacity", "") or "") if program else ""
+        self.makkah_hotel = getattr(program, "makkah_hotel", "") if program else ""
+        self.madinah_hotel = getattr(program, "madinah_hotel", "") if program else ""
+        self.depart_date = (getattr(program, "departure_date", "")
+                            or getattr(program, "depart_date", "")) if program else ""
+
+
+def _hajj_programs(app) -> list:
+    """برامج الحج ككائنات موحّدة للمساعد (برامج الحملة + أي برنامج في السجلّات)."""
+    try:
+        from .programs import PROGRAM_NAMES, load_programs
+        progs = load_programs(app._settings) if getattr(app, "_settings", None) else []
+        pmap = dict(zip(PROGRAM_NAMES, progs))
+        names = list(PROGRAM_NAMES)
+    except Exception:
+        pmap, names = {}, []
+    for r in getattr(app, "records", []) or []:
+        pn = str(getattr(r, "program", "") or "").strip()
+        if pn and pn not in names:
+            names.append(pn)
+    return [_ProgAdapter(n, pmap.get(n)) for n in names]
+
+
+class _AssistCtx:
+    """جسر بين المساعد والنافذة الرئيسية — يوحّد الاختلاف بين العمرة والحج."""
+
+    group_attr = "trip"
+
+    def __init__(self, app):
+        self.app = app
+
+    @property
+    def records(self):
+        return self.app.records
+
+    @property
+    def settings(self):
+        return getattr(self.app, "_settings", {}) or {}
+
+    def programs(self):
+        return []
+
+    def season(self):
+        return ""
+
+    def company(self):
+        return None
+
+    def save(self):
+        self.app.save()
+
+    def reload(self):
+        try:
+            self.app._reload()
+        except Exception:
+            pass
+
+
+class UmrahCtx(_AssistCtx):
+    group_attr = "trip"
+
+    def programs(self):
+        return self.app._visible_trips()
+
+    def season(self):
+        return self.app._season.get()
+
+    def company(self):
+        return self.app._company_dict()
+
+
+class HajjCtx(_AssistCtx):
+    group_attr = "program"
+
+    def programs(self):
+        return _hajj_programs(self.app)
+
+    def season(self):
+        try:
+            return self.app.season_year.get()
+        except Exception:
+            return ""
+
+    def company(self):
+        co = self.settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def save(self):
+        self.app.save_data()
+
+    def reload(self):
+        try:
+            self.app.refresh()
+        except Exception:
+            pass
+
+
 class AskWindow(Toplevel):
     """مساعد «اسأل بياناتك»: سؤال عربي + جواب فوري محسوب من كشف الموسم."""
 
-    def __init__(self, parent, app) -> None:
+    def __init__(self, parent, ctx) -> None:
         super().__init__(parent)
-        self.app = app
+        self.ctx = ctx
+        self.app = getattr(ctx, "app", ctx)
         self.title("اسأل بياناتك")
         self.configure(bg=G.BG)
         self.geometry("720x580")
@@ -3995,14 +4099,14 @@ class AskWindow(Toplevel):
         # منطقة النتيجة (تُعاد بناؤها مع كل سؤال)
         self._body = ttk.Frame(self, style="Toolbar.TFrame", padding=(18, 8, 18, 16))
         self._body.pack(fill=BOTH, expand=True)
-        self._render(assistant.answer("", self._trips(), self.app.records))
-
-    def _trips(self):
-        return self.app._visible_trips()
+        self._render(assistant.answer(
+            "", self.ctx.programs(), self.ctx.records,
+            group_attr=self.ctx.group_attr))
 
     def _ask(self) -> None:
-        ans = assistant.answer(self._q.get(), self._trips(), self.app.records,
-                               season=self.app._season.get())
+        ans = assistant.answer(self._q.get(), self.ctx.programs(),
+                               self.ctx.records, season=self.ctx.season(),
+                               group_attr=self.ctx.group_attr)
         self._render(ans)
 
     def _clear(self) -> None:
@@ -4113,12 +4217,12 @@ class AskWindow(Toplevel):
         """يفتح أداة متابعة التحصيل لكل المتأخرين مع تتبّع من ذُكِّر."""
         recs = getattr(self, "_due_records", [])
         if recs:
-            DueFollowupWindow(self, self.app, list(recs))
+            DueFollowupWindow(self, self.ctx, list(recs))
 
     def _copy_due_phones(self) -> None:
         """ينسخ أرقام كل المتأخرين بالصيغة الدولية إلى الحافظة (للبثّ الجماعي)."""
         from .whatsapp import to_intl
-        cc = str((self.app._settings or {}).get("whatsapp_cc", "971")).strip() or "971"
+        cc = str(self.ctx.settings.get("whatsapp_cc", "971")).strip() or "971"
         nums, skipped = [], 0
         for r in getattr(self, "_due_records", []):
             n = to_intl(getattr(r, "phone", ""), cc)
@@ -4147,11 +4251,11 @@ class AskWindow(Toplevel):
         rec = self._iid_rec.get(sel[0])
         if rec is None:
             return
-        code = getattr(rec, "trip", "")
-        prog = next((t.name or t.code for t in self.app.trips
+        code = getattr(rec, self.ctx.group_attr, "")
+        prog = next((t.name or t.code for t in self.ctx.programs()
                      if t.code == code), "")
-        co = self.app._company_dict() or {}
-        cc = str((self.app._settings or {}).get("whatsapp_cc", "971")).strip() or "971"
+        co = self.ctx.company() or {}
+        cc = str(self.ctx.settings.get("whatsapp_cc", "971")).strip() or "971"
         link = assistant.due_wa_link(rec, prog,
                                      co.get("name_ar") or "المصطفى للحج والعمرة", cc)
         if not link:
@@ -4197,15 +4301,15 @@ class DueFollowupWindow(Toplevel):
     _MARK = {"pending": "⏳ بانتظار", "done": "✓ ذُكِّر", "skip": "⤼ مؤجَّل",
              "paid": "💵 سُدِّد"}
 
-    def __init__(self, parent, app, records: list) -> None:
+    def __init__(self, parent, ctx, records: list) -> None:
         super().__init__(parent)
-        self.app = app
+        self.ctx = ctx
         self.records = records
         self.state = ["pending"] * len(records)
         self.title("متابعة تحصيل المتأخرين")
         self.configure(bg=G.BG)
-        self.geometry("760x560")
-        self.minsize(600, 460)
+        self.geometry("820x560")
+        self.minsize(640, 460)
         self.transient(parent)
         try:
             G.apply_window_icon(self)
@@ -4213,9 +4317,9 @@ class DueFollowupWindow(Toplevel):
             pass
         G.enable_minmax(self)
 
-        self._names = {t.code: (t.name or t.code) for t in app.trips}
-        self._cc = str((app._settings or {}).get("whatsapp_cc", "971")).strip() or "971"
-        co = app._company_dict() or {}
+        self._names = {t.code: (t.name or t.code) for t in ctx.programs()}
+        self._cc = str(ctx.settings.get("whatsapp_cc", "971")).strip() or "971"
+        co = ctx.company() or {}
         self._company = co.get("name_ar") or "المصطفى للحج والعمرة"
 
         head = ttk.Frame(self, style="Toolbar.TFrame", padding=(18, 14, 18, 6))
@@ -4273,13 +4377,13 @@ class DueFollowupWindow(Toplevel):
     def _fill(self) -> None:
         self._tv.delete(*self._tv.get_children())
         self._iids = []
-        settings = self.app._settings or {}
+        settings = self.ctx.settings
         for i, r in enumerate(self.records):
             last = umrah.last_reminded(settings, r)
             last_txt = "اليوم" if last == self._today else (last or "—")
             iid = self._tv.insert("", "end", values=[
                 G.rtl(getattr(r, "full_name_ar", "") or "—"),
-                G.rtl(self._names.get(getattr(r, "trip", ""), "—")),
+                G.rtl(self._names.get(getattr(r, self.ctx.group_attr, ""), "—")),
                 G.rtl(f"{format_amount(assistant._rem(r))} AED"),
                 getattr(r, "phone", "") or "—",
                 G.rtl(last_txt),
@@ -4310,7 +4414,7 @@ class DueFollowupWindow(Toplevel):
                                 "اختر معتمراً من القائمة.", parent=self)
             return
         rec = self.records[i]
-        prog = self._names.get(getattr(rec, "trip", ""), "")
+        prog = self._names.get(getattr(rec, self.ctx.group_attr, ""), "")
         link = assistant.due_wa_link(rec, prog, self._company, self._cc)
         if not link:
             messagebox.showwarning(
@@ -4324,9 +4428,9 @@ class DueFollowupWindow(Toplevel):
             messagebox.showerror("متابعة التحصيل", str(exc), parent=self)
             return
         self.state[i] = "done"
-        umrah.set_reminded(self.app._settings, rec, self._today)   # سجلّ دائم
+        umrah.set_reminded(self.ctx.settings, rec, self._today)   # سجلّ دائم
         try:
-            save_settings(self.app._settings)
+            save_settings(self.ctx.settings)
         except OSError:
             pass
         self._fill()
@@ -4387,9 +4491,9 @@ class DueFollowupWindow(Toplevel):
                                  "amount": format_amount(amt),
                                  "method": "", "note": "تحصيل بعد تذكير"})
             rec.paid_amount = format_amount(payment_total(rec))
-            self.app.save()
+            self.ctx.save()
             try:
-                self.app._reload()
+                self.ctx.reload()
             except Exception:
                 pass
             if assistant._rem(rec) <= 0.5:
