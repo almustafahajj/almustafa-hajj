@@ -373,6 +373,7 @@ class HajjApp:
         self._build_styles()
         self._build_header()
         self._build_toolbar()
+        self._build_kpi_band()
         self._build_filters()
         self._build_table()
         self._build_status()
@@ -1035,6 +1036,30 @@ class HajjApp:
         ("birth_date", "تاريخ الميلاد"),
         ("remaining_amount", "المبلغ المتبقي"),
     )
+
+    def _build_kpi_band(self) -> None:
+        """شريط مؤشّرات موسم الحج الحيّ (بطاقات) أسفل شريط الأدوات."""
+        wrap = ttk.Frame(self.root, style="Toolbar.TFrame",
+                         padding=(16, 2, 16, 8))
+        wrap.pack(fill=X)
+        self._kpi_lbls = {}
+        specs = [("hujjaj", "👤 الحجّاج", TEXT, False),
+                 ("paid", "💰 المحصّل", SUCCESS_FG, False),
+                 ("remaining", "⏳ المتبقّي", TEXT, False),
+                 ("late", "⏳ المتأخرون", DANGER, True)]
+        for key, label, color, clickable in specs:
+            card = ttk.Frame(wrap, style="Panel.TFrame", padding=(14, 8))
+            card.pack(side=RIGHT, fill=X, expand=True, padx=(8, 0))
+            ttk.Label(card, text=rtl(label), font=(_FUI, 9),
+                      foreground=MUTED, background=PANEL).pack(anchor="e")
+            val = ttk.Label(card, text="—", font=(_FSB, 18),
+                            foreground=color, background=PANEL)
+            val.pack(anchor="e")
+            self._kpi_lbls[key] = val
+            if clickable:                       # المتأخرون: نقرة تفتح المتابعة
+                for w in (card, val):
+                    w.configure(cursor="hand2")
+                    w.bind("<Button-1>", lambda _e: self.open_collections())
 
     def _build_filters(self) -> None:
         outer = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 0, 16, 8))
@@ -1858,14 +1883,22 @@ class HajjApp:
         else:
             self.count_label.configure(text=f"إجمالي الحجاج: {total}")
 
-        # إحصاء مالي دائم في شريط الحالة
+        # إحصاء مالي دائم (شريط الحالة + بطاقات المؤشّرات)
+        from .fields import format_amount
+        from .stats import financial_summary
+        fin = financial_summary(self.records)
         if hasattr(self, "_fin_label"):
-            from .fields import format_amount
-            from .stats import financial_summary
-            fin = financial_summary(self.records)
             self._fin_label.configure(
                 text=(f"المحصّل {format_amount(fin.paid) or 0}  •  "
                       f"المتبقّي {format_amount(fin.remaining) or 0}"))
+        if hasattr(self, "_kpi_lbls"):
+            pct = f"{fin.collected_percent:.0f}٪" if fin.total else "—"
+            self._kpi_lbls["hujjaj"].configure(text=str(total))
+            self._kpi_lbls["paid"].configure(
+                text=f"{format_amount(fin.paid) or 0}  ({pct})")
+            self._kpi_lbls["remaining"].configure(
+                text=format_amount(fin.remaining) or "0")
+            self._kpi_lbls["late"].configure(text=str(fin.unpaid_count))
 
         # حالة فارغة: نُظهر اللوحة الترحيبية فوق الجدول حين لا سجلات
         if hasattr(self, "_empty"):
