@@ -34,9 +34,11 @@ from .pdf_io import (
     QUOTE_NOTES, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE,
     QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
     TREQ_BOOK_HEADS, TREQ_FLIGHT_HEADS, TREQ_HONORIFICS, TREQ_MOVE_HEADS,
-    VOUCHER_CAR_TYPES, VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
+    VOUCHER_CAR_TYPES, VOUCHER_CITY_OPTIONS, VOUCHER_CITY_OPTIONS_EN,
+    VOUCHER_ROOM_COUNTS, VOUCHER_ROOM_TYPES, VOUCHER_ROOM_TYPES_EN,
+    VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
     VOUCHER_VIEW_OPTIONS, build_quotation_data, build_transport_request_data,
-    build_voucher_data,
+    build_voucher_data, normalize_voucher_stay,
     export_airline_pdf, export_group_pricing_pdf, export_umrah_cards_pdf,
     export_umrah_contract_pdf, export_umrah_finance_pdf, export_umrah_invoice_pdf,
     export_umrah_pdf,
@@ -2461,10 +2463,11 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
         lf.columnconfigure(3, weight=1)
 
     def _build_stays(self, data: dict) -> None:
-        lf = self._section("الإقامات (المدينة / الفندق / الغرفة / الإطلالة / "
-                           "الدخول / المغادرة / الليالي / الوجبات)")
+        lf = self._section("الإقامات (المدينة / الفندق / نوع الغرفة / عدد الغرف / "
+                           "الإطلالة / الدخول / المغادرة / الليالي / الوجبات)")
         self._stay_head = lf
-        self._stay_widths = [10, 15, 9, 8, 10, 10, 5, 11]
+        # عرض كل عمود بالبكسل ليتناسب مع القوائم والتقويم المنبثق
+        self._stay_widths = [13, 16, 11, 8, 10, 12, 12, 5, 11]
         hdr = ttk.Frame(lf)
         hdr.pack(fill=X)
         for w, h in zip(self._stay_widths, VOUCHER_STAY_HEADS):
@@ -2480,21 +2483,48 @@ class VoucherEditorDialog(Toplevel, _EditorMixin):
                                                               pady=(4, 0))
 
     def _add_stay_row(self, values=None) -> None:
-        values = list(values or []) + [""] * 8
+        # ترحيل الصفوف القديمة (٨ أعمدة) إلى ٩ بإدراج «عدد الغرف»
+        values = normalize_voucher_stay(values)
+        en = self._lang == "en"
+        cities = VOUCHER_CITY_OPTIONS_EN if en else VOUCHER_CITY_OPTIONS
+        room_types = VOUCHER_ROOM_TYPES_EN if en else VOUCHER_ROOM_TYPES
         fr = ttk.Frame(self._stay_box)
         fr.pack(fill=X, pady=1)
         cells = []
-        for i, w in enumerate(self._stay_widths):
-            var = StringVar(value=str(values[i] or ""))
-            if i == 3:      # الإطلالة → قائمة منسدلة
-                ttk.Combobox(fr, textvariable=var, width=w - 1,
+        w = self._stay_widths
+        for i in range(9):
+            if i == 0:          # المدينة → قائمة منسدلة (مكة/المدينة)
+                var = StringVar(value=str(values[i] or ""))
+                ttk.Combobox(fr, textvariable=var, width=w[i], justify="right",
+                             values=list(cities)).pack(side=RIGHT, padx=1)
+                cells.append(var)
+            elif i == 2:        # نوع الغرفة → قائمة منسدلة
+                var = StringVar(value=str(values[i] or ""))
+                ttk.Combobox(fr, textvariable=var, width=w[i], justify="right",
+                             values=list(room_types)).pack(side=RIGHT, padx=1)
+                cells.append(var)
+            elif i == 3:        # عدد الغرف → قائمة منسدلة قابلة للكتابة
+                var = StringVar(value=str(values[i] or ""))
+                ttk.Combobox(fr, textvariable=var, width=w[i], justify="center",
+                             values=list(VOUCHER_ROOM_COUNTS)).pack(
+                    side=RIGHT, padx=1)
+                cells.append(var)
+            elif i == 4:        # الإطلالة → قائمة منسدلة
+                var = StringVar(value=str(values[i] or ""))
+                ttk.Combobox(fr, textvariable=var, width=w[i] - 1,
                              state="readonly", justify="center",
                              values=list(VOUCHER_VIEW_OPTIONS)).pack(
                     side=RIGHT, padx=1)
-            else:
-                ttk.Entry(fr, textvariable=var, width=w, justify="right").pack(
-                    side=RIGHT, padx=1)
-            cells.append(var)
+                cells.append(var)
+            elif i in (5, 6):   # الدخول/المغادرة → تقويم منبثق
+                dp = DatePicker(fr, iso=str(values[i] or ""), width=w[i] - 3)
+                dp.pack(side=RIGHT, padx=1)
+                cells.append(dp)
+            else:               # الفندق/الليالي/الوجبات → إدخال نصّي
+                var = StringVar(value=str(values[i] or ""))
+                ttk.Entry(fr, textvariable=var, width=w[i],
+                          justify="right").pack(side=RIGHT, padx=1)
+                cells.append(var)
         entry = [fr, cells]
         ttk.Button(fr, text="حذف", width=5,
                    command=lambda: self._del_row(self._stay_rows, entry)).pack(

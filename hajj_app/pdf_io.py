@@ -9,8 +9,11 @@
 from __future__ import annotations
 
 import io
+import re
 from datetime import date
 from pathlib import Path
+
+_re_iso = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -2744,7 +2747,9 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
             n = 0
         ci = cur
         cout = (cur + timedelta(days=n)) if (cur and n) else None
-        stays.append([label, hotel, rec.room_type or "", "",
+        # [المدينة، الفندق، نوع الغرفة، عدد الغرف، الإطلالة، الدخول، المغادرة،
+        #  الليالي، الوجبات]
+        stays.append([label, hotel, rec.room_type or "", "1", "",
                       fmt(ci), fmt(cout), str(n or ""), meals])
         cur = cout or cur
 
@@ -2788,15 +2793,36 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
     }
 
 
-VOUCHER_STAY_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "الإطلالة", "الدخول",
-                      "المغادرة", "الليالي", "الوجبات")
-VOUCHER_STAY_HEADS_EN = ("City", "Hotel", "Room Type", "View", "Check-in",
-                         "Check-out", "Nights", "Meals")
+VOUCHER_STAY_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "عدد الغرف", "الإطلالة",
+                      "الدخول", "المغادرة", "الليالي", "الوجبات")
+VOUCHER_STAY_HEADS_EN = ("City", "Hotel", "Room Type", "Rooms", "View",
+                         "Check-in", "Check-out", "Nights", "Meals")
 VOUCHER_TRANSPORT_HEADS = ("نوع السيارة", "الموديل", "الوجهة")
 VOUCHER_TRANSPORT_HEADS_EN = ("Car Type", "Model", "Destination")
 # خيارات القوائم المنسدلة في محرّر الفاوتشر
 VOUCHER_VIEW_OPTIONS = ("", "City", "Haram", "P. Haram", "Kaaba", "P. Kaaba")
 VOUCHER_CAR_TYPES = ("FORD", "GMC", "BMW")
+VOUCHER_ROOM_TYPES = ("", "مفرد", "ثنائي", "ثلاثي", "رباعي",
+                      "جناح غرفة وصالة", "جناح غرفتين وصالة")
+VOUCHER_ROOM_TYPES_EN = ("", "Single", "Double", "Triple", "Quad",
+                         "1BR Suite", "2BR Suite")
+VOUCHER_ROOM_COUNTS = ("",) + tuple(str(i) for i in range(1, 21))
+VOUCHER_CITY_OPTIONS = ("", "مكة المكرّمة", "المدينة المنوّرة")
+VOUCHER_CITY_OPTIONS_EN = ("", "Makkah", "Madinah")
+
+# ترتيب أعمدة الإقامة الجديد: أُدرج «عدد الغرف» بعد «نوع الغرفة» (الفهرس 3).
+# الصفوف القديمة (٨ أعمدة) تُرحَّل بإدراج خانة فارغة في موضع عدد الغرف.
+_VOUCHER_STAY_COLS = 9
+
+
+def normalize_voucher_stay(row) -> list:
+    """يوحّد صفّ إقامة إلى ٩ أعمدة، مُرحّلاً الصفوف القديمة (٨ أعمدة)."""
+    row = [str(x or "") for x in list(row or [])]
+    if len(row) == 8:                     # صيغة قديمة بلا «عدد الغرف»
+        row = row[:3] + [""] + row[3:]    # أدرج عدد الغرف بعد نوع الغرفة
+    if len(row) < _VOUCHER_STAY_COLS:
+        row = row + [""] * (_VOUCHER_STAY_COLS - len(row))
+    return row[:_VOUCHER_STAY_COLS]
 
 
 def voucher_car_models() -> list:
@@ -3201,11 +3227,17 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         LB = {"vno": "رقم الفاوتشر", "date": "التاريخ", "guest": "اسم الضيف",
               "booking": "رقم الحجز", "program": "البرنامج", "name2": "Guest name"}
         g_main, g_second = guest_ar, guest_en
-    meta_rows = [
-        [(LB["vno"], number), (LB["date"], ltr(date_str))],
-        [(LB["guest"], g_main), (LB["booking"], data.get("booking_no") or "—")],
-        [(LB["program"], data.get("program") or "—"), (LB["name2"], g_second)],
-    ]
+    # أزواج (عنوان، قيمة) — يُدرَج «البرنامج» فقط إن لم يكن فارغاً (قابل للإلغاء)
+    pairs = [(LB["vno"], number), (LB["date"], ltr(date_str)),
+             (LB["guest"], g_main),
+             (LB["booking"], data.get("booking_no") or "—")]
+    _prog = str(data.get("program") or "").strip()
+    if _prog:
+        pairs.append((LB["program"], _prog))
+    pairs.append((LB["name2"], g_second))
+    meta_rows = [pairs[i:i + 2] for i in range(0, len(pairs), 2)]
+    if meta_rows and len(meta_rows[-1]) == 1:
+        meta_rows[-1].append(("", ""))
     lw = [W * 0.16, W * 0.34, W * 0.16, W * 0.34]     # عرض منطقي (عنوان/قيمة)
     mcw = rev(lw)
     meta_data = []
@@ -3274,10 +3306,21 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     story.append(section("تفاصيل الإقامة", "Accommodation"))
     story.append(Spacer(1, 4))
     stay_heads = list(VOUCHER_STAY_HEADS_EN if L else VOUCHER_STAY_HEADS)
-    stay_vals = [[str(x or "") for x in list(r)[:8]] + [""] * (8 - len(r))
-                 for r in data.get("stays", [])]
-    story.append(data_table(stay_heads, [62, 118, 56, 54, 56, 56, 34, 50],
-                            stay_vals, num_cols=(4, 5, 6)))
+
+    def _fmt_stay_date(s):
+        s = str(s or "").strip()
+        m = _re_iso.match(s)
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else s
+
+    stay_vals = []
+    for r in data.get("stays", []):
+        row = normalize_voucher_stay(r)
+        row[5] = _fmt_stay_date(row[5])       # الدخول
+        row[6] = _fmt_stay_date(row[6])       # المغادرة
+        stay_vals.append(row)
+    # الأعمدة الرقمية (تُلفّ LTR): عدد الغرف، الدخول، المغادرة، الليالي
+    story.append(data_table(stay_heads, [56, 104, 54, 36, 46, 56, 56, 32, 46],
+                            stay_vals, num_cols=(3, 5, 6, 7)))
     story.append(Spacer(1, 4))
 
     # ---- خطة النقل (مفصّلة: نوع السيارة/الموديل/الوجهة) ----
@@ -3304,30 +3347,14 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
             W - 12))
     story.append(Spacer(1, 4))
 
-    # ---- جهات التواصل + الختم الرسمي جنباً إلى جنب (لتوفير الارتفاع) ----
-    sign_c = ParagraphStyle("vsg", parent=st["cell"], alignment=1, fontSize=8.5,
-                            textColor=_DEEP, fontName=_FONT_BOLD, leading=12)
-    stamp_caption = "Company Stamp" if L else "ختم الشركة / Company Stamp"
-    stamp_logo = _logo_cell(_LOGO_PATH, 44)
-    stamp_box = Table([[stamp_logo],
-                       [Paragraph(ar(stamp_caption) if not L
-                                  else stamp_caption, sign_c)]],
-                      colWidths=[W * 0.30])
-    stamp_box.setStyle(TableStyle([
-        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, 0), 4),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
-    ]))
-
+    # ---- التواصل والاستفسار + الختم جنباً إلى جنب، كلٌّ بعنوانه فوقه ----
+    ttl = ParagraphStyle("vttl", parent=st["cell"], alignment=1, fontSize=9.5,
+                         textColor=_ACCENT, fontName=_FONT_BOLD, leading=13)
     contact_data = [c for c in data.get("contacts", [])
                     if any(str(x or "").strip() for x in c)]
     if contact_data:
-        story.append(section("للتواصل والاستفسار / الختم", "Contact & Stamp"))
-        story.append(Spacer(1, 4))
-        cwv = 0.66      # عرض جدول التواصل، والباقي للختم
+        story.append(Spacer(1, 2))
+        cwv = 0.66      # عرض عمود التواصل، والباقي للختم
         cw_logic = [cwv * W * 0.26, cwv * W * 0.40, cwv * W * 0.34]
         ccw = rev(cw_logic)
         val_num = ParagraphStyle("vnum", parent=val, fontName=_FONT_BOLD,
@@ -3348,11 +3375,43 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]))
-        # التواصل في جهة البداية، الختم في جهة النهاية
-        combo = Table([rev([contacts, stamp_box])],
+        # عمود التواصل: عنوان «للتواصل والاستفسار» فوق جدول الأرقام
+        c_title = "Contact & Inquiries" if L else "للتواصل والاستفسار"
+        contact_col = Table([[_ar_para(c_title, ttl, cwv * W - 6)], [contacts]],
+                            colWidths=[cwv * W])
+        contact_col.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
+            ("TOPPADDING", (0, 1), (-1, 1), 0),
+        ]))
+        # عمود الختم: كلمة «الختم» فوق مربّع الشعار (بلا نصّ إنجليزي)
+        s_title = "Stamp" if L else "الختم"
+        stamp_logo = _logo_cell(_LOGO_PATH, 46)
+        stamp_box = Table([[stamp_logo]], colWidths=[(1 - cwv) * W * 0.9])
+        stamp_box.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        stamp_col = Table([[_ar_para(s_title, ttl, (1 - cwv) * W - 6)],
+                           [stamp_box]], colWidths=[(1 - cwv) * W])
+        stamp_col.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
+            ("TOPPADDING", (0, 1), (-1, 1), 0),
+        ]))
+        combo = Table([rev([contact_col, stamp_col])],
                       colWidths=rev([cwv * W, (1 - cwv) * W]))
         combo.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ]))
@@ -3365,11 +3424,11 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         story.append(section("الشروط والأحكام", "Terms & Conditions"))
         story.append(Spacer(1, 3))
         term = ParagraphStyle("vterm", parent=st["cell"], alignment=ALN,
-                              fontSize=7.3, leading=9.6, spaceAfter=3)
+                              fontSize=7.2, leading=9.5, spaceAfter=4)
         ncols = 3
         colw = W / ncols
         # لفٌّ يدوي قبل bidi كي تبقى الأسطر مرتّبة رأسياً داخل كل عمود
-        flow = [_ar_para(f"{i}- " + str(t), term, colw - 12)
+        flow = [_ar_para(f"{i}. " + str(t), term, colw - 16)
                 for i, t in enumerate(terms, 1)]
         per = (len(flow) + ncols - 1) // ncols
         cols = [flow[i * per:(i + 1) * per] for i in range(ncols)]
@@ -3377,10 +3436,13 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         tt = Table([cols], colWidths=[colw] * ncols)
         tt.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("BOX", (0, 0), (-1, -1), 0.6, _GRID),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, _GRID),   # فواصل بين الأعمدة
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
         ]))
         story.append(tt)
 
