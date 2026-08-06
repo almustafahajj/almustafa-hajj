@@ -127,6 +127,56 @@ def export_excel(records: list[PassportData], path: str | Path) -> Path:
     return path
 
 
+def export_answer_excel(title: str, headers, rows, path: str | Path) -> Path:
+    """يصدّر نتيجة عامة (عنوان + رؤوس + صفوف) إلى ورقة إكسل عربية أنيقة."""
+    path = Path(path)
+    headers = list(headers or [])
+    rows = [list(r) for r in (rows or [])]
+    ncols = max(len(headers), 1)
+    wb = Workbook()
+    ws: Worksheet = wb.active
+    ws.title = "النتيجة"
+    ws.sheet_view.rightToLeft = True
+
+    ws.append([f"{title} — {date.today().isoformat()}"])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+    t = ws.cell(row=1, column=1)
+    t.font = Font(bold=True, size=14, color="8A6E4B")
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 26
+
+    ws.append(headers)
+    head_fill = PatternFill("solid", fgColor="8A6E4B")
+    for col in range(1, ncols + 1):
+        cell = ws.cell(row=2, column=col)
+        cell.fill = head_fill
+        cell.font = _HEADER_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center",
+                                   wrap_text=True)
+        cell.border = _BORDER
+    ws.row_dimensions[2].height = 28
+
+    for row in rows:
+        ws.append([str(v) for v in row])
+        r = ws.max_row
+        for col in range(1, ncols + 1):
+            cell = ws.cell(row=r, column=col)
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+            cell.border = _BORDER
+
+    for col in range(1, ncols + 1):
+        lengths = [len(str(headers[col - 1])) if col - 1 < len(headers) else 0]
+        lengths += [len(str(row[col - 1])) for row in rows if col - 1 < len(row)]
+        ws.column_dimensions[get_column_letter(col)].width = min(
+            max(max(lengths, default=10) + 3, 12), 42)
+    if rows:
+        ws.auto_filter.ref = f"A2:{get_column_letter(ncols)}{ws.max_row}"
+    ws.freeze_panes = "A3"
+
+    wb.save(path)
+    return path
+
+
 def export_umrah_excel(records: list[PassportData], path: str | Path, *,
                        program_name: str = "") -> Path:
     """يصدّر كشف معتمري برنامج عمرة إلى إكسل بمسمّيات العمرة والأعمدة المطلوبة."""

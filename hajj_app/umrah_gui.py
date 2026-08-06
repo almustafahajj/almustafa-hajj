@@ -22,7 +22,7 @@ from tkinter import (
 
 from . import app_mode, assistant, images as imgmod, umrah
 from . import gui as G
-from .excel_io import export_umrah_excel
+from .excel_io import export_answer_excel, export_umrah_excel
 from .fields import format_amount, parse_amount, payment_total
 from .mrz import MRZError, PassportData
 from .ocr import extract_passport
@@ -4008,6 +4008,10 @@ class AskWindow(Toplevel):
             self._table(b, ans["headers"], ans["rows"],
                         ans.get("records") if ans.get("action") == "whatsapp_due"
                         else None)
+            xbar = ttk.Frame(b, style="Toolbar.TFrame")
+            xbar.pack(fill=X, pady=(8, 0))
+            ttk.Button(xbar, text=G.rtl("📊  تصدير إكسل"), style="Ghost.TButton",
+                       command=lambda a=ans: self._export_excel(a)).pack(side=LEFT)
         if ans.get("kind") == "help" or ans.get("examples"):
             self._examples(b, ans.get("examples") or list(assistant.EXAMPLES))
 
@@ -4155,6 +4159,16 @@ class AskWindow(Toplevel):
     def _run_example(self, ex: str) -> None:
         self._q.set(ex)
         self._ask()
+
+    def _export_excel(self, ans: dict) -> None:
+        """يصدّر نتيجة السؤال الحالية (جدول) إلى إكسل ويفتحها."""
+        title = ans.get("title") or "نتيجة"
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", title).strip() or "نتيجة"
+        G.open_preview(
+            self,
+            lambda p: export_answer_excel(title, ans.get("headers") or [],
+                                          ans.get("rows") or [], p),
+            f"نتيجة - {safe}", "xlsx")
 
 
 class DueFollowupWindow(Toplevel):

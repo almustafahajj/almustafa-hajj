@@ -80,6 +80,21 @@ pe = pdf_io.export_season_report_pdf([], [], _pl.Path(_OUTDIR) / "season_report_
 assert pe.read_bytes()[:5] == b"%PDF-"
 print(f"  OK: {pp.name} ({pp.stat().st_size} بايت) + الحالة الفارغة")
 
+print("\n=== تصدير نتيجة عامة إلى إكسل ===")
+from hajj_app.excel_io import export_answer_excel
+from openpyxl import load_workbook
+xp = _pl.Path(_OUTDIR) / "answer.xlsx"
+export_answer_excel("المتأخرون عن السداد",
+                    ["المعتمر", "البرنامج", "المتبقّي"],
+                    [["أحمد", "عشر رمضان", "9,000 AED"],
+                     ["سالم", "عشر رمضان", "18,000 AED"]], xp)
+_ws = load_workbook(xp).active
+assert _ws.sheet_view.rightToLeft
+assert "المتأخرون عن السداد" in str(_ws.cell(1, 1).value)
+assert _ws.cell(2, 1).value == "المعتمر" and _ws.cell(3, 1).value == "أحمد"
+assert _ws.cell(4, 3).value == "18,000 AED"
+print(f"  OK: {xp.name} — ورقة RTL أنيقة بالعنوان والرؤوس والصفوف")
+
 print("\n=== الحالة الفارغة (لا برامج) لا تنكسر ===")
 empty = D.export_season_dashboard_html([], [], _pl.Path(_OUTDIR) / "season_empty.html",
                                        season="١٤٤٧ هـ")
