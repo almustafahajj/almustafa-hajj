@@ -127,9 +127,21 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
     name_ar, name_en = _company_names(company)
     season = _e(season or "")
     n_nom, n_gen, n_acc = _nouns(kind)
+    # الإشغال يظهر فقط حين تتوفّر سعة؛ وإلّا نعرض عدد المعتمرين/الحجّاج
+    has_cap = (totals.get("capacity", 0) or 0) > 0
 
     cards = []
     for r in rows:
+        if has_cap:
+            occ_metric = (
+                f'<div class="metric"><div class="row"><span class="muted">الإشغال</span>'
+                f'<b class="num">{r["count"]} / {r["capacity"] or "—"}</b></div>'
+                f'<div class="track"><span class="fill-occ" '
+                f'style="width:{min(r["occ_pct"],100):.0f}%"></span></div></div>')
+        else:
+            occ_metric = (
+                f'<div class="metric"><div class="row"><span class="muted">{n_nom}</span>'
+                f'<b class="num">{r["count"]}</b></div></div>')
         cards.append(f"""
         <article class="card prog">
           <div class="top">
@@ -141,8 +153,7 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
             <div class="hotel"><div class="city">{_e(r['info2_label'])}</div><div class="name">{_e(r['info2'])}</div></div>
           </div>
           <div class="metrics">
-            <div class="metric"><div class="row"><span class="muted">الإشغال</span><b class="num">{r['count']} / {r['capacity'] or '—'}</b></div>
-              <div class="track"><span class="fill-occ" style="width:{min(r['occ_pct'],100):.0f}%"></span></div></div>
+            {occ_metric}
             <div class="metric"><div class="row"><span class="muted">التحصيل · <span class="num">{format_amount(r['total'])}</span> AED</span><b class="num">{r['col_pct']:.0f}٪</b></div>
               <div class="track"><span class="fill-col" style="width:{min(r['col_pct'],100):.0f}%"></span></div></div>
           </div>
@@ -190,7 +201,7 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
       <div class="goldrule"></div>
       <div class="kpis anim d3">
         <div class="kpi"><div class="k">إجمالي {n_gen}</div><div class="v num">{totals['pilgrims']}</div></div>
-        <div class="kpi"><div class="k">نسبة الإشغال</div><div class="v num">{totals['occ_pct']:.0f}<small>٪</small></div></div>
+        <div class="kpi"><div class="k">{"نسبة الإشغال" if has_cap else "عدد البرامج"}</div><div class="v num">{(f"{totals['occ_pct']:.0f}") if has_cap else totals['programs']}<small>{"٪" if has_cap else "برنامج"}</small></div></div>
         <div class="kpi"><div class="k">إجمالي الإيراد</div><div class="v num">{_compact(totals['total'])}<small>AED</small></div></div>
         <div class="kpi"><div class="k">نسبة التحصيل</div><div class="v num">{totals['col_pct']:.0f}<small>٪</small></div></div>
       </div>

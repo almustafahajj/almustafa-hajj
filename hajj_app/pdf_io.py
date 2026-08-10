@@ -1243,6 +1243,9 @@ def export_season_report_pdf(trips: list, records: list, path, *,
 
     rows, totals = _dash.season_dashboard_stats(trips, records, group_attr)
     n_gen = "الحجّاج" if kind == "الحج" else "المعتمرين"
+    n_nom = "الحجّاج" if kind == "الحج" else "المعتمرون"
+    # الإشغال يُعرض فقط حين تتوفّر سعة؛ وإلّا نعرض العدد/البرامج
+    has_cap = (totals.get("capacity", 0) or 0) > 0
     name_ar, name_en = _dash._company_names(company)
     _register_fonts()
 
@@ -1307,9 +1310,10 @@ def export_season_report_pdf(trips: list, records: list, path, *,
         c.setFont(_FONT, 10)
         c.drawRightString(W - ML, H - 110,
                           ar("نظرة شاملة على البرامج والإشغال والتحصيل"))
-        # مؤشّرات الأداء (٤ خلايا)
-        kpis = [(f"إجمالي {n_gen}", f"{totals['pilgrims']}"),
-                ("نسبة الإشغال", f"{totals['occ_pct']:.0f}%"),
+        # مؤشّرات الأداء (٤ خلايا) — الإشغال أو عدد البرامج حسب توفّر السعة
+        occ_k = ("نسبة الإشغال", f"{totals['occ_pct']:.0f}%") if has_cap \
+            else ("عدد البرامج", f"{totals['programs']}")
+        kpis = [(f"إجمالي {n_gen}", f"{totals['pilgrims']}"), occ_k,
                 ("إجمالي الإيراد", f"{_dash._compact(totals['total'])} AED"),
                 ("نسبة التحصيل", f"{totals['col_pct']:.0f}%")]
         kx, kw = ML, (W - 2 * ML) / 4
@@ -1429,9 +1433,12 @@ def export_season_report_pdf(trips: list, records: list, path, *,
         blw = (x1 - x0) - 24 - 150
         c.setFillColor(INK)
         c.setFont(_FONT, 8.5)
-        c.drawRightString(x1 - 12, y - 51,
-                          ar(f"الإشغال  {r['count']}/{r['capacity'] or '—'}"))
-        _bar(blx, y - 53, blw, 6, (r["occ_pct"] or 0) / 100, BRONZE_DK)
+        if has_cap:
+            c.drawRightString(x1 - 12, y - 51,
+                              ar(f"الإشغال  {r['count']}/{r['capacity'] or '—'}"))
+            _bar(blx, y - 53, blw, 6, (r["occ_pct"] or 0) / 100, BRONZE_DK)
+        else:
+            c.drawRightString(x1 - 12, y - 51, ar(f"{n_nom}: {r['count']}"))
         c.drawRightString(x1 - 12, y - 63,
                           ar(f"التحصيل  {r['col_pct']:.0f}٪"))
         _bar(blx, y - 65, blw, 6, r["col_pct"] / 100, GOLD_DK)
