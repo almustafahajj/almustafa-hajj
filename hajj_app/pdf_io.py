@@ -1231,13 +1231,18 @@ def _passport_reader(rec, session):
 
 
 def export_season_report_pdf(trips: list, records: list, path, *,
-                             season: str = "", company=None) -> Path:
-    """تقرير موسم فاخر بصيغة PDF بتصميم لوحة الموسم — للطباعة والأرشفة."""
+                             season: str = "", company=None,
+                             group_attr: str = "trip",
+                             kind: str = "العمرة") -> Path:
+    """تقرير موسم فاخر بصيغة PDF بتصميم لوحة الموسم — للطباعة والأرشفة.
+
+    ``group_attr``/``kind``: «trip»/«العمرة» أو «program»/«الحج»."""
     from reportlab.pdfgen import canvas as _canvas
     from . import dashboard_html as _dash
     from .fields import format_amount
 
-    rows, totals = _dash.season_dashboard_stats(trips, records)
+    rows, totals = _dash.season_dashboard_stats(trips, records, group_attr)
+    n_gen = "الحجّاج" if kind == "الحج" else "المعتمرين"
     name_ar, name_en = _dash._company_names(company)
     _register_fonts()
 
@@ -1297,13 +1302,13 @@ def export_season_report_pdf(trips: list, records: list, path, *,
         c.drawRightString(W - ML, H - 58, name_en)
         c.setFillColor(colors.HexColor("#F7EFDD"))
         c.setFont(_FONT_BOLD, 24)
-        c.drawRightString(W - ML, H - 92, ar(f"لوحة موسم العمرة {season}"))
+        c.drawRightString(W - ML, H - 92, ar(f"لوحة موسم {kind} {season}"))
         c.setFillColor(ON_DK_MUTED)
         c.setFont(_FONT, 10)
         c.drawRightString(W - ML, H - 110,
                           ar("نظرة شاملة على البرامج والإشغال والتحصيل"))
         # مؤشّرات الأداء (٤ خلايا)
-        kpis = [("إجمالي المعتمرين", f"{totals['pilgrims']}"),
+        kpis = [(f"إجمالي {n_gen}", f"{totals['pilgrims']}"),
                 ("نسبة الإشغال", f"{totals['occ_pct']:.0f}%"),
                 ("إجمالي الإيراد", f"{_dash._compact(totals['total'])} AED"),
                 ("نسبة التحصيل", f"{totals['col_pct']:.0f}%")]

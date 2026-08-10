@@ -49,13 +49,18 @@ def _status(col_pct: float) -> tuple[str, str]:
     return "low", "متأخّر التحصيل"
 
 
-def season_dashboard_stats(trips: list, records: list) -> tuple[list, dict]:
-    """صفوف إحصائية لكل برنامج + إجماليات الموسم."""
+def season_dashboard_stats(trips: list, records: list,
+                           group_attr: str = "trip") -> tuple[list, dict]:
+    """صفوف إحصائية لكل برنامج + إجماليات الموسم.
+
+    ``group_attr`` حقل ربط المعتمر/الحاج ببرنامجه: «trip» في العمرة و«program»
+    في الحج."""
     rows = []
     tot_total = tot_paid = 0.0
     tot_pil = tot_cap = 0
     for t in trips:
-        pilgrims = umrah.trip_pilgrims(records, t.code)
+        pilgrims = [r for r in records
+                    if str(getattr(r, group_attr, "") or "") == t.code]
         total = sum(parse_amount(r.program_value) or 0.0 for r in pilgrims)
         paid = sum(parse_amount(r.paid_amount) or 0.0 for r in pilgrims)
         count = len(pilgrims)
@@ -98,11 +103,19 @@ def _e(text) -> str:
     return html.escape(str(text if text is not None else ""))
 
 
+def _nouns(kind: str) -> tuple[str, str, str]:
+    """(الجمع المرفوع، الجمع المجرور، المفرد المنصوب) حسب نوع الموسم."""
+    if kind == "الحج":
+        return "الحجّاج", "الحجّاج", "حاجّاً"
+    return "المعتمرون", "المعتمرين", "معتمراً"
+
+
 def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
-                            company=None) -> str:
-    """يبني نصّ HTML كاملاً مستقلّاً للوحة الموسم."""
+                            company=None, kind: str = "العمرة") -> str:
+    """يبني نصّ HTML كاملاً مستقلّاً للوحة الموسم (عمرة/حج حسب ``kind``)."""
     name_ar, name_en = _company_names(company)
     season = _e(season or "")
+    n_nom, n_gen, n_acc = _nouns(kind)
 
     cards = []
     for r in rows:
@@ -161,11 +174,11 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
         <div><div class="brand-ar">{_e(name_ar)}</div><div class="brand-la">{_e(name_en)}</div></div>
         <div class="stamp">تقرير الموسم · <b>{season}</b></div>
       </div>
-      <h1 class="anim d1">لوحة موسم العمرة</h1>
-      <p class="lede anim d2">نظرة شاملة على برامج الموسم: المعتمرون، الإشغال، الإيرادات، ونِسَب التحصيل — في صفحة واحدة تُطبع أو تُشارك.</p>
+      <h1 class="anim d1">لوحة موسم {_e(kind)}</h1>
+      <p class="lede anim d2">نظرة شاملة على برامج الموسم: {n_nom}، الإشغال، الإيرادات، ونِسَب التحصيل — في صفحة واحدة تُطبع أو تُشارك.</p>
       <div class="goldrule"></div>
       <div class="kpis anim d3">
-        <div class="kpi"><div class="k">إجمالي المعتمرين</div><div class="v num">{totals['pilgrims']}</div></div>
+        <div class="kpi"><div class="k">إجمالي {n_gen}</div><div class="v num">{totals['pilgrims']}</div></div>
         <div class="kpi"><div class="k">نسبة الإشغال</div><div class="v num">{totals['occ_pct']:.0f}<small>٪</small></div></div>
         <div class="kpi"><div class="k">إجمالي الإيراد</div><div class="v num">{_compact(totals['total'])}<small>AED</small></div></div>
         <div class="kpi"><div class="k">نسبة التحصيل</div><div class="v num">{totals['col_pct']:.0f}<small>٪</small></div></div>
@@ -179,7 +192,7 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
       <div class="fin">
         <div class="card stat"><div class="lbl">إجمالي الإيراد المتوقّع</div>
           <div class="big num">{format_amount(totals['total'])}<span class="cur">AED</span></div>
-          <div class="sub">من {totals['programs']} برامج · {totals['pilgrims']} معتمراً</div></div>
+          <div class="sub">من {totals['programs']} برامج · {totals['pilgrims']} {n_acc}</div></div>
         <div class="card stat"><div class="lbl">المبلغ المحصّل</div>
           <div class="big num" style="color:var(--success)">{format_amount(totals['paid'])}</div>
           <div class="sub">{totals['col_pct']:.1f}٪ من الإيراد</div></div>
@@ -214,12 +227,15 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
 
 
 def export_season_dashboard_html(trips: list, records: list, path,
-                                 *, season: str = "", company=None) -> Path:
+                                 *, season: str = "", company=None,
+                                 group_attr: str = "trip",
+                                 kind: str = "العمرة") -> Path:
     """يحسب الإحصاءات ويكتب صفحة اللوحة إلى ``path``. يعيد المسار."""
-    rows, totals = season_dashboard_stats(trips, records)
+    rows, totals = season_dashboard_stats(trips, records, group_attr)
     out = Path(path)
     out.write_text(
-        render_season_dashboard(rows, totals, season=season, company=company),
+        render_season_dashboard(rows, totals, season=season, company=company,
+                                kind=kind),
         encoding="utf-8",
     )
     return out

@@ -910,6 +910,8 @@ class HajjApp:
             ("🔎  اسأل بياناتك (أسئلة بالعربية)", self.ask_data),
             ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
             ("📋  نسخ ملخّص الموسم", self.copy_season_summary),
+            ("🌐  لوحة الموسم (ويب)", self.export_web_dashboard),
+            ("📄  تقرير الموسم (PDF)", self.export_season_pdf),
             None,
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📈  الرسوم البيانية", self.do_charts),
@@ -2494,6 +2496,55 @@ class HajjApp:
         messagebox.showinfo("نسخ ملخّص الموسم",
                             "نُسخ الملخّص — الصقه في واتساب أو الإيميل:\n\n"
                             + text, parent=self.root)
+
+    def _hajj_company(self):
+        co = self._settings.get("company")
+        return co if isinstance(co, dict) else None
+
+    def export_web_dashboard(self) -> None:
+        """يولّد لوحة موسم الحج بصيغة ويب (HTML) ويفتحها في المتصفّح."""
+        import os
+        import tempfile
+        from . import dashboard_html, umrah_gui as ug
+        if not self.records:
+            messagebox.showinfo("لوحة الموسم (ويب)",
+                                "لا حجّاج في هذا الموسم بعد.", parent=self.root)
+            return
+        season = self.season_year.get()
+        safe = re.sub(r'[\\/:*?"<>|]+', "-", f"لوحة موسم الحج {season}").strip()
+        path = os.path.join(tempfile.gettempdir(), f"{safe}.html")
+        try:
+            dashboard_html.export_season_dashboard_html(
+                ug._hajj_programs(self), self.records, path, season=season,
+                company=self._hajj_company(), group_attr="program", kind="الحج")
+        except Exception as exc:
+            _log.exception("فشل توليد لوحة موسم الحج (ويب)")
+            messagebox.showerror("لوحة الموسم (ويب)",
+                                 f"تعذّر توليد اللوحة:\n\n{exc}", parent=self.root)
+            return
+        try:
+            open_in_viewer(path)
+        except OSError as exc:
+            messagebox.showerror("لوحة الموسم (ويب)",
+                                 f"تعذّر فتح المتصفّح:\n\n{exc}", parent=self.root)
+
+    def export_season_pdf(self) -> None:
+        """يولّد تقرير موسم الحج الفاخر (PDF) بتصميم اللوحة، ويفتحه للمعاينة."""
+        from .pdf_io import export_season_report_pdf
+        if not self.records:
+            messagebox.showinfo("تقرير الموسم (PDF)",
+                                "لا حجّاج في هذا الموسم بعد.", parent=self.root)
+            return
+        from . import umrah_gui as ug
+        season = self.season_year.get()
+        progs = ug._hajj_programs(self)
+        co = self._hajj_company()
+        open_preview(
+            self.root,
+            lambda p: export_season_report_pdf(
+                progs, self.records, p, season=season, company=co,
+                group_attr="program", kind="الحج"),
+            f"تقرير موسم الحج {season}", "pdf")
 
     def open_collections(self) -> None:
         """يفتح متابعة تحصيل الحجّاج المتأخرين مباشرةً."""

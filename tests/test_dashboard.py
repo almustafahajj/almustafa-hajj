@@ -95,6 +95,35 @@ assert _ws.cell(2, 1).value == "المعتمر" and _ws.cell(3, 1).value == "أ�
 assert _ws.cell(4, 3).value == "18,000 AED"
 print(f"  OK: {xp.name} — ورقة RTL أنيقة بالعنوان والرؤوس والصفوف")
 
+print("\n=== وضع الحج: تجميع بـ program + مصطلح «الحجّاج» ===")
+
+
+class _HP:
+    def __init__(self, name, cap=""):
+        self.code = name; self.name = name; self.capacity = cap
+        self.makkah_hotel = ""; self.madinah_hotel = ""
+        self.depart_date = ""; self.return_date = ""
+
+
+def _hr(prog, v, p):
+    return PassportData(full_name_ar="حاج", passport_number="P", program=prog,
+                        program_value=str(v), paid_amount=str(p))
+
+
+hprogs = [_HP("البرنامج الأول", "60")]
+hrecs = [_hr("البرنامج الأول", 25000, 25000), _hr("البرنامج الأول", 25000, 0)]
+hrows, htot = D.season_dashboard_stats(hprogs, hrecs, group_attr="program")
+assert htot["pilgrims"] == 2 and abs(htot["total"] - 50000) < 1, htot
+hp = D.export_season_dashboard_html(hprogs, hrecs, _pl.Path(_OUTDIR) / "hajj_season.html",
+                                    season="١٤٤٧هـ", group_attr="program", kind="الحج")
+ht = hp.read_text(encoding="utf-8")
+assert "لوحة موسم الحج" in ht and "الحجّاج" in ht
+from hajj_app import pdf_io as _pio
+hpdf = _pio.export_season_report_pdf(hprogs, hrecs, _pl.Path(_OUTDIR) / "hajj_season.pdf",
+                                     season="١٤٤٧هـ", group_attr="program", kind="الحج")
+assert hpdf.read_bytes()[:5] == b"%PDF-"
+print("  OK: لوحة/تقرير موسم الحج تُجمّع بـ program وتعرض «الحجّاج»")
+
 print("\n=== الحالة الفارغة (لا برامج) لا تنكسر ===")
 empty = D.export_season_dashboard_html([], [], _pl.Path(_OUTDIR) / "season_empty.html",
                                        season="١٤٤٧ هـ")
