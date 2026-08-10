@@ -1390,7 +1390,7 @@ def export_season_report_pdf(trips: list, records: list, path, *,
     y = _section("برامج الموسم", y)
 
     # ---- بطاقات البرامج ----
-    CARD_H = 66
+    CARD_H = 76
     for r in rows:
         if y - CARD_H < 70:               # صفحة جديدة عند الحاجة
             _footer()
@@ -1414,22 +1414,27 @@ def export_season_report_pdf(trips: list, records: list, path, *,
         c.roundRect(x0 + 12, y - 24, pill_w, 15, 7, stroke=0, fill=1)
         c.setFillColor(colors.white)
         c.drawCentredString(x0 + 12 + pill_w / 2, y - 20, ar(r["status"]))
-        # الفنادق
+        # خانتا المعلومات (فنادق مكة/المدينة أو مطار المغادرة/الناقل)
         c.setFillColor(MUTED)
         c.setFont(_FONT, 8.5)
-        c.drawRightString(x1 - 12, y - 34,
-                          ar(f"مكة: {r['makkah']}  ·  المدينة: {r['madinah']}"))
+        c.drawRightString(x1 - 12, y - 35, ar(
+            f"{r['info1_label']}: {r['info1']}  ·  {r['info2_label']}: {r['info2']}"))
+        # التواريخ (المغادرة – العودة) إن وُجدت
+        _dr = " – ".join(x for x in (str(r.get("depart") or ""),
+                                     str(r.get("return") or "")) if x)
+        if _dr:
+            c.drawString(x0 + 12, y - 35, _dr)
         # شريطان: الإشغال والتحصيل
         blx = x0 + 12
         blw = (x1 - x0) - 24 - 150
         c.setFillColor(INK)
         c.setFont(_FONT, 8.5)
-        c.drawRightString(x1 - 12, y - 49,
+        c.drawRightString(x1 - 12, y - 51,
                           ar(f"الإشغال  {r['count']}/{r['capacity'] or '—'}"))
-        _bar(blx, y - 51, blw, 6, (r["occ_pct"] or 0) / 100, BRONZE_DK)
-        c.drawRightString(x1 - 12, y - 60,
+        _bar(blx, y - 53, blw, 6, (r["occ_pct"] or 0) / 100, BRONZE_DK)
+        c.drawRightString(x1 - 12, y - 63,
                           ar(f"التحصيل  {r['col_pct']:.0f}٪"))
-        _bar(blx, y - 62, blw, 6, r["col_pct"] / 100, GOLD_DK)
+        _bar(blx, y - 65, blw, 6, r["col_pct"] / 100, GOLD_DK)
         y -= CARD_H + 10
 
     if not rows:

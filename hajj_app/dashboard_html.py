@@ -68,11 +68,22 @@ def season_dashboard_stats(trips: list, records: list,
         col_pct = (paid / total * 100) if total else 0.0
         occ_pct = (count / cap * 100) if cap else 0.0
         cls, label = _status(col_pct)
+        # خانتا معلومات حسب النوع: فنادق مكة/المدينة (عمرة) أو مطار المغادرة
+        # والناقل (حج)
+        if group_attr == "program":
+            info1 = ("مطار المغادرة", getattr(t, "airport", "") or "—")
+            info2 = ("الناقل", getattr(t, "carrier", "") or "—")
+        else:
+            info1 = ("مكة المكرمة", getattr(t, "makkah_hotel", "") or "—")
+            info2 = ("المدينة المنورة", getattr(t, "madinah_hotel", "") or "—")
         rows.append({
             "name": t.name or t.code, "code": t.code,
             "count": count, "capacity": cap,
             "makkah": t.makkah_hotel or "—", "madinah": t.madinah_hotel or "—",
-            "depart": _fmt_date(t.depart_date), "return": _fmt_date(t.return_date),
+            "info1_label": info1[0], "info1": info1[1],
+            "info2_label": info2[0], "info2": info2[1],
+            "depart": _fmt_date(getattr(t, "depart_date", "")),
+            "return": _fmt_date(getattr(t, "return_date", "")),
             "total": total, "paid": paid,
             "col_pct": col_pct, "occ_pct": occ_pct,
             "status_cls": cls, "status": label,
@@ -126,8 +137,8 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
             <span class="pill {r['status_cls']}">{_e(r['status'])}</span>
           </div>
           <div class="hotels">
-            <div class="hotel"><div class="city">مكة المكرمة</div><div class="name">{_e(r['makkah'])}</div></div>
-            <div class="hotel"><div class="city">المدينة المنورة</div><div class="name">{_e(r['madinah'])}</div></div>
+            <div class="hotel"><div class="city">{_e(r['info1_label'])}</div><div class="name">{_e(r['info1'])}</div></div>
+            <div class="hotel"><div class="city">{_e(r['info2_label'])}</div><div class="name">{_e(r['info2'])}</div></div>
           </div>
           <div class="metrics">
             <div class="metric"><div class="row"><span class="muted">الإشغال</span><b class="num">{r['count']} / {r['capacity'] or '—'}</b></div>
@@ -140,7 +151,7 @@ def render_season_dashboard(rows: list, totals: dict, *, season: str = "",
     chart = []
     for r in rows:
         chart.append(f"""
-        <div class="chrow"><div class="nm">{_e(r['name'])}<span>{_e(r['makkah'])} / {_e(r['madinah'])}</span></div>
+        <div class="chrow"><div class="nm">{_e(r['name'])}<span>{_e(r['info1'])} / {_e(r['info2'])}</span></div>
           <div class="chbar"><span style="width:{min(r['col_pct'],100):.0f}%"></span></div>
           <div class="val num">{r['col_pct']:.0f}٪<small>{format_amount(r['paid'])}</small></div></div>""")
 

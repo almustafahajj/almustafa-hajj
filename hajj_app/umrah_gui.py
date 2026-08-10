@@ -4050,16 +4050,24 @@ class SeasonDashboard(Toplevel):
 
 
 class _ProgAdapter:
-    """يمثّل برنامجاً بواجهة موحّدة يفهمها المساعد (code/name/سعة/فنادق/تاريخ)."""
+    """يمثّل برنامج حجّ بواجهة موحّدة تفهمها المساعد ولوحات الموسم.
+
+    برنامج الحج يحمل: مطار المغادرة، الناقل، فندقاً واحداً، وتاريخي السفر
+    والعودة — نعرضها في البطاقات بدل خانتَي فندق مكة/المدينة."""
 
     def __init__(self, name, program=None):
         self.code = name
         self.name = name
-        self.capacity = str(getattr(program, "capacity", "") or "") if program else ""
-        self.makkah_hotel = getattr(program, "makkah_hotel", "") if program else ""
-        self.madinah_hotel = getattr(program, "madinah_hotel", "") if program else ""
-        self.depart_date = (getattr(program, "departure_date", "")
-                            or getattr(program, "depart_date", "")) if program else ""
+        self.capacity = ""            # لا سعة محدّدة لبرامج الحج
+        self.hotel = getattr(program, "hotel", "") if program else ""
+        self.airport = getattr(program, "departure_airport", "") if program else ""
+        self.carrier = getattr(program, "carrier", "") if program else ""
+        # للتوافق مع الكشوف العامة (خانتا الفندق)
+        self.makkah_hotel = self.hotel
+        self.madinah_hotel = ""
+        self.depart_date = (getattr(program, "travel_date", "")
+                            or getattr(program, "departure_date", "")) if program else ""
+        self.return_date = getattr(program, "return_date", "") if program else ""
 
 
 def _hajj_programs(app) -> list:
