@@ -1,0 +1,38 @@
+name: Build macOS DMG
+
+# يبني تطبيق ماك (.app) ومُثبِّت (.dmg) على خادم ماك سحابيّ مجاني من GitHub،
+# فتحصل على DMG جاهز دون امتلاك جهاز ماك.
+#
+# طريقة التشغيل:
+#   1) ادفع المشروع إلى مستودع على GitHub.
+#   2) من تبويب Actions اختر «Build macOS DMG» ثم Run workflow (تشغيل يدوي)،
+#      أو ادفع وسم إصدار مثل v2.0.0.
+#   3) بعد انتهاء البناء نزّل الملف من قسم Artifacts في صفحة التشغيل.
+
+on:
+  workflow_dispatch:            # تشغيل يدوي بضغطة زر
+  push:
+    tags:
+      - 'v*'                    # أو تلقائياً عند دفع وسم إصدار (vX.Y.Z)
+
+jobs:
+  build:
+    runs-on: macos-latest       # خادم ماك مجاني من GitHub
+    steps:
+      - name: جلب الشيفرة
+        uses: actions/checkout@v4
+
+      - name: تجهيز بايثون
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: بناء ‎.app‎ و ‎.dmg‎
+        run: bash build_mac.sh
+
+      - name: رفع المُثبِّت (DMG) كمُخرَج قابل للتنزيل
+        uses: actions/upload-artifact@v4
+        with:
+          name: HajjApp-mac-dmg
+          path: Output/HajjApp-mac.dmg
+          if-no-files-found: error
