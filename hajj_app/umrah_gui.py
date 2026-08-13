@@ -16,8 +16,8 @@ import re
 from datetime import date
 from pathlib import Path
 from tkinter import (
-    BOTH, BooleanVar, Canvas, END, LEFT, Menu, RIGHT, StringVar, Text, Toplevel,
-    X, Y, filedialog, messagebox, ttk,
+    BOTH, BooleanVar, Canvas, END, Frame, LEFT, Menu, RIGHT, StringVar, Text,
+    Toplevel, X, Y, filedialog, messagebox, ttk,
 )
 
 from . import app_mode, assistant, images as imgmod, umrah
@@ -124,45 +124,69 @@ class UmrahApp:
         self._bind_shortcuts()
         self._reload()
 
-    # ---- شريط الحالة السفلي (ملخّص حيّ للموسم) ----
+    # ---- لوحة تحكّم الموسم (بطاقات مؤشّرات كبيرة، حيّة) ----
+    _KPI_ACCENTS = {"pilgrims": "#8A6E4B", "occ": "#2C5AA0",
+                    "paid": "#2E7D5B", "late": "#C0392B"}
+
     def _build_kpi(self) -> None:
-        """شريط مؤشّرات الموسم الحيّ (بطاقات) أسفل شريط الأدوات مباشرةً."""
-        wrap = ttk.Frame(self.root, style="Toolbar.TFrame",
-                         padding=(16, 2, 16, 8))
+        """لوحة تحكّم أعلى الواجهة: بطاقات مؤشّرات كبيرة بأيقونات وشرائط لون."""
+        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+                          padding=(16, 8, 16, 12))
+        outer.pack(fill=X)
+        ttk.Label(outer, text=G.rtl("📊  نظرة سريعة على الموسم"),
+                  font=(G._FSB, 11), foreground=G.BRONZE,
+                  background=G.BG).pack(anchor="e", pady=(0, 8))
+        wrap = ttk.Frame(outer, style="Toolbar.TFrame")
         wrap.pack(fill=X)
         self._kpi = {}
-        # (المفتاح، العنوان، لون القيمة، هل قابل للنقر لفتح المتابعة)
-        specs = [("pilgrims", "👤 المعتمرون", G.TEXT, False),
-                 ("occ", "🏨 نسبة الإشغال", G.TEXT, False),
-                 ("paid", "💰 المحصّل", G.SUCCESS_FG if hasattr(G, "SUCCESS_FG")
-                  else "#2E6B45", False),
-                 ("late", "⏳ المتأخرون", G.DANGER if hasattr(G, "DANGER")
-                  else "#B23A3A", True)]
-        for key, label, color, clickable in specs:
-            card = ttk.Frame(wrap, style="Panel.TFrame", padding=(14, 8))
-            card.pack(side=RIGHT, fill=X, expand=True, padx=(8, 0))
-            ttk.Label(card, text=G.rtl(label), font=(G._FUI, 9),
-                      foreground=G.MUTED, background=G.PANEL).pack(anchor="e")
-            val = ttk.Label(card, text="—", font=(G._FSB, 18),
-                            foreground=color, background=G.PANEL)
-            val.pack(anchor="e")
+        # (المفتاح، العنوان، الأيقونة، الوحدة، قابل للنقر)
+        specs = [("pilgrims", "المعتمرون", "👤", "", False),
+                 ("occ", "نسبة الإشغال", "🏨", "", False),
+                 ("paid", "المحصّل", "💰", "AED", False),
+                 ("late", "المتأخرون عن السداد", "⏳", "", True)]
+        for key, label, icon, unit, clickable in specs:
+            acc = self._KPI_ACCENTS[key]
+            card = ttk.Frame(wrap, style="Panel.TFrame")
+            card.pack(side=RIGHT, fill=BOTH, expand=True, padx=(12, 0))
+            Frame(card, background=acc, height=3).pack(fill=X)   # شريط لون علوي
+            inner = ttk.Frame(card, style="Panel.TFrame", padding=(16, 12, 16, 15))
+            inner.pack(fill=BOTH, expand=True)
+            top = ttk.Frame(inner, style="Panel.TFrame")
+            top.pack(fill=X)
+            ttk.Label(top, text=icon, font=(G._FUI, 16), foreground=acc,
+                      background=G.PANEL).pack(side=RIGHT)
+            ttk.Label(top, text=G.rtl(label), font=(G._FUI, 10),
+                      foreground=G.MUTED, background=G.PANEL).pack(
+                          side=RIGHT, padx=(0, 8))
+            val = ttk.Label(inner, text="—", font=(G._FSB, 25),
+                            foreground=acc, background=G.PANEL)
+            val.pack(anchor="e", pady=(8, 0))
             self._kpi[key] = val
+            if unit:
+                sub = ttk.Label(inner, text=unit, font=(G._FUI, 9),
+                                foreground=G.MUTED, background=G.PANEL)
+                sub.pack(anchor="e")
+                self._kpi[key + "_sub"] = sub
             if clickable:                       # المتأخرون: نقرة تفتح المتابعة
-                for w in (card, val):
-                    w.configure(cursor="hand2")
+                for w in (card, inner, top, val):
+                    try:
+                        w.configure(cursor="hand2")
+                    except Exception:
+                        pass
                     w.bind("<Button-1>", lambda _e: self.open_collections())
                 self._kpi["late_card"] = card
 
     def _update_kpi(self, pilgrims, cap_total, total, paid, late) -> None:
-        """يحدّث بطاقات المؤشّرات من أرقام الموسم الحالية."""
+        """يحدّث بطاقات لوحة التحكّم من أرقام الموسم الحالية."""
         if not hasattr(self, "_kpi"):
             return
         occ = f"{pilgrims / cap_total * 100:.0f}٪" if cap_total else "—"
         pct = f"{paid / total * 100:.0f}٪" if total else "—"
         self._kpi["pilgrims"].configure(text=str(pilgrims))
         self._kpi["occ"].configure(text=occ)
-        self._kpi["paid"].configure(
-            text=f"{format_amount(paid)}  ({pct})")
+        self._kpi["paid"].configure(text=format_amount(paid) or "0")
+        if "paid_sub" in self._kpi:
+            self._kpi["paid_sub"].configure(text=f"AED · محصّل {pct}")
         self._kpi["late"].configure(text=str(late))
 
     def _build_statusbar(self) -> None:

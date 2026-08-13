@@ -9,7 +9,7 @@ import traceback
 import tkinter as tk
 from datetime import date
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, X, Y, StringVar, Tk, Toplevel, filedialog, messagebox, ttk
+from tkinter import BOTH, END, Frame, LEFT, RIGHT, X, Y, StringVar, Tk, Toplevel, filedialog, messagebox, ttk
 
 from . import app_mode
 from .logging_setup import get_logger
@@ -1044,27 +1044,48 @@ class HajjApp:
     )
 
     def _build_kpi_band(self) -> None:
-        """شريط مؤشّرات موسم الحج الحيّ (بطاقات) أسفل شريط الأدوات."""
-        wrap = ttk.Frame(self.root, style="Toolbar.TFrame",
-                         padding=(16, 2, 16, 8))
+        """لوحة تحكّم أعلى واجهة الحج: بطاقات مؤشّرات كبيرة بأيقونات وشرائط لون."""
+        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+                          padding=(16, 8, 16, 12))
+        outer.pack(fill=X)
+        ttk.Label(outer, text=rtl("📊  نظرة سريعة على الموسم"),
+                  font=(_FSB, 11), foreground=BRONZE,
+                  background=BG).pack(anchor="e", pady=(0, 8))
+        wrap = ttk.Frame(outer, style="Toolbar.TFrame")
         wrap.pack(fill=X)
         self._kpi_lbls = {}
-        specs = [("hujjaj", "👤 الحجّاج", TEXT, False),
-                 ("paid", "💰 المحصّل", SUCCESS_FG, False),
-                 ("remaining", "⏳ المتبقّي", TEXT, False),
-                 ("late", "⏳ المتأخرون", DANGER, True)]
-        for key, label, color, clickable in specs:
-            card = ttk.Frame(wrap, style="Panel.TFrame", padding=(14, 8))
-            card.pack(side=RIGHT, fill=X, expand=True, padx=(8, 0))
-            ttk.Label(card, text=rtl(label), font=(_FUI, 9),
-                      foreground=MUTED, background=PANEL).pack(anchor="e")
-            val = ttk.Label(card, text="—", font=(_FSB, 18),
-                            foreground=color, background=PANEL)
-            val.pack(anchor="e")
+        # (المفتاح، العنوان، الأيقونة، لون التمييز، الوحدة، قابل للنقر)
+        specs = [("hujjaj", "الحجّاج", "👤", "#8A6E4B", "", False),
+                 ("paid", "المحصّل", "💰", "#2E7D5B", "AED", False),
+                 ("remaining", "المتبقّي", "⏳", "#2C5AA0", "AED", False),
+                 ("late", "المتأخرون عن السداد", "⚠", "#C0392B", "", True)]
+        for key, label, icon, acc, unit, clickable in specs:
+            card = ttk.Frame(wrap, style="Panel.TFrame")
+            card.pack(side=RIGHT, fill=BOTH, expand=True, padx=(12, 0))
+            Frame(card, background=acc, height=3).pack(fill=X)
+            inner = ttk.Frame(card, style="Panel.TFrame", padding=(16, 12, 16, 15))
+            inner.pack(fill=BOTH, expand=True)
+            top = ttk.Frame(inner, style="Panel.TFrame")
+            top.pack(fill=X)
+            ttk.Label(top, text=icon, font=(_FUI, 16), foreground=acc,
+                      background=PANEL).pack(side=RIGHT)
+            ttk.Label(top, text=rtl(label), font=(_FUI, 10), foreground=MUTED,
+                      background=PANEL).pack(side=RIGHT, padx=(0, 8))
+            val = ttk.Label(inner, text="—", font=(_FSB, 25), foreground=acc,
+                            background=PANEL)
+            val.pack(anchor="e", pady=(8, 0))
             self._kpi_lbls[key] = val
+            if unit:
+                sub = ttk.Label(inner, text=unit, font=(_FUI, 9),
+                                foreground=MUTED, background=PANEL)
+                sub.pack(anchor="e")
+                self._kpi_lbls[key + "_sub"] = sub
             if clickable:                       # المتأخرون: نقرة تفتح المتابعة
-                for w in (card, val):
-                    w.configure(cursor="hand2")
+                for w in (card, inner, top, val):
+                    try:
+                        w.configure(cursor="hand2")
+                    except Exception:
+                        pass
                     w.bind("<Button-1>", lambda _e: self.open_collections())
 
     def _build_filters(self) -> None:
@@ -1900,8 +1921,9 @@ class HajjApp:
         if hasattr(self, "_kpi_lbls"):
             pct = f"{fin.collected_percent:.0f}٪" if fin.total else "—"
             self._kpi_lbls["hujjaj"].configure(text=str(total))
-            self._kpi_lbls["paid"].configure(
-                text=f"{format_amount(fin.paid) or 0}  ({pct})")
+            self._kpi_lbls["paid"].configure(text=format_amount(fin.paid) or "0")
+            if "paid_sub" in self._kpi_lbls:
+                self._kpi_lbls["paid_sub"].configure(text=f"AED · محصّل {pct}")
             self._kpi_lbls["remaining"].configure(
                 text=format_amount(fin.remaining) or "0")
             self._kpi_lbls["late"].configure(text=str(fin.unpaid_count))
