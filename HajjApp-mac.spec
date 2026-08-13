@@ -16,6 +16,8 @@ datas = [("hajj_app/assets", "assets")]
 datas += collect_data_files("arabic_reshaper")
 _dnd_datas, _dnd_binaries, _dnd_hidden = collect_all("tkinterdnd2")
 datas += _dnd_datas
+_ctk_datas, _ctk_binaries, _ctk_hidden = collect_all("customtkinter")
+datas += _ctk_datas
 # محرّك Tesseract المضمّن (إن وُجد مجلد vendor/tesseract فيه tesseract لنظام ماك)
 if os.path.isdir("vendor/tesseract"):
     datas += [("vendor/tesseract", "tesseract")]
@@ -28,9 +30,10 @@ if not os.path.isfile(_icon):
 a = Analysis(
     ["run_app.py"],
     pathex=[],
-    binaries=_dnd_binaries,
+    binaries=_dnd_binaries + _ctk_binaries,
     datas=datas,
-    hiddenimports=["PIL._tkinter_finder", "tkinterdnd2", *_dnd_hidden],
+    hiddenimports=["PIL._tkinter_finder", "tkinterdnd2", *_dnd_hidden,
+                   "customtkinter", *_ctk_hidden],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

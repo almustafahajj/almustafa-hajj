@@ -9,3 +9,4 @@ numpy
 pymupdf
 cryptography
 tkinterdnd2
+customtkinter

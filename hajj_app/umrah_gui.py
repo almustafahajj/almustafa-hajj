@@ -22,6 +22,25 @@ from tkinter import (
 
 from . import app_mode, assistant, images as imgmod, umrah
 from . import gui as G
+
+# CustomTkinter اختياري: يمنح عناصر عصرية (زوايا دائرية) داخل نفس نافذة Tk.
+# عند غيابه يعمل البرنامج بالمظهر الكلاسيكي دون كسر.
+try:
+    import customtkinter as _ctk
+    _HAS_CTK = True
+except Exception:                      # pragma: no cover - بيئة بلا المكتبة
+    _ctk = None
+    _HAS_CTK = False
+
+
+def _ctk_mode() -> str:
+    """وضع CustomTkinter (فاتح/داكن) مشتقّ من لون خلفية السمة الحالية."""
+    try:
+        h = G.BG.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return "dark" if (r * 0.299 + g * 0.587 + b * 0.114) < 128 else "light"
+    except Exception:
+        return "light"
 from .excel_io import export_answer_excel, export_umrah_excel
 from .fields import format_amount, parse_amount, payment_total
 from .mrz import MRZError, PassportData
@@ -129,7 +148,61 @@ class UmrahApp:
                     "paid": "#2E7D5B", "late": "#C0392B"}
 
     def _build_kpi(self) -> None:
-        """لوحة تحكّم أعلى الواجهة: بطاقات مؤشّرات كبيرة بأيقونات وشرائط لون."""
+        """لوحة تحكّم أعلى الواجهة: بطاقات مؤشّرات عصرية (CTk) أو كلاسيكية."""
+        if _HAS_CTK:
+            self._build_kpi_modern()
+        else:
+            self._build_kpi_classic()
+
+    def _build_kpi_modern(self) -> None:
+        """بطاقات CustomTkinter بزوايا دائرية وشرائط لون — مظهر عصري."""
+        _ctk.set_appearance_mode(_ctk_mode())
+        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+                          padding=(16, 8, 16, 12))
+        outer.pack(fill=X)
+        _ctk.CTkLabel(outer, text=G.rtl("📊  نظرة سريعة على الموسم"),
+                      font=_ctk.CTkFont(G._FSB, 13, "bold"),
+                      text_color=G.BRONZE, fg_color="transparent").pack(
+                          anchor="e", pady=(0, 8))
+        wrap = _ctk.CTkFrame(outer, fg_color="transparent")
+        wrap.pack(fill=X)
+        self._kpi = {}
+        specs = [("pilgrims", "المعتمرون", "👤", "", False),
+                 ("occ", "نسبة الإشغال", "🏨", "", False),
+                 ("paid", "المحصّل", "💰", "AED", False),
+                 ("late", "المتأخرون عن السداد", "⚠", "", True)]
+        for key, label, icon, unit, clickable in specs:
+            acc = self._KPI_ACCENTS[key]
+            card = _ctk.CTkFrame(wrap, corner_radius=16, fg_color=G.PANEL,
+                                 border_width=1, border_color=G.BORDER)
+            card.pack(side=RIGHT, fill="both", expand=True, padx=(12, 0))
+            _ctk.CTkFrame(card, height=5, corner_radius=6, fg_color=acc).pack(
+                fill="x", padx=14, pady=(12, 0))
+            top = _ctk.CTkFrame(card, fg_color="transparent")
+            top.pack(fill="x", padx=16, pady=(8, 0))
+            _ctk.CTkLabel(top, text=icon, font=_ctk.CTkFont(G._FUI, 18),
+                          text_color=acc, fg_color="transparent").pack(side=RIGHT)
+            _ctk.CTkLabel(top, text=G.rtl(label),
+                          font=_ctk.CTkFont(G._FUI, 12), text_color=G.MUTED,
+                          fg_color="transparent").pack(side=RIGHT, padx=(0, 8))
+            val = _ctk.CTkLabel(card, text="—",
+                                font=_ctk.CTkFont(G._FSB, 30, "bold"),
+                                text_color=acc, fg_color="transparent")
+            val.pack(anchor="e", padx=18, pady=(4, 0))
+            self._kpi[key] = val
+            sub = _ctk.CTkLabel(card, text=(unit or " "),
+                                font=_ctk.CTkFont(G._FUI, 10),
+                                text_color=G.MUTED, fg_color="transparent")
+            sub.pack(anchor="e", padx=18, pady=(0, 14))
+            if unit:
+                self._kpi[key + "_sub"] = sub
+            if clickable:
+                for w in (card, top, val, sub):
+                    w.bind("<Button-1>", lambda _e: self.open_collections())
+                self._kpi["late_card"] = card
+
+    def _build_kpi_classic(self) -> None:
+        """النسخة الكلاسيكية (ttk) — تعمل عند غياب CustomTkinter."""
         outer = ttk.Frame(self.root, style="Toolbar.TFrame",
                           padding=(16, 8, 16, 12))
         outer.pack(fill=X)
