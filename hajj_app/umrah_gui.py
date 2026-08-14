@@ -334,29 +334,27 @@ class UmrahApp:
         self._subtitle.pack(anchor="e")
 
         other = app_mode.mode_label(app_mode.HAJJ)
-        ttk.Button(bar, text=G.rtl(f"🕋  التبديل إلى {other}"),
-                   style="Ghost.TButton",
-                   command=self.switch_mode).pack(side=LEFT, padx=(0, 8))
-        rep = ttk.Menubutton(bar, text=G.rtl("📊  لوحة الموسم"),
-                             style="Ghost.TMenubutton", direction="below")
-        rmenu = Menu(rep, tearoff=0, font=(G._FUI, 10))
-        rmenu.add_command(label=G.rtl("📊  نظرة سريعة"),
-                          command=self.open_dashboard)
-        rmenu.add_command(label=G.rtl("🌐  تقرير ويب (يُشارك برابط)"),
-                          command=self.export_web_dashboard)
-        rmenu.add_command(label=G.rtl("📄  تقرير PDF (للطباعة)"),
-                          command=self.export_season_pdf)
-        rmenu.add_separator()
-        rmenu.add_command(label=G.rtl("💰  متابعة التحصيل (المتأخرون)"),
-                          command=self.open_collections)
-        rmenu.add_command(label=G.rtl("📋  نسخ ملخّص الموسم"),
-                          command=self.copy_season_summary)
-        rep["menu"] = rmenu
+        self._mkbtn(bar, f"🕋  التبديل إلى {other}", self.switch_mode).pack(
+            side=LEFT, padx=(0, 8))
+        rmenu = self._make_menu(bar, (
+            ("📊  نظرة سريعة", self.open_dashboard),
+            ("🌐  تقرير ويب (يُشارك برابط)", self.export_web_dashboard),
+            ("📄  تقرير PDF (للطباعة)", self.export_season_pdf),
+            None,
+            ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
+            ("📋  نسخ ملخّص الموسم", self.copy_season_summary),
+        ))
         self._report_menu = rmenu          # مرجع يمنع جمع القمامة
+        if _HAS_CTK:
+            rep = self._mkbtn(bar, "📊  لوحة الموسم  ▾", None)
+            rep.configure(command=lambda: self._popup_menu(rmenu, rep))
+        else:
+            rep = ttk.Menubutton(bar, text=G.rtl("📊  لوحة الموسم"),
+                                 style="Ghost.TMenubutton", direction="below")
+            rep["menu"] = rmenu
         rep.pack(side=LEFT, padx=(0, 8))
         G.add_tooltip(rep, G.rtl("تقارير الموسم: نظرة سريعة، ويب، وPDF"))
-        _ask = ttk.Button(bar, text=G.rtl("🔎  اسأل بياناتك"),
-                          style="Ghost.TButton", command=self.ask_data)
+        _ask = self._mkbtn(bar, "🔎  اسأل بياناتك", self.ask_data)
         _ask.pack(side=LEFT, padx=(0, 8))
         G.add_tooltip(_ask, G.rtl(
             "اكتب سؤالاً بالعربية عن معتمري الموسم فيجيبك من بياناتك فوراً"))
@@ -369,8 +367,8 @@ class UmrahApp:
                       background=G.BG).pack(anchor="w")
             ttk.Label(info, text="🔒 البيانات مشفّرة", font=(G._FUI, 9),
                       foreground=G.BRONZE, background=G.BG).pack(anchor="w")
-            ttk.Button(bar, text=G.rtl("🚪  تسجيل الخروج"), style="Ghost.TButton",
-                       command=self.do_logout).pack(side=LEFT, padx=(0, 8))
+            self._mkbtn(bar, "🚪  تسجيل الخروج", self.do_logout).pack(
+                side=LEFT, padx=(0, 8))
 
     # ---- شريط الأدوات ----
     #  واجهة مبسّطة: زران رئيسيان دائما الظهور + قوائم منسدلة تجمع بقية الأدوات
@@ -379,12 +377,10 @@ class UmrahApp:
         bar.pack(fill=X)
         self._menus: list = []
         # الأكثر استخداماً — أزرار مباشرة
-        b_new = ttk.Button(bar, text=G.rtl("➕  برنامج جديد"),
-                           style="Primary.TButton", command=self.new_trip)
+        b_new = self._mkbtn(bar, "➕  برنامج جديد", self.new_trip, "primary")
         b_new.pack(side=RIGHT, padx=3)
         G.add_tooltip(b_new, G.rtl("إضافة برنامج عمرة جديد  (Ctrl+N)"))
-        b_pil = ttk.Button(bar, text=G.rtl("👤  المعتمرون"), style="Act.TButton",
-                           command=self.open_pilgrims)
+        b_pil = self._mkbtn(bar, "👤  المعتمرون", self.open_pilgrims, "act")
         b_pil.pack(side=RIGHT, padx=3)
         G.add_tooltip(b_pil, G.rtl("فتح معتمري البرنامج المحدَّد  (Enter)"))
         # قوائم منسدلة تجمع الأدوات ذات الصلة لتخفيف الازدحام
@@ -420,20 +416,59 @@ class UmrahApp:
             ("🗂  الطلبات المحفوظة", self.open_transport_requests),
         ), tip="طلب حجز مواصلات (خطاب لشركة النقل) والطلبات المحفوظة")
 
-    def _menu_button(self, bar, label, items, tip=""):
-        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر) أو None لفاصل."""
-        mb = ttk.Menubutton(bar, text=G.rtl(label), style="Ghost.TMenubutton",
-                            direction="below")
-        menu = Menu(mb, tearoff=0, font=(G._FUI, 10))
+    def _mkbtn(self, parent, label, command, kind="ghost"):
+        """زر عصري (CustomTkinter) أو كلاسيكي حسب توفّر المكتبة.
+
+        ``kind``: ``primary`` (برونزي ممتلئ) / ``act`` أو ``ghost`` (فاتح محدّد)."""
+        if _HAS_CTK:
+            prim = kind == "primary"
+            return _ctk.CTkButton(
+                parent, text=G.rtl(label), command=command, corner_radius=11,
+                height=40, font=_ctk.CTkFont(G._FSB, 13, "bold"),
+                fg_color=(G.BRONZE if prim else G.GHOST_BG),
+                hover_color=(G.BRONZE_DARK if prim else G.GHOST_HOVER),
+                text_color=("#FFFFFF" if prim else G.TEXT),
+                border_width=(0 if prim else 1), border_color=G.BORDER)
+        style = {"primary": "Primary.TButton", "act": "Act.TButton"}.get(
+            kind, "Ghost.TButton")
+        return ttk.Button(parent, text=G.rtl(label), style=style, command=command)
+
+    @staticmethod
+    def _popup_menu(menu, btn) -> None:
+        """يُظهر قائمةً منسدلة أسفل زرّ CustomTkinter."""
+        try:
+            menu.tk_popup(btn.winfo_rootx(),
+                          btn.winfo_rooty() + btn.winfo_height())
+        finally:
+            menu.grab_release()
+
+    def _make_menu(self, parent, items) -> "Menu":
+        """يبني قائمة tk من عناصر (نص، أمر) أو None لفاصل."""
+        menu = Menu(parent, tearoff=0, font=(G._FUI, 10))
         for entry in items:
             if entry is None:
                 menu.add_separator()
             else:
                 text, cmd = entry
                 menu.add_command(label=G.rtl(text), command=cmd)
-        mb["menu"] = menu
+        return menu
+
+    def _menu_button(self, bar, label, items, tip="", side=RIGHT):
+        """زر بقائمة منسدلة — عصري (CTk) أو كلاسيكي، مع الحفاظ على كائن القائمة."""
+        menu = self._make_menu(bar, items)
         self._menus.append(menu)          # مرجع يمنع جمع القمامة
-        mb.pack(side=RIGHT, padx=3)
+        if _HAS_CTK:
+            mb = _ctk.CTkButton(
+                bar, text=G.rtl(label + "  ▾"), corner_radius=11, height=40,
+                font=_ctk.CTkFont(G._FSB, 13, "bold"), fg_color=G.GHOST_BG,
+                hover_color=G.GHOST_HOVER, text_color=G.TEXT, border_width=1,
+                border_color=G.BORDER)
+            mb.configure(command=lambda m=menu, b=mb: self._popup_menu(m, b))
+        else:
+            mb = ttk.Menubutton(bar, text=G.rtl(label),
+                                style="Ghost.TMenubutton", direction="below")
+            mb["menu"] = menu
+        mb.pack(side=side, padx=3)
         if tip:
             G.add_tooltip(mb, G.rtl(tip))
         return mb
