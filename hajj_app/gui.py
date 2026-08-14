@@ -427,13 +427,25 @@ class HajjApp:
 
         # الجدول: صفوف متناوبة الألوان وتمييز برونزي للصف المحدد
         self._apply_table_style()
+        # رأس الجدول: مسطّح بلون برونزي خفيف ونصّ برونزي — مظهر عصري هادئ
         s.configure("Treeview.Heading", font=(_FSB, 10),
-                    background=ACCENT, foreground="white", padding=8, relief="raised",
-                    borderwidth=2, lightcolor="#4A4038", darkcolor="#17120D",
-                    bordercolor="#17120D")
+                    background=ROW_ALT, foreground=BRONZE, padding=(10, 10),
+                    relief="flat", borderwidth=0,
+                    lightcolor=ROW_ALT, darkcolor=ROW_ALT, bordercolor=BORDER)
         s.map("Treeview.Heading",
-              background=[("active", BRONZE)],
-              relief=[("pressed", "sunken"), ("active", "raised")])
+              background=[("active", HOVER_BG), ("pressed", HOVER_BG)],
+              foreground=[("active", BRONZE_DARK)],
+              relief=[("pressed", "flat"), ("active", "flat")])
+
+        # شريط تمرير أنحف بألوان السمة (بلا أسهم، مقبض برونزي عند التفاعل)
+        for _sb in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
+            s.configure(_sb, gripcount=0, troughcolor=BG, bordercolor=BG,
+                        background=GHOST_EDGE, lightcolor=GHOST_EDGE,
+                        darkcolor=GHOST_EDGE, arrowcolor=BG, relief="flat",
+                        borderwidth=0, arrowsize=1)
+            s.map(_sb, background=[("active", BRONZE), ("pressed", BRONZE_DARK)])
+        s.configure("Vertical.TScrollbar", width=10)
+        s.configure("Horizontal.TScrollbar", height=10)
 
         # ---- أزرار ثلاثية الأبعاد (حواف مشطوفة + ضغطة غائرة) ----
         def bevel(name, bg, fg, light, dark, hover, *, bold=True, pad=(15, 8)):
