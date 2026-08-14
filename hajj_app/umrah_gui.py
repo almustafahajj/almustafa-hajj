@@ -480,19 +480,43 @@ class UmrahApp:
 
         # صفّ بحث فوري في البرامج (بالرمز/الاسم/الفندق)
         filt = ttk.Frame(wrap, style="Toolbar.TFrame")
-        filt.pack(fill=X, pady=(0, 6))
-        ttk.Label(filt, text=G.rtl("🔎  بحث:"), background=G.BG,
-                  foreground=G.TEXT).pack(side=RIGHT, padx=(0, 6))
+        filt.pack(fill=X, pady=(0, 8))
         self._query = StringVar(master=self.root, value="")
-        ent = ttk.Entry(filt, textvariable=self._query, width=32,
-                        justify="right")
-        ent.pack(side=RIGHT)
+        if _HAS_CTK:
+            ent = _ctk.CTkEntry(
+                filt, textvariable=self._query, width=320, height=38,
+                corner_radius=11, justify="right",
+                font=_ctk.CTkFont(G._FUI, 13), fg_color=G.PANEL,
+                border_color=G.BORDER, text_color=G.TEXT,
+                placeholder_text=G.rtl("🔎 ابحث بالرمز أو الاسم أو الفندق…"))
+            ent.pack(side=RIGHT)
+            self._mkbtn(filt, "مسح", lambda: self._query.set("")).pack(
+                side=RIGHT, padx=8)
+        else:
+            ttk.Label(filt, text=G.rtl("🔎  بحث:"), background=G.BG,
+                      foreground=G.TEXT).pack(side=RIGHT, padx=(0, 6))
+            ent = ttk.Entry(filt, textvariable=self._query, width=32,
+                            justify="right")
+            ent.pack(side=RIGHT)
+            ttk.Button(filt, text="مسح", style="Ghost.TButton",
+                       command=lambda: self._query.set("")).pack(
+                           side=RIGHT, padx=6)
         self._query.trace_add("write", lambda *a: self._reload())
-        ttk.Button(filt, text="مسح", style="Ghost.TButton",
-                   command=lambda: self._query.set("")).pack(side=RIGHT, padx=6)
 
-        holder = ttk.Frame(wrap, style="Toolbar.TFrame")
-        holder.pack(fill=BOTH, expand=True)
+        # الجدول داخل بطاقة مدوّرة (مظهر عصري) مع تباعد أوسع للصفوف
+        try:
+            ttk.Style().configure("Treeview", rowheight=32, font=(G._FUI, 11))
+        except Exception:
+            pass
+        if _HAS_CTK:
+            card = _ctk.CTkFrame(wrap, corner_radius=16, fg_color=G.PANEL,
+                                 border_width=1, border_color=G.BORDER)
+            card.pack(fill=BOTH, expand=True)
+            holder = ttk.Frame(card, style="Panel.TFrame")
+            holder.pack(fill=BOTH, expand=True, padx=8, pady=8)
+        else:
+            holder = ttk.Frame(wrap, style="Toolbar.TFrame")
+            holder.pack(fill=BOTH, expand=True)
         cols = ("code", "name", "depart", "return", "makkah", "madinah",
                 "count", "capacity", "remaining")
         heads = {"code": "الرمز", "name": "اسم البرنامج", "depart": "المغادرة",
