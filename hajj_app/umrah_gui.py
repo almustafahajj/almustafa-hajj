@@ -1586,24 +1586,20 @@ class TripPilgrimsWindow(Toplevel):
         bar.pack(fill=X)
         # الكشوف والمستندات على مستوى البرنامج نُقلت إلى الواجهة الرئيسية؛
         # هنا تبقى إجراءات المعتمرين والمستندات ذات المحرّر (لكل معتمر محدَّد).
-        for text, cmd, style in (
-            ("📷  إضافة بقراءة الجواز", self.add_passport, "Primary.TButton"),
-            ("🧮  إضافة حجز (تسعير)", self.add_booking, "Act.TButton"),
-            ("➕  إضافة يدوي", self.add_manual, "Ghost.TButton"),
-            ("✏️  تعديل", self.edit_selected, "Ghost.TButton"),
-            ("🗑  حذف", self.delete_selected, "Ghost.TButton"),
+        for text, cmd, kind in (
+            ("📷  إضافة بقراءة الجواز", self.add_passport, "primary"),
+            ("🧮  إضافة حجز (تسعير)", self.add_booking, "act"),
+            ("➕  إضافة يدوي", self.add_manual, "ghost"),
+            ("✏️  تعديل", self.edit_selected, "ghost"),
+            ("🗑  حذف", self.delete_selected, "ghost"),
         ):
-            ttk.Button(bar, text=G.rtl(text), style=style,
-                       command=cmd).pack(side=RIGHT, padx=3)
+            _cbtn(bar, text, cmd, kind).pack(side=RIGHT, padx=3)
         for text, cmd in (("📋  عروض الأسعار", self.do_quotes_list),
                           ("🏨  فاوتشر الفندق", self.do_voucher),
                           ("🚖  طلب مواصلات", self.do_transport_request)):
-            ttk.Button(bar, text=G.rtl(text), style="Ghost.TButton",
-                       command=cmd).pack(side=LEFT, padx=3)
-        ttk.Button(bar, text=G.rtl("👁  معاينة PDF"), style="Ghost.TButton",
-                   command=self.export_pdf).pack(side=LEFT, padx=3)
-        ttk.Button(bar, text=G.rtl("📊  تصدير إكسل"), style="Ghost.TButton",
-                   command=self.export_excel).pack(side=LEFT, padx=3)
+            _cbtn(bar, text, cmd).pack(side=LEFT, padx=3)
+        _cbtn(bar, "👁  معاينة PDF", self.export_pdf).pack(side=LEFT, padx=3)
+        _cbtn(bar, "📊  تصدير إكسل", self.export_excel).pack(side=LEFT, padx=3)
 
         wrap = ttk.Frame(self, style="Toolbar.TFrame", padding=(14, 4, 14, 12))
         wrap.pack(fill=BOTH, expand=True)

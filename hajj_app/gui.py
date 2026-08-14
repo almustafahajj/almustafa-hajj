@@ -1363,12 +1363,11 @@ class HajjApp:
         btns = ttk.Frame(inner, style="Panel.TFrame")
         btns.grid(row=99, column=0, columnspan=6, sticky="e", pady=(12, 0))
         self._build_columns_menubutton(btns).pack(side=RIGHT, padx=3)
-        ttk.Button(btns, text=rtl("⭐ فلاتر محفوظة"), style="Ghost.TButton",
-                   command=self.do_filter_presets).pack(side=RIGHT, padx=3)
-        self._icon_button(btns, "مسح الفلاتر", self.clear_filters, "Ghost.TButton",
-                          ("clear", TEXT)).pack(side=RIGHT, padx=3)
-        ttk.Button(btns, text="إغلاق", style="Ghost.TButton",
-                   command=self._hide_filter_panel).pack(side=RIGHT, padx=3)
+        _cbtn(btns, "⭐ فلاتر محفوظة", self.do_filter_presets).pack(
+            side=RIGHT, padx=3)
+        _cbtn(btns, "🧹 مسح الفلاتر", self.clear_filters).pack(
+            side=RIGHT, padx=3)
+        _cbtn(btns, "إغلاق", self._hide_filter_panel).pack(side=RIGHT, padx=3)
         panel.bind("<Escape>", lambda _e: self._hide_filter_panel())
 
     def _toggle_filter_panel(self) -> None:
@@ -1849,10 +1848,10 @@ class HajjApp:
             pady=(4, 14))
         eb = ttk.Frame(self._empty, style="Toolbar.TFrame")
         eb.pack()
-        ttk.Button(eb, text=rtl("📷  إضافة جوازات"), style="Primary.TButton",
-                   command=self.add_images).pack(side=RIGHT, padx=4)
-        ttk.Button(eb, text=rtl("📁  استيراد إكسل"), style="Ghost.TButton",
-                   command=self.import_from_excel).pack(side=RIGHT, padx=4)
+        _cbtn(eb, "📷  إضافة جوازات", self.add_images, "primary").pack(
+            side=RIGHT, padx=4)
+        _cbtn(eb, "📁  استيراد إكسل", self.import_from_excel).pack(
+            side=RIGHT, padx=4)
 
         # تطبيق الأعمدة الظاهرة المحفوظة
         self._apply_columns()
