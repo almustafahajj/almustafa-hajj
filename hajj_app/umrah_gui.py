@@ -41,6 +41,48 @@ def _ctk_mode() -> str:
         return "dark" if (r * 0.299 + g * 0.587 + b * 0.114) < 128 else "light"
     except Exception:
         return "light"
+
+
+def _sync_ctk_mode() -> None:
+    """يوائم مظهر CustomTkinter مع السمة الحالية (يُستدعى عند فتح نافذة)."""
+    if _HAS_CTK:
+        try:
+            _ctk.set_appearance_mode(_ctk_mode())
+        except Exception:
+            pass
+
+
+def _cbtn(parent, label, command, kind="ghost"):
+    """زر عصري (CustomTkinter) أو كلاسيكي (ttk) — يُستخدم في النوافذ المشتركة.
+
+    ``kind``: ``primary`` برونزي ممتلئ، ``act`` محدَّد ببرونزي، وإلّا ``ghost``."""
+    if _HAS_CTK:
+        prim = kind == "primary"
+        act = kind == "act"
+        return _ctk.CTkButton(
+            parent, text=G.rtl(label), command=command, corner_radius=11,
+            height=38, font=_ctk.CTkFont(G._FSB, 13, "bold"),
+            fg_color=(G.BRONZE if prim else G.GHOST_BG),
+            hover_color=(G.BRONZE_DARK if prim else G.GHOST_HOVER),
+            text_color=("#FFFFFF" if prim else (G.BRONZE if act else G.TEXT)),
+            border_width=(0 if prim else 1),
+            border_color=(G.BRONZE if act else G.BORDER))
+    style = {"primary": "Primary.TButton", "act": "Act.TButton"}.get(
+        kind, "Ghost.TButton")
+    return ttk.Button(parent, text=G.rtl(label), style=style, command=command)
+
+
+def _centry(parent, textvariable, **kw):
+    """حقل إدخال عصري (CustomTkinter) أو كلاسيكي (ttk)."""
+    if _HAS_CTK:
+        placeholder = kw.pop("placeholder_text", "")
+        return _ctk.CTkEntry(
+            parent, textvariable=textvariable, height=38, corner_radius=11,
+            border_width=1, border_color=G.BORDER, fg_color=G.PANEL,
+            font=_ctk.CTkFont(G._FUI, 13), justify="right",
+            placeholder_text=placeholder)
+    return ttk.Entry(parent, textvariable=textvariable, font=(G._FUI, 13),
+                     justify="right")
 from .excel_io import export_answer_excel, export_umrah_excel
 from .fields import format_amount, parse_amount, payment_total
 from .mrz import MRZError, PassportData
@@ -4332,6 +4374,7 @@ class AskWindow(Toplevel):
         self.geometry("720x580")
         self.minsize(560, 460)
         self.transient(parent)
+        _sync_ctk_mode()
         try:
             G.apply_window_icon(self)
         except Exception:
@@ -4349,10 +4392,9 @@ class AskWindow(Toplevel):
         row = ttk.Frame(self, style="Panel.TFrame", padding=(18, 12))
         row.pack(fill=X)
         self._q = StringVar()
-        ttk.Button(row, text=G.rtl("اسأل"), style="Primary.TButton",
-                   command=self._ask).pack(side=LEFT, padx=(0, 8))
-        entry = ttk.Entry(row, textvariable=self._q, font=(G._FUI, 13),
-                          justify="right")
+        _cbtn(row, "اسأل", self._ask, "primary").pack(side=LEFT, padx=(0, 8))
+        entry = _centry(row, self._q,
+                        placeholder_text="اكتب سؤالك ثم اضغط اسأل…")
         entry.pack(side=RIGHT, fill=X, expand=True)
         entry.bind("<Return>", lambda _e: self._ask())
         G.install_entry_editing(entry)
@@ -4397,8 +4439,8 @@ class AskWindow(Toplevel):
                         else None)
             xbar = ttk.Frame(b, style="Toolbar.TFrame")
             xbar.pack(fill=X, pady=(8, 0))
-            ttk.Button(xbar, text=G.rtl("📊  تصدير إكسل"), style="Ghost.TButton",
-                       command=lambda a=ans: self._export_excel(a)).pack(side=LEFT)
+            _cbtn(xbar, "📊  تصدير إكسل",
+                  lambda a=ans: self._export_excel(a)).pack(side=LEFT)
         if ans.get("kind") == "help" or ans.get("examples"):
             self._examples(b, ans.get("examples") or list(assistant.EXAMPLES))
 
@@ -4463,15 +4505,12 @@ class AskWindow(Toplevel):
             tv.bind("<Double-1>", lambda _e: self._wa_selected())
             bar = ttk.Frame(parent, style="Toolbar.TFrame")
             bar.pack(fill=X, pady=(10, 0))
-            ttk.Button(bar, text=G.rtl("📱  تذكير المحدَّد عبر واتساب"),
-                       style="Primary.TButton",
-                       command=self._wa_selected).pack(side=RIGHT)
-            ttk.Button(bar, text=G.rtl("💰  متابعة كل المتأخرين"),
-                       style="Act.TButton",
-                       command=self._followup_all).pack(side=RIGHT, padx=(8, 0))
-            ttk.Button(bar, text=G.rtl("📋  نسخ الأرقام"),
-                       style="Ghost.TButton",
-                       command=self._copy_due_phones).pack(side=RIGHT, padx=(8, 0))
+            _cbtn(bar, "📱  تذكير المحدَّد عبر واتساب", self._wa_selected,
+                  "primary").pack(side=RIGHT)
+            _cbtn(bar, "💰  متابعة كل المتأخرين", self._followup_all,
+                  "act").pack(side=RIGHT, padx=(8, 0))
+            _cbtn(bar, "📋  نسخ الأرقام", self._copy_due_phones).pack(
+                side=RIGHT, padx=(8, 0))
             ttk.Label(bar, text=G.rtl("انقر الاسم نقرتين للتذكير"),
                       font=(G._FUI, 9), foreground=G.MUTED,
                       background=G.BG).pack(side=RIGHT, padx=(0, 10))
@@ -4540,9 +4579,8 @@ class AskWindow(Toplevel):
         chips = ttk.Frame(parent, style="Toolbar.TFrame")
         chips.pack(fill=X)
         for ex in examples:
-            ttk.Button(chips, text=G.rtl(ex), style="Ghost.TButton",
-                       command=lambda e=ex: self._run_example(e)
-                       ).pack(side=RIGHT, padx=4, pady=4)
+            _cbtn(chips, ex, lambda e=ex: self._run_example(e)).pack(
+                side=RIGHT, padx=4, pady=4)
 
     def _run_example(self, ex: str) -> None:
         self._q.set(ex)
@@ -4575,6 +4613,7 @@ class DueFollowupWindow(Toplevel):
         self.geometry("820x560")
         self.minsize(640, 460)
         self.transient(parent)
+        _sync_ctk_mode()
         try:
             G.apply_window_icon(self)
         except Exception:
@@ -4626,17 +4665,14 @@ class DueFollowupWindow(Toplevel):
 
         actions = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 0, 16, 14))
         actions.pack(fill=X)
-        ttk.Button(actions, text=G.rtl("📱  تذكير المحدَّد"),
-                   style="Primary.TButton", command=self._remind).pack(side=RIGHT)
-        ttk.Button(actions, text=G.rtl("💵  سجّل دفعة"),
-                   style="Act.TButton", command=self._record_payment).pack(
-                       side=RIGHT, padx=(8, 0))
-        ttk.Button(actions, text=G.rtl("⤼  تأجيل"),
-                   style="Ghost.TButton", command=self._skip).pack(side=RIGHT, padx=(8, 0))
-        ttk.Button(actions, text=G.rtl("⏭  التالي"),
-                   style="Ghost.TButton", command=self._next_pending).pack(side=RIGHT, padx=(8, 0))
-        ttk.Button(actions, text=G.rtl("إغلاق"), style="Ghost.TButton",
-                   command=self.destroy).pack(side=LEFT)
+        _cbtn(actions, "📱  تذكير المحدَّد", self._remind, "primary").pack(
+            side=RIGHT)
+        _cbtn(actions, "💵  سجّل دفعة", self._record_payment, "act").pack(
+            side=RIGHT, padx=(8, 0))
+        _cbtn(actions, "⤼  تأجيل", self._skip).pack(side=RIGHT, padx=(8, 0))
+        _cbtn(actions, "⏭  التالي", self._next_pending).pack(
+            side=RIGHT, padx=(8, 0))
+        _cbtn(actions, "إغلاق", self.destroy).pack(side=LEFT)
         self._select_index(0)
 
     def _fill(self) -> None:
@@ -4769,13 +4805,11 @@ class DueFollowupWindow(Toplevel):
 
         btns = ttk.Frame(frm, style="Toolbar.TFrame")
         btns.pack(fill=X, pady=(14, 0))
-        ttk.Button(btns, text=G.rtl("💵  سدّد كامل المتبقّي"),
-                   style="Primary.TButton",
-                   command=lambda: commit(full=True)).pack(side=RIGHT)
-        ttk.Button(btns, text=G.rtl("تسجيل"), style="Act.TButton",
-                   command=lambda: commit(False)).pack(side=RIGHT, padx=(8, 0))
-        ttk.Button(btns, text=G.rtl("إلغاء"), style="Ghost.TButton",
-                   command=dlg.destroy).pack(side=LEFT)
+        _cbtn(btns, "💵  سدّد كامل المتبقّي",
+              lambda: commit(full=True), "primary").pack(side=RIGHT)
+        _cbtn(btns, "تسجيل", lambda: commit(False), "act").pack(
+            side=RIGHT, padx=(8, 0))
+        _cbtn(btns, "إلغاء", dlg.destroy).pack(side=LEFT)
         ent.bind("<Return>", lambda _e: commit(False))
         dlg.grab_set()
 
