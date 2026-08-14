@@ -150,6 +150,13 @@ class UmrahApp:
             G.apply_accent(accent if accent in G.ACCENTS else "برونزي")
         except Exception:
             pass
+        self._theme = self._ui.get("theme", "فاتح")
+        if self._theme not in G.THEMES:
+            self._theme = "فاتح"
+        try:
+            G.apply_theme(self._theme)          # يوحّد الوضع الفاتح/الداكن مع الحج
+        except Exception:
+            pass
 
         root.title(app_mode.label("window_title"))
         geom = self._ui.get("geometry")
@@ -378,6 +385,11 @@ class UmrahApp:
         other = app_mode.mode_label(app_mode.HAJJ)
         self._mkbtn(bar, f"🕋  التبديل إلى {other}", self.switch_mode).pack(
             side=LEFT, padx=(0, 8))
+        _theme_btn = self._mkbtn(
+            bar, ("☀️  فاتح" if self._theme == "داكن" else "🌙  داكن"),
+            self.toggle_theme)
+        _theme_btn.pack(side=LEFT, padx=(0, 8))
+        G.add_tooltip(_theme_btn, G.rtl("التبديل بين الوضع الفاتح والداكن"))
         rmenu = self._make_menu(bar, (
             ("📊  نظرة سريعة", self.open_dashboard),
             ("🌐  تقرير ويب (يُشارك برابط)", self.export_web_dashboard),
@@ -1095,6 +1107,21 @@ class UmrahApp:
     def open_pricings(self) -> None:
         """قائمة التسعيرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
         PricingsListWindow(self.root, self)
+
+    def toggle_theme(self) -> None:
+        """يبدّل بين الوضع الفاتح والداكن ويعيد البناء نظيفاً بالوضع الجديد."""
+        self._theme = "داكن" if self._theme == "فاتح" else "فاتح"
+        self._ui["theme"] = self._theme
+        self._settings["ui"] = self._ui
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+        if self.session is None:                 # وضع مفتوح — طبّق قدر الإمكان
+            G.apply_theme(self._theme)
+            return
+        self._exit_action = "restart"            # إعادة بناء بالوضع الجديد
+        self.root.destroy()
 
     # ---- الخروج والتبديل ----
     def switch_mode(self) -> None:

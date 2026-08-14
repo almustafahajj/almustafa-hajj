@@ -580,6 +580,14 @@ class HajjApp:
         _switch.pack(side=LEFT, padx=(0, 8))
         add_tooltip(_switch, "الانتقال مباشرةً إلى الوضع الآخر (تُحفظ بياناتك أولاً)")
 
+        # زرّ تبديل الوضع الفاتح/الداكن — أيقونة تعكس الوضع الهدف
+        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
+        _theme_btn = self._mkbtn(
+            bar, ("☀️  فاتح" if _dark_now else "🌙  داكن"),
+            self.toggle_theme, translate=False)
+        _theme_btn.pack(side=LEFT, padx=(0, 8))
+        add_tooltip(_theme_btn, "التبديل بين الوضع الفاتح والداكن")
+
         # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
         ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
 
@@ -1437,12 +1445,28 @@ class HajjApp:
         self._menus += [menu, dmenu, fmenu, tmenu]
         return mb
 
+    def _apply_theme_choice(self) -> None:
+        """يحفظ الوضع المختار ويعيد بناء الواجهة به فوراً (كتغيير اللون)."""
+        self._save_ui_settings()
+        self._audit("تبديل الوضع", self._theme)
+        if self.session is None:                 # وضع مفتوح — طبّق قدر الإمكان
+            apply_theme(self._theme)
+            self.set_status(f"الوضع: {self._theme}", ok=True)
+            return
+        self._exit_action = "restart"            # إعادة بناء نظيفة بالوضع الجديد
+        self.root.destroy()
+
+    def toggle_theme(self) -> None:
+        """يبدّل بين الوضع الفاتح والداكن من زرّ الترويسة."""
+        self._theme = "داكن" if getattr(self, "_theme", "فاتح") == "فاتح" \
+            else "فاتح"
+        if hasattr(self, "_theme_var"):
+            self._theme_var.set(self._theme)
+        self._apply_theme_choice()
+
     def _on_theme_change(self) -> None:
         self._theme = self._theme_var.get()
-        self._save_ui_settings()
-        messagebox.showinfo(
-            "الوضع",
-            f"سيُطبَّق الوضع «{self._theme}» عند إعادة تشغيل البرنامج.")
+        self._apply_theme_choice()
 
     def _on_density_change(self) -> None:
         self._density = self._density_var.get()
