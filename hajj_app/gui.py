@@ -4574,17 +4574,45 @@ class DashboardDialog(Toplevel):
 
         # الحجم يتبع المحتوى (يتجنّب قصّ الأزرار) ثم توسيط النافذة
         self.update_idletasks()
-        self.minsize(760, self.winfo_reqheight())
+        self.minsize(880, self.winfo_reqheight())
         x = (self.winfo_screenwidth() - self.winfo_width()) // 2
         y = max(20, (self.winfo_screenheight() - self.winfo_height()) // 6)
         self.geometry(f"+{x}+{y}")
 
-    def _card(self, parent, value, label, color, on_click=None):
-        # بطاقة أنيقة: حدّ ناعم + شريط لون علوي رفيع + خلفية اللوح
+    def _card(self, parent, value, label, color, on_click=None, icon=""):
+        """بطاقة مؤشّر عصرية (CTk): زوايا دائرية + شريط لون + أيقونة، قابلة للنقر."""
+        if _HAS_CTK:
+            card = _ctk.CTkFrame(parent, corner_radius=16, fg_color=PANEL,
+                                 border_width=1, border_color=BORDER)
+            bind_targets = [card]
+            _ctk.CTkFrame(card, height=5, corner_radius=6, fg_color=color).pack(
+                fill="x", padx=14, pady=(12, 0))
+            if icon:
+                w = _ctk.CTkLabel(card, text=icon, font=_ctk.CTkFont(_FUI, 20),
+                                  text_color=color, fg_color="transparent")
+                w.pack(anchor="e", padx=16, pady=(6, 0))
+                bind_targets.append(w)
+            big = _ctk.CTkLabel(card, text=str(value),
+                                font=_ctk.CTkFont(_FSB, 26, "bold"),
+                                text_color=color, fg_color="transparent")
+            big.pack(anchor="e", padx=18, pady=(2, 0))
+            sub = _ctk.CTkLabel(card, text=label, font=_ctk.CTkFont(_FUI, 11),
+                                text_color=MUTED, fg_color="transparent")
+            sub.pack(anchor="e", padx=18, pady=(0, 14))
+            bind_targets += [big, sub]
+            if on_click is not None:
+                for w in bind_targets:
+                    w.configure(cursor="hand2")
+                    w.bind("<Button-1>", lambda _e: on_click())
+            return card
+        # النسخة الكلاسيكية (بلا المكتبة)
         outer = tk.Frame(parent, bg=BORDER)
         tk.Frame(outer, bg=color, height=3).pack(fill="x", padx=1, pady=(1, 0))
         card = tk.Frame(outer, bg=PANEL, padx=16, pady=12)
         card.pack(fill="both", expand=True, padx=1, pady=(0, 1))
+        if icon:
+            tk.Label(card, text=icon, bg=PANEL, font=(_FUI, 16), fg=color).pack(
+                anchor="e")
         big = tk.Label(card, text=str(value), bg=PANEL, font=(_FSB, 20), fg=color)
         big.pack(anchor="e")
         sub = tk.Label(card, text=label, bg=PANEL, fg=MUTED, font=(_FUI, 10))
@@ -4596,10 +4624,22 @@ class DashboardDialog(Toplevel):
         return outer
 
     def refresh(self) -> None:
+        from datetime import date as _date
         from .fields import format_amount
         from .stats import (financial_summary, financials_by_program,
                             outstanding)
         from .quality import check_records
+        from . import umrah as _um
+
+        if _HAS_CTK:                          # يوائم مظهر البطاقات مع السمة
+            try:
+                h = BG.lstrip("#")
+                r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                _ctk.set_appearance_mode(
+                    "dark" if (r * 0.299 + g * 0.587 + b * 0.114) < 128
+                    else "light")
+            except Exception:
+                pass
 
         for w in self._outer.winfo_children():
             w.destroy()
@@ -4608,43 +4648,81 @@ class DashboardDialog(Toplevel):
         owe = outstanding(recs)
         report = check_records(recs, programs=self.app._programs_by_name())
         issues = len(report.issues)
+        today = _date.today().isoformat()
+        expiring = sum(1 for r in recs
+                       if _um.passport_expiry_soon(r, today, 6))
+        noun = "الحجّاج" if app_mode.is_hajj() else "المعتمرين"
 
         name = self.app.season_year.get().strip()
         ttk.Label(self._outer, text=f"لوحة التحكم — موسم {name}هـ" if name
                   else "لوحة التحكم", font=(_FSB, 14),
                   foreground=TEXT, background=BG).pack(anchor="e", pady=(0, 12))
 
-        # بطاقات المؤشّرات (شبكة 3 أعمدة)
+        # --- بطاقات المؤشّرات الأساسية (٤ أعمدة) ---
         grid = ttk.Frame(self._outer)
         grid.pack(fill=X)
-        for c in range(3):
+        for c in range(4):
             grid.columnconfigure(c, weight=1, uniform="kpi")
+        stat = self.app.do_stats
         cards = [
-            (fin.count, "إجمالي الحجّاج", BRONZE, None),
-            (format_amount(fin.paid) or "0", "المحصّل", SUCCESS_FG,
-             self.app.do_stats),
-            (format_amount(fin.remaining) or "0", "المتبقّي", DANGER,
-             self.app.do_stats),
-            (f"{fin.collected_percent}%", "نسبة التحصيل", BRONZE,
-             self.app.do_stats),
-            (len(owe), "عدد المتأخّرات", AMBER_FG, self.app.do_stats),
-            (issues, "تنبيهات الجودة", ("#2C5AA0" if issues == 0 else DANGER),
-             self.app.do_quality_check),
+            (f"{fin.count:,}", noun, BRONZE, None, "👤"),
+            (format_amount(fin.paid) or "0", "المحصّل", SUCCESS_FG, stat, "💰"),
+            (format_amount(fin.remaining) or "0", "المتبقّي", "#2C5AA0",
+             stat, "⏳"),
+            (f"{fin.collected_percent}%", "نسبة التحصيل", BRONZE, stat, "📈"),
         ]
-        for i, (val, lbl, col, act) in enumerate(cards):
+        for i, (val, lbl, col, act, ic) in enumerate(cards):
             self._card(grid, val, lbl, col,
-                       (lambda a=act: (self.destroy(), a())) if act else None
-                       ).grid(row=i // 3, column=i % 3, sticky="nsew",
-                              padx=6, pady=6)
+                       (lambda a=act: (self.destroy(), a())) if act else None,
+                       ic).grid(row=0, column=i, sticky="nsew", padx=6, pady=6)
 
-        # المالية حسب البرنامج
+        # --- تنبيهات ومهام (تتلوّن حسب الخطورة، وتُفتح بالنقر) ---
+        ttk.Label(self._outer, text=rtl("🔔 تنبيهات ومهام"), font=(_FSB, 11),
+                  foreground=BRONZE, background=BG).pack(anchor="e",
+                                                        pady=(16, 4))
+        arow = ttk.Frame(self._outer)
+        arow.pack(fill=X)
+        for c in range(3):
+            arow.columnconfigure(c, weight=1, uniform="alert")
+        alerts = [
+            (len(owe), "متأخّرون عن السداد", "⚠",
+             (DANGER if owe else SUCCESS_FG), self.app.open_collections),
+            (expiring, "جوازات تحتاج تجديد (٦ أشهر)", "🛂",
+             (AMBER_FG if expiring else SUCCESS_FG),
+             (self.app.do_quality_check if expiring else None)),
+            (issues, "تنبيهات الجودة", "🩺",
+             (DANGER if issues else SUCCESS_FG), self.app.do_quality_check),
+        ]
+        for i, (val, lbl, ic, col, act) in enumerate(alerts):
+            self._card(arow, val, lbl, col,
+                       (lambda a=act: (self.destroy(), a())) if act else None,
+                       ic).grid(row=0, column=i, sticky="nsew", padx=6, pady=6)
+
+        # --- إجراءات سريعة ---
+        ttk.Label(self._outer, text=rtl("⚡ إجراءات سريعة"), font=(_FSB, 11),
+                  foreground=BRONZE, background=BG).pack(anchor="e",
+                                                        pady=(16, 4))
+        qrow = ttk.Frame(self._outer)
+        qrow.pack(fill=X)
+        quick = [
+            ("➕  حاج جديد" if app_mode.is_hajj() else "➕  معتمر جديد",
+             self.app.add_manual, "primary"),
+            ("📷  إضافة جوازات", self.app.add_images, "ghost"),
+            ("💰  متابعة التحصيل", self.app.open_collections, "act"),
+            ("📊  الإحصاءات", self.app.do_stats, "ghost"),
+        ]
+        for text, cmd, kind in quick:
+            _cbtn(qrow, text, (lambda c=cmd: (self.destroy(), c())),
+                  kind).pack(side=RIGHT, padx=3)
+
+        # --- المالية حسب البرنامج ---
         ttk.Label(self._outer, text="المالية حسب البرنامج",
                   font=(_FSB, 11), foreground=BRONZE,
-                  background=BG).pack(anchor="e", pady=(14, 4))
+                  background=BG).pack(anchor="e", pady=(16, 4))
         tv = ttk.Treeview(self._outer, columns=("count", "paid", "remaining", "pct"),
                           show="tree headings", height=5)
         tv.heading("#0", text="البرنامج")
-        for c, t, w in (("count", "الحجّاج", 80), ("paid", "المحصّل", 120),
+        for c, t, w in (("count", noun, 80), ("paid", "المحصّل", 120),
                         ("remaining", "المتبقّي", 120), ("pct", "التحصيل", 90)):
             tv.heading(c, text=t)
             tv.column(c, width=w, anchor="center", stretch=False)
@@ -4656,7 +4734,7 @@ class DashboardDialog(Toplevel):
                               f"{pf.collected_percent}%"))
         tv.pack(fill=X)
 
-        # إعدادات العرض («الأعمدة» في لوحة الفلاتر)
+        # إعدادات العرض + أزرار سفلية
         view_row = ttk.Frame(self._outer)
         view_row.pack(anchor="e", pady=(14, 0))
         ttk.Label(view_row, text="إعدادات العرض:", background=BG, foreground=MUTED,
@@ -4665,16 +4743,11 @@ class DashboardDialog(Toplevel):
 
         row = ttk.Frame(self._outer)
         row.pack(anchor="e", pady=(8, 0))
-        ttk.Button(row, text=rtl("📊  الإحصاءات"), style="Act.TButton",
-                   command=lambda: (self.destroy(), self.app.do_stats())
-                   ).pack(side=RIGHT, padx=3)
-        ttk.Button(row, text=rtl("🩺  فحص الجودة"), style="Act.TButton",
-                   command=lambda: (self.destroy(), self.app.do_quality_check())
-                   ).pack(side=RIGHT, padx=3)
-        ttk.Button(row, text=rtl("↻  تحديث"), style="Ghost.TButton",
-                   command=self.refresh).pack(side=RIGHT, padx=3)
-        ttk.Button(row, text="إغلاق", style="Ghost.TButton",
-                   command=self.destroy).pack(side=RIGHT, padx=3)
+        _cbtn(row, "🩺  فحص الجودة",
+              lambda: (self.destroy(), self.app.do_quality_check()), "ghost"
+              ).pack(side=RIGHT, padx=3)
+        _cbtn(row, "↻  تحديث", self.refresh).pack(side=RIGHT, padx=3)
+        _cbtn(row, "إغلاق", self.destroy).pack(side=RIGHT, padx=3)
 
 
 class StatsDialog(Toplevel):

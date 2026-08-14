@@ -303,7 +303,7 @@ def _walk(w):
             _lbls.append(c.cget("text"))
         _walk(c)
 _walk(dash)
-assert "إجمالي الحجّاج" in _lbls and "تنبيهات الجودة" in _lbls, _lbls
+assert "الحجّاج" in _lbls and "تنبيهات الجودة" in _lbls, _lbls
 assert any(str(len(app.records)) == t for t in _lbls), "عدد الحجّاج غير معروض"
 dash.destroy()
 print("  OK: لوحة التحكم تعرض المؤشّرات")
