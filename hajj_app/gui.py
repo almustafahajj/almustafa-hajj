@@ -221,6 +221,56 @@ def install_entry_editing(widget) -> None:
     widget.bind("<Control-KeyPress>", ctrl)
 
 
+def _cbtn(parent, label, command, kind="ghost"):
+    """زر عصري (CustomTkinter) أو كلاسيكي (ttk) — للنوافذ المنبثقة.
+
+    ``kind``: ``primary`` برونزي ممتلئ، ``act`` محدَّد ببرونزي، وإلّا ``ghost``."""
+    if _HAS_CTK:
+        prim = kind == "primary"
+        act = kind == "act"
+        return _ctk.CTkButton(
+            parent, text=rtl(label), command=command, corner_radius=11,
+            height=38, font=_ctk.CTkFont(_FSB, 13, "bold"),
+            fg_color=(BRONZE if prim else GHOST_BG),
+            hover_color=(BRONZE_DARK if prim else GHOST_HOVER),
+            text_color=("#FFFFFF" if prim else (BRONZE if act else TEXT)),
+            border_width=(0 if prim else 1),
+            border_color=(BRONZE if act else BORDER))
+    style = {"primary": "Primary.TButton", "act": "Act.TButton"}.get(
+        kind, "Ghost.TButton")
+    return ttk.Button(parent, text=rtl(label), style=style, command=command)
+
+
+def _form_entry(parent, textvariable, width=190):
+    """حقل إدخال عصري (CTk) مع تفعيل النسخ/اللصق على حقله الداخلي، أو ttk."""
+    if _HAS_CTK:
+        ent = _ctk.CTkEntry(
+            parent, textvariable=textvariable, width=width, height=34,
+            corner_radius=9, border_width=1, border_color=BORDER,
+            fg_color=PANEL, font=_ctk.CTkFont(_FUI, 12), justify="center")
+        inner = getattr(ent, "_entry", None)   # حقل tk الحقيقي داخل CTkEntry
+        install_entry_editing(inner if inner is not None else ent)
+        return ent
+    ent = ttk.Entry(parent, textvariable=textvariable, width=26,
+                    justify="center")
+    install_entry_editing(ent)
+    return ent
+
+
+def _choice(parent, textvariable, values, width=190):
+    """قائمة اختيار عصرية (CTkOptionMenu) أو كلاسيكية (Combobox للقراءة)."""
+    if _HAS_CTK:
+        return _ctk.CTkOptionMenu(
+            parent, variable=textvariable, values=[str(v) for v in values],
+            width=width, height=34, corner_radius=9,
+            font=_ctk.CTkFont(_FUI, 12), fg_color=PANEL, button_color=BRONZE,
+            button_hover_color=BRONZE_DARK, text_color=TEXT,
+            dropdown_fg_color=PANEL, dropdown_text_color=TEXT,
+            dropdown_hover_color=GHOST_HOVER)
+    return ttk.Combobox(parent, textvariable=textvariable, state="readonly",
+                        width=24, justify="center", values=list(values))
+
+
 def add_tooltip(widget, text: str) -> None:
     """تلميح صغير يظهر عند مرور الفأرة فوق الأداة (Tooltip)."""
     if not text:
@@ -7264,10 +7314,8 @@ class EditDialog(Toplevel):
 
         btns = ttk.Frame(outer)
         btns.pack(anchor="e", pady=(14, 0))
-        ttk.Button(btns, text=save_text, command=self._save,
-                   style="Act.TButton").pack(side=RIGHT, padx=4)
-        ttk.Button(btns, text="إلغاء", command=self.destroy,
-                   style="Act.TButton").pack(side=RIGHT)
+        _cbtn(btns, save_text, self._save, "primary").pack(side=RIGHT, padx=4)
+        _cbtn(btns, "إلغاء", self.destroy).pack(side=RIGHT)
 
         self.bind("<Return>", lambda _e: self._save())
         self.bind("<Escape>", lambda _e: self.destroy())
@@ -7297,21 +7345,17 @@ class EditDialog(Toplevel):
                 from .programs import PROGRAM_NAMES
                 cell = ttk.Frame(frame)
                 cell.grid(row=row, column=col, sticky="w", pady=5)
-                ttk.Combobox(cell, textvariable=var, state="readonly", width=14,
-                             justify="center",
-                             values=[""] + list(PROGRAM_NAMES)).pack(side=LEFT)
-                ttk.Button(cell, text="تطبيق", style="Ghost.TButton", width=7,
-                           command=self._apply_program).pack(side=LEFT, padx=(4, 0))
+                _choice(cell, var, [""] + list(PROGRAM_NAMES), width=130).pack(
+                    side=LEFT)
+                _cbtn(cell, "تطبيق", self._apply_program).pack(
+                    side=LEFT, padx=(4, 0))
                 continue
             if f.key in self.CHOICE_FIELDS:
-                ttk.Combobox(frame, textvariable=var, state="readonly", width=24,
-                             justify="center",
-                             values=list(self.CHOICE_FIELDS[f.key])).grid(
+                _choice(frame, var, self.CHOICE_FIELDS[f.key], width=200).grid(
                     row=row, column=col, sticky="w", pady=5)
                 continue
-            entry = ttk.Entry(frame, textvariable=var, width=26, justify="center")
+            entry = _form_entry(frame, var)   # حقل عصري + نسخ/لصق/قص
             entry.grid(row=row, column=col, sticky="w", pady=5)
-            install_entry_editing(entry)      # نسخ/لصق/قص + قائمة يمين
         return frame
 
     def _apply_program(self) -> None:

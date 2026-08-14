@@ -52,13 +52,14 @@ def _sync_ctk_mode() -> None:
             pass
 
 
-def _cbtn(parent, label, command, kind="ghost"):
+def _cbtn(parent, label, command, kind="ghost", width=None):
     """زر عصري (CustomTkinter) أو كلاسيكي (ttk) — يُستخدم في النوافذ المشتركة.
 
     ``kind``: ``primary`` برونزي ممتلئ، ``act`` محدَّد ببرونزي، وإلّا ``ghost``."""
     if _HAS_CTK:
         prim = kind == "primary"
         act = kind == "act"
+        kw = {} if width is None else {"width": width}
         return _ctk.CTkButton(
             parent, text=G.rtl(label), command=command, corner_radius=11,
             height=38, font=_ctk.CTkFont(G._FSB, 13, "bold"),
@@ -66,10 +67,12 @@ def _cbtn(parent, label, command, kind="ghost"):
             hover_color=(G.BRONZE_DARK if prim else G.GHOST_HOVER),
             text_color=("#FFFFFF" if prim else (G.BRONZE if act else G.TEXT)),
             border_width=(0 if prim else 1),
-            border_color=(G.BRONZE if act else G.BORDER))
+            border_color=(G.BRONZE if act else G.BORDER), **kw)
     style = {"primary": "Primary.TButton", "act": "Act.TButton"}.get(
         kind, "Ghost.TButton")
-    return ttk.Button(parent, text=G.rtl(label), style=style, command=command)
+    kw = {} if width is None else {"width": max(4, width // 9)}
+    return ttk.Button(parent, text=G.rtl(label), style=style,
+                      command=command, **kw)
 
 
 def _centry(parent, textvariable, **kw):
@@ -3845,12 +3848,10 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
 
         bar = ttk.Frame(self, padding=(10, 6))
         bar.pack(fill=X)
-        ttk.Button(bar, text="🖨  معاينة PDF",
-                   command=self._preview).pack(side=RIGHT)
-        ttk.Button(bar, text="💾  حفظ التسعير",
-                   command=self._save).pack(side=RIGHT, padx=6)
-        ttk.Button(bar, text="إغلاق", command=self.destroy).pack(side=RIGHT,
-                                                                 padx=6)
+        _cbtn(bar, "🖨  معاينة PDF", self._preview, "act").pack(side=RIGHT)
+        _cbtn(bar, "💾  حفظ التسعير", self._save, "primary").pack(
+            side=RIGHT, padx=6)
+        _cbtn(bar, "إغلاق", self.destroy).pack(side=RIGHT, padx=6)
         try:
             G.enable_minmax(self)
         except Exception:
@@ -3999,9 +4000,8 @@ class GroupPricerWindow(Toplevel, _EditorMixin):
         defaults = self._HAJJ_ITEMS if app_mode.is_hajj() else self._DEFAULT_ITEMS
         for name in defaults:
             self._add_item_row(name, "")
-        ttk.Button(lf, text="＋ إضافة بند",
-                   command=lambda: self._add_item_row()).pack(anchor="e",
-                                                              pady=(4, 0))
+        _cbtn(lf, "＋ إضافة بند", lambda: self._add_item_row()).pack(
+            anchor="e", pady=(4, 0))
 
     def _add_item_row(self, name="", amount=""):
         fr = ttk.Frame(self._item_box)
