@@ -11,6 +11,14 @@ from datetime import date
 from pathlib import Path
 from tkinter import BOTH, END, Frame, LEFT, RIGHT, X, Y, StringVar, Tk, Toplevel, filedialog, messagebox, ttk
 
+# CustomTkinter اختياري (عناصر عصرية بزوايا دائرية)؛ بديل كلاسيكي عند غيابه.
+try:
+    import customtkinter as _ctk
+    _HAS_CTK = True
+except Exception:                      # pragma: no cover
+    _ctk = None
+    _HAS_CTK = False
+
 from . import app_mode
 from .logging_setup import get_logger
 from .excel_io import export_excel, import_excel
@@ -534,8 +542,7 @@ class HajjApp:
                                  foreground=TEXT, background=BG, cursor="hand2")
                 link.pack(anchor="w")
                 link.bind("<Button-1>", lambda _e, run=action: run())
-            logout_btn = ttk.Button(bar, text=rtl(i18n.tr("🚪  تسجيل الخروج")),
-                                    style="Ghost.TButton", command=self.do_logout)
+            logout_btn = self._mkbtn(bar, "🚪  تسجيل الخروج", self.do_logout)
             logout_btn.pack(side=LEFT, padx=(0, 8))
             add_tooltip(logout_btn, "حفظ البيانات والعودة إلى شاشة الدخول")
         elif self._open_mode:
@@ -548,17 +555,16 @@ class HajjApp:
                       foreground=MUTED, background=BG).pack(anchor="w")
 
         # زرّ لوحة التحكم — بارز في وسط الترويسة
-        _dash = ttk.Button(bar, text=rtl(i18n.tr("🏠  لوحة التحكم")), style="Primary.TButton",
-                           command=self.do_dashboard)
+        _dash = self._mkbtn(bar, "🏠  لوحة التحكم", self.do_dashboard, "primary")
         _dash.pack(side=LEFT, padx=16)
         add_tooltip(_dash, "مؤشّرات سريعة + إعدادات العرض")
 
         # زرّ التبديل السريع بين وضعي الحج والعمرة (يعرض الوضع الآخر)
         _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
         _sicon = "🌙" if _other == app_mode.UMRAH else "🕋"
-        _switch = ttk.Button(
-            bar, style="Ghost.TButton", command=self.switch_mode,
-            text=rtl(i18n.tr(f"{_sicon}  التبديل إلى {app_mode.mode_label(_other)}")))
+        _switch = self._mkbtn(
+            bar, f"{_sicon}  التبديل إلى {app_mode.mode_label(_other)}",
+            self.switch_mode)
         _switch.pack(side=LEFT, padx=(0, 8))
         add_tooltip(_switch, "الانتقال مباشرةً إلى الوضع الآخر (تُحفظ بياناتك أولاً)")
 
@@ -802,28 +808,59 @@ class HajjApp:
                 cache[key] = None
         return cache[key]
 
+    def _mkbtn(self, parent, label, command, kind="ghost", translate=True):
+        """زر عصري (CustomTkinter) أو كلاسيكي حسب توفّر المكتبة.
+
+        ``kind``: ``primary`` (برونزي ممتلئ) أو ``ghost`` (فاتح محدّد)."""
+        from . import i18n
+        txt = i18n.tr(label) if translate else label
+        if _HAS_CTK:
+            prim = kind == "primary"
+            return _ctk.CTkButton(
+                parent, text=rtl(txt), command=command, corner_radius=11,
+                height=40, font=_ctk.CTkFont(_FSB, 13, "bold"),
+                fg_color=(BRONZE if prim else GHOST_BG),
+                hover_color=(BRONZE_DARK if prim else GHOST_HOVER),
+                text_color=("#FFFFFF" if prim else TEXT),
+                border_width=(0 if prim else 1), border_color=BORDER)
+        style = "Primary.TButton" if kind == "primary" else "Ghost.TButton"
+        return ttk.Button(parent, text=rtl(txt), style=style, command=command)
+
+    @staticmethod
+    def _popup_menu(menu, btn) -> None:
+        try:
+            menu.tk_popup(btn.winfo_rootx(),
+                          btn.winfo_rooty() + btn.winfo_height())
+        finally:
+            menu.grab_release()
+
     def _menubutton(self, parent, text, items, *, style="Toolbar.TMenubutton",
                     icon=None, tip=None):
-        """زر بقائمة منسدلة (Menubutton + Menu) بعناصر (نص، أمر)، بأيقونة اختيارية.
-
-        العناوين والعناصر تُترجَم تلقائياً حسب لغة الواجهة (i18n.tr).
-        """
+        """زر بقائمة منسدلة عصري (CTk) أو كلاسيكي، بعناصر (نص، أمر) مُترجَمة."""
         from . import i18n
-        mb = ttk.Menubutton(parent, text=rtl(i18n.tr(text)), style=style,
-                            direction="below")
-        if icon is not None:
-            img = self._icon(*icon)
-            if img is not None:
-                mb.configure(image=img, compound="right")
-        menu = tk.Menu(mb, tearoff=0, font=(_FUI, 10))
+        menu = tk.Menu(parent, tearoff=0, font=(_FUI, 10))
         for entry in items:
             if entry is None:
                 menu.add_separator()
             else:
                 label, cmd = entry
                 menu.add_command(label=i18n.tr(label), command=cmd)
-        mb["menu"] = menu
         self._menus.append(menu)          # نحتفظ بمرجع لمنع جمع القمامة
+        if _HAS_CTK:
+            mb = _ctk.CTkButton(
+                parent, text=rtl(i18n.tr(text) + "  ▾"), corner_radius=11,
+                height=40, font=_ctk.CTkFont(_FSB, 13, "bold"),
+                fg_color=GHOST_BG, hover_color=GHOST_HOVER, text_color=TEXT,
+                border_width=1, border_color=BORDER)
+            mb.configure(command=lambda m=menu, b=mb: self._popup_menu(m, b))
+        else:
+            mb = ttk.Menubutton(parent, text=rtl(i18n.tr(text)), style=style,
+                                direction="below")
+            if icon is not None:
+                img = self._icon(*icon)
+                if img is not None:
+                    mb.configure(image=img, compound="right")
+            mb["menu"] = menu
         if tip:
             add_tooltip(mb, tip)
         return mb
@@ -1043,8 +1080,66 @@ class HajjApp:
         ("remaining_amount", "المبلغ المتبقي"),
     )
 
+    _KPI_SPECS = [("hujjaj", "الحجّاج", "👤", "#8A6E4B", "", False),
+                  ("paid", "المحصّل", "💰", "#2E7D5B", "AED", False),
+                  ("remaining", "المتبقّي", "⏳", "#2C5AA0", "AED", False),
+                  ("late", "المتأخرون عن السداد", "⚠", "#C0392B", "", True)]
+
     def _build_kpi_band(self) -> None:
-        """لوحة تحكّم أعلى واجهة الحج: بطاقات مؤشّرات كبيرة بأيقونات وشرائط لون."""
+        """لوحة تحكّم أعلى واجهة الحج: بطاقات عصرية (CTk) أو كلاسيكية."""
+        if _HAS_CTK:
+            self._build_kpi_band_modern()
+        else:
+            self._build_kpi_band_classic()
+
+    def _build_kpi_band_modern(self) -> None:
+        """بطاقات CustomTkinter بزوايا دائرية وشرائط لون — مظهر عصري."""
+        try:
+            h = BG.lstrip("#")
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            _ctk.set_appearance_mode(
+                "dark" if (r * 0.299 + g * 0.587 + b * 0.114) < 128 else "light")
+        except Exception:
+            pass
+        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+                          padding=(16, 8, 16, 12))
+        outer.pack(fill=X)
+        _ctk.CTkLabel(outer, text=rtl("📊  نظرة سريعة على الموسم"),
+                      font=_ctk.CTkFont(_FSB, 13, "bold"), text_color=BRONZE,
+                      fg_color="transparent").pack(anchor="e", pady=(0, 8))
+        wrap = _ctk.CTkFrame(outer, fg_color="transparent")
+        wrap.pack(fill=X)
+        self._kpi_lbls = {}
+        for key, label, icon, acc, unit, clickable in self._KPI_SPECS:
+            card = _ctk.CTkFrame(wrap, corner_radius=16, fg_color=PANEL,
+                                 border_width=1, border_color=BORDER)
+            card.pack(side=RIGHT, fill="both", expand=True, padx=(12, 0))
+            _ctk.CTkFrame(card, height=5, corner_radius=6, fg_color=acc).pack(
+                fill="x", padx=14, pady=(12, 0))
+            top = _ctk.CTkFrame(card, fg_color="transparent")
+            top.pack(fill="x", padx=16, pady=(8, 0))
+            _ctk.CTkLabel(top, text=icon, font=_ctk.CTkFont(_FUI, 18),
+                          text_color=acc, fg_color="transparent").pack(side=RIGHT)
+            _ctk.CTkLabel(top, text=rtl(label), font=_ctk.CTkFont(_FUI, 12),
+                          text_color=MUTED, fg_color="transparent").pack(
+                              side=RIGHT, padx=(0, 8))
+            val = _ctk.CTkLabel(card, text="—",
+                                font=_ctk.CTkFont(_FSB, 30, "bold"),
+                                text_color=acc, fg_color="transparent")
+            val.pack(anchor="e", padx=18, pady=(4, 0))
+            self._kpi_lbls[key] = val
+            sub = _ctk.CTkLabel(card, text=(unit or " "),
+                                font=_ctk.CTkFont(_FUI, 10), text_color=MUTED,
+                                fg_color="transparent")
+            sub.pack(anchor="e", padx=18, pady=(0, 14))
+            if unit:
+                self._kpi_lbls[key + "_sub"] = sub
+            if clickable:
+                for w in (card, top, val, sub):
+                    w.bind("<Button-1>", lambda _e: self.open_collections())
+
+    def _build_kpi_band_classic(self) -> None:
+        """النسخة الكلاسيكية (ttk) — عند غياب CustomTkinter."""
         outer = ttk.Frame(self.root, style="Toolbar.TFrame",
                           padding=(16, 8, 16, 12))
         outer.pack(fill=X)
@@ -1054,12 +1149,7 @@ class HajjApp:
         wrap = ttk.Frame(outer, style="Toolbar.TFrame")
         wrap.pack(fill=X)
         self._kpi_lbls = {}
-        # (المفتاح، العنوان، الأيقونة، لون التمييز، الوحدة، قابل للنقر)
-        specs = [("hujjaj", "الحجّاج", "👤", "#8A6E4B", "", False),
-                 ("paid", "المحصّل", "💰", "#2E7D5B", "AED", False),
-                 ("remaining", "المتبقّي", "⏳", "#2C5AA0", "AED", False),
-                 ("late", "المتأخرون عن السداد", "⚠", "#C0392B", "", True)]
-        for key, label, icon, acc, unit, clickable in specs:
+        for key, label, icon, acc, unit, clickable in self._KPI_SPECS:
             card = ttk.Frame(wrap, style="Panel.TFrame")
             card.pack(side=RIGHT, fill=BOTH, expand=True, padx=(12, 0))
             Frame(card, background=acc, height=3).pack(fill=X)
@@ -1080,7 +1170,7 @@ class HajjApp:
                                 foreground=MUTED, background=PANEL)
                 sub.pack(anchor="e")
                 self._kpi_lbls[key + "_sub"] = sub
-            if clickable:                       # المتأخرون: نقرة تفتح المتابعة
+            if clickable:
                 for w in (card, inner, top, val):
                     try:
                         w.configure(cursor="hand2")

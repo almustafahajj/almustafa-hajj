@@ -93,10 +93,16 @@ labels, menus = [], []
 def walk(w):
     for c in w.winfo_children():
         name = c.__class__.__name__
-        if name == "Button":
-            labels.append(c.cget("text"))
-        elif name == "Menubutton":
-            menus.append(c.cget("text"))
+        try:
+            txt = c.cget("text")
+        except Exception:
+            txt = ""
+        if name == "Menubutton":
+            menus.append(txt)
+        elif name == "CTkButton":          # واجهة عصرية: القوائم أزرار CTk بعلامة ▾
+            (menus if "▾" in txt else labels).append(txt)
+        elif name == "Button":
+            labels.append(txt)
         walk(c)
 walk(root)
 print("  toolbar buttons:", labels)
