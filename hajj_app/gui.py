@@ -763,7 +763,9 @@ class HajjApp:
 
         def toggle() -> None:
             if getattr(self, "_collapsed", False):
-                self._set_sidebar_collapsed(False)   # وسّع أولاً ثم افتح القسم
+                # مطويّ: أظهر خيارات القسم كقائمة منبثقة دون توسيع الشريط
+                self._popup_menu(_menu, header)
+                return
             if sect["open"]:
                 close()
                 return
@@ -778,8 +780,8 @@ class HajjApp:
         self._nav_sections.append(sect)
         self._nav_headers.append({"btn": header, "label": i18n.tr(label)})
         header.configure(command=toggle)
-        if tip:
-            add_tooltip(header, tip)
+        # التلميح يعرض اسم القسم — مفيد خاصّةً عند طيّ الشريط (أيقونات فقط)
+        add_tooltip(header, i18n.tr(label))
         return header
 
     def _build_topbar(self) -> None:
@@ -788,6 +790,17 @@ class HajjApp:
         bar = ttk.Frame(self._body, style="Toolbar.TFrame",
                         padding=(18, 12, 18, 8))
         bar.pack(fill=X)
+        # زرّ طيّ/توسيع القائمة الجانبية — عند الحافة المجاورة للشريط
+        if _HAS_CTK:
+            ham = _ctk.CTkButton(
+                bar, text="", width=42, height=38, corner_radius=11,
+                image=self._cticon("menu", TEXT, 20), fg_color=GHOST_BG,
+                hover_color=GHOST_HOVER, command=self._toggle_sidebar)
+        else:
+            ham = ttk.Button(bar, text=rtl("☰"), style="Ghost.TButton",
+                             command=self._toggle_sidebar)
+        ham.pack(side=RIGHT, padx=(0, 12))
+        add_tooltip(ham, "طيّ/توسيع القائمة الجانبية")
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
         ttk.Label(titles, text=i18n.tr(app_mode.label("program_season")),
