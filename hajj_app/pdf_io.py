@@ -5095,3 +5095,310 @@ def export_passports_pdf(
         onLaterPages=lambda c, d: _footer(c, d, title),
     )
     return path
+
+
+# ============================ برنامج/عرض سعر الحج ============================
+# مستند رسمي متعدّد البنود (على غرار «برنامج الحج لكبار الشخصيات»): الفترة،
+# مكة والمشاعر، المواصلات، الخدمات، الطيران، الهدايا، وجدول الأسعار حسب الغرفة.
+
+HAJJ_PROGRAM_DEFAULT: dict = {
+    "title": "برنامج الحج لكبار الشخصيات 1448 هـ - 2027 م",
+    "greeting": ("تتقدم أسرة المصطفى للحج والعمرة، لسعادتكم بأطيب وأرق التحيات "
+                 "راجين من الله تعالى لكم دوام التوفيق والرفعة، ونستهل هذه الفرصة "
+                 "لنتوجه لكم بالشكر والامتنان على الثقة الكبيرة لننال شرف خدمة "
+                 "ضيوف الرحمن الكرام في أطهر بقاع الأرض."),
+    "intro2": "ولسعادتكم البرنامج الخاص بكم كالتالي:",
+    "period_hijri": "من 06 – 14 / ذو الحجة 1448هـ",
+    "period_greg": "المُوافق من 2027/05/12 – 2027/05/20 م",
+    "makkah_period": "من 06 – 14 / ذو الحجة 1448هـ، الموافق 2027/05/12–20 م (08 أيام).",
+    "makkah_hotel": "كونراد مكة – فندق خمسة نجوم فاخر مقابل للحرم.",
+    "makkah_rooms": "حسب الاختيار.",
+    "makkah_meals": ("الإقامة شاملة الوجبات الثلاث طوال الفترة بنظام البوفيه "
+                     "المفتوح F.B."),
+    "sections": [
+        ["ثانياً : منى", [
+            "الإقامة في مخيمات بعثة دولة الإمارات العربية المتحدة وذلك في الخيام "
+            "المخصصة لدولة الإمارات وتكون خيام خاصة بكبار الشخصيات للرجال والنساء، "
+            "وحسب توزيع مكتب شؤون حجاج دولة الإمارات.",
+            "تبدأ المشاعر من يوم 08 / ذو الحجة وحتى يوم 12 / ذو الحجة."]],
+        ["ثالثاً : عرفات", [
+            "فترة المُكوث في عرفات تكون في مخيمات بعثة دولة الإمارات العربية "
+            "المتحدة وذلك في الخيام المخصصة لدولة الإمارات، وحسب توزيع مكتب شؤون "
+            "حجاج الدولة."]],
+        ["رابعاً : مزدلفة", [
+            "المكوث في مزدلفة في مخيمات بعثة دولة الإمارات العربية المتحدة، "
+            "والاستراحة أو المبيت لقضاء ساعات الليل، ويكون مبيت الضيوف حسب توزيع "
+            "مكتب شؤون حجاج دولة الإمارات."]],
+        ["خامساً : المواصلات", [
+            "جميع التنقلات بواسطة سيارات جيمس حديثة موديل (2027).",
+            "سيارة خاصة من المنزل إلى المطار والعكس.",
+            "بالإضافة لقطار المشاعر."]],
+        ["سادساً : نظام الوجبات وخدمات الطعام", [
+            "الوجبات الثلاث بنظام البوفيه المفتوح.",
+            "تقدم الوجبات في المشاعر حسب النظام المتبع في المخيمات."]],
+        ["سابعاً : الخدمات الخاصة المُقدمة", [
+            "واعظ ديني معتمد من الهيئة العامة للشؤون الإسلامية والأوقاف.",
+            "البرنامج شامل الهدي.",
+            "خدمة مسافر بلا حقيبة في الذهاب والعودة.",
+            "خدمة الأمن على مدار الساعة.",
+            "الكراسي المتحركة في جميع التنقلات عند الطلب.",
+            "يُرافق الحملة طبيب خاص، وتوجد عيادة خاصة مجهزة بالمستلزمات الضرورية.",
+            "في المُخيم، والفندق خدمة الشاي والقهوة والمرطبات والعصائر والمياه "
+            "المعدنية إضافةً إلى أجود أنواع التمور.",
+            "وجود كادر إداري مرافق مُحترف، مُدرب على أعلى درجات التعاون، لخدمة "
+            "الضيوف على مدار الساعة."]],
+        ["تاسعاً : خدمة التنفيذي", [
+            "خدمة صالة التنفيذي في مطار جدة في الإستقبال والمغادرة."]],
+    ],
+    "flight_class": "درجة رجال الأعمال",
+    "flights": [
+        ["2027/05/12", "SAUDIA", "", "أبوظبي", "", "جدة"],
+        ["2027/05/20", "SAUDIA", "", "جدة", "", "أبوظبي"],
+    ],
+    "gifts": [
+        "عبوة ماء زمزم سعة 5 ليتر لكل حاج وحسب القوانين.",
+        "شنطة السفر وتحتوي على (حزام – إحرام).",
+        "شنطة المشاعر وتحتوي على (منشفة الجسم – منشفة اليدين – مجموعة العناية "
+        "الشخصية – مروحة – مظلة – كيس الجمرات المعقمة – معدات الراحة – سجادة "
+        "الصلاة).",
+    ],
+    "currency": "درهم",
+    "prices": {"single": "185,000", "double": "124,000",
+               "triple": "107,000", "quad": "97,000"},
+    "notes": [
+        "يمكن إضافة خدمة رمي الجمرات من نفق كبار الشخصيات عند توفرها وبرسوم "
+        "إضافية.",
+        "التقويم الهجري هو المُعتمد في البرامج وحجوزات الفنادق، والسفر على "
+        "التاريخ الميلادي.",
+        "حسب نظام الفنادق والمواصلات تكون المبالغ المدفوعة للبرنامج غير مستردة.",
+    ],
+    "closing": ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار ردكم "
+                "الكريم،،، وتفضلوا بقبول فائق الاحترام والتقدير ..."),
+    "manager_title": "المدير العام",
+    "manager": "محمد شعبار",
+    "manager_phone": "056 219 2666",
+}
+
+
+def hajj_program_defaults() -> dict:
+    """نسخة عميقة من القيم الافتراضية لبرنامج الحج (قابلة للتعديل بأمان)."""
+    import copy
+    return copy.deepcopy(HAJJ_PROGRAM_DEFAULT)
+
+
+def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
+    """يبني «برنامج/عرض سعر الحج» — مستند A4 عمودي متعدّد البنود بشعار الشركة،
+    الفترة والمشاعر والمواصلات والخدمات والطيران والهدايا وجدول الأسعار."""
+    _register_fonts()
+    path = Path(path)
+    d = hajj_program_defaults()
+    if data:
+        d.update({k: v for k, v in data.items() if v is not None})
+    st = _styles()
+    _DEEP = colors.HexColor("#6E543A")
+    doc = SimpleDocTemplate(
+        str(path), pagesize=A4, rightMargin=13 * mm, leftMargin=13 * mm,
+        topMargin=10 * mm, bottomMargin=15 * mm, title="برنامج الحج",
+        author="المصطفى للحج والعمرة")
+    W = doc.width
+    story: list = []
+
+    val = ParagraphStyle("hp_val", parent=st["cell"], alignment=2, fontSize=10,
+                         leading=15)
+    val_r = ParagraphStyle("hp_vr", parent=val, alignment=2)
+
+    def para(text, style=None, maxw=None):
+        return _ar_para(text, style or val, (maxw if maxw is not None else W - 8))
+
+    def bullet(text, bold=False):
+        s = ParagraphStyle("hp_bul", parent=val,
+                           fontName=(_FONT_BOLD if bold else _FONT),
+                           rightIndent=6, leading=15)
+        return _ar_para("•  " + str(text), s, W - 20)
+
+    def section(title):
+        p = _ar_para(title, ParagraphStyle(
+            "hp_sec", fontName=_FONT_BOLD, fontSize=12, alignment=2,
+            textColor=_DEEP, leading=16), W - 14)
+        mark = Table([[""]], colWidths=[8], rowHeights=[14])
+        mark.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+            ("LINEBEFORE", (0, 0), (0, -1), 2, _DEEP)]))
+        t = Table([[p, mark]], colWidths=[W - 14, 14])
+        t.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        return t
+
+    def _logo_cell(pathobj, h):
+        if not pathobj.is_file():
+            return ""
+        try:
+            iw, ih = ImageReader(str(pathobj)).getSize()
+            return RLImage(str(pathobj), width=h * iw / ih, height=h)
+        except Exception:
+            return ""
+    header = Table([[_logo_cell(_NIRVANA_PATH, 58), _logo_cell(_LOGO_PATH, 50)]],
+                   colWidths=[W / 2, W / 2])
+    header.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (0, 0), "LEFT"), ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(header)
+    story.append(_ar_para("التاريخ : " + ltr(_dmy(date.today().isoformat())) + " م.",
+                          val_r, W - 8))
+    story.append(Spacer(1, 4))
+    story.append(_ar_para("السلام عليكم ورحمة الله وبركاته،،",
+                          ParagraphStyle("hp_slm", parent=val,
+                                         fontName=_FONT_BOLD), W - 8))
+    story.append(Spacer(1, 6))
+
+    band = Table([[Paragraph(ar(str(d.get("title") or "برنامج الحج")),
+                             ParagraphStyle("hp_bt", fontName=_FONT_BOLD,
+                                            fontSize=15, alignment=1,
+                                            textColor=colors.white,
+                                            leading=20))]], colWidths=[W])
+    band.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.0, _DEEP),
+        ("LINEBELOW", (0, -1), (-1, -1), 2.0, _DEEP),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+    story.append(band)
+    story.append(Spacer(1, 8))
+
+    story.append(para(d.get("greeting", "")))
+    story.append(Spacer(1, 4))
+    story.append(_ar_para(d.get("intro2", ""),
+                          ParagraphStyle("hp_i2", parent=val,
+                                         fontName=_FONT_BOLD), W - 8))
+    story.append(bullet("الفترة : " + str(d.get("period_hijri", "")) + "، "
+                        + str(d.get("period_greg", "")), bold=True))
+    story.append(Spacer(1, 6))
+
+    story.append(section("أولاً : مكة المُكرمة"))
+    story.append(bullet("الفترة : " + str(d.get("makkah_period", ""))))
+    story.append(bullet("الفندق : " + str(d.get("makkah_hotel", ""))))
+    story.append(bullet("الغرف : " + str(d.get("makkah_rooms", ""))))
+    story.append(bullet("الوجبات : " + str(d.get("makkah_meals", ""))))
+    story.append(Spacer(1, 4))
+
+    for sec in d.get("sections", []):
+        try:
+            title, bullets = sec[0], sec[1]
+        except Exception:
+            continue
+        story.append(section(title))
+        for b in bullets:
+            if str(b).strip():
+                story.append(bullet(b))
+        story.append(Spacer(1, 4))
+
+    story.append(section("ثامناً : الطيران"))
+    story.append(bullet("على متن الخطوط الجوية السعودية من أبوظبي "
+                        + str(d.get("flight_class", "")) + "،", bold=True))
+    fheads = ["اليوم", "الناقل", "الإقلاع", "من", "الوصول", "إلى"]
+    fweights = [1.3, 1.2, 1.0, 1.0, 1.0, 1.0]
+    fw = list(reversed(fweights))
+    scale = W / sum(fw)
+    fcw = [x * scale for x in fw]
+    fav = [x - 9 for x in fcw]
+
+    def _fcells(values, style):
+        vv = list(reversed(values))
+        return [_ar_para(str(v) if str(v).strip() else "—", style, fav[i] - 3)
+                for i, v in enumerate(vv)]
+    ftab = [_fcells(fheads, st["head"])]
+    for row in d.get("flights", []):
+        ftab.append(_fcells((list(row) + [""] * 6)[:6], st["cell"]))
+    tflt = Table(ftab, colWidths=fcw)
+    tflt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, _GRID),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _ALT_ROW]),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    story.append(Spacer(1, 3))
+    story.append(tflt)
+    story.append(Spacer(1, 6))
+
+    story.append(section("عاشراً : هدايا ومستلزمات الحاج"))
+    for g in d.get("gifts", []):
+        if str(g).strip():
+            story.append(bullet(g))
+    story.append(Spacer(1, 6))
+
+    story.append(section("إحدى عشر : الأسعار"))
+    cur = str(d.get("currency", "درهم"))
+    pr = d.get("prices", {})
+    pheads = ["المفردة", "الثنائية", "الثلاثية", "الرباعية"]
+    pvals = [pr.get("single", ""), pr.get("double", ""),
+             pr.get("triple", ""), pr.get("quad", "")]
+    pcw = [W / 4] * 4
+    pav = [W / 4 - 9] * 4
+
+    def _pcells(values, style):
+        vv = list(reversed(values))
+        return [_ar_para(str(v) if str(v).strip() else "—", style, pav[i] - 3)
+                for i, v in enumerate(vv)]
+    cap = Table([[Paragraph(ar("التكلفة للشخص حسب نوع الغرفة (" + cur + ")"),
+                            ParagraphStyle("hp_cap", fontName=_FONT_BOLD,
+                                           fontSize=10, alignment=1,
+                                           textColor=colors.white))]],
+                colWidths=[W])
+    cap.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), _DEEP),
+                             ("TOPPADDING", (0, 0), (-1, -1), 5),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+    ptab = Table([_pcells(pheads, st["head"]), _pcells(pvals, st["cell"])],
+                 colWidths=pcw)
+    ptab.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 1), (-1, 1), 13),
+        ("FONTNAME", (0, 1), (-1, 1), _FONT_BOLD),
+        ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, _ACCENT),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#FBF8F3")),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
+    story.append(Spacer(1, 3))
+    story.append(cap)
+    story.append(ptab)
+    story.append(Spacer(1, 8))
+
+    story.append(section("مُلاحظات هامة"))
+    for n in d.get("notes", []):
+        if str(n).strip():
+            story.append(bullet(n))
+    story.append(Spacer(1, 10))
+
+    story.append(_ar_para(d.get("closing", ""),
+                          ParagraphStyle("hp_cls", parent=val, alignment=1,
+                                         fontName=_FONT_BOLD), W - 8))
+    story.append(Spacer(1, 14))
+    story.append(_ar_para(d.get("manager_title", "المدير العام"),
+                          ParagraphStyle("hp_sg1", parent=val, alignment=1,
+                                         fontName=_FONT_BOLD), W - 8))
+    story.append(_ar_para(d.get("manager", ""),
+                          ParagraphStyle("hp_sg2", parent=val, alignment=1,
+                                         fontName=_FONT_BOLD, fontSize=12),
+                          W - 8))
+    if str(d.get("manager_phone", "")).strip():
+        story.append(_ar_para(ltr(d.get("manager_phone")),
+                              ParagraphStyle("hp_sg3", parent=val, alignment=1),
+                              W - 8))
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, dd: _umrah_page(c, dd, "برنامج الحج"),
+        onLaterPages=lambda c, dd: _umrah_page(c, dd, "برنامج الحج"))
+    return path

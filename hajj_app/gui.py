@@ -1238,6 +1238,7 @@ class HajjApp:
             None,
             ("🧮  مسعّر المجموعات", self.open_group_pricer),
             ("🗂  التسعيرات المحفوظة", self.open_pricings),
+            ("🕋  برنامج / عرض سعر الحج", self.do_hajj_program),
             None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
             ("🧮  المصروفات والمحاسبة", self.do_expenses),
@@ -2885,6 +2886,10 @@ class HajjApp:
         """قائمة التسعيرات المحفوظة (فتح/تعديل، معاينة، حذف)."""
         from . import umrah_gui as ug
         ug.PricingsListWindow(self.root, self)
+
+    def do_hajj_program(self) -> None:
+        """محرّر «برنامج / عرض سعر الحج» — مستند رسمي متعدّد البنود (PDF)."""
+        HajjProgramDialog(self.root, self)
 
     def copy_season_summary(self) -> None:
         """ينسخ ملخّص مؤشّرات موسم الحج إلى الحافظة، جاهزاً للمشاركة."""
@@ -7459,6 +7464,244 @@ class ContractDialog(Toplevel):
             open_in_viewer(str(path))
         except Exception as exc:
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
+
+
+class HajjProgramDialog(Toplevel):
+    """محرّر «برنامج / عرض سعر الحج» — يعبّئ الحقول ويولّد مستنداً رسمياً (PDF).
+
+    القيم تُحمَّل من آخر برنامج محفوظ (settings) أو من النصّ الافتراضي، وتُحفظ
+    تلقائياً عند المعاينة/التصدير لتُستعاد لاحقاً."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        from . import pdf_io
+        self._pdf = pdf_io
+        self._data = pdf_io.hajj_program_defaults()
+        saved = app._settings.get("hajj_program")
+        if isinstance(saved, dict):
+            self._data.update(saved)
+
+        self.title("برنامج / عرض سعر الحج")
+        self.configure(bg=BG)
+        self.geometry("880x740")
+        self.minsize(680, 520)
+        self.transient(parent)
+        try:
+            apply_window_icon(self)
+        except Exception:
+            pass
+        enable_minmax(self)
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 12, 16, 4))
+        head.pack(fill=X)
+        ttk.Label(head, text="🕋 برنامج / عرض سعر الحج", font=(_FSB, 15),
+                  foreground=TEXT, background=BG).pack(side=RIGHT)
+        ttk.Label(head, text=rtl("عدّل الحقول ثم «معاينة / تصدير PDF» — تُحفظ لتُستعاد لاحقاً"),
+                  font=(_FUI, 9), foreground=MUTED, background=BG).pack(
+                      side=RIGHT, padx=(0, 10))
+
+        if _HAS_CTK:
+            body = _ctk.CTkScrollableFrame(self, fg_color=BG)
+        else:
+            body = ttk.Frame(self, style="Toolbar.TFrame")
+        body.pack(fill=BOTH, expand=True, padx=8, pady=6)
+        self._body = body
+
+        self._vars: dict = {}
+        self._texts: dict = {}
+        self._sections_w: list = []
+        self._flights_w: list = []
+        self._build_form()
+
+        bar = ttk.Frame(self, padding=(12, 8))
+        bar.pack(fill=X)
+        _cbtn(bar, "👁  معاينة / تصدير PDF", self._preview, "primary").pack(
+            side=RIGHT, padx=4)
+        _cbtn(bar, "↺  استعادة الافتراضي", self._reset).pack(side=RIGHT, padx=4)
+        _cbtn(bar, "إغلاق", self.destroy).pack(side=LEFT, padx=4)
+
+    # ---- عناصر النموذج ----
+    def _sec(self, text) -> None:
+        ttk.Label(self._body, text=rtl(text), font=(_FSB, 13),
+                  foreground=BRONZE, background=BG).pack(anchor="e",
+                                                        pady=(14, 4))
+
+    def _entry(self, key, label, width_lbl=20):
+        fr = ttk.Frame(self._body, style="Toolbar.TFrame")
+        fr.pack(fill=X, pady=2)
+        ttk.Label(fr, text=rtl(label), font=(_FUI, 10), foreground=TEXT,
+                  background=BG, width=width_lbl, anchor="e").pack(
+                      side=RIGHT, padx=(0, 8))
+        var = StringVar(value=str(self._data.get(key, "")))
+        self._vars[key] = var
+        e = ttk.Entry(fr, textvariable=var, justify="right")
+        e.pack(side=RIGHT, fill=X, expand=True)
+        install_entry_editing(e)
+        return var
+
+    def _multiline(self, key, label, lines, height=4):
+        ttk.Label(self._body, text=rtl(label), font=(_FUI, 10, "bold"),
+                  foreground=TEXT, background=BG).pack(anchor="e", pady=(6, 2))
+        txt = tk.Text(self._body, height=height, font=(_FUI, 10), wrap="word",
+                      relief="solid", borderwidth=1, background=PANEL,
+                      foreground=TEXT, insertbackground=TEXT)
+        txt.tag_configure("r", justify="right")
+        txt.insert("1.0", "\n".join(str(x) for x in lines))
+        txt.tag_add("r", "1.0", "end")
+        txt.pack(fill=X)
+        self._texts[key] = txt
+        return txt
+
+    def _build_form(self) -> None:
+        d = self._data
+        self._sec("العنوان والفترة")
+        self._entry("title", "عنوان البرنامج")
+        self._entry("period_hijri", "الفترة (هجري)")
+        self._entry("period_greg", "الفترة (ميلادي)")
+
+        self._sec("مكة المُكرمة")
+        self._entry("makkah_period", "فترة مكة")
+        self._entry("makkah_hotel", "الفندق")
+        self._entry("makkah_rooms", "الغرف")
+        self._entry("makkah_meals", "الوجبات")
+
+        self._sec("البنود (منى/عرفات/مزدلفة/المواصلات/الخدمات...) — سطر لكل نقطة")
+        for i, sec in enumerate(d.get("sections", [])):
+            try:
+                title, bullets = sec[0], sec[1]
+            except Exception:
+                continue
+            fr = ttk.Frame(self._body, style="Toolbar.TFrame")
+            fr.pack(fill=X, pady=(8, 1))
+            ttk.Label(fr, text=rtl("عنوان البند"), font=(_FUI, 9),
+                      foreground=MUTED, background=BG, width=12,
+                      anchor="e").pack(side=RIGHT, padx=(0, 6))
+            tv = StringVar(value=str(title))
+            te = ttk.Entry(fr, textvariable=tv, justify="right",
+                           font=(_FSB, 10))
+            te.pack(side=RIGHT, fill=X, expand=True)
+            install_entry_editing(te)
+            txt = tk.Text(self._body, height=max(2, len(bullets)),
+                          font=(_FUI, 10), wrap="word", relief="solid",
+                          borderwidth=1, background=PANEL, foreground=TEXT,
+                          insertbackground=TEXT)
+            txt.tag_configure("r", justify="right")
+            txt.insert("1.0", "\n".join(str(b) for b in bullets))
+            txt.tag_add("r", "1.0", "end")
+            txt.pack(fill=X, pady=(0, 2))
+            self._sections_w.append((tv, txt))
+
+        self._sec("الطيران")
+        self._entry("flight_class", "درجة السفر")
+        for i, row in enumerate(d.get("flights", []) or [["", "", "", "", "", ""]]):
+            row = (list(row) + [""] * 6)[:6]
+            fr = ttk.Frame(self._body, style="Toolbar.TFrame")
+            fr.pack(fill=X, pady=2)
+            w = {}
+            for key, lbl, val in (("to", "إلى", row[5]), ("frm", "من", row[3]),
+                                  ("carrier", "الناقل", row[1]),
+                                  ("day", "اليوم", row[0])):
+                ttk.Label(fr, text=rtl(lbl), font=(_FUI, 9), foreground=MUTED,
+                          background=BG).pack(side=RIGHT, padx=(0, 3))
+                var = StringVar(value=str(val))
+                e = ttk.Entry(fr, textvariable=var, justify="center", width=14)
+                e.pack(side=RIGHT, padx=(0, 8))
+                install_entry_editing(e)
+                w[key] = var
+            self._flights_w.append(w)
+
+        self._sec("هدايا ومستلزمات الحاج — سطر لكل نقطة")
+        self._multiline("gifts", "الهدايا", d.get("gifts", []), height=4)
+
+        self._sec("الأسعار (التكلفة للشخص حسب نوع الغرفة)")
+        pr = d.get("prices", {})
+        for key, lbl in (("single", "المفردة"), ("double", "الثنائية"),
+                         ("triple", "الثلاثية"), ("quad", "الرباعية")):
+            fr = ttk.Frame(self._body, style="Toolbar.TFrame")
+            fr.pack(fill=X, pady=2)
+            ttk.Label(fr, text=rtl(lbl), font=(_FUI, 10), foreground=TEXT,
+                      background=BG, width=20, anchor="e").pack(
+                          side=RIGHT, padx=(0, 8))
+            var = StringVar(value=str(pr.get(key, "")))
+            self._vars["p_" + key] = var
+            e = ttk.Entry(fr, textvariable=var, justify="center", width=18)
+            e.pack(side=RIGHT)
+            install_entry_editing(e)
+        self._entry("currency", "العملة")
+
+        self._sec("ملاحظات هامة — سطر لكل نقطة")
+        self._multiline("notes", "الملاحظات", d.get("notes", []), height=4)
+
+        self._sec("الخاتمة والتوقيع")
+        self._multiline("closing", "عبارة الختام",
+                        [d.get("closing", "")], height=3)
+        self._entry("manager_title", "المسمّى الوظيفي")
+        self._entry("manager", "اسم المدير")
+        self._entry("manager_phone", "هاتف المدير")
+
+    def _collect(self) -> dict:
+        d = dict(self._data)
+        for k, var in self._vars.items():
+            if k.startswith("p_"):
+                continue
+            d[k] = var.get().strip()
+        d["prices"] = {
+            "single": self._vars["p_single"].get().strip(),
+            "double": self._vars["p_double"].get().strip(),
+            "triple": self._vars["p_triple"].get().strip(),
+            "quad": self._vars["p_quad"].get().strip(),
+        }
+
+        def _lines(key):
+            t = self._texts.get(key)
+            if t is None:
+                return []
+            return [ln.strip() for ln in t.get("1.0", "end").splitlines()
+                    if ln.strip()]
+        d["gifts"] = _lines("gifts")
+        d["notes"] = _lines("notes")
+        d["closing"] = " ".join(_lines("closing"))
+        secs = []
+        for tv, txt in self._sections_w:
+            bl = [ln.strip() for ln in txt.get("1.0", "end").splitlines()
+                  if ln.strip()]
+            secs.append([tv.get().strip(), bl])
+        d["sections"] = secs
+        flts = []
+        for w in self._flights_w:
+            row = [w["day"].get().strip(), w["carrier"].get().strip(), "",
+                   w["frm"].get().strip(), "", w["to"].get().strip()]
+            if any(x for x in row):
+                flts.append(row)
+        d["flights"] = flts
+        return d
+
+    def _preview(self) -> None:
+        data = self._collect()
+        self.app._settings["hajj_program"] = data
+        try:
+            save_settings(self.app._settings)
+        except Exception:
+            pass
+        title = data.get("title") or "برنامج الحج"
+        open_preview(self,
+                     lambda p: self._pdf.export_hajj_program_pdf(p, data),
+                     title, "pdf")
+
+    def _reset(self) -> None:
+        if not messagebox.askyesno(
+                "استعادة الافتراضي",
+                "استعادة كل الحقول إلى النصّ الافتراضي؟ ستفقد تعديلاتك.",
+                parent=self):
+            return
+        self.app._settings.pop("hajj_program", None)
+        try:
+            save_settings(self.app._settings)
+        except Exception:
+            pass
+        self.destroy()
+        self.app.do_hajj_program()
 
 
 class EditDialog(Toplevel):
