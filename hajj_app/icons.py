@@ -124,6 +124,12 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
         d.ellipse([P * 0.2, P * 0.4, P * 0.36, P * 0.56], outline=c, width=lw)
         d.line([P * 0.44, P * 0.44, P * 0.78, P * 0.44], fill=c, width=lw)
         d.line([P * 0.44, P * 0.56, P * 0.68, P * 0.56], fill=c, width=lw)
+    elif name == "caret_down":            # سهم للأسفل (قسم موسَّع)
+        d.line([P * 0.30, P * 0.40, cx, P * 0.62], fill=c, width=lw)
+        d.line([cx, P * 0.62, P * 0.70, P * 0.40], fill=c, width=lw)
+    elif name == "caret_left":            # سهم لليسار (قسم مطويّ — RTL)
+        d.line([P * 0.60, P * 0.30, P * 0.38, cy], fill=c, width=lw)
+        d.line([P * 0.38, cy, P * 0.60, P * 0.70], fill=c, width=lw)
     else:                                 # نقطة افتراضية
         d.ellipse([P * 0.35, P * 0.35, P * 0.65, P * 0.65], fill=c)
 

@@ -608,12 +608,20 @@ class HajjApp:
         tk.Label(brand, text=rtl(app_mode.label("window_title")), bg=SIDEBAR_BG,
                  fg=SIDEBAR_FG, font=(_FSB, 12, "bold")).pack(pady=(6, 0))
         self._sidebar_sep()
-        self._nav_holder = tk.Frame(sb, bg=SIDEBAR_BG)
-        self._nav_holder.pack(fill="x")
 
-        # القاع: الحساب والحماية
+        # القاع: الحساب والحماية (يُثبّت أسفل الشريط قبل منطقة التنقّل)
         foot = tk.Frame(sb, bg=SIDEBAR_BG)
         foot.pack(side="bottom", fill="x", pady=(8, 16), padx=12)
+
+        # منطقة التنقّل قابلة للتمرير — تتوسّع الأقسام داخلها (أكورديون)
+        if _HAS_CTK:
+            self._nav_holder = _ctk.CTkScrollableFrame(
+                sb, fg_color=SIDEBAR_BG, scrollbar_button_color=SIDEBAR_SEP,
+                scrollbar_button_hover_color=BRONZE)
+            self._nav_holder.pack(side="top", fill="both", expand=True, padx=2)
+        else:
+            self._nav_holder = tk.Frame(sb, bg=SIDEBAR_BG)
+            self._nav_holder.pack(side="top", fill="both", expand=True)
         if self.session is not None:
             tk.Label(foot, text=rtl(f"👤  {self.session.username}"), bg=SIDEBAR_BG,
                      fg=SIDEBAR_FG, font=(_FSB, 11, "bold"), anchor="e").pack(
@@ -631,37 +639,89 @@ class HajjApp:
                      fg=SIDEBAR_MUTED, font=(_FUI, 9), anchor="e").pack(fill="x")
 
     def _nav_item(self, label, items, *, icon=None, tip=None):
-        """عنصر تنقّل عريض في الشريط الجانبي — أيقونة + نصّ يفتح قائمته."""
+        """قسم تنقّل قابل للتوسّع (أكورديون): الضغط يفتح خياراته أسفله."""
         from . import i18n
-        menu = tk.Menu(self._nav_holder, tearoff=0, font=(_FUI, 10))
-        for entry in items:
-            if entry is None:
-                menu.add_separator()
-            else:
-                text, cmd = entry
-                menu.add_command(label=i18n.tr(text), command=cmd)
-        self._menus.append(menu)
-        if _HAS_CTK:
-            img = self._cticon(icon[0], SIDEBAR_ICON, 20) if icon else None
-            btn = _ctk.CTkButton(
-                self._nav_holder, text=rtl(i18n.tr(label)), image=img,
-                compound="right", anchor="e", corner_radius=10, height=44,
-                font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
-                hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG)
-            btn.configure(command=lambda m=menu, b=btn: self._popup_menu(m, b))
-            btn.pack(fill="x", padx=10, pady=2)
-        else:
-            btn = ttk.Menubutton(self._nav_holder, text=rtl(i18n.tr(label)),
-                                 style="Ghost.TMenubutton", direction="left")
+        holder = self._nav_holder
+        if not _HAS_CTK:                      # نسخة كلاسيكية: قائمة منبثقة
+            menu = tk.Menu(holder, tearoff=0, font=(_FUI, 10))
+            for entry in items:
+                if entry is None:
+                    menu.add_separator()
+                else:
+                    text, cmd = entry
+                    menu.add_command(label=i18n.tr(text), command=cmd)
+            self._menus.append(menu)
+            mb = ttk.Menubutton(holder, text=rtl(i18n.tr(label)),
+                                style="Ghost.TMenubutton", direction="left")
             if icon is not None:
                 im = self._icon(*icon)
                 if im is not None:
-                    btn.configure(image=im, compound="right")
-            btn["menu"] = menu
-            btn.pack(fill="x", padx=6, pady=2)
+                    mb.configure(image=im, compound="right")
+            mb["menu"] = menu
+            mb.pack(fill="x", padx=6, pady=2)
+            if tip:
+                add_tooltip(mb, tip)
+            return mb
+
+        # قائمة بيانات مخفيّة (غير معروضة) تُبقي عناوين العناصر متاحة للترجمة
+        # وفحوص الوضع (الاختبارات تقرأ self._menus)
+        _menu = tk.Menu(holder, tearoff=0)
+        for entry in items:
+            if entry is None:
+                _menu.add_separator()
+            else:
+                _t, _c = entry
+                _menu.add_command(label=i18n.tr(_t), command=_c)
+        self._menus.append(_menu)
+
+        # ---- رأس القسم ----
+        img = self._cticon(icon[0], SIDEBAR_ICON, 20) if icon else None
+        header = _ctk.CTkButton(
+            holder, text=rtl(i18n.tr(label)), image=img, compound="right",
+            anchor="e", corner_radius=10, height=42,
+            font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
+            hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG)
+        header.pack(fill="x", padx=8, pady=(2, 0))
+
+        # ---- الخيارات (مخفيّة حتى يُفتح القسم) ----
+        sub = _ctk.CTkFrame(holder, fg_color=SIDEBAR_BG)
+        for entry in items:
+            if entry is None:
+                _ctk.CTkFrame(sub, height=1, fg_color=SIDEBAR_SEP).pack(
+                    fill="x", padx=(30, 18), pady=5)
+                continue
+            text, cmd = entry
+            _ctk.CTkButton(
+                sub, text=rtl(i18n.tr(text)), anchor="e", corner_radius=8,
+                height=32, font=_ctk.CTkFont(_FUI, 12), fg_color=SIDEBAR_BG,
+                hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_MUTED,
+                command=cmd).pack(fill="x", padx=(20, 10), pady=1)
+
+        sect = {"open": False}
+
+        def close() -> None:
+            if sect["open"]:
+                sub.pack_forget()
+                header.configure(fg_color=SIDEBAR_BG)
+                sect["open"] = False
+
+        def toggle() -> None:
+            if sect["open"]:
+                close()
+                return
+            for other in self._nav_sections:  # أكورديون: أغلق البقية
+                if other is not sect:
+                    other["close"]()
+            sub.pack(fill="x", after=header, pady=(0, 4))
+            header.configure(fg_color=SIDEBAR_HOVER)
+            sect["open"] = True
+
+        sect["close"] = close
+        self._nav_sections.append(sect)
+        header.configure(command=toggle)
         if tip:
-            add_tooltip(btn, tip)
-        return btn
+            add_tooltip(header, tip)
+        return header
 
     def _build_topbar(self) -> None:
         """شريط علوي رفيع في منطقة المحتوى: الموسم + إجراءات سريعة."""
@@ -1023,6 +1083,7 @@ class HajjApp:
     def _build_nav(self) -> None:
         """عناصر التنقّل السبعة داخل الشريط الجانبي (كانت شريطاً أفقياً)."""
         self._menus: list = []
+        self._nav_sections: list = []      # أقسام الأكورديون (للفتح/الإغلاق)
         # ---- الأقسام الرئيسية السبعة (مستوحاة من نظام إدارة الحجّ) ----
         BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
         GRAY, GREEN = "#6B6459", "#2E7D46"
