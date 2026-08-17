@@ -403,7 +403,7 @@ class UmrahApp:
         ))
         self._report_menu = rmenu          # مرجع يمنع جمع القمامة
         if _HAS_CTK:
-            rep = self._mkbtn(bar, "📊  لوحة الموسم  ▾", None)
+            rep = self._mkbtn(bar, "📊  لوحة الموسم", None)
             rep.configure(command=lambda: self._popup_menu(rmenu, rep))
         else:
             rep = ttk.Menubutton(bar, text=G.rtl("📊  لوحة الموسم"),
@@ -515,8 +515,10 @@ class UmrahApp:
         menu = self._make_menu(bar, items)
         self._menus.append(menu)          # مرجع يمنع جمع القمامة
         if _HAS_CTK:
+            # الخطّ لا يرسم السهم ▾ فيظهر مربّعاً؛ الرمز التعبيري في العنوان كافٍ
             mb = _ctk.CTkButton(
-                bar, text=G.rtl(label + "  ▾"), corner_radius=11, height=40,
+                bar, text=G.rtl(label.replace("▾", "").strip()),
+                corner_radius=11, height=40,
                 font=_ctk.CTkFont(G._FSB, 13, "bold"), fg_color=G.GHOST_BG,
                 hover_color=G.GHOST_HOVER, text_color=G.TEXT, border_width=1,
                 border_color=G.BORDER)

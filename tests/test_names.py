@@ -99,8 +99,12 @@ def walk(w):
             txt = ""
         if name == "Menubutton":
             menus.append(txt)
-        elif name == "CTkButton":          # واجهة عصرية: القوائم أزرار CTk بعلامة ▾
-            (menus if "▾" in txt else labels).append(txt)
+        elif name == "CTkButton":          # واجهة عصرية: أزرار القوائم CTk بأيقونة ملوّنة
+            try:
+                is_menu = bool(c.cget("image"))
+            except Exception:
+                is_menu = False
+            (menus if is_menu else labels).append(txt)
         elif name == "Button":
             labels.append(txt)
         walk(c)

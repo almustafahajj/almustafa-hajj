@@ -878,6 +878,24 @@ class HajjApp:
                 cache[key] = None
         return cache[key]
 
+    def _cticon(self, name: str, color: str, size: int = 18):
+        """أيقونة CTkImage ملوّنة لأزرار CustomTkinter (تتحجّم مع DPI)."""
+        if not _HAS_CTK:
+            return None
+        key = ("ctk", name, color, size)
+        cache = getattr(self, "_icon_cache", None)
+        if cache is None:
+            cache = self._icon_cache = {}
+        if key not in cache:
+            try:
+                from . import icons as iconlib
+                img = iconlib.make_icon(name, color, size)      # PIL Image
+                cache[key] = _ctk.CTkImage(light_image=img, dark_image=img,
+                                           size=(size, size))
+            except Exception:
+                cache[key] = None
+        return cache[key]
+
     def _mkbtn(self, parent, label, command, kind="ghost", translate=True):
         """زر عصري (CustomTkinter) أو كلاسيكي حسب توفّر المكتبة.
 
@@ -917,11 +935,16 @@ class HajjApp:
                 menu.add_command(label=i18n.tr(label), command=cmd)
         self._menus.append(menu)          # نحتفظ بمرجع لمنع جمع القمامة
         if _HAS_CTK:
+            # الخطّ لا يرسم رمز السهم ▾ فيظهر مربّعاً؛ نحذفه ونعيد الأيقونة الملوّنة
+            clean = i18n.tr(text).replace("▾", "").strip()
             mb = _ctk.CTkButton(
-                parent, text=rtl(i18n.tr(text) + "  ▾"), corner_radius=11,
+                parent, text=rtl(clean), corner_radius=11,
                 height=40, font=_ctk.CTkFont(_FSB, 13, "bold"),
                 fg_color=GHOST_BG, hover_color=GHOST_HOVER, text_color=TEXT,
                 border_width=1, border_color=BORDER)
+            img = self._cticon(*icon) if icon else None
+            if img is not None:
+                mb.configure(image=img, compound="right")
             mb.configure(command=lambda m=menu, b=mb: self._popup_menu(m, b))
         else:
             mb = ttk.Menubutton(parent, text=rtl(i18n.tr(text)), style=style,
