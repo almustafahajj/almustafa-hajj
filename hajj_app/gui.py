@@ -107,10 +107,10 @@ _PALETTES = {
         "TEXT": "#111111", "GHOST_BG": "#F1ECE3", "GHOST_HOVER": "#E7DECF",
         "GHOST_LIGHT": "#FFFFFF", "GHOST_EDGE": "#C7BBA6", "PANEL_EDGE": "#D8CFC0",
         "DUE_BG": "#F8E4E2", "PAID_BG": "#E6F1E9",
-        # الشريط الجانبي الداكن (إسبريسو) + نصّه وتحويمه
-        "SIDEBAR_BG": "#2A211A", "SIDEBAR_FG": "#EFE7DA",
-        "SIDEBAR_MUTED": "#B7A98E", "SIDEBAR_HOVER": "#3C3025",
-        "SIDEBAR_ICON": "#D8C4A0", "SIDEBAR_SEP": "#463829",
+        # الشريط الجانبي الفاتح (أبيض) + نصّ داكن وأيقونات برونزية
+        "SIDEBAR_BG": "#FFFFFF", "SIDEBAR_FG": "#2C2318",
+        "SIDEBAR_MUTED": "#8A7E68", "SIDEBAR_HOVER": "#F0E9DC",
+        "SIDEBAR_ICON": "#8A6E4B", "SIDEBAR_SEP": "#E6DFD3",
     },
     "داكن": {
         "BG": "#1E1E22", "PANEL": "#26262B", "ROW_ALT": "#2C2C33",
@@ -590,6 +590,8 @@ class HajjApp:
             self._sidebar = tk.Frame(self.root, width=238, bg=SIDEBAR_BG)
         self._sidebar.pack(side=RIGHT, fill=Y)
         self._sidebar.pack_propagate(False)     # يثبّت العرض
+        # خطّ فاصل رفيع بين الشريط والمحتوى (مهمّ مع الشريط الفاتح)
+        tk.Frame(self.root, bg=SIDEBAR_SEP, width=1).pack(side=RIGHT, fill=Y)
         self._body = ttk.Frame(self.root, style="Toolbar.TFrame")
         self._body.pack(side=LEFT, fill=BOTH, expand=True)
 
