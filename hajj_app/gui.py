@@ -102,11 +102,15 @@ DANGER_EDGE = "#7A2222"
 # ---- أدوار الألوان (تتبدّل مع الوضع الفاتح/الداكن) ----
 _PALETTES = {
     "فاتح": {
-        "BG": "#F7F5F2", "PANEL": "#FFFFFF", "ROW_ALT": "#F2ECE3",
-        "HOVER_BG": "#EADFCB", "BORDER": "#E2DACE", "MUTED": "#777777",
+        "BG": "#F4F1EC", "PANEL": "#FFFFFF", "ROW_ALT": "#F2ECE3",
+        "HOVER_BG": "#EADFCB", "BORDER": "#E6DFD3", "MUTED": "#777777",
         "TEXT": "#111111", "GHOST_BG": "#F1ECE3", "GHOST_HOVER": "#E7DECF",
         "GHOST_LIGHT": "#FFFFFF", "GHOST_EDGE": "#C7BBA6", "PANEL_EDGE": "#D8CFC0",
         "DUE_BG": "#F8E4E2", "PAID_BG": "#E6F1E9",
+        # الشريط الجانبي الداكن (إسبريسو) + نصّه وتحويمه
+        "SIDEBAR_BG": "#2A211A", "SIDEBAR_FG": "#EFE7DA",
+        "SIDEBAR_MUTED": "#B7A98E", "SIDEBAR_HOVER": "#3C3025",
+        "SIDEBAR_ICON": "#D8C4A0", "SIDEBAR_SEP": "#463829",
     },
     "داكن": {
         "BG": "#1E1E22", "PANEL": "#26262B", "ROW_ALT": "#2C2C33",
@@ -114,6 +118,9 @@ _PALETTES = {
         "TEXT": "#EAE6DF", "GHOST_BG": "#33333A", "GHOST_HOVER": "#3E3E48",
         "GHOST_LIGHT": "#4A4A54", "GHOST_EDGE": "#141418", "PANEL_EDGE": "#141418",
         "DUE_BG": "#3C2A2A", "PAID_BG": "#26332B",
+        "SIDEBAR_BG": "#141118", "SIDEBAR_FG": "#EAE6DF",
+        "SIDEBAR_MUTED": "#8B857B", "SIDEBAR_HOVER": "#282430",
+        "SIDEBAR_ICON": "#C9A86A", "SIDEBAR_SEP": "#2C2836",
     },
 }
 THEMES = tuple(_PALETTES)
@@ -122,6 +129,8 @@ THEMES = tuple(_PALETTES)
 BG = PANEL = ROW_ALT = HOVER_BG = BORDER = MUTED = TEXT = ""
 GHOST_BG = GHOST_HOVER = GHOST_LIGHT = GHOST_EDGE = PANEL_EDGE = ""
 DUE_BG = PAID_BG = ""
+SIDEBAR_BG = SIDEBAR_FG = SIDEBAR_MUTED = SIDEBAR_HOVER = ""
+SIDEBAR_ICON = SIDEBAR_SEP = ""
 
 
 def apply_theme(name: str) -> None:
@@ -129,6 +138,8 @@ def apply_theme(name: str) -> None:
     global BG, PANEL, ROW_ALT, HOVER_BG, BORDER, MUTED, TEXT
     global GHOST_BG, GHOST_HOVER, GHOST_LIGHT, GHOST_EDGE, PANEL_EDGE
     global DUE_BG, PAID_BG
+    global SIDEBAR_BG, SIDEBAR_FG, SIDEBAR_MUTED, SIDEBAR_HOVER
+    global SIDEBAR_ICON, SIDEBAR_SEP
     pal = _PALETTES.get(name, _PALETTES["فاتح"])
     BG, PANEL, ROW_ALT = pal["BG"], pal["PANEL"], pal["ROW_ALT"]
     HOVER_BG, BORDER, MUTED = pal["HOVER_BG"], pal["BORDER"], pal["MUTED"]
@@ -136,6 +147,9 @@ def apply_theme(name: str) -> None:
     GHOST_BG, GHOST_HOVER = pal["GHOST_BG"], pal["GHOST_HOVER"]
     GHOST_LIGHT, GHOST_EDGE, PANEL_EDGE = pal["GHOST_LIGHT"], pal["GHOST_EDGE"], pal["PANEL_EDGE"]
     DUE_BG, PAID_BG = pal["DUE_BG"], pal["PAID_BG"]
+    SIDEBAR_BG, SIDEBAR_FG = pal["SIDEBAR_BG"], pal["SIDEBAR_FG"]
+    SIDEBAR_MUTED, SIDEBAR_HOVER = pal["SIDEBAR_MUTED"], pal["SIDEBAR_HOVER"]
+    SIDEBAR_ICON, SIDEBAR_SEP = pal["SIDEBAR_ICON"], pal["SIDEBAR_SEP"]
 
 
 apply_theme("فاتح")            # الافتراضي حتى تُحمَّل الإعدادات
@@ -429,8 +443,10 @@ class HajjApp:
 
         detect_fonts(root)            # اختيار أجمل خطّ عربي متوفّر قبل بناء الأنماط
         self._build_styles()
-        self._build_header()
-        self._build_toolbar()
+        self._build_shell()          # شريط جانبي داكن + منطقة محتوى
+        self._build_sidebar()        # الشعار + التنقّل + الحساب
+        self._build_nav()            # عناصر التنقّل السبعة داخل الشريط الجانبي
+        self._build_topbar()         # شريط علوي رفيع (الموسم + لوحة التحكم)
         self._build_kpi_band()
         self._build_filters()
         self._build_table()
@@ -565,81 +581,119 @@ class HajjApp:
         s.map("Treeview",
               background=[("selected", BRONZE)], foreground=[("selected", "white")])
 
-    def _build_header(self) -> None:
-        bar = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 10, 16, 6))
-        bar.pack(fill=X)
+    def _build_shell(self) -> None:
+        """يقسّم النافذة: شريط جانبي داكن (يمين) + منطقة محتوى فاتحة (يسار)."""
+        if _HAS_CTK:
+            self._sidebar = _ctk.CTkFrame(self.root, width=238, corner_radius=0,
+                                          fg_color=SIDEBAR_BG)
+        else:
+            self._sidebar = tk.Frame(self.root, width=238, bg=SIDEBAR_BG)
+        self._sidebar.pack(side=RIGHT, fill=Y)
+        self._sidebar.pack_propagate(False)     # يثبّت العرض
+        self._body = ttk.Frame(self.root, style="Toolbar.TFrame")
+        self._body.pack(side=LEFT, fill=BOTH, expand=True)
 
-        # الشعار أقصى اليمين — بداية القراءة في الواجهة العربية
+    def _sidebar_sep(self) -> None:
+        tk.Frame(self._sidebar, bg=SIDEBAR_SEP, height=1).pack(
+            fill="x", padx=16, pady=(10, 8))
+
+    def _build_sidebar(self) -> None:
+        """الشعار والعلامة أعلى الشريط الجانبي، والحساب أسفله."""
+        sb = self._sidebar
+        brand = tk.Frame(sb, bg=SIDEBAR_BG)
+        brand.pack(fill="x", pady=(20, 2), padx=12)
         self._logo = logo_image(self.root, width=150)
         if self._logo is not None:
-            ttk.Label(bar, image=self._logo, background=BG).pack(side=RIGHT, padx=(0, 14))
+            tk.Label(brand, image=self._logo, bg=SIDEBAR_BG).pack()
+        tk.Label(brand, text=rtl(app_mode.label("window_title")), bg=SIDEBAR_BG,
+                 fg=SIDEBAR_FG, font=(_FSB, 12, "bold")).pack(pady=(6, 0))
+        self._sidebar_sep()
+        self._nav_holder = tk.Frame(sb, bg=SIDEBAR_BG)
+        self._nav_holder.pack(fill="x")
 
+        # القاع: الحساب والحماية
+        foot = tk.Frame(sb, bg=SIDEBAR_BG)
+        foot.pack(side="bottom", fill="x", pady=(8, 16), padx=12)
+        if self.session is not None:
+            tk.Label(foot, text=rtl(f"👤  {self.session.username}"), bg=SIDEBAR_BG,
+                     fg=SIDEBAR_FG, font=(_FSB, 11, "bold"), anchor="e").pack(
+                         fill="x")
+            tk.Label(foot, text=rtl(f"{self.session.role_label} · 🔒 مشفّر"),
+                     bg=SIDEBAR_BG, fg=SIDEBAR_MUTED, font=(_FUI, 9),
+                     anchor="e").pack(fill="x", pady=(0, 8))
+            logout_btn = self._mkbtn(foot, "🚪  تسجيل الخروج", self.do_logout)
+            logout_btn.pack(fill="x")
+            add_tooltip(logout_btn, "حفظ البيانات والعودة إلى شاشة الدخول")
+        elif self._open_mode:
+            tk.Label(foot, text=rtl("🔓 وضع مفتوح — بلا رقم سري"), bg=SIDEBAR_BG,
+                     fg="#E0B25E", font=(_FSB, 10), anchor="e").pack(fill="x")
+            tk.Label(foot, text=rtl("البيانات غير مشفّرة (مؤقتاً)"), bg=SIDEBAR_BG,
+                     fg=SIDEBAR_MUTED, font=(_FUI, 9), anchor="e").pack(fill="x")
+
+    def _nav_item(self, label, items, *, icon=None, tip=None):
+        """عنصر تنقّل عريض في الشريط الجانبي — أيقونة + نصّ يفتح قائمته."""
         from . import i18n
+        menu = tk.Menu(self._nav_holder, tearoff=0, font=(_FUI, 10))
+        for entry in items:
+            if entry is None:
+                menu.add_separator()
+            else:
+                text, cmd = entry
+                menu.add_command(label=i18n.tr(text), command=cmd)
+        self._menus.append(menu)
+        if _HAS_CTK:
+            img = self._cticon(icon[0], SIDEBAR_ICON, 20) if icon else None
+            btn = _ctk.CTkButton(
+                self._nav_holder, text=rtl(i18n.tr(label)), image=img,
+                compound="right", anchor="e", corner_radius=10, height=44,
+                font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
+                hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG)
+            btn.configure(command=lambda m=menu, b=btn: self._popup_menu(m, b))
+            btn.pack(fill="x", padx=10, pady=2)
+        else:
+            btn = ttk.Menubutton(self._nav_holder, text=rtl(i18n.tr(label)),
+                                 style="Ghost.TMenubutton", direction="left")
+            if icon is not None:
+                im = self._icon(*icon)
+                if im is not None:
+                    btn.configure(image=im, compound="right")
+            btn["menu"] = menu
+            btn.pack(fill="x", padx=6, pady=2)
+        if tip:
+            add_tooltip(btn, tip)
+        return btn
+
+    def _build_topbar(self) -> None:
+        """شريط علوي رفيع في منطقة المحتوى: الموسم + إجراءات سريعة."""
+        from . import i18n
+        bar = ttk.Frame(self._body, style="Toolbar.TFrame",
+                        padding=(18, 12, 18, 8))
+        bar.pack(fill=X)
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
         ttk.Label(titles, text=i18n.tr(app_mode.label("program_season")),
-                  font=(_FSB, 17),
-                  foreground=TEXT, background=BG).pack(side=RIGHT)
-        year_box = ttk.Combobox(
-            titles, textvariable=self.season_year, state="readonly",
-            width=6, font=(_FSB, 15), values=HIJRI_YEARS,
-        )
+                  font=(_FSB, 18), foreground=TEXT, background=BG).pack(side=RIGHT)
+        year_box = ttk.Combobox(titles, textvariable=self.season_year,
+                                state="readonly", width=6, font=(_FSB, 15),
+                                values=HIJRI_YEARS)
         year_box.pack(side=RIGHT, padx=(8, 0))
         year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
 
-        # حالة الجلسة والحماية أقصى اليسار
-        if self.session is not None:
-            info = ttk.Frame(bar, style="Toolbar.TFrame")
-            info.pack(side=LEFT)
-            ttk.Label(info, text=f"👤  {self.session.username}  ·  {self.session.role_label}",
-                      font=(_FSB, 10), foreground=TEXT,
-                      background=BG).pack(anchor="w")
-            ttk.Label(info, text=i18n.tr("🔒 البيانات مشفّرة"), font=(_FUI, 9),
-                      foreground=BRONZE, background=BG).pack(anchor="w")
-            for text, action in (
-                ("تغيير كلمة المرور", self.change_password),
-                ("مفتاح استرداد جديد", self.new_recovery_key),
-            ):
-                link = ttk.Label(info, text=i18n.tr(text), font=(_FUI, 9, "underline"),
-                                 foreground=TEXT, background=BG, cursor="hand2")
-                link.pack(anchor="w")
-                link.bind("<Button-1>", lambda _e, run=action: run())
-            logout_btn = self._mkbtn(bar, "🚪  تسجيل الخروج", self.do_logout)
-            logout_btn.pack(side=LEFT, padx=(0, 8))
-            add_tooltip(logout_btn, "حفظ البيانات والعودة إلى شاشة الدخول")
-        elif self._open_mode:
-            info = ttk.Frame(bar, style="Toolbar.TFrame")
-            info.pack(side=LEFT)
-            ttk.Label(info, text=i18n.tr("🔓 وضع مفتوح — بلا رقم سري"),
-                      font=(_FSB, 10), foreground=AMBER_FG,
-                      background=BG).pack(anchor="w")
-            ttk.Label(info, text=i18n.tr("البيانات غير مشفّرة (مؤقتاً)"), font=(_FUI, 9),
-                      foreground=MUTED, background=BG).pack(anchor="w")
-
-        # زرّ لوحة التحكم — بارز في وسط الترويسة
         _dash = self._mkbtn(bar, "🏠  لوحة التحكم", self.do_dashboard, "primary")
-        _dash.pack(side=LEFT, padx=16)
+        _dash.pack(side=LEFT)
         add_tooltip(_dash, "مؤشّرات سريعة + إعدادات العرض")
-
-        # زرّ التبديل السريع بين وضعي الحج والعمرة (يعرض الوضع الآخر)
         _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
         _sicon = "🌙" if _other == app_mode.UMRAH else "🕋"
-        _switch = self._mkbtn(
-            bar, f"{_sicon}  التبديل إلى {app_mode.mode_label(_other)}",
-            self.switch_mode)
-        _switch.pack(side=LEFT, padx=(0, 8))
-        add_tooltip(_switch, "الانتقال مباشرةً إلى الوضع الآخر (تُحفظ بياناتك أولاً)")
-
-        # زرّ تبديل الوضع الفاتح/الداكن — أيقونة تعكس الوضع الهدف
+        _switch = self._mkbtn(bar, f"{_sicon}  {app_mode.mode_label(_other)}",
+                              self.switch_mode)
+        _switch.pack(side=LEFT, padx=(8, 0))
+        add_tooltip(_switch, "الانتقال إلى الوضع الآخر (تُحفظ بياناتك أولاً)")
         _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
-        _theme_btn = self._mkbtn(
-            bar, ("☀️  فاتح" if _dark_now else "🌙  داكن"),
-            self.toggle_theme, translate=False)
-        _theme_btn.pack(side=LEFT, padx=(0, 8))
+        _theme_btn = self._mkbtn(bar, ("☀️  فاتح" if _dark_now else "🌙  داكن"),
+                                 self.toggle_theme, translate=False)
+        _theme_btn.pack(side=LEFT, padx=(8, 0))
         add_tooltip(_theme_btn, "التبديل بين الوضع الفاتح والداكن")
-
-        # فاصل برونزي رفيع يفصل الترويسة عمّا تحتها
-        ttk.Frame(self.root, style="Sep.TFrame", height=2).pack(fill=X)
+        self.progress = ttk.Progressbar(bar, mode="determinate", length=160)
 
     def new_recovery_key(self) -> None:
         """يولّد مفتاح استرداد جديداً ويعرضه — يبطل القديم."""
@@ -966,11 +1020,10 @@ class HajjApp:
             btn.configure(image=img, compound="right")
         return btn
 
-    def _build_toolbar(self) -> None:
-        bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 10, 16, 12))
-        bar.pack(fill=X)
+    def _build_nav(self) -> None:
+        """عناصر التنقّل السبعة داخل الشريط الجانبي (كانت شريطاً أفقياً)."""
         self._menus: list = []
-        # ---- القوائم الرئيسية السبع (مستوحاة من نظام إدارة الحجّ) ----
+        # ---- الأقسام الرئيسية السبعة (مستوحاة من نظام إدارة الحجّ) ----
         BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
         GRAY, GREEN = "#6B6459", "#2E7D46"
 
@@ -989,10 +1042,8 @@ class HajjApp:
             if not app_mode.is_umrah():
                 programs_items.append(("🗓  جدول المناسك", self.do_itinerary))
             programs_items.append(("🧳  مواعيد وتعليمات السفر", self.do_travel_info))
-            programs_mb = self._menubutton(bar, "البرامج  ▾", programs_items,
-                style="Ghost.TMenubutton", icon=("columns", BRONZE),
-                tip="الموسم والبرامج والمجموعات ومواعيد السفر")
-            programs_mb.pack(side=RIGHT, padx=3)
+            self._nav_item("البرامج", programs_items, icon=("columns", BRONZE),
+                           tip="الموسم والبرامج والمجموعات ومواعيد السفر")
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
         book_items = []
@@ -1015,10 +1066,8 @@ class HajjApp:
         ]
         if ce:
             book_items.append(("🧹  مسح الكل", self.clear_all))
-        book_mb = self._menubutton(bar, "الحجوزات  ▾", book_items,
-            style="Ghost.TMenubutton", icon=("id", BLUE),
-            tip="سجلّات الحجّاج: إضافة/تعديل/حذف/واتساب/فحص")
-        book_mb.pack(side=RIGHT, padx=3)
+        self._nav_item("الحجوزات", book_items, icon=("id", BLUE),
+                       tip="سجلّات الحجّاج: إضافة/تعديل/حذف/واتساب/فحص")
 
         # 🏨 إدارة التسكين
         housing_items = [
@@ -1030,13 +1079,11 @@ class HajjApp:
         # خيام المشاعر (منى/عرفة) خاصة بالحج — تُخفى في وضع العمرة
         if not app_mode.is_umrah():
             housing_items.append(("⛺  خيام المخيمات", self.do_camps))
-        housing_mb = self._menubutton(bar, "إدارة التسكين  ▾", housing_items,
-            style="Ghost.TMenubutton", icon=("tent", ORANGE),
-            tip="إشغال الغرف وكشوف التسكين")
-        housing_mb.pack(side=RIGHT, padx=3)
+        self._nav_item("إدارة التسكين", housing_items, icon=("tent", ORANGE),
+                       tip="إشغال الغرف وكشوف التسكين")
 
         # 💰 المالية والمحاسبة
-        fin_mb = self._menubutton(bar, "المالية والمحاسبة  ▾", [
+        self._nav_item("المالية والمحاسبة", [
             ("🔎  اسأل بياناتك (أسئلة بالعربية)", self.ask_data),
             ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
             ("📋  نسخ ملخّص الموسم", self.copy_season_summary),
@@ -1061,12 +1108,11 @@ class HajjApp:
             ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
             None,
             ("🧾  توليد جماعي للمستندات (للمعروضين)", self.do_bulk_docs),
-        ], style="Ghost.TMenubutton", icon=("chart", GOLD),
+        ], icon=("chart", GOLD),
             tip="الإحصاءات والسندات والفواتير والعقود")
-        fin_mb.pack(side=RIGHT, padx=3)
 
         # 📊 التقارير
-        rep_mb = self._menubutton(bar, "التقارير  ▾", [
+        self._nav_item("التقارير", [
             ("📊  تصدير إكسل", self.do_export_excel),
             ("📄  تصدير PDF", self.do_export_pdf),
             ("🖨  طباعة المعروض", self.do_print_filtered),
@@ -1077,9 +1123,8 @@ class HajjApp:
             ("🪪  بطاقات الحجّاج", self.do_badges),
             ("🏷  طباعة الاستيكرات (حقائب/غرف/أظرف)", self.do_stickers),
             ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
-        ], style="Ghost.TMenubutton", icon=("report", BLUE),
+        ], icon=("report", BLUE),
             tip="التصدير والكشوفات والبطاقات والطباعة")
-        rep_mb.pack(side=RIGHT, padx=3)
 
         # ⚙ لوحة الإدارة (النسخ الاحتياطية والحساب)
         admin_items = [("🛡  نسخة احتياطية الآن", self.do_backup_now)]
@@ -1112,24 +1157,16 @@ class HajjApp:
                             ("🔒  القفل التلقائي عند الخمول", self.set_auto_lock),
                             None,
                             ("🚪  تسجيل الخروج", self.do_logout)]
-        admin_mb = self._menubutton(bar, "لوحة الإدارة  ▾", admin_items,
-                                    style="Ghost.TMenubutton", icon=("gear", GRAY),
-                                    tip="النسخ الاحتياطية وسجلّ التدقيق والحسابات")
-        admin_mb.pack(side=RIGHT, padx=3)
+        self._nav_item("لوحة الإدارة", admin_items, icon=("gear", GRAY),
+                       tip="النسخ الاحتياطية وسجلّ التدقيق والحسابات")
 
         # 📥 استيراد البيانات (للمحرّر فأعلى)
         if ce:
-            import_mb = self._menubutton(bar, "استيراد البيانات  ▾", [
+            self._nav_item("استيراد البيانات", [
                 ("📁  استيراد من إكسل", self.import_from_excel),
                 ("📷  إضافة جوازات (صور / PDF)", self.add_images),
-            ], style="Ghost.TMenubutton", icon=("add", GREEN),
+            ], icon=("add", GREEN),
                 tip="استيراد من إكسل أو قراءة الجوازات")
-            import_mb.pack(side=RIGHT, padx=3)
-
-        # شريط التقدّم يُنشأ مخفيّاً ويظهر فقط أثناء العمليات الطويلة
-        self.progress = ttk.Progressbar(bar, mode="determinate", length=180)
-
-        self._shadow_strip(self.root)     # ظلّ ناعم يفصل الشريط عمّا تحته
 
     def _shadow_strip(self, parent) -> None:
         """ظلّ متدرّج رفيع (ثلاثة أسطر) يوحي بعمق تحت الشريط."""
@@ -1194,7 +1231,7 @@ class HajjApp:
                 "dark" if (r * 0.299 + g * 0.587 + b * 0.114) < 128 else "light")
         except Exception:
             pass
-        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+        outer = ttk.Frame(self._body, style="Toolbar.TFrame",
                           padding=(16, 8, 16, 12))
         outer.pack(fill=X)
         _ctk.CTkLabel(outer, text=rtl("📊  نظرة سريعة على الموسم"),
@@ -1233,7 +1270,7 @@ class HajjApp:
 
     def _build_kpi_band_classic(self) -> None:
         """النسخة الكلاسيكية (ttk) — عند غياب CustomTkinter."""
-        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+        outer = ttk.Frame(self._body, style="Toolbar.TFrame",
                           padding=(16, 8, 16, 12))
         outer.pack(fill=X)
         ttk.Label(outer, text=rtl("📊  نظرة سريعة على الموسم"),
@@ -1272,7 +1309,7 @@ class HajjApp:
                     w.bind("<Button-1>", lambda _e: self.open_collections())
 
     def _build_filters(self) -> None:
-        outer = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 0, 16, 8))
+        outer = ttk.Frame(self._body, style="Toolbar.TFrame", padding=(16, 0, 16, 8))
         outer.pack(fill=X)
         row1 = ttk.Frame(outer, style="Toolbar.TFrame")
         row1.pack(fill=X)
@@ -1784,7 +1821,7 @@ class HajjApp:
             self.tree.heading(f.key, text=base)
 
     def _build_table(self) -> None:
-        wrap = ttk.Frame(self.root, padding=(16, 4, 16, 8))
+        wrap = ttk.Frame(self._body, padding=(16, 4, 16, 8))
         wrap.pack(fill=BOTH, expand=True)
 
         # الأعمدة معكوسة ليظهر "مسلسل" أقصى اليمين كما في الكشف الورقي
@@ -1901,8 +1938,8 @@ class HajjApp:
     def _build_status(self) -> None:
         self.status = StringVar(value="جاهز — أضف صور الجوازات أو استورد ملف إكسل للبدء")
         # خطّ فاصل علوي رفيع يمنح شريط الحالة عمقاً
-        tk.Frame(self.root, bg=BORDER, height=1).pack(fill=X)
-        bar = ttk.Frame(self.root, padding=(16, 7))
+        tk.Frame(self._body, bg=BORDER, height=1).pack(fill=X)
+        bar = ttk.Frame(self._body, padding=(16, 7))
         bar.pack(fill=X)
         # مؤشّر حالة ملوّن (نقطة) يمين النص
         self._status_dot = tk.Label(bar, text="●", font=(_FUI, 11),
