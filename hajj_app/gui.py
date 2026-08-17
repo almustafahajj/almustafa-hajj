@@ -594,7 +594,7 @@ class HajjApp:
         self._body.pack(side=LEFT, fill=BOTH, expand=True)
 
     _SIDEBAR_W = 238
-    _SIDEBAR_W_MIN = 66
+    _SIDEBAR_W_MIN = 82
 
     def _build_sidebar(self) -> None:
         """الشعار أعلى الشريط، التنقّل في الوسط، والحساب وزرّ الطيّ أسفله."""
@@ -670,7 +670,9 @@ class HajjApp:
                 s["close"]()                 # اطوِ الأقسام المفتوحة
             self._sidebar.configure(width=self._SIDEBAR_W_MIN)
             for h in getattr(self, "_nav_headers", []):
-                h["btn"].configure(text="", anchor="center")
+                big = (self._cticon(h["icon"], SIDEBAR_FG, 26)
+                       if h.get("icon") else None)   # أكبر وأسطع في الوضع المطويّ
+                h["btn"].configure(text="", anchor="center", image=big)
             self._brand.pack_forget()
             self._foot_info.pack_forget()
             if self._logout_btn is not None:
@@ -681,7 +683,9 @@ class HajjApp:
         else:
             self._sidebar.configure(width=self._SIDEBAR_W)
             for h in getattr(self, "_nav_headers", []):
-                h["btn"].configure(text=rtl(h["label"]), anchor="e")
+                small = (self._cticon(h["icon"], SIDEBAR_ICON, 20)
+                         if h.get("icon") else None)
+                h["btn"].configure(text=rtl(h["label"]), anchor="e", image=small)
             self._brand.pack(fill="x", pady=(20, 2), padx=12, before=self._sep)
             self._foot_info.pack(fill="x")
             if self._logout_btn is not None:
@@ -731,13 +735,14 @@ class HajjApp:
         self._menus.append(_menu)
 
         # ---- رأس القسم ----
-        img = self._cticon(icon[0], SIDEBAR_ICON, 20) if icon else None
+        icon_name = icon[0] if icon else None
+        img = self._cticon(icon_name, SIDEBAR_ICON, 20) if icon_name else None
         header = _ctk.CTkButton(
             holder, text=rtl(i18n.tr(label)), image=img, compound="right",
             anchor="e", corner_radius=10, height=42,
             font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
             hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG)
-        header.pack(fill="x", padx=8, pady=(2, 0))
+        header.pack(fill="x", padx=5, pady=(2, 0))
 
         # ---- الخيارات (مخفيّة حتى يُفتح القسم) ----
         sub = _ctk.CTkFrame(holder, fg_color=SIDEBAR_BG)
@@ -778,7 +783,8 @@ class HajjApp:
 
         sect["close"] = close
         self._nav_sections.append(sect)
-        self._nav_headers.append({"btn": header, "label": i18n.tr(label)})
+        self._nav_headers.append({"btn": header, "label": i18n.tr(label),
+                                  "icon": icon_name})
         header.configure(command=toggle)
         # التلميح يعرض اسم القسم — مفيد خاصّةً عند طيّ الشريط (أيقونات فقط)
         add_tooltip(header, i18n.tr(label))
