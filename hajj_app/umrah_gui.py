@@ -131,6 +131,16 @@ class UmrahApp:
     _FONT_SIZES = G.HajjApp._FONT_SIZES
     _build_styles = G.HajjApp._build_styles
     _apply_table_style = G.HajjApp._apply_table_style
+    # الشريط الجانبي المشترك (شعار + أكورديون + طيّ) — نفس آلية الحج
+    _SIDEBAR_W = G.HajjApp._SIDEBAR_W
+    _SIDEBAR_W_MIN = G.HajjApp._SIDEBAR_W_MIN
+    _build_shell = G.HajjApp._build_shell
+    _build_sidebar = G.HajjApp._build_sidebar
+    _nav_item = G.HajjApp._nav_item
+    _toggle_sidebar = G.HajjApp._toggle_sidebar
+    _set_sidebar_collapsed = G.HajjApp._set_sidebar_collapsed
+    _cticon = G.HajjApp._cticon
+    _icon = G.HajjApp._icon
 
     def __init__(self, root, session=None, open_mode: bool = False) -> None:
         self.root = root
@@ -187,8 +197,10 @@ class UmrahApp:
             self._season_years = sorted(set(self._season_years) | {season})
         self._season = StringVar(master=root, value=season)
 
-        self._build_header()
-        self._build_toolbar()
+        self._build_shell()          # شريط جانبي + منطقة محتوى
+        self._build_sidebar()        # الشعار + الحساب + زرّ الطيّ
+        self._build_nav()            # أقسام التنقّل (أكورديون)
+        self._build_topbar()         # شريط علوي: الموسم + إجراءات
         self._build_kpi()
         self._build_statusbar()
         self._build_table()
@@ -209,7 +221,7 @@ class UmrahApp:
     def _build_kpi_modern(self) -> None:
         """بطاقات CustomTkinter بزوايا دائرية وشرائط لون — مظهر عصري."""
         _ctk.set_appearance_mode(_ctk_mode())
-        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+        outer = ttk.Frame(self._body, style="Toolbar.TFrame",
                           padding=(16, 8, 16, 12))
         outer.pack(fill=X)
         _ctk.CTkLabel(outer, text=G.rtl("📊  نظرة سريعة على الموسم"),
@@ -255,7 +267,7 @@ class UmrahApp:
 
     def _build_kpi_classic(self) -> None:
         """النسخة الكلاسيكية (ttk) — تعمل عند غياب CustomTkinter."""
-        outer = ttk.Frame(self.root, style="Toolbar.TFrame",
+        outer = ttk.Frame(self._body, style="Toolbar.TFrame",
                           padding=(16, 8, 16, 12))
         outer.pack(fill=X)
         ttk.Label(outer, text=G.rtl("📊  نظرة سريعة على الموسم"),
@@ -315,7 +327,7 @@ class UmrahApp:
         self._kpi["late"].configure(text=str(late))
 
     def _build_statusbar(self) -> None:
-        bar = ttk.Frame(self.root, style="Panel.TFrame", padding=(16, 6))
+        bar = ttk.Frame(self._body, style="Panel.TFrame", padding=(16, 6))
         bar.pack(fill=X, side="bottom")
         self._status = ttk.Label(bar, text="", font=(G._FUI, 10),
                                  foreground=G.TEXT, background=G.BG)
@@ -532,9 +544,114 @@ class UmrahApp:
             G.add_tooltip(mb, G.rtl(tip))
         return mb
 
+    def _save_ui_settings(self) -> None:
+        """يحفظ إعدادات الواجهة (يُستدعى من آلية طيّ الشريط المشتركة)."""
+        self._settings["ui"] = self._ui
+        try:
+            save_settings(self._settings)
+        except OSError:
+            pass
+
+    def _build_nav(self) -> None:
+        """أقسام التنقّل في الشريط الجانبي (أكورديون) — خاصّة بالعمرة."""
+        self._menus = []
+        self._nav_sections = []
+        self._nav_headers = []
+        self._nav_item("لوحة الموسم", (
+            ("📊  نظرة سريعة", self.open_dashboard),
+            ("🌐  تقرير ويب (يُشارك برابط)", self.export_web_dashboard),
+            ("📄  تقرير PDF (للطباعة)", self.export_season_pdf),
+            None,
+            ("🔎  اسأل بياناتك", self.ask_data),
+            ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
+            ("📋  نسخ ملخّص الموسم", self.copy_season_summary),
+        ), icon=("report", G.BRONZE), tip="تقارير الموسم والتحصيل والمساعد")
+        self._nav_item("البرنامج", (
+            ("➕  برنامج جديد", self.new_trip),
+            ("👤  المعتمرون", self.open_pilgrims),
+            None,
+            ("✏️  تعديل البرنامج", self.edit_trip),
+            ("🗑  حذف البرنامج", self.delete_trip),
+        ), icon=("columns", G.BRONZE), tip="إدارة برامج العمرة ومعتمريها")
+        self._nav_item("التسعير والعروض", (
+            ("📋  عروض الأسعار المحفوظة", self.open_quotes),
+            ("💲  عرض سعر يدوي جديد", self.new_manual_quotation),
+            ("📁  العروض اليدوية", self.open_manual_quotes),
+            None,
+            ("🧮  مسعّر المجموعات", self.open_group_pricer),
+            ("🗂  التسعيرات المحفوظة", self.open_pricings),
+        ), icon=("chart", G.BRONZE), tip="عروض الأسعار والمسعّر والتسعيرات")
+        self._nav_item("مستندات وكشوف", (
+            ("💰  الملخّص المالي", self.prog_finance),
+            ("🛏  التسكين", self.prog_rooming),
+            ("🚐  المواصلات", self.prog_transport),
+            ("✈  كشف الطيران", self.prog_airline),
+            ("🪪  بطاقات العمرة", self.prog_cards),
+            None,
+            ("🧾  سند قبض", self.prog_receipt),
+            ("🧾  فاتورة", self.prog_invoice),
+            ("📜  عقد", self.prog_contract),
+            ("💲  عرض سعر", self.prog_quotation),
+            None,
+            ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
+            ("🗂  الفاوتشرات المحفوظة", self.open_vouchers),
+        ), icon=("id", G.BRONZE), tip="كشوف البرنامج ومستنداته")
+        self._nav_item("الطلبات", (
+            ("🚖  طلب حجز مواصلات", self.new_transport_request),
+            ("🗂  الطلبات المحفوظة", self.open_transport_requests),
+        ), icon=("tent", G.BRONZE), tip="طلبات حجز المواصلات المحفوظة")
+        if self._ui.get("sidebar_collapsed"):
+            self._set_sidebar_collapsed(True)
+
+    def _build_topbar(self) -> None:
+        """شريط علوي رفيع في منطقة المحتوى: الموسم + الإجراءات الأكثر استخداماً."""
+        bar = ttk.Frame(self._body, style="Toolbar.TFrame",
+                        padding=(18, 12, 18, 6))
+        bar.pack(fill=X)
+        # زرّ طيّ/توسيع القائمة الجانبية
+        if _HAS_CTK:
+            ham = _ctk.CTkButton(
+                bar, text="", width=42, height=38, corner_radius=11,
+                image=self._cticon("menu", G.TEXT, 20), fg_color=G.GHOST_BG,
+                hover_color=G.GHOST_HOVER, command=self._toggle_sidebar)
+        else:
+            ham = ttk.Button(bar, text=G.rtl("☰"), style="Ghost.TMenubutton",
+                             command=self._toggle_sidebar)
+        ham.pack(side=RIGHT, padx=(0, 12))
+        G.add_tooltip(ham, G.rtl("طيّ/توسيع القائمة الجانبية"))
+        # الموسم (يمين)
+        titles = ttk.Frame(bar, style="Toolbar.TFrame")
+        titles.pack(side=RIGHT)
+        row1 = ttk.Frame(titles, style="Toolbar.TFrame")
+        row1.pack(anchor="e")
+        ttk.Label(row1, text="إدارة موسم العمرة", font=(G._FSB, 18),
+                  foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
+        year_box = ttk.Combobox(row1, textvariable=self._season,
+                                state="readonly", width=7, font=(G._FSB, 14),
+                                values=self._season_years)
+        year_box.pack(side=RIGHT, padx=(8, 0))
+        year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
+        self._subtitle = ttk.Label(titles, text=self._season_text(),
+                                    font=(G._FUI, 10), foreground=G.MUTED,
+                                    background=G.BG)
+        self._subtitle.pack(anchor="e")
+        # الإجراءات الأكثر استخداماً (يسار)
+        b_new = self._mkbtn(bar, "➕  برنامج جديد", self.new_trip, "primary")
+        b_new.pack(side=LEFT)
+        G.add_tooltip(b_new, G.rtl("إضافة برنامج عمرة جديد  (Ctrl+N)"))
+        b_pil = self._mkbtn(bar, "👤  المعتمرون", self.open_pilgrims, "act")
+        b_pil.pack(side=LEFT, padx=(8, 0))
+        G.add_tooltip(b_pil, G.rtl("فتح معتمري البرنامج المحدَّد  (Enter)"))
+        other = app_mode.mode_label(app_mode.HAJJ)
+        self._mkbtn(bar, f"🕋  {other}", self.switch_mode).pack(
+            side=LEFT, padx=(8, 0))
+        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
+        self._mkbtn(bar, ("☀️  فاتح" if _dark_now else "🌙  داكن"),
+                    self.toggle_theme).pack(side=LEFT, padx=(8, 0))
+
     # ---- جدول البرامج ----
     def _build_table(self) -> None:
-        wrap = ttk.Frame(self.root, style="Toolbar.TFrame", padding=(16, 4, 16, 14))
+        wrap = ttk.Frame(self._body, style="Toolbar.TFrame", padding=(16, 4, 16, 14))
         wrap.pack(fill=BOTH, expand=True)
 
         # صفّ بحث فوري في البرامج (بالرمز/الاسم/الفندق)
@@ -605,7 +722,7 @@ class UmrahApp:
         self.tree.bind("<Double-1>", lambda _e: self.open_pilgrims())
 
         self._empty = ttk.Label(
-            self.root, justify="center", background=G.BG, foreground=G.MUTED,
+            self._body, justify="center", background=G.BG, foreground=G.MUTED,
             font=(G._FUI, 12),
             text=G.rtl("🌙  لا برامج في هذا الموسم بعد.\n\n"
                        "ابدأ بـ «➕ برنامج جديد» لإنشاء أوّل برنامج عمرة،\n"
