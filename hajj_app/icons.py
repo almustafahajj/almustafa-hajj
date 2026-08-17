@@ -130,6 +130,9 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
     elif name == "caret_left":            # سهم لليسار (قسم مطويّ — RTL)
         d.line([P * 0.60, P * 0.30, P * 0.38, cy], fill=c, width=lw)
         d.line([P * 0.38, cy, P * 0.60, P * 0.70], fill=c, width=lw)
+    elif name == "caret_right":           # سهم لليمين
+        d.line([P * 0.40, P * 0.30, P * 0.62, cy], fill=c, width=lw)
+        d.line([P * 0.62, cy, P * 0.40, P * 0.70], fill=c, width=lw)
     else:                                 # نقطة افتراضية
         d.ellipse([P * 0.35, P * 0.35, P * 0.65, P * 0.65], fill=c)
 

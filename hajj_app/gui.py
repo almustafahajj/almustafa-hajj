@@ -593,25 +593,60 @@ class HajjApp:
         self._body = ttk.Frame(self.root, style="Toolbar.TFrame")
         self._body.pack(side=LEFT, fill=BOTH, expand=True)
 
-    def _sidebar_sep(self) -> None:
-        tk.Frame(self._sidebar, bg=SIDEBAR_SEP, height=1).pack(
-            fill="x", padx=16, pady=(10, 8))
+    _SIDEBAR_W = 238
+    _SIDEBAR_W_MIN = 66
 
     def _build_sidebar(self) -> None:
-        """الشعار والعلامة أعلى الشريط الجانبي، والحساب أسفله."""
+        """الشعار أعلى الشريط، التنقّل في الوسط، والحساب وزرّ الطيّ أسفله."""
         sb = self._sidebar
-        brand = tk.Frame(sb, bg=SIDEBAR_BG)
-        brand.pack(fill="x", pady=(20, 2), padx=12)
+        # العلامة (شعار + اسم) — تُخفى عند الطيّ
+        self._brand = tk.Frame(sb, bg=SIDEBAR_BG)
+        self._brand.pack(fill="x", pady=(20, 2), padx=12)
         self._logo = logo_image(self.root, width=150)
         if self._logo is not None:
-            tk.Label(brand, image=self._logo, bg=SIDEBAR_BG).pack()
-        tk.Label(brand, text=rtl(app_mode.label("window_title")), bg=SIDEBAR_BG,
-                 fg=SIDEBAR_FG, font=(_FSB, 12, "bold")).pack(pady=(6, 0))
-        self._sidebar_sep()
+            tk.Label(self._brand, image=self._logo, bg=SIDEBAR_BG).pack()
+        tk.Label(self._brand, text=rtl(app_mode.label("window_title")),
+                 bg=SIDEBAR_BG, fg=SIDEBAR_FG, font=(_FSB, 12, "bold")).pack(
+                     pady=(6, 0))
+        self._sep = tk.Frame(sb, bg=SIDEBAR_SEP, height=1)
+        self._sep.pack(fill="x", padx=16, pady=(10, 8))
 
-        # القاع: الحساب والحماية (يُثبّت أسفل الشريط قبل منطقة التنقّل)
+        # القاع: زرّ الطيّ ثم الحساب والحماية (يُثبّت أسفل الشريط)
         foot = tk.Frame(sb, bg=SIDEBAR_BG)
-        foot.pack(side="bottom", fill="x", pady=(8, 16), padx=12)
+        foot.pack(side="bottom", fill="x", pady=(6, 14), padx=10)
+        self._collapse_btn = None
+        if _HAS_CTK:
+            self._collapse_btn = _ctk.CTkButton(
+                foot, text="", width=34, height=34, corner_radius=17,
+                fg_color=SIDEBAR_HOVER, hover_color=BRONZE,
+                image=self._cticon("caret_right", SIDEBAR_ICON, 18),
+                command=self._toggle_sidebar)
+            self._collapse_btn.pack(pady=(0, 10))
+            add_tooltip(self._collapse_btn, "طيّ/توسيع الشريط الجانبي")
+        # معلومات الحساب داخل إطار واحد يسهل إخفاؤه عند الطيّ
+        self._foot_info = tk.Frame(foot, bg=SIDEBAR_BG)
+        self._foot_info.pack(fill="x")
+        self._logout_btn = None
+        if self.session is not None:
+            tk.Label(self._foot_info, text=rtl(f"👤  {self.session.username}"),
+                     bg=SIDEBAR_BG, fg=SIDEBAR_FG, font=(_FSB, 11, "bold"),
+                     anchor="e").pack(fill="x")
+            tk.Label(self._foot_info,
+                     text=rtl(f"{self.session.role_label} · 🔒 مشفّر"),
+                     bg=SIDEBAR_BG, fg=SIDEBAR_MUTED, font=(_FUI, 9),
+                     anchor="e").pack(fill="x", pady=(0, 8))
+            self._logout_btn = self._mkbtn(foot, "🚪  تسجيل الخروج",
+                                           self.do_logout)
+            self._logout_btn.pack(fill="x")
+            add_tooltip(self._logout_btn,
+                        "حفظ البيانات والعودة إلى شاشة الدخول")
+        elif self._open_mode:
+            tk.Label(self._foot_info, text=rtl("🔓 وضع مفتوح — بلا رقم سري"),
+                     bg=SIDEBAR_BG, fg="#E0B25E", font=(_FSB, 10),
+                     anchor="e").pack(fill="x")
+            tk.Label(self._foot_info, text=rtl("البيانات غير مشفّرة (مؤقتاً)"),
+                     bg=SIDEBAR_BG, fg=SIDEBAR_MUTED, font=(_FUI, 9),
+                     anchor="e").pack(fill="x")
 
         # منطقة التنقّل قابلة للتمرير — تتوسّع الأقسام داخلها (أكورديون)
         if _HAS_CTK:
@@ -622,21 +657,42 @@ class HajjApp:
         else:
             self._nav_holder = tk.Frame(sb, bg=SIDEBAR_BG)
             self._nav_holder.pack(side="top", fill="both", expand=True)
-        if self.session is not None:
-            tk.Label(foot, text=rtl(f"👤  {self.session.username}"), bg=SIDEBAR_BG,
-                     fg=SIDEBAR_FG, font=(_FSB, 11, "bold"), anchor="e").pack(
-                         fill="x")
-            tk.Label(foot, text=rtl(f"{self.session.role_label} · 🔒 مشفّر"),
-                     bg=SIDEBAR_BG, fg=SIDEBAR_MUTED, font=(_FUI, 9),
-                     anchor="e").pack(fill="x", pady=(0, 8))
-            logout_btn = self._mkbtn(foot, "🚪  تسجيل الخروج", self.do_logout)
-            logout_btn.pack(fill="x")
-            add_tooltip(logout_btn, "حفظ البيانات والعودة إلى شاشة الدخول")
-        elif self._open_mode:
-            tk.Label(foot, text=rtl("🔓 وضع مفتوح — بلا رقم سري"), bg=SIDEBAR_BG,
-                     fg="#E0B25E", font=(_FSB, 10), anchor="e").pack(fill="x")
-            tk.Label(foot, text=rtl("البيانات غير مشفّرة (مؤقتاً)"), bg=SIDEBAR_BG,
-                     fg=SIDEBAR_MUTED, font=(_FUI, 9), anchor="e").pack(fill="x")
+
+    def _toggle_sidebar(self) -> None:
+        self._set_sidebar_collapsed(not getattr(self, "_collapsed", False))
+
+    def _set_sidebar_collapsed(self, collapsed: bool) -> None:
+        """يطوي الشريط الجانبي إلى أيقونات فقط، أو يعيده كاملاً."""
+        self._collapsed = collapsed
+        self._ui["sidebar_collapsed"] = collapsed
+        if collapsed:
+            for s in getattr(self, "_nav_sections", []):
+                s["close"]()                 # اطوِ الأقسام المفتوحة
+            self._sidebar.configure(width=self._SIDEBAR_W_MIN)
+            for h in getattr(self, "_nav_headers", []):
+                h["btn"].configure(text="", anchor="center")
+            self._brand.pack_forget()
+            self._foot_info.pack_forget()
+            if self._logout_btn is not None:
+                self._logout_btn.configure(text=rtl("🚪"))
+            if self._collapse_btn is not None:
+                self._collapse_btn.configure(
+                    image=self._cticon("caret_left", SIDEBAR_ICON, 18))
+        else:
+            self._sidebar.configure(width=self._SIDEBAR_W)
+            for h in getattr(self, "_nav_headers", []):
+                h["btn"].configure(text=rtl(h["label"]), anchor="e")
+            self._brand.pack(fill="x", pady=(20, 2), padx=12, before=self._sep)
+            self._foot_info.pack(fill="x")
+            if self._logout_btn is not None:
+                self._logout_btn.configure(text=rtl("🚪  تسجيل الخروج"))
+            if self._collapse_btn is not None:
+                self._collapse_btn.configure(
+                    image=self._cticon("caret_right", SIDEBAR_ICON, 18))
+        try:
+            self._save_ui_settings()
+        except Exception:
+            pass
 
     def _nav_item(self, label, items, *, icon=None, tip=None):
         """قسم تنقّل قابل للتوسّع (أكورديون): الضغط يفتح خياراته أسفله."""
@@ -706,6 +762,8 @@ class HajjApp:
                 sect["open"] = False
 
         def toggle() -> None:
+            if getattr(self, "_collapsed", False):
+                self._set_sidebar_collapsed(False)   # وسّع أولاً ثم افتح القسم
             if sect["open"]:
                 close()
                 return
@@ -718,6 +776,7 @@ class HajjApp:
 
         sect["close"] = close
         self._nav_sections.append(sect)
+        self._nav_headers.append({"btn": header, "label": i18n.tr(label)})
         header.configure(command=toggle)
         if tip:
             add_tooltip(header, tip)
@@ -1084,6 +1143,7 @@ class HajjApp:
         """عناصر التنقّل السبعة داخل الشريط الجانبي (كانت شريطاً أفقياً)."""
         self._menus: list = []
         self._nav_sections: list = []      # أقسام الأكورديون (للفتح/الإغلاق)
+        self._nav_headers: list = []       # رؤوس الأقسام (لطيّ النصوص)
         # ---- الأقسام الرئيسية السبعة (مستوحاة من نظام إدارة الحجّ) ----
         BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
         GRAY, GREEN = "#6B6459", "#2E7D46"
@@ -1228,6 +1288,10 @@ class HajjApp:
                 ("📷  إضافة جوازات (صور / PDF)", self.add_images),
             ], icon=("add", GREEN),
                 tip="استيراد من إكسل أو قراءة الجوازات")
+
+        # استعادة حالة الطيّ المحفوظة
+        if self._ui.get("sidebar_collapsed"):
+            self._set_sidebar_collapsed(True)
 
     def _shadow_strip(self, parent) -> None:
         """ظلّ متدرّج رفيع (ثلاثة أسطر) يوحي بعمق تحت الشريط."""
