@@ -258,11 +258,48 @@ def _cbtn(parent, label, command, kind="ghost", width=None):
                       **kw)
 
 
+def _ar_entry(parent, textvariable, width=26):
+    """حقل نصّ عربي يعرض النصّ **مُشكّلاً صحيحاً في وضع السكون** (مثل التسميات
+    عبر ``rtl``)، ويتحوّل إلى النصّ المنطقي القابل للتحرير أثناء التركيز فقط.
+
+    الخلفية: Tk في هذه البيئة لا يشكّل الحروف العربية بنفسه (لذا يعرض النصّ الخام
+    مبعثراً)، لكنه يعرض النصّ المُشكّل مسبقاً بـ``rtl`` صحيحاً — كما في التسميات.
+    فنعرض ``rtl(القيمة)`` حين لا يُحرَّر الحقل، والقيمة المنطقية أثناء التحرير،
+    مع إبقاء ``textvariable`` (المنطقي) محدَّثاً لحظياً للحفظ/المعاينة."""
+    disp = StringVar(value=rtl(textvariable.get()))
+    e = ttk.Entry(parent, textvariable=disp, justify="right", width=width)
+    install_entry_editing(e)
+    st = {"editing": False}
+
+    def focus_in(_e=None):
+        st["editing"] = True
+        disp.set(textvariable.get())        # نصّ منطقي قابل للتحرير
+        e.icursor("end")
+
+    def focus_out(_e=None):
+        st["editing"] = False
+        textvariable.set(disp.get())        # احفظ ما أُدخِل (منطقي)
+        disp.set(rtl(textvariable.get()))   # اعرضه مُشكّلاً صحيحاً
+
+    def key(_e=None):
+        if st["editing"]:
+            textvariable.set(disp.get())    # أبقِ المنطقي محدَّثاً لحظياً
+
+    e.bind("<FocusIn>", focus_in, add="+")
+    e.bind("<FocusOut>", focus_out, add="+")
+    e.bind("<KeyRelease>", key, add="+")
+    # لو تغيّرت القيمة المنطقية برمجياً والحقل غير مركَّز، حدِّث العرض المُشكّل
+    textvariable.trace_add(
+        "write",
+        lambda *_a: (None if st["editing"] else disp.set(rtl(textvariable.get()))))
+    return e
+
+
 class _ListEditor(ttk.Frame):
-    """قائمة بنود قابلة للتحرير — سطر لكل بند بحقل مستقلّ (CTkEntry).
+    """قائمة بنود قابلة للتحرير — سطر لكل بند بحقل مستقلّ.
 
     يتفادى خلل ترتيب النصّ العربي في ``tk.Text`` متعدّد الأسطر: كل بند في حقل
-    سطرٍ واحد يعمل بشكل صحيح مع العربية."""
+    سطرٍ واحد."""
 
     def __init__(self, parent, lines=None) -> None:
         super().__init__(parent)
@@ -282,7 +319,7 @@ class _ListEditor(ttk.Frame):
         _cbtn(fr, "🗑", lambda: (fr.destroy(),
                                  rec in self._rows and self._rows.remove(rec)),
               width=40).pack(side=RIGHT, padx=(0, 4))
-        e = _form_entry(fr, var, width=120)
+        e = _ar_entry(fr, var, width=60)
         e.pack(side=RIGHT, fill=X, expand=True)
         self._rows.append(rec)
 
@@ -7754,8 +7791,7 @@ class HajjProgramDialog(Toplevel):
         self._lbl(card, label, row)
         var = StringVar(value=str(self._data.get(key, "")))
         self._vars[key] = var
-        # حقل عصري بمحاذاة وسط — يتفادى انعكاس ترتيب الكلمات العربية في ttk.Entry
-        e = _form_entry(card, var, width=max(200, width * 7))
+        e = _ar_entry(card, var, width=width)
         e.grid(row=row, column=0, columnspan=2, sticky="we", pady=4)
         return var
 
@@ -7841,7 +7877,7 @@ class HajjProgramDialog(Toplevel):
             c = self._card(f"بند {i + 1}")
             self._lbl(c, "عنوان البند", 0)
             tv = StringVar(value=str(title))
-            te = _form_entry(c, tv, width=320)
+            te = _ar_entry(c, tv, width=40)
             te.grid(row=0, column=0, columnspan=2, sticky="we", pady=4)
             ttk.Label(c, text=rtl("النقاط:"), font=(_FUI, 9),
                       foreground=MUTED, background=BG).grid(
