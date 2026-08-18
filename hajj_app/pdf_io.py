@@ -5103,6 +5103,10 @@ def export_passports_pdf(
 
 HAJJ_PROGRAM_DEFAULT: dict = {
     "title": "برنامج الحج لكبار الشخصيات 1448 هـ - 2027 م",
+    "date": "",                 # تاريخ المستند (ISO)؛ فارغ = تاريخ اليوم
+    "number": "",               # رقم العرض (اختياري)
+    "addressed_to": "",         # عناية: اسم المستلِم (اختياري)
+    "addressed_title": "السيد",
     "greeting": ("تتقدم أسرة المصطفى للحج والعمرة، لسعادتكم بأطيب وأرق التحيات "
                  "راجين من الله تعالى لكم دوام التوفيق والرفعة، ونستهل هذه الفرصة "
                  "لنتوجه لكم بالشكر والامتنان على الثقة الكبيرة لننال شرف خدمة "
@@ -5250,12 +5254,39 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story.append(header)
-    story.append(_ar_para("التاريخ : " + ltr(_dmy(date.today().isoformat())) + " م.",
-                          val_r, W - 8))
+
+    def _ymd(iso):
+        try:
+            y, m, dd = str(iso).split("-")
+            return f"{y}/{int(m):02d}/{int(dd):02d}"
+        except Exception:
+            return str(iso)
+    _doc_date = _ymd(str(d.get("date") or date.today().isoformat()))
+    _num = str(d.get("number") or "").strip()
+    # رقم العرض (يسار) والتاريخ (يمين) على الطرفين
+    val_l = ParagraphStyle("hp_vl", parent=val, alignment=0)
+    meta = Table([[_ar_para((f"رقم العرض: {ltr(_num)}" if _num else ""),
+                            val_l, W * 0.5 - 6),
+                   _ar_para("التاريخ : " + ltr(_doc_date) + " م.", val_r,
+                            W * 0.5 - 6)]], colWidths=[W * 0.5, W * 0.5])
+    meta.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    story.append(meta)
     story.append(Spacer(1, 4))
     story.append(_ar_para("السلام عليكم ورحمة الله وبركاته،،",
                           ParagraphStyle("hp_slm", parent=val,
                                          fontName=_FONT_BOLD), W - 8))
+    # عناية المستلِم (اختياري)
+    _addr = str(d.get("addressed_to") or "").strip()
+    if _addr:
+        _atitle = str(d.get("addressed_title") or "السيد").strip()
+        _respect = "المحترمة" if _atitle in ("السيدة", "الآنسة") else "المحترم"
+        story.append(_ar_para(f"عناية {_atitle}/ {_addr} {_respect}،",
+                              ParagraphStyle("hp_addr", parent=val,
+                                             fontName=_FONT_BOLD,
+                                             textColor=_DEEP), W - 8))
     story.append(Spacer(1, 6))
 
     band = Table([[Paragraph(ar(str(d.get("title") or "برنامج الحج")),
