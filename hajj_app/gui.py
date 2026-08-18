@@ -259,39 +259,113 @@ def _cbtn(parent, label, command, kind="ghost", width=None):
 
 
 def _ar_entry(parent, textvariable, width=26):
-    """حقل نصّ عربي يعرض النصّ **مُشكّلاً صحيحاً في وضع السكون** (مثل التسميات
-    عبر ``rtl``)، ويتحوّل إلى النصّ المنطقي القابل للتحرير أثناء التركيز فقط.
+    """محرّر عربي يعرض النصّ **مُشكّلاً صحيحاً دائماً** (حتى أثناء الكتابة).
 
-    الخلفية: Tk في هذه البيئة لا يشكّل الحروف العربية بنفسه (لذا يعرض النصّ الخام
-    مبعثراً)، لكنه يعرض النصّ المُشكّل مسبقاً بـ``rtl`` صحيحاً — كما في التسميات.
-    فنعرض ``rtl(القيمة)`` حين لا يُحرَّر الحقل، والقيمة المنطقية أثناء التحرير،
-    مع إبقاء ``textvariable`` (المنطقي) محدَّثاً لحظياً للحفظ/المعاينة."""
-    disp = StringVar(value=rtl(textvariable.get()))
-    e = ttk.Entry(parent, textvariable=disp, justify="right", width=width)
-    install_entry_editing(e)
-    st = {"editing": False}
+    Tk لا يشكّل الحروف العربية داخل الحقول، لكنه يعرض النصّ المُشكّل مسبقاً
+    (عبر ``rtl``) صحيحاً — كما في التسميات. لذا نُبقي النصّ المنطقي في مخزنٍ
+    خاصّ، ونعترض ضغطات المفاتيح لتحريره، ونعرض ``rtl(النصّ)`` بعد كل تغيير.
+    ``textvariable`` يبقى محدَّثاً بالنصّ المنطقي للحفظ والمعاينة."""
+    st = {"s": str(textvariable.get() or ""), "cur": 0, "sel": False}
+    st["cur"] = len(st["s"])
+    disp = StringVar()
+    e = ttk.Entry(parent, textvariable=disp, justify="right", width=width,
+                  exportselection=0)
 
-    def focus_in(_e=None):
-        st["editing"] = True
-        disp.set(textvariable.get())        # نصّ منطقي قابل للتحرير
-        e.icursor("end")
+    def render():
+        d = rtl(st["s"])
+        disp.set(d)
+        if str(textvariable.get()) != st["s"]:
+            textvariable.set(st["s"])          # المنطقي للحفظ/المعاينة
+        try:
+            e.icursor(max(0, min(len(d), len(d) - st["cur"])))
+        except Exception:
+            pass
 
-    def focus_out(_e=None):
-        st["editing"] = False
-        textvariable.set(disp.get())        # احفظ ما أُدخِل (منطقي)
-        disp.set(rtl(textvariable.get()))   # اعرضه مُشكّلاً صحيحاً
+    def clear_sel():
+        if st["sel"]:
+            st["s"] = ""
+            st["cur"] = 0
+            st["sel"] = False
 
-    def key(_e=None):
-        if st["editing"]:
-            textvariable.set(disp.get())    # أبقِ المنطقي محدَّثاً لحظياً
+    def on_key(ev):
+        ks, ch = ev.keysym, ev.char
+        ctrl = bool(ev.state & 0x4)
+        if ks in ("Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L",
+                  "Alt_R", "Tab", "ISO_Left_Tab", "Return", "Escape"):
+            return None
+        low = ks.lower()
+        if ctrl and low == "a":
+            st["sel"] = True
+            return "break"
+        if ctrl and low in ("c", "x"):
+            try:
+                e.clipboard_clear()
+                e.clipboard_append(st["s"])
+            except Exception:
+                pass
+            if low == "x":
+                clear_sel()
+                render()
+            return "break"
+        if ctrl and low == "v":
+            try:
+                clip = e.clipboard_get()
+            except Exception:
+                clip = ""
+            clear_sel()
+            st["s"] = st["s"][:st["cur"]] + clip + st["s"][st["cur"]:]
+            st["cur"] += len(clip)
+            render()
+            return "break"
+        if ks == "BackSpace":
+            if st["sel"]:
+                clear_sel()
+            elif st["cur"] > 0:
+                st["s"] = st["s"][:st["cur"] - 1] + st["s"][st["cur"]:]
+                st["cur"] -= 1
+            render()
+            return "break"
+        if ks == "Delete":
+            if st["sel"]:
+                clear_sel()
+            elif st["cur"] < len(st["s"]):
+                st["s"] = st["s"][:st["cur"]] + st["s"][st["cur"] + 1:]
+            render()
+            return "break"
+        if ks in ("Home", "End", "Left", "Right"):
+            st["sel"] = False
+            if ks == "Home":
+                st["cur"] = len(st["s"])
+            elif ks == "End":
+                st["cur"] = 0
+            elif ks == "Left":                 # RTL: يسار = للأمام منطقياً
+                st["cur"] = min(len(st["s"]), st["cur"] + 1)
+            else:
+                st["cur"] = max(0, st["cur"] - 1)
+            render()
+            return "break"
+        if ch and ch.isprintable() and not ctrl:
+            clear_sel()
+            st["s"] = st["s"][:st["cur"]] + ch + st["s"][st["cur"]:]
+            st["cur"] += 1
+            render()
+            return "break"
+        return None
 
-    e.bind("<FocusIn>", focus_in, add="+")
-    e.bind("<FocusOut>", focus_out, add="+")
-    e.bind("<KeyRelease>", key, add="+")
-    # لو تغيّرت القيمة المنطقية برمجياً والحقل غير مركَّز، حدِّث العرض المُشكّل
-    textvariable.trace_add(
-        "write",
-        lambda *_a: (None if st["editing"] else disp.set(rtl(textvariable.get()))))
+    def on_click(ev):
+        st["sel"] = False
+        try:
+            dpos = e.index("@%d" % ev.x)
+            st["cur"] = max(0, min(len(st["s"]), len(st["s"]) - dpos))
+        except Exception:
+            st["cur"] = len(st["s"])
+        render()
+        return "break"
+
+    e.bind("<Key>", on_key)
+    e.bind("<Button-1>", on_click)
+    e.bind("<FocusOut>", lambda _e: st.update(sel=False), add="+")
+    render()
     return e
 
 
