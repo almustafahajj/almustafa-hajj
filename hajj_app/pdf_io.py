@@ -5551,18 +5551,28 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
     story.append(P(d.get("closing", ""),
                    ParagraphStyle("hp_cls", parent=val, alignment=1,
                                   fontName=_FONT_BOLD), W - 8))
-    story.append(Spacer(1, 14))
-    # التوقيع في أقصى اليسار
-    sig_l = ParagraphStyle("hp_sig", parent=val, alignment=0)
-    story.append(P(d.get("manager_title", ""),
+    story.append(Spacer(1, 16))
+    # التوقيع ككتلة متناسقة محاذاة لليسار في أسفل الصفحة
+    sig_l = ParagraphStyle("hp_sig", parent=val, alignment=0, leading=16)
+    sig_w = W * 0.42
+    sig_rows = [[P(d.get("manager_title", ""),
                    ParagraphStyle("hp_sg1", parent=sig_l, fontName=_FONT_BOLD),
-                   W - 8))
-    story.append(P(d.get("manager", ""),
+                   sig_w - 6)],
+                [P(d.get("manager", ""),
                    ParagraphStyle("hp_sg2", parent=sig_l, fontName=_FONT_BOLD,
-                                  fontSize=12), W - 8))
+                                  fontSize=13), sig_w - 6)]]
     if str(d.get("manager_phone", "")).strip():
-        story.append(P(ltr(d.get("manager_phone")),
-                       ParagraphStyle("hp_sg3", parent=sig_l), W - 8))
+        sig_rows.append([P(ltr(d.get("manager_phone")),
+                           ParagraphStyle("hp_sg3", parent=sig_l), sig_w - 6)])
+    sig_tbl = Table(sig_rows, colWidths=[sig_w])
+    sig_tbl.hAlign = "LEFT"
+    sig_tbl.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+    story.append(sig_tbl)
 
     _ttl = "Hajj Program" if L else "برنامج الحج"
     doc.build(

@@ -7719,9 +7719,9 @@ class HajjProgramDialog(Toplevel):
         self._lbl(card, label, row)
         var = StringVar(value=str(self._data.get(key, "")))
         self._vars[key] = var
-        e = ttk.Entry(card, textvariable=var, justify="right", width=width)
+        # حقل عصري بمحاذاة وسط — يتفادى انعكاس ترتيب الكلمات العربية في ttk.Entry
+        e = _form_entry(card, var, width=max(200, width * 7))
         e.grid(row=row, column=0, columnspan=2, sticky="we", pady=4)
-        install_entry_editing(e)
         return var
 
     def _combo(self, card, key, label, values, row, width=32, readonly=False,
@@ -7731,7 +7731,7 @@ class HajjProgramDialog(Toplevel):
                                   else self._data.get(key, "")))
         self._vars[key] = var
         cb = ttk.Combobox(card, textvariable=var, values=list(values),
-                          justify="right", width=width,
+                          justify="center", width=width,
                           state=("readonly" if readonly else "normal"))
         cb.grid(row=row, column=0, columnspan=2, sticky="we", pady=4)
         return var
@@ -7805,9 +7805,8 @@ class HajjProgramDialog(Toplevel):
             c = self._card(f"بند {i + 1}")
             self._lbl(c, "عنوان البند", 0)
             tv = StringVar(value=str(title))
-            te = ttk.Entry(c, textvariable=tv, justify="right", font=(_FSB, 10))
+            te = _form_entry(c, tv, width=320)
             te.grid(row=0, column=0, columnspan=2, sticky="we", pady=4)
-            install_entry_editing(te)
             ttk.Label(c, text=rtl("النقاط (سطر لكل نقطة):"), font=(_FUI, 9),
                       foreground=MUTED, background=BG).grid(
                           row=1, column=2, sticky="e", padx=(10, 6))
@@ -7892,7 +7891,7 @@ class HajjProgramDialog(Toplevel):
                       background=BG).pack(side=RIGHT, padx=(0, 2))
             var = StringVar(value=str(val))
             ttk.Combobox(fr, textvariable=var, values=list(opts),
-                         justify="right", width=12).pack(side=RIGHT, padx=(0, 6))
+                         justify="center", width=12).pack(side=RIGHT, padx=(0, 6))
             w[key] = var
         ttk.Label(fr, text=rtl("اليوم"), font=(_FUI, 9), foreground=MUTED,
                   background=BG).pack(side=RIGHT, padx=(0, 2))
