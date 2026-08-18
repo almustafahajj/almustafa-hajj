@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ noun }} — المصطفى{% endblock %}
+{% block heading %}🪪 {{ noun }}{% endblock %}
+{% block subhead %}<div class="season">{{ total }} سجلّ{% if q %} · نتائج البحث عن «{{ q }}»{% endif %}</div>{% endblock %}
+{% block content %}
+<form class="searchbar" method="get">
+  <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
+  <button class="btn primary" type="submit">بحث</button>
+  {% if q %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
+</form>
+
+<div class="panel" style="margin-top:14px">
+<table class="data">
+  <thead><tr>
+    <th>م</th><th>الاسم</th><th>رقم الجواز</th><th>البرنامج</th>
+    <th>الهاتف</th><th>الحالة</th><th>المتبقّي</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ loop.index + offset }}</td>
+      <td class="prog-name">{{ r.name }}</td>
+      <td>{{ r.passport }}</td>
+      <td>{{ r.program }}</td>
+      <td>{{ r.phone }}</td>
+      <td>{% if r.status %}<span class="st {{ r.status_cls }}">{{ r.status }}</span>{% endif %}</td>
+      <td class="tag">{{ r.remaining }}</td>
+      <td><a class="btn ghost sm" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">✏️ تعديل</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">
+      {% if q %}لا نتائج مطابقة.{% else %}لا يوجد {{ noun }} بعد.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% for p in range(1, pages+1) %}
+    <a class="{{ 'on' if p==page }}" href="{{ url_for('hujjaj', q=q, page=p) }}">{{ p }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

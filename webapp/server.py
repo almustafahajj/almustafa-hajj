@@ -12,7 +12,32 @@ from flask import (Flask, redirect, render_template, request, session,
                    url_for)
 
 from hajj_app import app_mode, auth, stats, storage
-from hajj_app.fields import format_amount
+from hajj_app.fields import BY_KEY, format_amount
+from hajj_app.stats import remaining_amount
+
+_PAGE = 50
+_STATUS_CLS = {"نشط": "good", "ملغى": "crit", "قائمة انتظار": "warn"}
+_CHOICES = {"status": ["", "نشط", "ملغى", "قائمة انتظار"],
+            "sex": ["", "ذكر", "أنثى"], "wheelchair": ["", "نعم"]}
+_DATE_FIELDS = {"birth_date", "expiry_date", "arrival_date", "departure_date"}
+_UMRAH_DROP = {"program", "group", "hady", "executive_service", "wheelchair",
+               "airline", "flight_number", "travel_class", "pnr",
+               "arrival_date", "arrival_time", "departure_date",
+               "departure_time", "hotel"}
+_GROUPS = [
+    ("بيانات {n}", ["family_number", "reference_number", "full_name_ar",
+                    "full_name_en", "phone", "program", "group", "status",
+                    "mahram_name", "mahram_relation"]),
+    ("الجواز", ["passport_number", "nationality_ar", "sex", "birth_date",
+                "expiry_date"]),
+    ("السفر", ["airline", "flight_number", "travel_class", "pnr",
+               "arrival_date", "arrival_time", "departure_date",
+               "departure_time", "transport"]),
+    ("الإقامة والخدمات", ["hotel", "room_type", "room_number",
+                          "executive_service", "wheelchair", "hady"]),
+    ("المالية", ["program_value", "paid_amount"]),
+    ("ملاحظات", ["notes", "staff"]),
+]
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -126,8 +151,106 @@ def dashboard():
               "pct": pf.collected_percent}
              for name, pf in _by_group(records)]
     return render_template(
-        "dashboard.html", kpis=kpis, progs=progs, noun=_noun(),
-        mode=_mode(), other=(app_mode.UMRAH if _mode() == app_mode.HAJJ
-                             else app_mode.HAJJ),
-        other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"),
-        username=session.get("username", ""), role=session.get("role", ""))
+        "dashboard.html", kpis=kpis, progs=progs, active="dashboard",
+        **_ctx())
+
+
+def _ctx() -> dict:
+    """سياق مشترك للقوالب (الوضع/النوع/زر التبديل)."""
+    return dict(
+        noun=_noun(), mode=_mode(),
+        other=(app_mode.UMRAH if _mode() == app_mode.HAJJ else app_mode.HAJJ),
+        other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"))
+
+
+def _noun_singular() -> str:
+    return "الحاج" if _mode() == app_mode.HAJJ else "المعتمر"
+
+
+def _label(key: str) -> str:
+    lbl = BY_KEY[key].label if key in BY_KEY else key
+    if _mode() == app_mode.UMRAH:
+        lbl = lbl.replace("الحاج", "المعتمر").replace("حاج", "معتمر")
+    return lbl
+
+
+@app.get("/hujjaj")
+def hujjaj():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    q = (request.args.get("q") or "").strip()
+    indexed = list(enumerate(records))
+    if q:
+        ql = q.lower()
+        indexed = [(i, r) for i, r in indexed if ql in " ".join(str(
+            getattr(r, k, "") or "") for k in
+            ("full_name_ar", "full_name_en", "passport_number", "phone",
+             "reference_number")).lower()]
+    total = len(indexed)
+    pages = max(1, (total + _PAGE - 1) // _PAGE)
+    try:
+        page = max(1, min(pages, int(request.args.get("page", 1))))
+    except ValueError:
+        page = 1
+    offset = (page - 1) * _PAGE
+    rows = []
+    for i, r in indexed[offset:offset + _PAGE]:
+        st = str(getattr(r, "status", "") or "").strip()
+        rows.append({
+            "idx": i,
+            "name": getattr(r, "full_name_ar", "") or getattr(
+                r, "full_name_en", "") or "—",
+            "passport": getattr(r, "passport_number", "") or "—",
+            "program": str(getattr(r, ("program" if _mode() == app_mode.HAJJ
+                                       else "trip"), "") or "") or "—",
+            "phone": getattr(r, "phone", "") or "—",
+            "status": st, "status_cls": _STATUS_CLS.get(st, ""),
+            "remaining": format_amount(remaining_amount(r)) or "0",
+        })
+    return render_template("hujjaj.html", active="hujjaj", rows=rows, q=q,
+                           total=total, page=page, pages=pages, offset=offset,
+                           **_ctx())
+
+
+@app.route("/hujjaj/<int:idx>", methods=["GET", "POST"])
+def hujjaj_edit(idx):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    rec = records[idx]
+    drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
+    saved = False
+    if request.method == "POST":
+        for _title, keys in _GROUPS:
+            for k in keys:
+                if k in drop or k not in BY_KEY or not BY_KEY[k].editable:
+                    continue
+                if k in request.form:
+                    setattr(rec, k, request.form.get(k, "").strip())
+        try:
+            storage.save_records(records, session=_sess())
+            saved = True
+        except Exception:
+            saved = False
+
+    groups = []
+    for title, keys in _GROUPS:
+        fs = []
+        for k in keys:
+            if k in drop or k not in BY_KEY:
+                continue
+            fs.append({"key": k, "label": _label(k),
+                       "value": str(getattr(rec, k, "") or ""),
+                       "choices": _CHOICES.get(k),
+                       "type": ("date" if k in _DATE_FIELDS else "")})
+        if fs:
+            groups.append({"title": title.format(n=_noun()), "fields": fs})
+    return render_template(
+        "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
+        name=getattr(rec, "full_name_ar", "") or getattr(
+            rec, "full_name_en", "") or "",
+        number=getattr(rec, "reference_number", "") or "",
+        noun_singular=_noun_singular(), **_ctx())

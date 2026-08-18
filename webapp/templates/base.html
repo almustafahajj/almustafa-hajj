@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}المصطفى للحج والعمرة{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo">🕋 المصطفى</div>
+    <nav class="nav">
+      <a class="{{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
+      <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
+      <a href="#">💰 المالية</a>
+      <a href="#">📄 التقارير</a>
+      <a href="#">🧮 التسعير والعروض</a>
+    </nav>
+    <div class="foot">
+      👤 {{ session.get('username','') }} · {{ session.get('role','') }}<br>
+      🔒 البيانات مشفّرة<br>
+      <a href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+    </div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h2>{% block heading %}{% endblock %}</h2>
+        {% block subhead %}{% endblock %}
+      </div>
+      <div class="actions">
+        <a class="pill" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_label }}</a>
+      </div>
+    </div>
+    <div class="content">{% block content %}{% endblock %}</div>
+  </div>
+</div>
+</body></html>
