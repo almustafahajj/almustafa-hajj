@@ -259,11 +259,27 @@ def _cbtn(parent, label, command, kind="ghost", width=None):
 
 
 def _ar_entry(parent, textvariable, width=26):
-    """حقل نصّ قياسي افتراضي (ttk) بلا أي تدخّل — نترك Tk/النظام يعرض العربية
-    ويحرّرها كما هي (بلا محاذاة مفروضة ولا تشكيل مسبق ولا اعتراض مفاتيح)."""
-    e = ttk.Entry(parent, textvariable=textvariable, width=width)
+    """حقل تحرير عربي + **معاينة حيّة صحيحة** أسفله.
+
+    الكتابة تتمّ في حقل قياسي (تعمل على كل الأنظمة)، بينما تعرض التسمية أسفله
+    النصّ **مُشكّلاً صحيحاً لحظياً** (عبر ``rtl``، تماماً كبقية نصوص البرنامج).
+    فالمستخدم يكتب بحرّية ويقرأ النتيجة الصحيحة فوراً — دون اعتراض المفاتيح."""
+    fr = ttk.Frame(parent, style="Toolbar.TFrame")
+    e = ttk.Entry(fr, textvariable=textvariable, width=width)
     install_entry_editing(e)
-    return e
+    e.pack(fill="x")
+    prev = tk.Label(fr, text=rtl(str(textvariable.get() or "")), anchor="e",
+                    justify="right", background=PANEL, foreground=BRONZE,
+                    font=(_FUI, 11), padx=6, pady=1)
+    prev.pack(fill="x", pady=(1, 0))
+
+    def _upd(*_a):
+        try:
+            prev.configure(text=rtl(str(textvariable.get() or "")))
+        except Exception:
+            pass
+    textvariable.trace_add("write", _upd)
+    return fr
 
 
 class _ListEditor(ttk.Frame):
