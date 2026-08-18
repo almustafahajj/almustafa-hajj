@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>الدخول — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body>
+<div class="login-wrap">
+  <form class="login-card" method="post">
+    <div class="brand-dot">🕋</div>
+    <h1>المصطفى للحج والعمرة</h1>
+    <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label>الوضع</label>
+      <select name="mode">
+        {% for val,lbl in modes %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>اسم المستخدم</label>
+      <input name="username" autofocus autocomplete="username">
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <input name="password" type="password" autocomplete="current-password">
+    </div>
+    <button class="btn primary" type="submit">دخول</button>
+  </form>
+</div>
+</body></html>

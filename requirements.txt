@@ -10,3 +10,4 @@ pymupdf
 cryptography
 tkinterdnd2
 customtkinter
+flask>=3.0
