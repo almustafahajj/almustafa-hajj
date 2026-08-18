@@ -1238,7 +1238,8 @@ class HajjApp:
             None,
             ("🧮  مسعّر المجموعات", self.open_group_pricer),
             ("🗂  التسعيرات المحفوظة", self.open_pricings),
-            ("🕋  برنامج / عرض سعر الحج", self.do_hajj_program),
+            ("🕋  عرض سعر / برنامج حج جديد", self.do_hajj_program),
+            ("🗃️  عروض أسعار الحج المحفوظة", self.do_hajj_quotes_list),
             None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
             ("🧮  المصروفات والمحاسبة", self.do_expenses),
@@ -2888,8 +2889,12 @@ class HajjApp:
         ug.PricingsListWindow(self.root, self)
 
     def do_hajj_program(self) -> None:
-        """محرّر «برنامج / عرض سعر الحج» — مستند رسمي متعدّد البنود (PDF)."""
+        """محرّر «برنامج / عرض سعر الحج» جديد — رقم مرجعي تلقائي (PDF)."""
         HajjProgramDialog(self.root, self)
+
+    def do_hajj_quotes_list(self) -> None:
+        """قائمة عروض أسعار الحج المحفوظة (فتح/تعديل، معاينة، حذف)."""
+        HajjQuotesListWindow(self.root, self)
 
     def copy_season_summary(self) -> None:
         """ينسخ ملخّص مؤشّرات موسم الحج إلى الحافظة، جاهزاً للمشاركة."""
@@ -7466,9 +7471,46 @@ class ContractDialog(Toplevel):
             messagebox.showerror("تعذّر الفتح", str(exc), parent=self)
 
 
+class _DateDropdowns(ttk.Frame):
+    """اختيار تاريخ بثلاث قوائم منسدلة (سنة/شهر/يوم) — يعيد ISO عبر get()."""
+
+    def __init__(self, parent, iso="", year_from=None, year_to=None) -> None:
+        super().__init__(parent)
+        y0 = year_from or (date.today().year - 1)
+        y1 = year_to or (date.today().year + 6)
+        self._yr = StringVar()
+        self._mon = StringVar()
+        self._day = StringVar()
+        years = [str(y) for y in range(y0, y1 + 1)]
+        mons = [f"{i:02d}" for i in range(1, 13)]
+        days = [f"{i:02d}" for i in range(1, 32)]
+        ttk.Combobox(self, textvariable=self._yr, values=years, width=6,
+                     state="readonly", justify="center").pack(side=LEFT, padx=1)
+        ttk.Combobox(self, textvariable=self._mon, values=mons, width=4,
+                     state="readonly", justify="center").pack(side=LEFT, padx=1)
+        ttk.Combobox(self, textvariable=self._day, values=days, width=4,
+                     state="readonly", justify="center").pack(side=LEFT, padx=1)
+        self.set(iso)
+
+    def set(self, iso) -> None:
+        try:
+            y, m, d = str(iso).split("-")
+            self._yr.set(y)
+            self._mon.set(f"{int(m):02d}")
+            self._day.set(f"{int(d):02d}")
+        except Exception:
+            self._yr.set("")
+            self._mon.set("")
+            self._day.set("")
+
+    def get(self) -> str:
+        y, m, d = self._yr.get(), self._mon.get(), self._day.get()
+        return f"{y}-{m}-{d}" if (y and m and d) else ""
+
+
 class HajjProgramDialog(Toplevel):
-    """محرّر «برنامج / عرض سعر الحج» — نموذج منظّم ببطاقات، اختيار تواريخ
-    وقوائم منسدلة، يولّد مستنداً رسمياً (PDF). يُحفظ آخر إدخال ويُستعاد لاحقاً."""
+    """محرّر «برنامج / عرض سعر الحج» — نموذج منظّم ببطاقات، رقم مرجعي تلقائي،
+    اختيار تواريخ بقوائم منسدلة، حفظ العرض، وتوليد مستند رسمي (PDF)."""
 
     _CARRIERS = ["SAUDIA", "طيران الإمارات", "الاتحاد للطيران", "فلاي دبي",
                  "العربية للطيران", "الخطوط السعودية"]
@@ -7482,19 +7524,30 @@ class HajjProgramDialog(Toplevel):
                "سويس أوتيل المقام.", "هيلتون مكة.", "أنجم مكة.",
                "دار التوحيد إنتركونتيننتال."]
 
-    def __init__(self, parent, app) -> None:
+    def __init__(self, parent, app, quote: dict | None = None) -> None:
         super().__init__(parent)
         self.app = app
         from . import pdf_io
-        from . import umrah_gui as _ug
+        from . import quotes as _q
+        from . import umrah_gui as _ug        # noqa: F401 (لتحميل الوحدة)
         self._pdf = pdf_io
-        self._ug = _ug
+        self._q = _q
         self._data = pdf_io.hajj_program_defaults()
-        saved = app._settings.get("hajj_program")
-        if isinstance(saved, dict):
-            self._data.update(saved)
+        if isinstance(quote, dict):
+            self._data.update(quote)
+            self._number = str(quote.get("number") or "")
+        # رقم مرجعي تلقائي يُحجز عند فتح عرض جديد
+        if not self._data.get("number"):
+            self._number = _q.next_hajj_quote_number(app._settings)
+            self._data["number"] = self._number
+            try:
+                save_settings(app._settings)
+            except Exception:
+                pass
+        else:
+            self._number = str(self._data.get("number"))
 
-        self.title("برنامج / عرض سعر الحج")
+        self.title(f"برنامج / عرض سعر الحج — {self._number}")
         self.configure(bg=BG)
         self.geometry("900x760")
         self.minsize(720, 540)
@@ -7509,9 +7562,9 @@ class HajjProgramDialog(Toplevel):
         head.pack(fill=X)
         ttk.Label(head, text="🕋 برنامج / عرض سعر الحج", font=(_FSB, 15),
                   foreground=TEXT, background=BG).pack(side=RIGHT)
-        ttk.Label(head, text=rtl("عدّل الحقول ثم «معاينة / تصدير PDF» — يُحفظ لتُستعاد لاحقاً"),
-                  font=(_FUI, 9), foreground=MUTED, background=BG).pack(
-                      side=RIGHT, padx=(0, 10))
+        ttk.Label(head, text=rtl(f"الرقم المرجعي: {self._number}"),
+                  font=(_FSB, 11), foreground=BRONZE, background=BG).pack(
+                      side=LEFT)
 
         if _HAS_CTK:
             body = _ctk.CTkScrollableFrame(self, fg_color=BG)
@@ -7529,7 +7582,9 @@ class HajjProgramDialog(Toplevel):
 
         bar = ttk.Frame(self, padding=(12, 8))
         bar.pack(fill=X)
-        _cbtn(bar, "👁  معاينة / تصدير PDF", self._preview, "primary").pack(
+        _cbtn(bar, "💾  حفظ العرض", self._save, "primary").pack(side=RIGHT,
+                                                                padx=4)
+        _cbtn(bar, "👁  معاينة / تصدير PDF", self._preview, "act").pack(
             side=RIGHT, padx=4)
         _cbtn(bar, "↺  استعادة الافتراضي", self._reset).pack(side=RIGHT, padx=4)
         _cbtn(bar, "إغلاق", self.destroy).pack(side=LEFT, padx=4)
@@ -7567,27 +7622,32 @@ class HajjProgramDialog(Toplevel):
         cb.grid(row=row, column=0, columnspan=2, sticky="we", pady=4)
         return var
 
-    def _multiline(self, card, key, lines, height=4):
+    def _multiline_at(self, card, key, lines, row, height=3):
         txt = tk.Text(card, height=height, font=(_FUI, 10), wrap="word",
                       relief="solid", borderwidth=1, background=PANEL,
                       foreground=TEXT, insertbackground=TEXT)
         txt.tag_configure("r", justify="right")
         txt.insert("1.0", "\n".join(str(x) for x in lines))
         txt.tag_add("r", "1.0", "end")
-        txt.grid(row=0, column=0, columnspan=3, sticky="we", pady=2)
+        txt.grid(row=row, column=0, columnspan=3, sticky="we", pady=2)
         self._texts[key] = txt
         return txt
 
     def _build_form(self) -> None:
         d = self._data
-        # بطاقة: بيانات العرض
         c = self._card("بيانات العرض")
-        self._lbl(c, "التاريخ", 0)
-        self._date_picker = self._ug.DatePicker(
-            c, iso=(str(d.get("date") or date.today().isoformat())), width=12)
-        self._date_picker.grid(row=0, column=0, columnspan=2, sticky="w",
+        # الرقم المرجعي — تلقائي وغير قابل للتعديل
+        self._lbl(c, "الرقم المرجعي", 0)
+        rvar = StringVar(value=self._number)
+        ttk.Entry(c, textvariable=rvar, justify="center", width=18,
+                  state="readonly").grid(row=0, column=0, columnspan=2,
+                                         sticky="w", pady=4)
+        # التاريخ — قوائم منسدلة (سنة/شهر/يوم)
+        self._lbl(c, "التاريخ", 1)
+        self._date_picker = _DateDropdowns(
+            c, iso=(str(d.get("date") or date.today().isoformat())))
+        self._date_picker.grid(row=1, column=0, columnspan=2, sticky="w",
                                pady=4)
-        self._entry(c, "number", "رقم العرض", 1, width=20)
         self._combo(c, "addressed_title", "لقب المستلِم", self._TITLES, 2,
                     width=14, readonly=True,
                     default=(d.get("addressed_title") or "السيد"))
@@ -7602,7 +7662,6 @@ class HajjProgramDialog(Toplevel):
         self._entry(c, "makkah_rooms", "الغرف", 4)
         self._entry(c, "makkah_meals", "الوجبات", 5)
 
-        # البنود النصية
         for i, sec in enumerate(d.get("sections", [])):
             try:
                 title, bullets = sec[0], sec[1]
@@ -7626,7 +7685,6 @@ class HajjProgramDialog(Toplevel):
             txt.grid(row=2, column=0, columnspan=3, sticky="we", pady=2)
             self._sections_w.append((tv, txt))
 
-        # الطيران
         c = self._card("الطيران")
         self._combo(c, "flight_class", "درجة السفر", self._CLASSES, 0,
                     width=24)
@@ -7643,7 +7701,7 @@ class HajjProgramDialog(Toplevel):
                   row=3, column=0, sticky="w", pady=(4, 0))
 
         c = self._card("هدايا ومستلزمات الحاج (سطر لكل نقطة)")
-        self._multiline(c, "gifts", d.get("gifts", []), height=4)
+        self._multiline_at(c, "gifts", d.get("gifts", []), 0, height=4)
 
         c = self._card("الأسعار (التكلفة للشخص حسب نوع الغرفة)")
         pr = d.get("prices", {})
@@ -7661,7 +7719,7 @@ class HajjProgramDialog(Toplevel):
                     readonly=True, default=(d.get("currency") or "درهم"))
 
         c = self._card("ملاحظات هامة (سطر لكل نقطة)")
-        self._multiline(c, "notes", d.get("notes", []), height=4)
+        self._multiline_at(c, "notes", d.get("notes", []), 0, height=4)
 
         c = self._card("الخاتمة والتوقيع")
         ttk.Label(c, text=rtl("عبارة الختام:"), font=(_FUI, 9),
@@ -7672,25 +7730,14 @@ class HajjProgramDialog(Toplevel):
         self._entry(c, "manager", "اسم المدير", 3)
         self._entry(c, "manager_phone", "هاتف المدير", 4)
 
-    def _multiline_at(self, card, key, lines, row, height=3):
-        txt = tk.Text(card, height=height, font=(_FUI, 10), wrap="word",
-                      relief="solid", borderwidth=1, background=PANEL,
-                      foreground=TEXT, insertbackground=TEXT)
-        txt.tag_configure("r", justify="right")
-        txt.insert("1.0", "\n".join(str(x) for x in lines))
-        txt.tag_add("r", "1.0", "end")
-        txt.grid(row=row, column=0, columnspan=3, sticky="we", pady=2)
-        self._texts[key] = txt
-        return txt
-
     def _add_flight_row(self, row):
         row = (list(row) + [""] * 6)[:6]
         fr = ttk.Frame(self._flights_holder, style="Toolbar.TFrame")
         fr.pack(fill=X, pady=2)
         w = {}
         _cbtn(fr, "🗑", lambda: (fr.destroy(),
-                                 self._flights_w.remove(w) if w in
-                                 self._flights_w else None)).pack(
+                                 self._flights_w.remove(w)
+                                 if w in self._flights_w else None)).pack(
               side=RIGHT, padx=(0, 4))
         for key, lbl, val, opts in (
                 ("to", "إلى", row[5], self._CITIES),
@@ -7699,14 +7746,12 @@ class HajjProgramDialog(Toplevel):
             ttk.Label(fr, text=rtl(lbl), font=(_FUI, 9), foreground=MUTED,
                       background=BG).pack(side=RIGHT, padx=(0, 2))
             var = StringVar(value=str(val))
-            cb = ttk.Combobox(fr, textvariable=var, values=list(opts),
-                              justify="right", width=12)
-            cb.pack(side=RIGHT, padx=(0, 6))
+            ttk.Combobox(fr, textvariable=var, values=list(opts),
+                         justify="right", width=12).pack(side=RIGHT, padx=(0, 6))
             w[key] = var
         ttk.Label(fr, text=rtl("اليوم"), font=(_FUI, 9), foreground=MUTED,
                   background=BG).pack(side=RIGHT, padx=(0, 2))
-        iso = self._to_iso(row[0])
-        dp = self._ug.DatePicker(fr, iso=iso, width=11)
+        dp = _DateDropdowns(fr, iso=self._to_iso(row[0]))
         dp.pack(side=RIGHT, padx=(0, 6))
         w["day"] = dp
         self._flights_w.append(w)
@@ -7721,7 +7766,7 @@ class HajjProgramDialog(Toplevel):
         parts = s.replace(".", "/").split("/")
         if len(parts) == 3:
             try:
-                if len(parts[0]) == 4:      # YYYY/MM/DD
+                if len(parts[0]) == 4:
                     return f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
                 return f"{parts[2]}-{int(parts[1]):02d}-{int(parts[0]):02d}"
             except ValueError:
@@ -7742,6 +7787,7 @@ class HajjProgramDialog(Toplevel):
             if k.startswith("p_"):
                 continue
             d[k] = var.get().strip()
+        d["number"] = self._number
         d["date"] = self._date_picker.get() if self._date_picker else ""
         d["prices"] = {
             "single": self._vars["p_single"].get().strip(),
@@ -7772,14 +7818,24 @@ class HajjProgramDialog(Toplevel):
         d["flights"] = flts
         return d
 
-    def _preview(self) -> None:
+    def _save(self) -> None:
         data = self._collect()
-        self.app._settings["hajj_program"] = data
+        self._q.save_hajj_quote(self.app._settings, data)
         try:
             save_settings(self.app._settings)
         except Exception:
             pass
-        title = data.get("title") or "برنامج الحج"
+        messagebox.showinfo("حفظ العرض",
+                            f"تم حفظ العرض {self._number}.", parent=self)
+
+    def _preview(self) -> None:
+        data = self._collect()
+        self._q.save_hajj_quote(self.app._settings, data)   # يُحفظ ضمناً
+        try:
+            save_settings(self.app._settings)
+        except Exception:
+            pass
+        title = f"عرض سعر الحج {self._number}"
         open_preview(self,
                      lambda p: self._pdf.export_hajj_program_pdf(p, data),
                      title, "pdf")
@@ -7787,16 +7843,115 @@ class HajjProgramDialog(Toplevel):
     def _reset(self) -> None:
         if not messagebox.askyesno(
                 "استعادة الافتراضي",
-                "استعادة كل الحقول إلى النصّ الافتراضي؟ ستفقد تعديلاتك.",
+                "استعادة كل الحقول إلى النصّ الافتراضي؟ ستفقد تعديلاتك (يبقى الرقم).",
                 parent=self):
             return
-        self.app._settings.pop("hajj_program", None)
+        num = self._number
+        self.destroy()
+        HajjProgramDialog(self.app.root, self.app, quote={"number": num})
+
+
+class HajjQuotesListWindow(Toplevel):
+    """عروض أسعار الحج المحفوظة: فتح/تعديل، معاينة PDF، حذف."""
+
+    def __init__(self, parent, app) -> None:
+        super().__init__(parent)
+        self.app = app
+        from . import quotes as _q
+        from . import pdf_io
+        self._q = _q
+        self._pdf = pdf_io
+        self.title("عروض أسعار الحج المحفوظة")
+        self.configure(bg=BG)
+        self.geometry("720x460")
+        self.minsize(560, 340)
+        self.transient(parent)
+        try:
+            apply_window_icon(self)
+        except Exception:
+            pass
+        enable_minmax(self)
+
+        head = ttk.Frame(self, style="Toolbar.TFrame", padding=(16, 12, 16, 6))
+        head.pack(fill=X)
+        ttk.Label(head, text="🗃️ عروض أسعار الحج المحفوظة", font=(_FSB, 14),
+                  foreground=TEXT, background=BG).pack(side=RIGHT)
+
+        wrap = ttk.Frame(self, style="Toolbar.TFrame", padding=(14, 6, 14, 8))
+        wrap.pack(fill=BOTH, expand=True)
+        cols = ("number", "title", "date")
+        self.tree = ttk.Treeview(wrap, columns=cols, show="headings", height=12)
+        for c, t, w in (("number", "الرقم", 110), ("title", "العنوان", 360),
+                        ("date", "التاريخ", 120)):
+            self.tree.heading(c, text=rtl(t))
+            self.tree.column(c, width=w, anchor="e" if c == "title" else "center")
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vs.set)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        vs.pack(side=RIGHT, fill=Y)
+        self.tree.bind("<Double-1>", lambda _e: self._open())
+
+        bar = ttk.Frame(self, padding=(12, 8))
+        bar.pack(fill=X)
+        _cbtn(bar, "📂  فتح / تعديل", self._open, "primary").pack(side=RIGHT,
+                                                                  padx=4)
+        _cbtn(bar, "👁  معاينة PDF", self._preview, "act").pack(side=RIGHT,
+                                                                padx=4)
+        _cbtn(bar, "🗑  حذف", self._delete).pack(side=RIGHT, padx=4)
+        _cbtn(bar, "إغلاق", self.destroy).pack(side=LEFT, padx=4)
+        self.grab_set()
+        self._reload()
+
+    def _reload(self) -> None:
+        self.tree.delete(*self.tree.get_children())
+        for q in self._q.load_hajj_quotes(self.app._settings):
+            num = str(q.get("number") or "")
+            self.tree.insert("", "end", iid=num, values=(
+                num, rtl(str(q.get("title") or "—")),
+                rtl(str(q.get("date") or "—"))))
+
+    def _selected(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("عروض الأسعار", "اختر عرضاً من القائمة.",
+                                parent=self)
+            return None
+        num = sel[0]
+        for q in self._q.load_hajj_quotes(self.app._settings):
+            if str(q.get("number") or "") == num:
+                return q
+        return None
+
+    def _open(self) -> None:
+        q = self._selected()
+        if q is None:
+            return
+        self.destroy()
+        HajjProgramDialog(self.app.root, self.app, quote=q)
+
+    def _preview(self) -> None:
+        q = self._selected()
+        if q is None:
+            return
+        title = f"عرض سعر الحج {q.get('number') or ''}"
+        open_preview(self,
+                     lambda p: self._pdf.export_hajj_program_pdf(p, q),
+                     title, "pdf")
+
+    def _delete(self) -> None:
+        q = self._selected()
+        if q is None:
+            return
+        num = str(q.get("number") or "")
+        if not messagebox.askyesno("حذف العرض",
+                                   f"حذف العرض {num}؟", parent=self):
+            return
+        self._q.delete_hajj_quote(self.app._settings, num)
         try:
             save_settings(self.app._settings)
         except Exception:
             pass
-        self.destroy()
-        self.app.do_hajj_program()
+        self._reload()
 
 
 class EditDialog(Toplevel):

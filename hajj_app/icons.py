@@ -136,6 +136,14 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
     elif name == "menu":                  # ثلاثة أسطر (قائمة/همبرغر)
         for yy in (0.34, 0.5, 0.66):
             d.line([P * 0.26, P * yy, P * 0.74, P * yy], fill=c, width=lw)
+    elif name == "quote":                 # مستند عرض سعر (ورقة بأسطر + وسم)
+        _rr(d, [P * 0.22, P * 0.14, P * 0.70, P - m], P * 0.06,
+            outline=c, width=lw)
+        for yy in (0.34, 0.48, 0.62):
+            d.line([P * 0.30, P * yy, P * 0.60, P * yy], fill=c, width=lw)
+        d.ellipse([P * 0.60, P * 0.60, P * 0.86, P * 0.86], outline=c, width=lw)
+        d.line([P * 0.66, P * 0.79, P * 0.73, P * 0.73], fill=c, width=lw)
+        d.line([P * 0.73, P * 0.73, P * 0.80, P * 0.79], fill=c, width=lw)
     else:                                 # نقطة افتراضية
         d.ellipse([P * 0.35, P * 0.35, P * 0.65, P * 0.65], fill=c)
 
