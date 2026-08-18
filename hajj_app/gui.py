@@ -7570,6 +7570,57 @@ class _HijriPeriod(ttk.Frame):
                 f"{self._mon.get()} {self._yr.get()}هـ")
 
 
+class _GregPeriod(ttk.Frame):
+    """فترة ميلادية بتاريخَي بداية ونهاية (قوائم منسدلة) — تبني نصّاً
+    مثل «من 2027/05/12 – 2027/05/20 م»، مع خيار احتساب عدد الأيام."""
+
+    def __init__(self, parent, text="", lang="ar", with_days=False) -> None:
+        super().__init__(parent)
+        self._lang = lang
+        self._with_days = with_days
+        ttk.Label(self, text=rtl("من"), font=(_FUI, 9), foreground=MUTED,
+                  background=BG).pack(side=RIGHT, padx=(0, 2))
+        self._a = _DateDropdowns(self)
+        self._a.pack(side=RIGHT, padx=(0, 4))
+        ttk.Label(self, text="–", foreground=MUTED, background=BG).pack(
+            side=RIGHT, padx=2)
+        ttk.Label(self, text=rtl("إلى"), font=(_FUI, 9), foreground=MUTED,
+                  background=BG).pack(side=RIGHT, padx=(0, 2))
+        self._b = _DateDropdowns(self)
+        self._b.pack(side=RIGHT, padx=(0, 4))
+        self.set(text)
+
+    def set(self, text) -> None:
+        import re as _re
+        s = str(text or "").replace("-", "/")
+        found = _re.findall(r"\d{4}/\d{1,2}/\d{1,2}", s)
+        isos = []
+        for f in found[:2]:
+            y, m, d = f.split("/")
+            isos.append(f"{y}-{int(m):02d}-{int(d):02d}")
+        self._a.set(isos[0] if len(isos) >= 1 else "")
+        self._b.set(isos[1] if len(isos) >= 2 else "")
+
+    def get(self) -> str:
+        a, b = self._a.get(), self._b.get()
+        if not (a and b):
+            return ""
+        ad, bd = a.replace("-", "/"), b.replace("-", "/")
+        s = (f"from {ad} to {bd}" if self._lang == "en"
+             else f"من {ad} – {bd} م")
+        if self._with_days:
+            try:
+                from datetime import date as _d
+                y1, m1, d1 = map(int, a.split("-"))
+                y2, m2, d2 = map(int, b.split("-"))
+                n = abs((_d(y2, m2, d2) - _d(y1, m1, d1)).days)
+                s += (f" ({n} days)" if self._lang == "en"
+                      else f" ({n:02d} أيام)")
+            except Exception:
+                pass
+        return s
+
+
 class HajjProgramDialog(Toplevel):
     """محرّر «برنامج / عرض سعر الحج» — نموذج منظّم ببطاقات، رقم مرجعي تلقائي،
     اختيار تواريخ بقوائم منسدلة، حفظ العرض، وتوليد مستند رسمي (PDF)."""
@@ -7594,7 +7645,8 @@ class HajjProgramDialog(Toplevel):
         from . import umrah_gui as _ug        # noqa: F401 (لتحميل الوحدة)
         self._pdf = pdf_io
         self._q = _q
-        self._data = pdf_io.hajj_program_defaults()
+        self._lang = str((quote or {}).get("lang") or "ar")
+        self._data = pdf_io.hajj_program_defaults(self._lang)
         if isinstance(quote, dict):
             self._data.update(quote)
             self._number = str(quote.get("number") or "")
@@ -7710,21 +7762,40 @@ class HajjProgramDialog(Toplevel):
             c, iso=(str(d.get("date") or date.today().isoformat())))
         self._date_picker.grid(row=1, column=0, columnspan=2, sticky="w",
                                pady=4)
-        self._combo(c, "addressed_title", "لقب المستلِم", self._TITLES, 2,
+        # لغة العرض — عربي/إنجليزي (يُعاد التحميل عند التغيير)
+        self._lbl(c, "لغة العرض", 2)
+        self._lang_var = StringVar(
+            value=("English" if self._lang == "en" else "عربي"))
+        lc = ttk.Combobox(c, textvariable=self._lang_var,
+                          values=["عربي", "English"], state="readonly",
+                          width=14, justify="right")
+        lc.grid(row=2, column=0, columnspan=2, sticky="w", pady=4)
+        lc.bind("<<ComboboxSelected>>", lambda _e: self._on_lang_change())
+        self._combo(c, "addressed_title", "لقب المستلِم", self._TITLES, 3,
                     width=14, readonly=True,
                     default=(d.get("addressed_title") or "السيد"))
-        self._entry(c, "addressed_to", "عناية (اسم المستلِم)", 3)
-        self._entry(c, "title", "عنوان البرنامج", 4)
+        self._entry(c, "addressed_to", "عناية (اسم المستلِم)", 4)
+        self._entry(c, "title", "عنوان البرنامج", 5)
+        self._entry(c, "salutation", "عبارة التحية", 6)
+        self._entry(c, "intro2", "سطر التقديم", 7)
 
         c = self._card("الفترة ومكة المُكرمة")
         self._lbl(c, "الفترة (هجري)", 0)
         self._hijri = _HijriPeriod(c, text=str(d.get("period_hijri", "")))
         self._hijri.grid(row=0, column=0, columnspan=2, sticky="w", pady=4)
-        self._entry(c, "period_greg", "الفترة (ميلادي)", 1)
-        self._entry(c, "makkah_period", "فترة مكة", 2)
-        self._combo(c, "makkah_hotel", "الفندق", self._HOTELS, 3)
-        self._entry(c, "makkah_rooms", "الغرف", 4)
-        self._entry(c, "makkah_meals", "الوجبات", 5)
+        self._lbl(c, "الفترة (ميلادي)", 1)
+        self._greg = _GregPeriod(c, text=str(d.get("period_greg", "")),
+                                 lang=self._lang)
+        self._greg.grid(row=1, column=0, columnspan=2, sticky="w", pady=4)
+        self._entry(c, "makkah_title", "عنوان قسم مكة", 2)
+        self._lbl(c, "فترة مكة", 3)
+        self._makkah_greg = _GregPeriod(c, text=str(d.get("makkah_period", "")),
+                                        lang=self._lang, with_days=True)
+        self._makkah_greg.grid(row=3, column=0, columnspan=2, sticky="w",
+                               pady=4)
+        self._combo(c, "makkah_hotel", "الفندق", self._HOTELS, 4)
+        self._entry(c, "makkah_rooms", "الغرف", 5)
+        self._entry(c, "makkah_meals", "الوجبات", 6)
 
         for i, sec in enumerate(d.get("sections", [])):
             try:
@@ -7750,40 +7821,50 @@ class HajjProgramDialog(Toplevel):
             self._sections_w.append((tv, txt))
 
         c = self._card("الطيران")
-        self._combo(c, "flight_class", "درجة السفر", self._CLASSES, 0,
-                    width=24)
+        self._entry(c, "flights_title", "عنوان قسم الطيران", 0)
+        self._entry(c, "flight_intro", "سطر مقدّمة الطيران (الناقل/الدرجة)", 1)
         ttk.Label(c, text=rtl("الرحلات:"), font=(_FUI, 9), foreground=MUTED,
-                  background=BG).grid(row=1, column=2, sticky="e", padx=(10, 6),
+                  background=BG).grid(row=2, column=2, sticky="e", padx=(10, 6),
                                       pady=(6, 0))
         holder = ttk.Frame(c, style="Toolbar.TFrame")
-        holder.grid(row=2, column=0, columnspan=3, sticky="we")
+        holder.grid(row=3, column=0, columnspan=3, sticky="we")
         self._flights_holder = holder
         for row in (d.get("flights", []) or [["", "", "", "", "", ""]]):
             self._add_flight_row((list(row) + [""] * 6)[:6])
         _cbtn(c, "➕ إضافة رحلة",
               lambda: self._add_flight_row(["", "SAUDIA", "", "", "", ""])).grid(
-                  row=3, column=0, sticky="w", pady=(4, 0))
+                  row=4, column=0, sticky="w", pady=(4, 0))
 
-        c = self._card("هدايا ومستلزمات الحاج (سطر لكل نقطة)")
-        self._multiline_at(c, "gifts", d.get("gifts", []), 0, height=4)
+        c = self._card("هدايا ومستلزمات الحاج")
+        self._entry(c, "gifts_title", "عنوان القسم", 0)
+        ttk.Label(c, text=rtl("النقاط (سطر لكل نقطة):"), font=(_FUI, 9),
+                  foreground=MUTED, background=BG).grid(
+                      row=1, column=2, sticky="e", padx=(10, 6))
+        self._multiline_at(c, "gifts", d.get("gifts", []), 2, height=4)
 
-        c = self._card("الأسعار (التكلفة للشخص حسب نوع الغرفة)")
+        c = self._card("الأسعار")
+        self._entry(c, "prices_title", "عنوان قسم الأسعار", 0)
+        self._entry(c, "prices_caption", "تسمية جدول الأسعار", 1)
         pr = d.get("prices", {})
         for i, (key, lbl) in enumerate((("single", "المفردة"),
                                         ("double", "الثنائية"),
                                         ("triple", "الثلاثية"),
                                         ("quad", "الرباعية"))):
-            self._lbl(c, lbl, i)
+            self._lbl(c, lbl, i + 2)
             var = StringVar(value=str(pr.get(key, "")))
             self._vars["p_" + key] = var
             e = ttk.Entry(c, textvariable=var, justify="center", width=18)
-            e.grid(row=i, column=0, columnspan=2, sticky="w", pady=4)
+            e.grid(row=i + 2, column=0, columnspan=2, sticky="w", pady=4)
             install_entry_editing(e)
-        self._combo(c, "currency", "العملة", self._CURRENCIES, 4, width=14,
+        self._combo(c, "currency", "العملة", self._CURRENCIES, 6, width=14,
                     readonly=True, default=(d.get("currency") or "درهم"))
 
-        c = self._card("ملاحظات هامة (سطر لكل نقطة)")
-        self._multiline_at(c, "notes", d.get("notes", []), 0, height=4)
+        c = self._card("ملاحظات هامة")
+        self._entry(c, "notes_title", "عنوان القسم", 0)
+        ttk.Label(c, text=rtl("النقاط (سطر لكل نقطة):"), font=(_FUI, 9),
+                  foreground=MUTED, background=BG).grid(
+                      row=1, column=2, sticky="e", padx=(10, 6))
+        self._multiline_at(c, "notes", d.get("notes", []), 2, height=4)
 
         c = self._card("الخاتمة والتوقيع")
         ttk.Label(c, text=rtl("عبارة الختام:"), font=(_FUI, 9),
@@ -7852,9 +7933,15 @@ class HajjProgramDialog(Toplevel):
                 continue
             d[k] = var.get().strip()
         d["number"] = self._number
+        d["lang"] = self._lang
         d["date"] = self._date_picker.get() if self._date_picker else ""
         if getattr(self, "_hijri", None) is not None:
             d["period_hijri"] = self._hijri.get()
+        if getattr(self, "_greg", None) is not None and self._greg.get():
+            d["period_greg"] = self._greg.get()
+        if getattr(self, "_makkah_greg", None) is not None \
+                and self._makkah_greg.get():
+            d["makkah_period"] = self._makkah_greg.get()
         d["prices"] = {
             "single": self._vars["p_single"].get().strip(),
             "double": self._vars["p_double"].get().strip(),
@@ -7905,6 +7992,21 @@ class HajjProgramDialog(Toplevel):
         open_preview(self,
                      lambda p: self._pdf.export_hajj_program_pdf(p, data),
                      title, "pdf")
+
+    def _on_lang_change(self) -> None:
+        new = "en" if self._lang_var.get() == "English" else "ar"
+        if new == self._lang:
+            return
+        if not messagebox.askyesno(
+                "تغيير اللغة",
+                "سيُعاد تحميل النصوص الافتراضية باللغة الجديدة وتُفقد التعديلات "
+                "الحالية. متابعة؟", parent=self):
+            self._lang_var.set("English" if self._lang == "en" else "عربي")
+            return
+        num = self._number
+        self.destroy()
+        HajjProgramDialog(self.app.root, self.app,
+                          quote={"number": num, "lang": new})
 
     def _reset(self) -> None:
         if not messagebox.askyesno(

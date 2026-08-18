@@ -5100,13 +5100,16 @@ def export_passports_pdf(
 # ============================ برنامج/عرض سعر الحج ============================
 # مستند رسمي متعدّد البنود (على غرار «برنامج الحج لكبار الشخصيات»): الفترة،
 # مكة والمشاعر، المواصلات، الخدمات، الطيران، الهدايا، وجدول الأسعار حسب الغرفة.
+# كل النصوص قابلة للتعديل، ويدعم العربية والإنجليزية (lang).
 
 HAJJ_PROGRAM_DEFAULT: dict = {
+    "lang": "ar",
     "title": "برنامج الحج لكبار الشخصيات 1448 هـ - 2027 م",
-    "date": "",                 # تاريخ المستند (ISO)؛ فارغ = تاريخ اليوم
-    "number": "",               # رقم العرض (اختياري)
-    "addressed_to": "",         # عناية: اسم المستلِم (اختياري)
+    "date": "",
+    "number": "",
+    "addressed_to": "",
     "addressed_title": "السيد",
+    "salutation": "السلام عليكم ورحمة الله وبركاته،،",
     "greeting": ("تتقدم أسرة المصطفى للحج والعمرة، لسعادتكم بأطيب وأرق التحيات "
                  "راجين من الله تعالى لكم دوام التوفيق والرفعة، ونستهل هذه الفرصة "
                  "لنتوجه لكم بالشكر والامتنان على الثقة الكبيرة لننال شرف خدمة "
@@ -5114,7 +5117,8 @@ HAJJ_PROGRAM_DEFAULT: dict = {
     "intro2": "ولسعادتكم البرنامج الخاص بكم كالتالي:",
     "period_hijri": "من 06 – 14 / ذو الحجة 1448هـ",
     "period_greg": "المُوافق من 2027/05/12 – 2027/05/20 م",
-    "makkah_period": "من 06 – 14 / ذو الحجة 1448هـ، الموافق 2027/05/12–20 م (08 أيام).",
+    "makkah_title": "أولاً : مكة المُكرمة",
+    "makkah_period": "من 2027/05/12 إلى 2027/05/20 م (08 أيام)",
     "makkah_hotel": "كونراد مكة – فندق خمسة نجوم فاخر مقابل للحرم.",
     "makkah_rooms": "حسب الاختيار.",
     "makkah_meals": ("الإقامة شاملة الوجبات الثلاث طوال الفترة بنظام البوفيه "
@@ -5154,11 +5158,13 @@ HAJJ_PROGRAM_DEFAULT: dict = {
         ["تاسعاً : خدمة التنفيذي", [
             "خدمة صالة التنفيذي في مطار جدة في الإستقبال والمغادرة."]],
     ],
-    "flight_class": "درجة رجال الأعمال",
+    "flights_title": "ثامناً : الطيران",
+    "flight_intro": "على متن الخطوط الجوية السعودية من أبوظبي درجة رجال الأعمال،",
     "flights": [
         ["2027/05/12", "SAUDIA", "", "أبوظبي", "", "جدة"],
         ["2027/05/20", "SAUDIA", "", "جدة", "", "أبوظبي"],
     ],
+    "gifts_title": "عاشراً : هدايا ومستلزمات الحاج",
     "gifts": [
         "عبوة ماء زمزم سعة 5 ليتر لكل حاج وحسب القوانين.",
         "شنطة السفر وتحتوي على (حزام – إحرام).",
@@ -5167,8 +5173,11 @@ HAJJ_PROGRAM_DEFAULT: dict = {
         "الصلاة).",
     ],
     "currency": "درهم",
+    "prices_title": "إحدى عشر : الأسعار",
+    "prices_caption": "التكلفة للشخص حسب نوع الغرفة",
     "prices": {"single": "185,000", "double": "124,000",
                "triple": "107,000", "quad": "97,000"},
+    "notes_title": "مُلاحظات هامة",
     "notes": [
         "يمكن إضافة خدمة رمي الجمرات من نفق كبار الشخصيات عند توفرها وبرسوم "
         "إضافية.",
@@ -5183,58 +5192,176 @@ HAJJ_PROGRAM_DEFAULT: dict = {
     "manager_phone": "056 219 2666",
 }
 
+HAJJ_PROGRAM_DEFAULT_EN: dict = {
+    "lang": "en",
+    "title": "Hajj VIP Program 1448 AH - 2027",
+    "date": "",
+    "number": "",
+    "addressed_to": "",
+    "addressed_title": "Mr.",
+    "salutation": "Peace, mercy and blessings of Allah be upon you,",
+    "greeting": ("Al Mustafa Hajj & Umrah is honored to extend to you its "
+                 "warmest greetings, wishing you continued success. We seize "
+                 "this opportunity to thank you for your great trust, to have "
+                 "the honor of serving the guests of the Most Merciful in the "
+                 "holiest of places."),
+    "intro2": "We are pleased to present your program as follows:",
+    "period_hijri": "6 – 14 Dhul-Hijjah 1448 AH",
+    "period_greg": "Corresponding to 2027/05/12 – 2027/05/20",
+    "makkah_title": "First: Makkah",
+    "makkah_period": "2027/05/12 to 2027/05/20 (08 days)",
+    "makkah_hotel": "Conrad Makkah – a five-star luxury hotel facing the Haram.",
+    "makkah_rooms": "As selected.",
+    "makkah_meals": ("Full board including all three meals throughout the stay "
+                     "(open buffet, F.B)."),
+    "sections": [
+        ["Second: Mina", [
+            "Accommodation in the UAE mission camps, in tents dedicated to the "
+            "UAE — VIP tents for men and women — as per the UAE Hajj Affairs "
+            "Office allocation.",
+            "The rituals begin on the 8th of Dhul-Hijjah until the 12th."]],
+        ["Third: Arafat", [
+            "The stay in Arafat is in the UAE mission camps, in tents "
+            "dedicated to the UAE, as per the UAE Hajj Affairs Office "
+            "allocation."]],
+        ["Fourth: Muzdalifah", [
+            "Staying in Muzdalifah in the UAE mission camps, resting or "
+            "spending the night, as per the UAE Hajj Affairs Office "
+            "allocation."]],
+        ["Fifth: Transport", [
+            "All transfers by modern GMC vehicles (2027 model).",
+            "Private car from home to the airport and back.",
+            "In addition to the Mashaer train."]],
+        ["Sixth: Meals & Catering", [
+            "Three meals with an open buffet system.",
+            "Meals at the holy sites as per the system followed in the "
+            "camps."]],
+        ["Seventh: Special Services", [
+            "A religious guide approved by the General Authority of Islamic "
+            "Affairs and Endowments.",
+            "The program includes the Hady (sacrifice).",
+            "Baggage-free traveler service on departure and return.",
+            "24/7 security service.",
+            "Wheelchairs available on all transfers upon request.",
+            "A private physician accompanies the campaign, with a private "
+            "clinic equipped with essential supplies.",
+            "In the camp and hotel: tea, coffee, refreshments, juices and "
+            "mineral water, plus the finest dates.",
+            "A professional administrative team, trained to the highest "
+            "standards, serving guests around the clock."]],
+        ["Ninth: Executive Service", [
+            "Executive lounge service at Jeddah airport on arrival and "
+            "departure."]],
+    ],
+    "flights_title": "Eighth: Flights",
+    "flight_intro": "On board Saudi Arabian Airlines from Abu Dhabi, Business Class,",
+    "flights": [
+        ["2027/05/12", "SAUDIA", "", "Abu Dhabi", "", "Jeddah"],
+        ["2027/05/20", "SAUDIA", "", "Jeddah", "", "Abu Dhabi"],
+    ],
+    "gifts_title": "Tenth: Pilgrim gifts & essentials",
+    "gifts": [
+        "A 5-liter Zamzam water container per pilgrim, as per regulations.",
+        "Travel bag containing (belt – Ihram).",
+        "Mashaer bag containing (body towel – hand towel – personal care set – "
+        "fan – umbrella – sterilized pebbles bag – comfort equipment – prayer "
+        "mat).",
+    ],
+    "currency": "AED",
+    "prices_title": "Eleventh: Prices",
+    "prices_caption": "Cost per person by room type",
+    "prices": {"single": "185,000", "double": "124,000",
+               "triple": "107,000", "quad": "97,000"},
+    "notes_title": "Important Notes",
+    "notes": [
+        "The Jamarat stoning service via the VIP tunnel can be added when "
+        "available for an additional fee.",
+        "The Hijri calendar is the reference for programs and hotel bookings; "
+        "travel is on the Gregorian date.",
+        "As per the hotels and transport system, amounts paid for the program "
+        "are non-refundable.",
+    ],
+    "closing": ("We hope our programs meet your satisfaction, and we look "
+                "forward to your kind reply. Please accept our highest respect "
+                "and appreciation..."),
+    "manager_title": "General Manager",
+    "manager": "Mohammed Shabbar",
+    "manager_phone": "056 219 2666",
+}
 
-def hajj_program_defaults() -> dict:
-    """نسخة عميقة من القيم الافتراضية لبرنامج الحج (قابلة للتعديل بأمان)."""
+
+def hajj_program_defaults(lang: str = "ar") -> dict:
+    """نسخة عميقة من القيم الافتراضية لبرنامج الحج (عربي/إنجليزي)."""
     import copy
-    return copy.deepcopy(HAJJ_PROGRAM_DEFAULT)
+    base = HAJJ_PROGRAM_DEFAULT_EN if str(lang) == "en" else HAJJ_PROGRAM_DEFAULT
+    return copy.deepcopy(base)
 
 
 def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
-    """يبني «برنامج/عرض سعر الحج» — مستند A4 عمودي متعدّد البنود بشعار الشركة،
-    الفترة والمشاعر والمواصلات والخدمات والطيران والهدايا وجدول الأسعار."""
+    """يبني «برنامج/عرض سعر الحج» — A4 عمودي، كل النصوص من ``data``، ويدعم
+    العربية (RTL) والإنجليزية (LTR) عبر ``data['lang']``."""
     _register_fonts()
     path = Path(path)
-    d = hajj_program_defaults()
+    lang = str((data or {}).get("lang") or "ar")
+    d = hajj_program_defaults(lang)
     if data:
         d.update({k: v for k, v in data.items() if v is not None})
+    L = str(d.get("lang") or "ar") == "en"
+    ALN = 0 if L else 2
     st = _styles()
     _DEEP = colors.HexColor("#6E543A")
+
+    def T(ar_txt, en_txt):
+        return en_txt if L else ar_txt
+
+    def rev(seq):
+        return list(seq) if L else list(reversed(seq))
+
     doc = SimpleDocTemplate(
         str(path), pagesize=A4, rightMargin=13 * mm, leftMargin=13 * mm,
-        topMargin=10 * mm, bottomMargin=15 * mm, title="برنامج الحج",
-        author="المصطفى للحج والعمرة")
+        topMargin=10 * mm, bottomMargin=15 * mm, title="Hajj Program",
+        author="Al Mustafa Hajj & Umrah")
     W = doc.width
     story: list = []
 
-    val = ParagraphStyle("hp_val", parent=st["cell"], alignment=2, fontSize=10,
-                         leading=15)
+    val = ParagraphStyle("hp_val", parent=st["cell"], alignment=ALN,
+                         fontSize=10, leading=15)
     val_r = ParagraphStyle("hp_vr", parent=val, alignment=2)
+    val_l = ParagraphStyle("hp_vl", parent=val, alignment=0)
+
+    def P(text, style, maxw):
+        s = str(text)
+        if L and not any("؀" <= c <= "ۿ" for c in s):
+            s = (s.replace("‎", "").replace("‏", "").replace("&", "&amp;")
+                 .replace("<", "&lt;").replace(">", "&gt;"))
+            return Paragraph(s, style)
+        return _ar_para(text, style, maxw)
 
     def para(text, style=None, maxw=None):
-        return _ar_para(text, style or val, (maxw if maxw is not None else W - 8))
+        return P(text, style or val, (maxw if maxw is not None else W - 8))
 
     def bullet(text, bold=False):
         s = ParagraphStyle("hp_bul", parent=val,
                            fontName=(_FONT_BOLD if bold else _FONT),
-                           rightIndent=6, leading=15)
-        return _ar_para("•  " + str(text), s, W - 20)
+                           leading=15)
+        return P(("• " if L else "•  ") + str(text), s, W - 20)
 
     def section(title):
-        p = _ar_para(title, ParagraphStyle(
-            "hp_sec", fontName=_FONT_BOLD, fontSize=12, alignment=2,
+        p = P(title, ParagraphStyle(
+            "hp_sec", fontName=_FONT_BOLD, fontSize=12, alignment=ALN,
             textColor=_DEEP, leading=16), W - 14)
         mark = Table([[""]], colWidths=[8], rowHeights=[14])
         mark.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
             ("LINEBEFORE", (0, 0), (0, -1), 2, _DEEP)]))
-        t = Table([[p, mark]], colWidths=[W - 14, 14])
+        cells = rev([mark, p])
+        t = Table([cells], colWidths=rev([14, W - 14]))
         t.setStyle(TableStyle([
             ("LINEBELOW", (0, 0), (-1, -1), 1.0, _ACCENT),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
         return t
 
@@ -5263,33 +5390,38 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
             return str(iso)
     _doc_date = _ymd(str(d.get("date") or date.today().isoformat()))
     _num = str(d.get("number") or "").strip()
-    # رقم العرض (يسار) والتاريخ (يمين) على الطرفين
-    val_l = ParagraphStyle("hp_vl", parent=val, alignment=0)
-    meta = Table([[_ar_para((f"رقم العرض: {ltr(_num)}" if _num else ""),
-                            val_l, W * 0.5 - 6),
-                   _ar_para("التاريخ : " + ltr(_doc_date) + " م.", val_r,
-                            W * 0.5 - 6)]], colWidths=[W * 0.5, W * 0.5])
+    _numtxt = (f"{T('رقم العرض', 'Quote No.')}: {ltr(_num)}" if _num else "")
+    _datetxt = f"{T('التاريخ', 'Date')} : {ltr(_doc_date)}" + T(" م.", "")
+    left_cell = _numtxt if not L else _datetxt
+    right_cell = _datetxt if not L else _numtxt
+    meta = Table([[P(left_cell, val_l, W * 0.5 - 6),
+                   P(right_cell, val_r, W * 0.5 - 6)]],
+                 colWidths=[W * 0.5, W * 0.5])
     meta.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
     story.append(meta)
     story.append(Spacer(1, 4))
-    story.append(_ar_para("السلام عليكم ورحمة الله وبركاته،،",
-                          ParagraphStyle("hp_slm", parent=val,
-                                         fontName=_FONT_BOLD), W - 8))
-    # عناية المستلِم (اختياري)
+    story.append(P(d.get("salutation", ""),
+                   ParagraphStyle("hp_slm", parent=val, fontName=_FONT_BOLD),
+                   W - 8))
     _addr = str(d.get("addressed_to") or "").strip()
     if _addr:
-        _atitle = str(d.get("addressed_title") or "السيد").strip()
-        _respect = "المحترمة" if _atitle in ("السيدة", "الآنسة") else "المحترم"
-        story.append(_ar_para(f"عناية {_atitle}/ {_addr} {_respect}،",
-                              ParagraphStyle("hp_addr", parent=val,
-                                             fontName=_FONT_BOLD,
-                                             textColor=_DEEP), W - 8))
+        _atitle = str(d.get("addressed_title") or T("السيد", "Mr.")).strip()
+        if L:
+            _atxt = f"Attention: {_atitle} {_addr},"
+        else:
+            _respect = "المحترمة" if _atitle in ("السيدة", "الآنسة") \
+                else "المحترم"
+            _atxt = f"عناية {_atitle}/ {_addr} {_respect}،"
+        story.append(P(_atxt, ParagraphStyle("hp_addr", parent=val,
+                                              fontName=_FONT_BOLD,
+                                              textColor=_DEEP), W - 8))
     story.append(Spacer(1, 6))
 
-    band = Table([[Paragraph(ar(str(d.get("title") or "برنامج الحج")),
+    band = Table([[Paragraph(ar(str(d.get("title") or "")) if not L
+                             else str(d.get("title") or ""),
                              ParagraphStyle("hp_bt", fontName=_FONT_BOLD,
                                             fontSize=15, alignment=1,
                                             textColor=colors.white,
@@ -5305,18 +5437,20 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
 
     story.append(para(d.get("greeting", "")))
     story.append(Spacer(1, 4))
-    story.append(_ar_para(d.get("intro2", ""),
-                          ParagraphStyle("hp_i2", parent=val,
-                                         fontName=_FONT_BOLD), W - 8))
-    story.append(bullet("الفترة : " + str(d.get("period_hijri", "")) + "، "
-                        + str(d.get("period_greg", "")), bold=True))
+    story.append(P(d.get("intro2", ""),
+                   ParagraphStyle("hp_i2", parent=val, fontName=_FONT_BOLD),
+                   W - 8))
+    story.append(bullet(f"{T('الفترة', 'Period')} : {d.get('period_hijri','')}"
+                        f"، {d.get('period_greg','')}" if not L else
+                        f"Period: {d.get('period_hijri','')}, "
+                        f"{d.get('period_greg','')}", bold=True))
     story.append(Spacer(1, 6))
 
-    story.append(section("أولاً : مكة المُكرمة"))
-    story.append(bullet("الفترة : " + str(d.get("makkah_period", ""))))
-    story.append(bullet("الفندق : " + str(d.get("makkah_hotel", ""))))
-    story.append(bullet("الغرف : " + str(d.get("makkah_rooms", ""))))
-    story.append(bullet("الوجبات : " + str(d.get("makkah_meals", ""))))
+    story.append(section(d.get("makkah_title", "")))
+    story.append(bullet(f"{T('الفترة', 'Period')} : {d.get('makkah_period','')}"))
+    story.append(bullet(f"{T('الفندق', 'Hotel')} : {d.get('makkah_hotel','')}"))
+    story.append(bullet(f"{T('الغرف', 'Rooms')} : {d.get('makkah_rooms','')}"))
+    story.append(bullet(f"{T('الوجبات', 'Meals')} : {d.get('makkah_meals','')}"))
     story.append(Spacer(1, 4))
 
     for sec in d.get("sections", []):
@@ -5330,19 +5464,19 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
                 story.append(bullet(b))
         story.append(Spacer(1, 4))
 
-    story.append(section("ثامناً : الطيران"))
-    story.append(bullet("على متن الخطوط الجوية السعودية من أبوظبي "
-                        + str(d.get("flight_class", "")) + "،", bold=True))
-    fheads = ["اليوم", "الناقل", "الإقلاع", "من", "الوصول", "إلى"]
+    story.append(section(d.get("flights_title", "")))
+    story.append(bullet(d.get("flight_intro", ""), bold=True))
+    fheads = T(["اليوم", "الناقل", "الإقلاع", "من", "الوصول", "إلى"],
+               ["Day", "Carrier", "Departure", "From", "Arrival", "To"])
     fweights = [1.3, 1.2, 1.0, 1.0, 1.0, 1.0]
-    fw = list(reversed(fweights))
+    fw = rev(fweights)
     scale = W / sum(fw)
     fcw = [x * scale for x in fw]
     fav = [x - 9 for x in fcw]
 
     def _fcells(values, style):
-        vv = list(reversed(values))
-        return [_ar_para(str(v) if str(v).strip() else "—", style, fav[i] - 3)
+        vv = rev(values)
+        return [P(str(v) if str(v).strip() else "—", style, fav[i] - 3)
                 for i, v in enumerate(vv)]
     ftab = [_fcells(fheads, st["head"])]
     for row in d.get("flights", []):
@@ -5361,26 +5495,28 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
     story.append(tflt)
     story.append(Spacer(1, 6))
 
-    story.append(section("عاشراً : هدايا ومستلزمات الحاج"))
+    story.append(section(d.get("gifts_title", "")))
     for g in d.get("gifts", []):
         if str(g).strip():
             story.append(bullet(g))
     story.append(Spacer(1, 6))
 
-    story.append(section("إحدى عشر : الأسعار"))
-    cur = str(d.get("currency", "درهم"))
+    story.append(section(d.get("prices_title", "")))
+    cur = str(d.get("currency", ""))
     pr = d.get("prices", {})
-    pheads = ["المفردة", "الثنائية", "الثلاثية", "الرباعية"]
+    pheads = T(["المفردة", "الثنائية", "الثلاثية", "الرباعية"],
+               ["Single", "Double", "Triple", "Quad"])
     pvals = [pr.get("single", ""), pr.get("double", ""),
              pr.get("triple", ""), pr.get("quad", "")]
     pcw = [W / 4] * 4
     pav = [W / 4 - 9] * 4
 
     def _pcells(values, style):
-        vv = list(reversed(values))
-        return [_ar_para(str(v) if str(v).strip() else "—", style, pav[i] - 3)
+        vv = rev(values)
+        return [P(str(v) if str(v).strip() else "—", style, pav[i] - 3)
                 for i, v in enumerate(vv)]
-    cap = Table([[Paragraph(ar("التكلفة للشخص حسب نوع الغرفة (" + cur + ")"),
+    _capt = str(d.get("prices_caption", "")) + (f" ({cur})" if cur else "")
+    cap = Table([[Paragraph(ar(_capt) if not L else _capt,
                             ParagraphStyle("hp_cap", fontName=_FONT_BOLD,
                                            fontSize=10, alignment=1,
                                            textColor=colors.white))]],
@@ -5406,30 +5542,31 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
     story.append(ptab)
     story.append(Spacer(1, 8))
 
-    story.append(section("مُلاحظات هامة"))
+    story.append(section(d.get("notes_title", "")))
     for n in d.get("notes", []):
         if str(n).strip():
             story.append(bullet(n))
     story.append(Spacer(1, 10))
 
-    story.append(_ar_para(d.get("closing", ""),
-                          ParagraphStyle("hp_cls", parent=val, alignment=1,
-                                         fontName=_FONT_BOLD), W - 8))
+    story.append(P(d.get("closing", ""),
+                   ParagraphStyle("hp_cls", parent=val, alignment=1,
+                                  fontName=_FONT_BOLD), W - 8))
     story.append(Spacer(1, 14))
-    story.append(_ar_para(d.get("manager_title", "المدير العام"),
-                          ParagraphStyle("hp_sg1", parent=val, alignment=1,
-                                         fontName=_FONT_BOLD), W - 8))
-    story.append(_ar_para(d.get("manager", ""),
-                          ParagraphStyle("hp_sg2", parent=val, alignment=1,
-                                         fontName=_FONT_BOLD, fontSize=12),
-                          W - 8))
+    # التوقيع في أقصى اليسار
+    sig_l = ParagraphStyle("hp_sig", parent=val, alignment=0)
+    story.append(P(d.get("manager_title", ""),
+                   ParagraphStyle("hp_sg1", parent=sig_l, fontName=_FONT_BOLD),
+                   W - 8))
+    story.append(P(d.get("manager", ""),
+                   ParagraphStyle("hp_sg2", parent=sig_l, fontName=_FONT_BOLD,
+                                  fontSize=12), W - 8))
     if str(d.get("manager_phone", "")).strip():
-        story.append(_ar_para(ltr(d.get("manager_phone")),
-                              ParagraphStyle("hp_sg3", parent=val, alignment=1),
-                              W - 8))
+        story.append(P(ltr(d.get("manager_phone")),
+                       ParagraphStyle("hp_sg3", parent=sig_l), W - 8))
 
+    _ttl = "Hajj Program" if L else "برنامج الحج"
     doc.build(
         story,
-        onFirstPage=lambda c, dd: _umrah_page(c, dd, "برنامج الحج"),
-        onLaterPages=lambda c, dd: _umrah_page(c, dd, "برنامج الحج"))
+        onFirstPage=lambda c, dd: _umrah_page(c, dd, _ttl),
+        onLaterPages=lambda c, dd: _umrah_page(c, dd, _ttl))
     return path
