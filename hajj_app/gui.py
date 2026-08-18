@@ -1224,6 +1224,16 @@ class HajjApp:
         self._nav_item("إدارة التسكين", housing_items, icon=("tent", ORANGE),
                        tip="إشغال الغرف وكشوف التسكين")
 
+        # 🧮 التسعير والعروض (قسم خاص)
+        self._nav_item("التسعير والعروض", [
+            ("🧮  مسعّر المجموعات", self.open_group_pricer),
+            ("🗂  التسعيرات المحفوظة", self.open_pricings),
+            None,
+            ("🕋  عرض سعر / برنامج حج جديد", self.do_hajj_program),
+            ("🗃️  عروض أسعار الحج المحفوظة", self.do_hajj_quotes_list),
+        ], icon=("quote", GOLD),
+            tip="مسعّر المجموعات، عروض أسعار الحج، والمحفوظة")
+
         # 💰 المالية والمحاسبة
         self._nav_item("المالية والمحاسبة", [
             ("🔎  اسأل بياناتك (أسئلة بالعربية)", self.ask_data),
@@ -1235,11 +1245,6 @@ class HajjApp:
             ("📊  إحصاءات وملخّص مالي", self.do_stats),
             ("📈  الرسوم البيانية", self.do_charts),
             ("📄  تصدير الإحصاءات والمالية PDF", self.do_stats_pdf),
-            None,
-            ("🧮  مسعّر المجموعات", self.open_group_pricer),
-            ("🗂  التسعيرات المحفوظة", self.open_pricings),
-            ("🕋  عرض سعر / برنامج حج جديد", self.do_hajj_program),
-            ("🗃️  عروض أسعار الحج المحفوظة", self.do_hajj_quotes_list),
             None,
             ("💵  سجلّ دفعات الحاج (الأقساط)", self.do_payments),
             ("🧮  المصروفات والمحاسبة", self.do_expenses),
@@ -7508,6 +7513,63 @@ class _DateDropdowns(ttk.Frame):
         return f"{y}-{m}-{d}" if (y and m and d) else ""
 
 
+class _HijriPeriod(ttk.Frame):
+    """اختيار فترة هجرية بقوائم منسدلة (من – إلى / الشهر السنة) — يعيد نصّاً
+    مثل «من 06 – 14 / ذو الحجة 1448هـ»."""
+
+    MONTHS = ["محرم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى",
+              "جمادى الآخرة", "رجب", "شعبان", "رمضان", "شوال", "ذو القعدة",
+              "ذو الحجة"]
+
+    def __init__(self, parent, text="") -> None:
+        super().__init__(parent)
+        self._d1 = StringVar()
+        self._d2 = StringVar()
+        self._mon = StringVar()
+        self._yr = StringVar()
+        days = [f"{i:02d}" for i in range(1, 31)]
+        years = [str(y) for y in range(1446, 1461)]
+        ttk.Label(self, text=rtl("من"), font=(_FUI, 9), foreground=MUTED,
+                  background=BG).pack(side=RIGHT, padx=(0, 2))
+        ttk.Combobox(self, textvariable=self._d1, values=days, width=4,
+                     state="readonly", justify="center").pack(side=RIGHT, padx=1)
+        ttk.Label(self, text="–", foreground=MUTED, background=BG).pack(
+            side=RIGHT, padx=1)
+        ttk.Combobox(self, textvariable=self._d2, values=days, width=4,
+                     state="readonly", justify="center").pack(side=RIGHT, padx=1)
+        ttk.Combobox(self, textvariable=self._mon, values=self.MONTHS, width=12,
+                     state="readonly", justify="center").pack(side=RIGHT, padx=1)
+        ttk.Combobox(self, textvariable=self._yr, values=years, width=6,
+                     state="readonly", justify="center").pack(side=RIGHT, padx=1)
+        ttk.Label(self, text=rtl("هـ"), font=(_FUI, 9), foreground=MUTED,
+                  background=BG).pack(side=RIGHT, padx=(2, 0))
+        self.set(text)
+
+    def set(self, text) -> None:
+        import re as _re
+        s = str(text or "")
+        d1 = d2 = "06"
+        mon = "ذو الحجة"
+        yr = "1448"
+        nums = _re.findall(r"\d+", s)
+        if len(nums) >= 3:
+            d1 = f"{int(nums[0]):02d}"
+            d2 = f"{int(nums[1]):02d}"
+            yr = nums[-1]
+        for m in self.MONTHS:
+            if m in s:
+                mon = m
+                break
+        self._d1.set(d1)
+        self._d2.set(d2)
+        self._mon.set(mon)
+        self._yr.set(yr)
+
+    def get(self) -> str:
+        return (f"من {self._d1.get()} – {self._d2.get()} / "
+                f"{self._mon.get()} {self._yr.get()}هـ")
+
+
 class HajjProgramDialog(Toplevel):
     """محرّر «برنامج / عرض سعر الحج» — نموذج منظّم ببطاقات، رقم مرجعي تلقائي،
     اختيار تواريخ بقوائم منسدلة، حفظ العرض، وتوليد مستند رسمي (PDF)."""
@@ -7655,7 +7717,9 @@ class HajjProgramDialog(Toplevel):
         self._entry(c, "title", "عنوان البرنامج", 4)
 
         c = self._card("الفترة ومكة المُكرمة")
-        self._entry(c, "period_hijri", "الفترة (هجري)", 0)
+        self._lbl(c, "الفترة (هجري)", 0)
+        self._hijri = _HijriPeriod(c, text=str(d.get("period_hijri", "")))
+        self._hijri.grid(row=0, column=0, columnspan=2, sticky="w", pady=4)
         self._entry(c, "period_greg", "الفترة (ميلادي)", 1)
         self._entry(c, "makkah_period", "فترة مكة", 2)
         self._combo(c, "makkah_hotel", "الفندق", self._HOTELS, 3)
@@ -7789,6 +7853,8 @@ class HajjProgramDialog(Toplevel):
             d[k] = var.get().strip()
         d["number"] = self._number
         d["date"] = self._date_picker.get() if self._date_picker else ""
+        if getattr(self, "_hijri", None) is not None:
+            d["period_hijri"] = self._hijri.get()
         d["prices"] = {
             "single": self._vars["p_single"].get().strip(),
             "double": self._vars["p_double"].get().strip(),
