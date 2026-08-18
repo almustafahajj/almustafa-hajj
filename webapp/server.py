@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import os
 import secrets
+import tempfile
 
-from flask import (Flask, redirect, render_template, request, session,
-                   url_for)
+from flask import (Flask, redirect, render_template, request, send_file,
+                   session, url_for)
 
 from hajj_app import app_mode, auth, stats, storage
 from hajj_app.fields import BY_KEY, format_amount
@@ -213,6 +215,30 @@ def hujjaj():
                            **_ctx())
 
 
+@app.route("/hujjaj/new", methods=["GET", "POST"])
+def hujjaj_new():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app.mrz import PassportData
+    records = _load_records()
+    if request.method == "POST":
+        rec = PassportData(source_file="إدخال ويب")
+        drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
+        for _title, keys in _GROUPS:
+            for k in keys:
+                if k in drop or k not in BY_KEY or not BY_KEY[k].editable:
+                    continue
+                if k in request.form:
+                    setattr(rec, k, request.form.get(k, "").strip())
+        records.append(rec)
+        try:
+            storage.save_records(records, session=_sess())
+        except Exception:
+            pass
+        return redirect(url_for("hujjaj"))
+    return _render_edit(PassportData(source_file="إدخال ويب"), is_new=True)
+
+
 @app.route("/hujjaj/<int:idx>", methods=["GET", "POST"])
 def hujjaj_edit(idx):
     if _sess() is None:
@@ -235,7 +261,11 @@ def hujjaj_edit(idx):
             saved = True
         except Exception:
             saved = False
+    return _render_edit(rec, saved=saved)
 
+
+def _render_edit(rec, saved=False, is_new=False):
+    drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
     groups = []
     for title, keys in _GROUPS:
         fs = []
@@ -250,7 +280,61 @@ def hujjaj_edit(idx):
             groups.append({"title": title.format(n=_noun()), "fields": fs})
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
+        is_new=is_new,
         name=getattr(rec, "full_name_ar", "") or getattr(
             rec, "full_name_en", "") or "",
         number=getattr(rec, "reference_number", "") or "",
         noun_singular=_noun_singular(), **_ctx())
+
+
+# ------------------------------------------------------------------ التقارير
+def _tmp(suffix):
+    fd, p = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    return p
+
+
+@app.get("/reports")
+def reports():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    return render_template("reports.html", active="reports",
+                           count=len(records), **_ctx())
+
+
+@app.get("/reports/pilgrims.pdf")
+def rep_pilgrims_pdf():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    p = _tmp(".pdf")
+    title = "كشف الحجّاج" if _mode() == app_mode.HAJJ else "كشف المعتمرين"
+    if _mode() == app_mode.UMRAH:
+        pdf_io.export_umrah_pdf(records, p, program_name="")
+    else:
+        pdf_io.export_pdf(records, p, title=title)
+    return send_file(p, as_attachment=True, download_name="pilgrims.pdf")
+
+
+@app.get("/reports/pilgrims.xlsx")
+def rep_pilgrims_xlsx():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import excel_io
+    records = _load_records()
+    p = _tmp(".xlsx")
+    excel_io.export_excel(records, p)
+    return send_file(p, as_attachment=True, download_name="pilgrims.xlsx")
+
+
+@app.get("/reports/financial.pdf")
+def rep_financial_pdf():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    p = _tmp(".pdf")
+    pdf_io.export_stats_pdf(records, p)
+    return send_file(p, as_attachment=True, download_name="financial.pdf")

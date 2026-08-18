@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}تعديل — {{ name }}{% endblock %}
-{% block heading %}✏️ تعديل بيانات {{ noun_singular }}{% endblock %}
-{% block subhead %}<div class="season">{{ name or '—' }}{% if number %} · {{ number }}{% endif %}</div>{% endblock %}
+{% block heading %}{{ '➕ إضافة' if is_new else '✏️ تعديل بيانات' }} {{ noun_singular }}{% endblock %}
+{% block subhead %}<div class="season">{% if is_new %}سجلّ جديد{% else %}{{ name or '—' }}{% if number %} · {{ number }}{% endif %}{% endif %}</div>{% endblock %}
 {% block content %}
 {% if saved %}<div class="ok-banner">✅ تم حفظ التعديلات بنجاح.</div>{% endif %}
 <form method="post">
@@ -25,7 +25,7 @@
   </fieldset>
   {% endfor %}
   <div class="formbar">
-    <button class="btn primary" type="submit">💾 حفظ التعديلات</button>
+    <button class="btn primary" type="submit">{{ '➕ إضافة السجل' if is_new else '💾 حفظ التعديلات' }}</button>
     <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع للقائمة</a>
   </div>
 </form>

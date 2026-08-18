@@ -114,3 +114,18 @@ label.ff input, label.ff select{ font:inherit; font-size:15px; color:var(--ink);
 .formbar{ display:flex; gap:12px; align-items:center;
   position:sticky; bottom:0; background:var(--bg); padding:14px 0; }
 .formbar .btn.primary{ width:auto; }
+
+/* ---- reports + add ---- */
+.btn.add-btn{ background:var(--bronze); color:#fff; }
+.btn.add-btn:hover{ background:var(--bronze-d); }
+.repgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:16px; }
+.repcard{ display:flex; align-items:center; gap:14px; background:var(--panel);
+  border:1px solid var(--border); border-radius:16px; padding:18px 18px;
+  box-shadow:0 4px 14px #6e543a0f; color:var(--ink); }
+.repcard:hover{ border-color:var(--bronze); box-shadow:0 8px 22px #6e543a1c; }
+.repcard .ic{ width:52px;height:52px;border-radius:14px;flex:none; display:grid;
+  place-items:center; font-size:24px; }
+.repcard .t{ font-weight:700; font-size:15px; }
+.repcard .d{ color:var(--muted); font-size:13px; margin-top:3px; }
+.hint-note{ color:var(--muted); font-size:13px; margin-top:18px; }

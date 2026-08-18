@@ -12,7 +12,7 @@
       <a class="{{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
       <a href="#">💰 المالية</a>
-      <a href="#">📄 التقارير</a>
+      <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
       <a href="#">🧮 التسعير والعروض</a>
     </nav>
     <div class="foot">

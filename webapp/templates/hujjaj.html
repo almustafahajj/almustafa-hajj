@@ -7,6 +7,7 @@
   <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
   <button class="btn primary" type="submit">بحث</button>
   {% if q %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
+  <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">➕ إضافة</a>
 </form>
 
 <div class="panel" style="margin-top:14px">
