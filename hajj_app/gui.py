@@ -235,13 +235,14 @@ def install_entry_editing(widget) -> None:
     widget.bind("<Control-KeyPress>", ctrl)
 
 
-def _cbtn(parent, label, command, kind="ghost"):
+def _cbtn(parent, label, command, kind="ghost", width=None):
     """زر عصري (CustomTkinter) أو كلاسيكي (ttk) — للنوافذ المنبثقة.
 
     ``kind``: ``primary`` برونزي ممتلئ، ``act`` محدَّد ببرونزي، وإلّا ``ghost``."""
     if _HAS_CTK:
         prim = kind == "primary"
         act = kind == "act"
+        kw = {} if width is None else {"width": width}
         return _ctk.CTkButton(
             parent, text=rtl(label), command=command, corner_radius=11,
             height=38, font=_ctk.CTkFont(_FSB, 13, "bold"),
@@ -249,10 +250,44 @@ def _cbtn(parent, label, command, kind="ghost"):
             hover_color=(BRONZE_DARK if prim else GHOST_HOVER),
             text_color=("#FFFFFF" if prim else (BRONZE if act else TEXT)),
             border_width=(0 if prim else 1),
-            border_color=(BRONZE if act else BORDER))
+            border_color=(BRONZE if act else BORDER), **kw)
     style = {"primary": "Primary.TButton", "act": "Act.TButton"}.get(
         kind, "Ghost.TButton")
-    return ttk.Button(parent, text=rtl(label), style=style, command=command)
+    kw = {} if width is None else {"width": max(3, width // 9)}
+    return ttk.Button(parent, text=rtl(label), style=style, command=command,
+                      **kw)
+
+
+class _ListEditor(ttk.Frame):
+    """قائمة بنود قابلة للتحرير — سطر لكل بند بحقل مستقلّ (CTkEntry).
+
+    يتفادى خلل ترتيب النصّ العربي في ``tk.Text`` متعدّد الأسطر: كل بند في حقل
+    سطرٍ واحد يعمل بشكل صحيح مع العربية."""
+
+    def __init__(self, parent, lines=None) -> None:
+        super().__init__(parent)
+        self._holder = ttk.Frame(self, style="Toolbar.TFrame")
+        self._holder.pack(fill=X)
+        self._rows: list = []
+        for ln in (list(lines) if lines else [""]):
+            self._add_row(str(ln))
+        _cbtn(self, "➕ إضافة سطر", lambda: self._add_row(""), width=110).pack(
+            anchor="e", pady=(3, 0))
+
+    def _add_row(self, text="") -> None:
+        fr = ttk.Frame(self._holder, style="Toolbar.TFrame")
+        fr.pack(fill=X, pady=1)
+        var = StringVar(value=text)
+        rec = [fr, var]
+        _cbtn(fr, "🗑", lambda: (fr.destroy(),
+                                 rec in self._rows and self._rows.remove(rec)),
+              width=40).pack(side=RIGHT, padx=(0, 4))
+        e = _form_entry(fr, var, width=120)
+        e.pack(side=RIGHT, fill=X, expand=True)
+        self._rows.append(rec)
+
+    def get(self) -> list:
+        return [v.get().strip() for _f, v in self._rows if v.get().strip()]
 
 
 def _form_entry(parent, textvariable, width=190):
@@ -672,7 +707,7 @@ class HajjApp:
                 s["close"]()                 # اطوِ الأقسام المفتوحة
             self._sidebar.configure(width=self._SIDEBAR_W_MIN)
             for h in getattr(self, "_nav_headers", []):
-                big = (self._cticon(h["icon"], SIDEBAR_FG, 26)
+                big = (self._cticon(h["icon"], SIDEBAR_FG, 30)
                        if h.get("icon") else None)   # أكبر وأسطع في الوضع المطويّ
                 h["btn"].configure(text="", anchor="center", image=big)
             self._brand.pack_forget()
@@ -685,7 +720,7 @@ class HajjApp:
         else:
             self._sidebar.configure(width=self._SIDEBAR_W)
             for h in getattr(self, "_nav_headers", []):
-                small = (self._cticon(h["icon"], SIDEBAR_ICON, 20)
+                small = (self._cticon(h["icon"], SIDEBAR_ICON, 24)
                          if h.get("icon") else None)
                 h["btn"].configure(text=rtl(h["label"]), anchor="e", image=small)
             self._brand.pack(fill="x", pady=(20, 2), padx=12, before=self._sep)
@@ -738,7 +773,7 @@ class HajjApp:
 
         # ---- رأس القسم ----
         icon_name = icon[0] if icon else None
-        img = self._cticon(icon_name, SIDEBAR_ICON, 20) if icon_name else None
+        img = self._cticon(icon_name, SIDEBAR_ICON, 24) if icon_name else None
         header = _ctk.CTkButton(
             holder, text=rtl(i18n.tr(label)), image=img, compound="right",
             anchor="e", corner_radius=10, height=42,
@@ -7749,6 +7784,7 @@ class HajjProgramDialog(Toplevel):
 
     def _build_form(self) -> None:
         d = self._data
+        self._lists = {}
         c = self._card("بيانات العرض")
         # الرقم المرجعي — تلقائي وغير قابل للتعديل
         self._lbl(c, "الرقم المرجعي", 0)
@@ -7807,17 +7843,12 @@ class HajjProgramDialog(Toplevel):
             tv = StringVar(value=str(title))
             te = _form_entry(c, tv, width=320)
             te.grid(row=0, column=0, columnspan=2, sticky="we", pady=4)
-            ttk.Label(c, text=rtl("النقاط (سطر لكل نقطة):"), font=(_FUI, 9),
+            ttk.Label(c, text=rtl("النقاط:"), font=(_FUI, 9),
                       foreground=MUTED, background=BG).grid(
                           row=1, column=2, sticky="e", padx=(10, 6))
-            txt = tk.Text(c, height=max(2, len(bullets)), font=(_FUI, 10),
-                          wrap="word", relief="solid", borderwidth=1,
-                          background=PANEL, foreground=TEXT, insertbackground=TEXT)
-            txt.tag_configure("r", justify="right")
-            txt.insert("1.0", "\n".join(str(b) for b in bullets))
-            txt.tag_add("r", "1.0", "end")
-            txt.grid(row=2, column=0, columnspan=3, sticky="we", pady=2)
-            self._sections_w.append((tv, txt))
+            le = _ListEditor(c, bullets)
+            le.grid(row=2, column=0, columnspan=3, sticky="we", pady=2)
+            self._sections_w.append((tv, le))
 
         c = self._card("الطيران")
         self._entry(c, "flights_title", "عنوان قسم الطيران", 0)
@@ -7836,10 +7867,12 @@ class HajjProgramDialog(Toplevel):
 
         c = self._card("هدايا ومستلزمات الحاج")
         self._entry(c, "gifts_title", "عنوان القسم", 0)
-        ttk.Label(c, text=rtl("النقاط (سطر لكل نقطة):"), font=(_FUI, 9),
+        ttk.Label(c, text=rtl("النقاط:"), font=(_FUI, 9),
                   foreground=MUTED, background=BG).grid(
                       row=1, column=2, sticky="e", padx=(10, 6))
-        self._multiline_at(c, "gifts", d.get("gifts", []), 2, height=4)
+        _g = _ListEditor(c, d.get("gifts", []))
+        _g.grid(row=2, column=0, columnspan=3, sticky="we", pady=2)
+        self._lists["gifts"] = _g
 
         c = self._card("الأسعار")
         self._entry(c, "prices_title", "عنوان قسم الأسعار", 0)
@@ -7860,16 +7893,20 @@ class HajjProgramDialog(Toplevel):
 
         c = self._card("ملاحظات هامة")
         self._entry(c, "notes_title", "عنوان القسم", 0)
-        ttk.Label(c, text=rtl("النقاط (سطر لكل نقطة):"), font=(_FUI, 9),
+        ttk.Label(c, text=rtl("النقاط:"), font=(_FUI, 9),
                   foreground=MUTED, background=BG).grid(
                       row=1, column=2, sticky="e", padx=(10, 6))
-        self._multiline_at(c, "notes", d.get("notes", []), 2, height=4)
+        _n = _ListEditor(c, d.get("notes", []))
+        _n.grid(row=2, column=0, columnspan=3, sticky="we", pady=2)
+        self._lists["notes"] = _n
 
         c = self._card("الخاتمة والتوقيع")
         ttk.Label(c, text=rtl("عبارة الختام:"), font=(_FUI, 9),
                   foreground=MUTED, background=BG).grid(
                       row=0, column=2, sticky="e", padx=(10, 6))
-        self._multiline_at(c, "closing", [d.get("closing", "")], 1, height=3)
+        _cl = _ListEditor(c, [d.get("closing", "")])
+        _cl.grid(row=1, column=0, columnspan=3, sticky="we", pady=2)
+        self._lists["closing"] = _cl
         self._entry(c, "manager_title", "المسمّى الوظيفي", 2)
         self._entry(c, "manager", "اسم المدير", 3)
         self._entry(c, "manager_phone", "هاتف المدير", 4)
@@ -7949,16 +7986,13 @@ class HajjProgramDialog(Toplevel):
         }
 
         def _lines(key):
-            t = self._texts.get(key)
-            return ([ln.strip() for ln in t.get("1.0", "end").splitlines()
-                     if ln.strip()] if t is not None else [])
+            le = self._lists.get(key)
+            return le.get() if le is not None else []
         d["gifts"] = _lines("gifts")
         d["notes"] = _lines("notes")
         d["closing"] = " ".join(_lines("closing"))
-        d["sections"] = [[tv.get().strip(),
-                          [ln.strip() for ln in txt.get("1.0", "end").splitlines()
-                           if ln.strip()]]
-                         for tv, txt in self._sections_w]
+        d["sections"] = [[tv.get().strip(), le.get()]
+                         for tv, le in self._sections_w]
         flts = []
         for w in self._flights_w:
             day = self._iso_slash(w["day"].get()) if hasattr(

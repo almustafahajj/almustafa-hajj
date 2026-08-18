@@ -87,10 +87,10 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
         d.polygon([(m, P * 0.26), (P - m, P * 0.26), (P * 0.6, P * 0.54),
                    (P * 0.6, P - m), (P * 0.4, P * 0.82), (P * 0.4, P * 0.54)],
                   outline=c, width=lw)
-    elif name == "columns":               # أعمدة
-        for xx in (0.24, 0.44, 0.64):
-            _rr(d, [P * xx, m, P * (xx + 0.12), P - m], P * 0.03,
-                outline=c, width=lw)
+    elif name == "columns":               # شبكة برامج (2×2) — مظهر عصري ممتلئ
+        for ox, oy in ((0.16, 0.16), (0.54, 0.16), (0.16, 0.54), (0.54, 0.54)):
+            _rr(d, [P * ox, P * oy, P * (ox + 0.30), P * (oy + 0.30)],
+                P * 0.06, fill=c)
     elif name == "gear":                  # ترس
         d.ellipse([P * 0.3, P * 0.3, P * 0.7, P * 0.7], outline=c, width=lw)
         d.ellipse([P * 0.42, P * 0.42, P * 0.58, P * 0.58], outline=c, width=lw)
@@ -109,21 +109,23 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
     elif name == "search":                # عدسة
         d.ellipse([m, m, P * 0.62, P * 0.62], outline=c, width=lw)
         d.line([P * 0.58, P * 0.58, P - m, P - m], fill=c, width=lw + 1)
-    elif name == "tent":                  # خيمة
-        d.polygon([(cx, m), (P - m, P - m), (m, P - m)], outline=c, width=lw)
-        d.line([cx, m, cx, P - m], fill=c, width=max(2, lw - 1))
+    elif name == "tent":                  # سرير (تسكين) — عصري ممتلئ
+        _rr(d, [m, P * 0.46, P - m, P * 0.7], P * 0.06, fill=c)       # الفراش
+        _rr(d, [P * 0.18, P * 0.34, P * 0.46, P * 0.5], P * 0.06,
+            fill=c)                                                   # الوسادة
+        d.line([m, P * 0.7, m, P * 0.84], fill=c, width=lw)
+        d.line([P - m, P * 0.7, P - m, P * 0.84], fill=c, width=lw)
     elif name == "plane":                 # طائرة
         d.polygon([(m, cy), (P - m, P * 0.4), (P - m, P * 0.6)], outline=c, width=lw)
-    elif name == "chart":                 # أعمدة بيانية (المالية/الإحصاء)
+    elif name == "chart":                 # أعمدة مالية ممتلئة (عصري)
         d.line([m, P - m, P - m, P - m], fill=c, width=lw)
         for xx, hh in ((0.28, 0.50), (0.5, 0.34), (0.72, 0.20)):
-            d.rectangle([P * xx - P * 0.06, P * hh, P * xx + P * 0.06, P - m],
-                        outline=c, width=lw)
-    elif name == "id":                    # بطاقة
-        _rr(d, [m, P * 0.28, P - m, P * 0.72], P * 0.06, outline=c, width=lw)
-        d.ellipse([P * 0.2, P * 0.4, P * 0.36, P * 0.56], outline=c, width=lw)
-        d.line([P * 0.44, P * 0.44, P * 0.78, P * 0.44], fill=c, width=lw)
-        d.line([P * 0.44, P * 0.56, P * 0.68, P * 0.56], fill=c, width=lw)
+            _rr(d, [P * xx - P * 0.07, P * hh, P * xx + P * 0.07, P - m],
+                P * 0.03, fill=c)
+    elif name == "id":                    # شخص (بديل عصري ممتلئ للبطاقة)
+        d.ellipse([P * 0.37, P * 0.18, P * 0.63, P * 0.44], fill=c)   # الرأس
+        d.pieslice([P * 0.24, P * 0.5, P * 0.76, P * 1.02], 180, 360,
+                   fill=c)                                            # الكتفان
     elif name == "caret_down":            # سهم للأسفل (قسم موسَّع)
         d.line([P * 0.30, P * 0.40, cx, P * 0.62], fill=c, width=lw)
         d.line([cx, P * 0.62, P * 0.70, P * 0.40], fill=c, width=lw)

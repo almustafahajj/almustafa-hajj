@@ -5564,14 +5564,23 @@ def export_hajj_program_pdf(path, data: dict | None = None) -> Path:
     if str(d.get("manager_phone", "")).strip():
         sig_rows.append([P(ltr(d.get("manager_phone")),
                            ParagraphStyle("hp_sg3", parent=sig_l), sig_w - 6)])
-    sig_tbl = Table(sig_rows, colWidths=[sig_w])
-    sig_tbl.hAlign = "LEFT"
-    sig_tbl.setStyle(TableStyle([
+    sig_inner = Table(sig_rows, colWidths=[sig_w])
+    sig_inner.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 1),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+    # مُزاح قليلاً عن أقصى اليسار (لا يلتصق بالحافة) بعمود فراغ يساري
+    _indent = W * 0.12
+    sig_tbl = Table([["", sig_inner]], colWidths=[_indent, W - _indent])
+    sig_tbl.hAlign = "LEFT"
+    sig_tbl.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "TOP")]))
     story.append(sig_tbl)
 
     _ttl = "Hajj Program" if L else "برنامج الحج"
