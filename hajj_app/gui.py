@@ -2953,12 +2953,52 @@ class HajjApp:
         ug.PricingsListWindow(self.root, self)
 
     def do_hajj_program(self) -> None:
-        """محرّر «برنامج / عرض سعر الحج» جديد — رقم مرجعي تلقائي (PDF)."""
-        HajjProgramDialog(self.root, self)
+        """محرّر «عرض سعر / برنامج الحج» جديد — يُفتح في المتصفّح (عربية سليمة)."""
+        self._open_web_quote(None)
 
     def do_hajj_quotes_list(self) -> None:
         """قائمة عروض أسعار الحج المحفوظة (فتح/تعديل، معاينة، حذف)."""
         HajjQuotesListWindow(self.root, self)
+
+    def _open_web_quote(self, quote) -> None:
+        """يفتح محرّر عرض سعر الحج في المتصفّح (يدعم العربية بالكامل)، وعند
+        الحفظ يعود للبرنامج ليخزّن العرض ويفتح معاينة الـ PDF."""
+        from . import pdf_io, quotes, webquote
+        lang = str((quote or {}).get("lang") or "ar")
+        data = pdf_io.hajj_program_defaults(lang)
+        if isinstance(quote, dict):
+            data.update(quote)
+        if not data.get("number"):
+            data["number"] = quotes.next_hajj_quote_number(self._settings)
+            try:
+                save_settings(self._settings)
+            except Exception:
+                pass
+
+        def worker():
+            result = webquote.serve_editor(
+                data, f"عرض سعر الحج {data.get('number') or ''}")
+            if result:
+                self.root.after(0, lambda: self._web_quote_saved(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+        messagebox.showinfo(
+            "محرّر العرض (المتصفّح)",
+            "فُتح محرّر العرض في المتصفّح.\n\nعدّل النصوص هناك — العربية تعمل "
+            "بشكل صحيح تماماً — ثم اضغط «💾 حفظ ومعاينة PDF»، وستُفتح المعاينة "
+            "هنا تلقائياً.", parent=self.root)
+
+    def _web_quote_saved(self, data: dict) -> None:
+        from . import pdf_io, quotes
+        quotes.save_hajj_quote(self._settings, data)
+        try:
+            save_settings(self._settings)
+        except Exception:
+            pass
+        title = f"عرض سعر الحج {data.get('number') or ''}"
+        open_preview(self.root,
+                     lambda p: pdf_io.export_hajj_program_pdf(p, data),
+                     title, "pdf")
 
     def copy_season_summary(self) -> None:
         """ينسخ ملخّص مؤشّرات موسم الحج إلى الحافظة، جاهزاً للمشاركة."""
@@ -8151,7 +8191,7 @@ class HajjQuotesListWindow(Toplevel):
         if q is None:
             return
         self.destroy()
-        HajjProgramDialog(self.app.root, self.app, quote=q)
+        self.app._open_web_quote(q)
 
     def _preview(self) -> None:
         q = self._selected()
