@@ -860,13 +860,13 @@ class HajjApp:
         bar.pack(fill=X)
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
+        # العنوان + السنة للعرض فقط (تحديد الموسم من الإعدادات في الشريط الجانبي)
         ttk.Label(titles, text=i18n.tr(app_mode.label("program_season")),
                   font=(_FSB, 18), foreground=TEXT, background=BG).pack(side=RIGHT)
-        year_box = ttk.Combobox(titles, textvariable=self.season_year,
-                                state="readonly", width=6, font=(_FSB, 15),
-                                values=HIJRI_YEARS)
-        year_box.pack(side=RIGHT, padx=(8, 0))
-        year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
+        ttk.Label(titles, textvariable=self.season_year, font=(_FSB, 18, "bold"),
+                  foreground=BRONZE, background=BG).pack(side=RIGHT, padx=(8, 0))
+        ttk.Label(titles, text="هـ", font=(_FSB, 14), foreground=MUTED,
+                  background=BG).pack(side=RIGHT, padx=(4, 0))
         self.progress = ttk.Progressbar(bar, mode="determinate", length=160)
 
     def _nav_action(self, label, icon_name, command):
@@ -1231,6 +1231,8 @@ class HajjApp:
                          "swap", self.switch_mode)
         self._nav_action(("الوضع الفاتح" if _dark_now else "الوضع الداكن"),
                          "moon", self.toggle_theme)
+        _st = self._nav_action("الإعدادات", "gear", lambda: None)
+        _st.configure(command=lambda b=_st: self._open_settings(b))
         tk.Frame(self._nav_holder, bg=SIDEBAR_SEP, height=1).pack(
             fill="x", padx=16, pady=(8, 4))
 
@@ -1740,13 +1742,16 @@ class HajjApp:
             pass
         self._save_ui_settings()
 
-    def _build_view_menubutton(self, parent):
-        mb = ttk.Menubutton(parent, text=rtl("العرض ▾"),
-                            style="Ghost.TMenubutton", direction="below")
-        _img = self._icon("gear", TEXT)
-        if _img is not None:
-            mb.configure(image=_img, compound="right")
-        menu = tk.Menu(mb, tearoff=0, font=(_FUI, 10))
+    def _populate_settings_menu(self, menu) -> None:
+        """يملأ قائمة الإعدادات: الموسم (السنة) + كثافة الصفوف + حجم الخط + الوضع."""
+        # الموسم (السنة الهجرية) — نُقل تحديد الموسم إلى الإعدادات
+        ymenu = tk.Menu(menu, tearoff=0, font=(_FUI, 10))
+        for y in HIJRI_YEARS:
+            ymenu.add_radiobutton(label=f"{y} هـ", value=y,
+                                  variable=self.season_year,
+                                  command=self._on_season_change)
+        menu.add_cascade(label="الموسم (السنة الهجرية)", menu=ymenu)
+        menu.add_separator()
         self._density_var = tk.StringVar(value=self._density)
         dmenu = tk.Menu(menu, tearoff=0, font=(_FUI, 10))
         for name in self._DENSITY:
@@ -1768,9 +1773,26 @@ class HajjApp:
             tmenu.add_radiobutton(label=name, value=name, variable=self._theme_var,
                                   command=self._on_theme_change)
         menu.add_cascade(label="الوضع (فاتح/داكن)", menu=tmenu)
+        self._menus += [ymenu, dmenu, fmenu, tmenu]
+
+    def _build_view_menubutton(self, parent):
+        mb = ttk.Menubutton(parent, text=rtl("العرض ▾"),
+                            style="Ghost.TMenubutton", direction="below")
+        _img = self._icon("gear", TEXT)
+        if _img is not None:
+            mb.configure(image=_img, compound="right")
+        menu = tk.Menu(mb, tearoff=0, font=(_FUI, 10))
+        self._populate_settings_menu(menu)
         mb["menu"] = menu
-        self._menus += [menu, dmenu, fmenu, tmenu]
+        self._menus.append(menu)
         return mb
+
+    def _open_settings(self, anchor) -> None:
+        """يفتح قائمة الإعدادات (الموسم/العرض) كقائمة منبثقة من الشريط الجانبي."""
+        menu = tk.Menu(self._nav_holder, tearoff=0, font=(_FUI, 10))
+        self._populate_settings_menu(menu)
+        self._menus.append(menu)
+        self._popup_menu(menu, anchor)
 
     def _apply_theme_choice(self) -> None:
         """يحفظ الوضع المختار ويعيد بناء الواجهة به فوراً (كتغيير اللون)."""
