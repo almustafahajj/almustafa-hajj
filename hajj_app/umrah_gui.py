@@ -1413,7 +1413,39 @@ class UmrahApp:
             "تلقائياً.", parent=self.root)
 
     def prog_receipt(self):
-        self._prog_doc(export_umrah_receipt_pdf, "سند")
+        t = self._sel_trip_or_warn("سند")
+        if t is None:
+            return
+        rec = self._pick_pilgrim(t, "سند")
+        if rec is None:
+            return
+        from .pdf_io import (build_receipt_data, RECEIPT_SCHEMA,
+                             export_receipt_pdf, company_info,
+                             _umrah_services_text)
+        from .fields import format_amount, parse_amount
+        co = company_info(self._company_dict())
+        amount = parse_amount(rec.paid_amount)
+        if amount is None:
+            amount = parse_amount(rec.program_value)
+        amount = float(amount or 0.0)
+        parts = [f"وذلك عن: برنامج {self._prog_name(t)}".strip()]
+        if rec.hotel:
+            hp = f"الإقامة في {rec.hotel}"
+            if rec.room_type:
+                hp += f" في غرفة {rec.room_type}"
+            parts.append(hp)
+        svc = _umrah_services_text(rec)
+        if svc:
+            parts.append(f"الخدمات: {svc}")
+        if amount:
+            parts.append(f"والبالغ قيمته: {format_amount(amount)}")
+        parts.append("والدفعات غير مستردّة لاستخدامها في تأكيد الحجوزات.")
+        data = build_receipt_data(rec, company=self._company_dict(),
+                                  amount=amount, description="، ".join(parts))
+        self._web_edit_doc(
+            data, RECEIPT_SCHEMA, "سند قبض", "🧾",
+            lambda p, d: export_receipt_pdf(
+                rec, p, company=co["name_ar"], company_en=co["name_en"], data=d))
 
     def prog_invoice(self):
         t = self._sel_trip_or_warn("فاتورة")

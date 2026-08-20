@@ -1906,13 +1906,54 @@ def build_receipt_description(rec, *, season: str = "", amount: float = 0.0) -> 
     return "، ".join(parts)
 
 
+def build_receipt_data(rec, *, company=None, season="", number="",
+                       date_str="", amount=None, description=""):
+    """يبني بيانات سند القبض (قاموس قابل للتحرير في المحرّر الويب)."""
+    from .fields import num_to_words_en, parse_amount
+    if amount is None:
+        amount = parse_amount(rec.paid_amount)
+        if amount is None:
+            amount = parse_amount(rec.program_value)
+    amount = float(amount or 0.0)
+    if not date_str:
+        date_str = date.today().strftime("%B %d, %Y")
+    if not description:
+        description = build_receipt_description(rec, season=season, amount=amount)
+    return {
+        "number": str(number or "0001"),
+        "date": date_str,
+        "name": str(getattr(rec, "full_name_ar", "") or
+                    getattr(rec, "full_name_en", "") or ""),
+        "amount": f"{amount:.2f}",
+        "amount_words": num_to_words_en(amount),
+        "description": description,
+        "bank": "Bank Transfer",
+    }
+
+
+# مخطّط حقول سند القبض للمحرّر الويب
+RECEIPT_SCHEMA = [
+    {"legend": "بيانات السند", "fields": [
+        {"key": "number", "label": "رقم السند", "ro": True},
+        {"key": "date", "label": "التاريخ"},
+        {"key": "name", "label": "استلمنا من"},
+        {"key": "amount", "label": "المبلغ (AED)"},
+        {"key": "amount_words", "label": "المبلغ كتابةً (English)"},
+        {"key": "bank", "label": "طريقة الدفع"},
+    ]},
+    {"legend": "البيان", "fields": [
+        {"key": "description", "label": "وذلك عن", "type": "area"},
+    ]},
+]
+
+
 def export_receipt_pdf(rec, path: str | Path, *,
                        company: str = "المصطفى للحج والعمرة",
                        company_en: str = "Al Mustafa Hajj & Umrah",
                        season: str = "", number: str = "",
                        date_str: str = "", amount=None,
                        amount_words: str = "", description: str = "",
-                       bank: str = "Bank Transfer") -> Path:
+                       bank: str = "Bank Transfer", data=None) -> Path:
     """يبني **سند قبض (Receipt Voucher)** ثنائي اللغة لحاج واحد على صفحة A4
     عرضية، بنفس تخطيط النموذج الرسمي: ترويسة بالشعار، رقم السند، المستلَم منه،
     التاريخ، المبلغ رقماً وكتابةً، بيان «وذلك عن»، الإجمالي، والتواقيع."""
@@ -1935,6 +1976,17 @@ def export_receipt_pdf(rec, path: str | Path, *,
         date_str = date.today().strftime("%B %d, %Y")
     if not description:
         description = build_receipt_description(rec, season=season, amount=amount)
+    # قيم قابلة للتحرير من المحرّر الويب
+    if data:
+        number = str(data.get("number") or number)
+        date_str = str(data.get("date") or date_str)
+        name = str(data.get("name") or name)
+        _a = parse_amount(data.get("amount"))
+        if _a is not None:
+            amount = float(_a)
+        amount_words = str(data.get("amount_words") or amount_words)
+        description = str(data.get("description") or description)
+        bank = str(data.get("bank") or bank)
     amount_disp = f"AED {amount:,.2f}"
     total_disp = f"{amount:,.2f}"
 
