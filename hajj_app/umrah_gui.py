@@ -1148,8 +1148,19 @@ class UmrahApp:
         rec = PassportData()
         data = build_voucher_data(rec, trip=None, program_name="",
                                   company=co, number=number)
-        VoucherEditorDialog(self.root, rec, None, data, program="",
-                            company=co, app=self)
+        from .pdf_io import VOUCHER_SCHEMA, export_umrah_voucher_pdf
+
+        def _save(result):
+            umrah.save_voucher(self._settings, result)
+            try:
+                save_settings(self._settings)
+            except OSError:
+                pass
+        self._web_edit_doc(
+            data, VOUCHER_SCHEMA, "فاوتشر فندق", "🏨",
+            lambda p, d: export_umrah_voucher_pdf(rec, p, trip=None,
+                                                  company=co, data=d),
+            on_saved=_save)
 
     def new_transport_request(self) -> None:
         """طلب حجز مواصلات لأي حجز — يُملأ يدوياً بالكامل (خارج البرامج)."""

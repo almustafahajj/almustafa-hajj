@@ -627,10 +627,13 @@ umrah.delete_transport_request(app9._settings, _trd._number)
 assert all(q["number"] != _trd._number
            for q in umrah.load_transport_requests(app9._settings))
 _tlw.destroy()
-# فاوتشر يدوي لأي حجز خارج البرامج (rec/trip فارغان)
-app9.new_manual_voucher()
-_mv = [w for w in r9.winfo_children()
-       if isinstance(w, _ug.VoucherEditorDialog)][-1]
+# فاوتشر يدوي (المحرّر لا يزال متاحاً؛ الدخول من القائمة صار ويب)
+from hajj_app.pdf_io import build_voucher_data as _bvd
+_mvnum = umrah.next_voucher_number(app9._settings)
+_mv = _ug.VoucherEditorDialog(
+    r9, PassportData(), None,
+    _bvd(PassportData(), trip=None, program_name="", number=_mvnum),
+    program="", company=None, app=app9)
 assert _mv.trip is None and _mv._number.startswith("MA")
 _mv._add_stay_row(["مكة المكرّمة", "فندق", "ثنائي", "Kaaba",
                    "2026-08-07", "2026-08-11", "4", "إفطار"])

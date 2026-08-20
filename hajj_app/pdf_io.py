@@ -3001,6 +3001,42 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
     }
 
 
+# مخطّط حقول فاوتشر الفندق للمحرّر الويب (بجداوله وشروطه)
+VOUCHER_SCHEMA = [
+    {"legend": "بيانات الفاوتشر", "fields": [
+        {"key": "number", "label": "رقم الفاوتشر", "ro": True},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "lang", "label": "اللغة", "type": "select",
+         "options": ["ar", "en"]},
+        {"key": "guest_ar", "label": "اسم الضيف (عربي)"},
+        {"key": "guest_en", "label": "اسم الضيف (إنجليزي)"},
+        {"key": "booking_no", "label": "رقم الحجز"},
+        {"key": "program", "label": "البرنامج"},
+        {"key": "status", "label": "الحالة"},
+    ]},
+    {"legend": "الإقامات", "table": "stays", "columns": [
+        {"key": "city", "label": "المدينة"},
+        {"key": "hotel", "label": "الفندق"},
+        {"key": "room", "label": "نوع الغرفة"},
+        {"key": "rooms", "label": "عدد الغرف"},
+        {"key": "view", "label": "الإطلالة"},
+        {"key": "cin", "label": "الدخول", "type": "date"},
+        {"key": "cout", "label": "المغادرة", "type": "date"},
+        {"key": "nights", "label": "الليالي"},
+        {"key": "meals", "label": "الوجبات"}]},
+    {"legend": "خطة النقل", "table": "transport_rows", "columns": [
+        {"key": "car", "label": "نوع السيارة"},
+        {"key": "model", "label": "الموديل"},
+        {"key": "dest", "label": "الوجهة"}]},
+    {"legend": "جهات التواصل", "table": "contacts", "columns": [
+        {"key": "title", "label": "الصفة"},
+        {"key": "name", "label": "الاسم"},
+        {"key": "phone", "label": "الهاتف"}]},
+    {"legend": "الشروط والأحكام", "fields": [
+        {"key": "terms", "label": "الشروط (سطر لكل بند)", "type": "lines"}]},
+]
+
+
 VOUCHER_STAY_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "عدد الغرف", "الإطلالة",
                       "الدخول", "المغادرة", "الليالي", "الوجبات")
 VOUCHER_STAY_HEADS_EN = ("City", "Hotel", "Room Type", "Rooms", "View",
