@@ -138,6 +138,22 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
     elif name == "menu":                  # ثلاثة أسطر (قائمة/همبرغر)
         for yy in (0.34, 0.5, 0.66):
             d.line([P * 0.26, P * yy, P * 0.74, P * yy], fill=c, width=lw)
+    elif name == "home":                  # منزل (لوحة التحكم)
+        d.line([m, P * 0.5, cx, m], fill=c, width=lw)
+        d.line([cx, m, P - m, P * 0.5], fill=c, width=lw)
+        _rr(d, [P * 0.24, P * 0.5, P * 0.76, P - m], P * 0.04,
+            outline=c, width=lw)
+        _rr(d, [P * 0.42, P * 0.66, P * 0.58, P - m], P * 0.02,
+            outline=c, width=max(2, lw - 1))
+    elif name == "swap":                  # سهمان متعاكسان (التبديل)
+        d.line([P * 0.28, P * 0.38, P * 0.72, P * 0.38], fill=c, width=lw)
+        d.polygon([(P * 0.72, P * 0.38), (P * 0.60, P * 0.30),
+                   (P * 0.60, P * 0.46)], fill=c)
+        d.line([P * 0.28, P * 0.62, P * 0.72, P * 0.62], fill=c, width=lw)
+        d.polygon([(P * 0.28, P * 0.62), (P * 0.40, P * 0.54),
+                   (P * 0.40, P * 0.70)], fill=c)
+    elif name == "moon":                  # هلال (الوضع الداكن)
+        d.arc([m, m, P - m, P - m], 40, 320, fill=c, width=int(P * 0.16))
     elif name == "quote":                 # مستند عرض سعر (ورقة بأسطر + وسم)
         _rr(d, [P * 0.22, P * 0.14, P * 0.70, P - m], P * 0.06,
             outline=c, width=lw)

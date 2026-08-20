@@ -853,22 +853,11 @@ class HajjApp:
         return header
 
     def _build_topbar(self) -> None:
-        """شريط علوي رفيع في منطقة المحتوى: الموسم + إجراءات سريعة."""
+        """شريط علوي رفيع: عنوان الموسم فقط (بقيّة الأزرار في الشريط الجانبي)."""
         from . import i18n
         bar = ttk.Frame(self._body, style="Toolbar.TFrame",
                         padding=(18, 12, 18, 8))
         bar.pack(fill=X)
-        # زرّ طيّ/توسيع القائمة الجانبية — عند الحافة المجاورة للشريط
-        if _HAS_CTK:
-            ham = _ctk.CTkButton(
-                bar, text="", width=42, height=38, corner_radius=11,
-                image=self._cticon("menu", TEXT, 20), fg_color=GHOST_BG,
-                hover_color=GHOST_HOVER, command=self._toggle_sidebar)
-        else:
-            ham = ttk.Button(bar, text=rtl("☰"), style="Ghost.TButton",
-                             command=self._toggle_sidebar)
-        ham.pack(side=RIGHT, padx=(0, 12))
-        add_tooltip(ham, "طيّ/توسيع القائمة الجانبية")
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
         ttk.Label(titles, text=i18n.tr(app_mode.label("program_season")),
@@ -878,22 +867,27 @@ class HajjApp:
                                 values=HIJRI_YEARS)
         year_box.pack(side=RIGHT, padx=(8, 0))
         year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
-
-        _dash = self._mkbtn(bar, "🏠  لوحة التحكم", self.do_dashboard, "primary")
-        _dash.pack(side=LEFT)
-        add_tooltip(_dash, "مؤشّرات سريعة + إعدادات العرض")
-        _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
-        _sicon = "🌙" if _other == app_mode.UMRAH else "🕋"
-        _switch = self._mkbtn(bar, f"{_sicon}  {app_mode.mode_label(_other)}",
-                              self.switch_mode)
-        _switch.pack(side=LEFT, padx=(8, 0))
-        add_tooltip(_switch, "الانتقال إلى الوضع الآخر (تُحفظ بياناتك أولاً)")
-        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
-        _theme_btn = self._mkbtn(bar, ("☀️  فاتح" if _dark_now else "🌙  داكن"),
-                                 self.toggle_theme, translate=False)
-        _theme_btn.pack(side=LEFT, padx=(8, 0))
-        add_tooltip(_theme_btn, "التبديل بين الوضع الفاتح والداكن")
         self.progress = ttk.Progressbar(bar, mode="determinate", length=160)
+
+    def _nav_action(self, label, icon_name, command):
+        """زرّ إجراء مباشر في الشريط الجانبي (كعنصر تنقّل ينفّذ أمراً فوراً)."""
+        from . import i18n
+        txt = i18n.tr(label)
+        if not _HAS_CTK:
+            b = ttk.Button(self._nav_holder, text=rtl(txt),
+                           style="Ghost.TButton", command=command)
+            b.pack(fill="x", padx=6, pady=2)
+            return b
+        img = self._cticon(icon_name, SIDEBAR_ICON, 24)
+        btn = _ctk.CTkButton(
+            self._nav_holder, text=rtl(txt), image=img, compound="right",
+            anchor="e", corner_radius=10, height=44,
+            font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
+            hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG, command=command)
+        btn.pack(fill="x", padx=8, pady=(2, 0))
+        self._nav_headers.append({"btn": btn, "label": txt, "icon": icon_name})
+        add_tooltip(btn, txt)
+        return btn
 
     def new_recovery_key(self) -> None:
         """يولّد مفتاح استرداد جديداً ويعرضه — يبطل القديم."""
@@ -1228,6 +1222,17 @@ class HajjApp:
         # ---- الأقسام الرئيسية السبعة (مستوحاة من نظام إدارة الحجّ) ----
         BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
         GRAY, GREEN = "#6B6459", "#2E7D46"
+
+        # ---- إجراءات مباشرة أعلى التنقّل (نُقلت من الشريط العلوي) ----
+        _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
+        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
+        self._nav_action("لوحة التحكم", "home", self.do_dashboard)
+        self._nav_action(f"التبديل إلى {app_mode.mode_label(_other)}",
+                         "swap", self.switch_mode)
+        self._nav_action(("الوضع الفاتح" if _dark_now else "الوضع الداكن"),
+                         "moon", self.toggle_theme)
+        tk.Frame(self._nav_holder, bg=SIDEBAR_SEP, height=1).pack(
+            fill="x", padx=16, pady=(8, 4))
 
         # صلاحية التعديل تحدّد أي عناصر القوائم تظهر (المطّلع يرى المقروء فقط)
         ce = self._can_edit()
