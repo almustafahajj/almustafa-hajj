@@ -189,12 +189,14 @@ for _need in ("تعديل البرنامج", "حذف البرنامج", "عرو�
 _uheads = [h["label"] for h in app._nav_headers]
 for _need in ("برنامج جديد", "المعتمرون", "اسأل بياناتك"):
     assert _need in _uheads, _need
-# بند «الطلبات» يفتح محرّر طلب المواصلات (يدوي، خارج البرامج)
-app.new_transport_request()
-_mtr = [w for w in root.winfo_children()
-        if isinstance(w, ug.TransportRequestEditorDialog)]
-assert _mtr and _mtr[-1].trip is None and _mtr[-1]._number.startswith("MA")
-_mtr[-1].destroy()
+# طلب المواصلات صار يُحرَّر على الويب: نتحقّق من بناء بياناته (يدوي، رقم MA)
+# دون فتح المتصفّح أو نافذة رسالة (لتفادي حجب الاختبار).
+from hajj_app.pdf_io import build_transport_request_data as _btreq, TREQ_SCHEMA
+_tnum = ug.umrah.next_transport_number(app._settings)
+assert _tnum.startswith("MA"), _tnum
+_treq = _btreq(ug.PassportData(), trip=None, number=_tnum)
+assert _treq["number"] == _tnum and _treq["recipient"]      # جهة افتراضية مثبّتة
+assert any(s.get("table") == "movements" for s in TREQ_SCHEMA)
 root.destroy()
 print("  OK: التسعير والسفر والرقم المرجعي، السعة، رمز البرنامج، وموسم السنة")
 

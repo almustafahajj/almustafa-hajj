@@ -3176,6 +3176,48 @@ def build_transport_request_data(rec, *, trip=None, program_name="",
     }
 
 
+# مخطّط حقول طلب حجز المواصلات للمحرّر الويب (بجداوله)
+TREQ_SCHEMA = [
+    {"legend": "بيانات الطلب", "fields": [
+        {"key": "number", "label": "رقم الطلب", "ro": True},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "recipient", "label": "الجهة (السادة / …)"},
+        {"key": "honorific", "label": "اللقب", "type": "select",
+         "options": list(TREQ_HONORIFICS)},
+        {"key": "guest_ar", "label": "اسم الضيف"},
+        {"key": "nationality", "label": "الجنسية"},
+        {"key": "phone_code", "label": "رمز النداء الدولي", "type": "select",
+         "options": list(PHONE_DIAL_CODES)},
+        {"key": "phone", "label": "جوال رقم"},
+        {"key": "persons", "label": "عدد الأشخاص"},
+    ]},
+    {"legend": "الحجوزات", "table": "bookings", "columns": [
+        {"key": "city", "label": "المدينة"},
+        {"key": "hotel", "label": "الفندق"},
+        {"key": "room", "label": "نوع الغرفة"},
+        {"key": "view", "label": "الإطلالة"},
+    ]},
+    {"legend": "جدول الطيران", "table": "flights", "columns": [
+        {"key": "date", "label": "التاريخ"},
+        {"key": "carrier", "label": "الناقل"},
+        {"key": "flightno", "label": "رقم الرحلة"},
+        {"key": "depart", "label": "الإقلاع"},
+        {"key": "from", "label": "من"},
+        {"key": "arrive", "label": "الوصول"},
+        {"key": "to", "label": "إلى"},
+    ]},
+    {"legend": "جدول الحركة", "table": "movements", "columns": [
+        {"key": "date", "label": "التاريخ"},
+        {"key": "route", "label": "خط السير", "type": "select",
+         "options": list(TREQ_ROUTE_OPTIONS)},
+        {"key": "count", "label": "عدد"},
+        {"key": "car", "label": "نوع السيارة"},
+        {"key": "model", "label": "موديل"},
+        {"key": "time", "label": "الوقت"},
+    ]},
+]
+
+
 def _treq_fmt_date(v):
     """يعرض التاريخ ISO بصيغة DD/MM/YYYY (وإلّا يبقى كما كُتب)."""
     s = str(v or "").strip()

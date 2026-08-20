@@ -1163,8 +1163,19 @@ class UmrahApp:
         rec = PassportData()
         data = build_transport_request_data(rec, trip=None, program_name="",
                                             company=co, number=number)
-        TransportRequestEditorDialog(self.root, rec, None, data, company=co,
-                                     app=self)
+        from .pdf_io import TREQ_SCHEMA, export_umrah_transport_request_pdf
+
+        def _save(result):
+            umrah.save_transport_request(self._settings, result)
+            try:
+                save_settings(self._settings)
+            except OSError:
+                pass
+        self._web_edit_doc(
+            data, TREQ_SCHEMA, "طلب حجز مواصلات", "🚖",
+            lambda p, d: export_umrah_transport_request_pdf(
+                rec, p, company=co, data=d),
+            on_saved=_save)
 
     def open_transport_requests(self) -> None:
         """قائمة طلبات المواصلات المحفوظة (فتح/تعديل، معاينة، حذف)."""
@@ -1395,16 +1406,25 @@ class UmrahApp:
             rec, p, program_name=self._prog_name(t),
             company=self._company_dict()), f"{base} {t.code}", "pdf")
 
-    def _web_edit_doc(self, data, schema, title, icon, export_cb):
-        """يفتح المستند في محرّر الويب (عربية سليمة)، ثم يولّد الـ PDF بعد الحفظ."""
+    def _web_edit_doc(self, data, schema, title, icon, export_cb, on_saved=None):
+        """يفتح المستند في محرّر الويب (عربية سليمة)، ثم يولّد الـ PDF بعد الحفظ.
+
+        ``on_saved(result)`` (اختياري) يُستدعى مرّةً قبل المعاينة — لحفظ المستند."""
         from . import webdoc
         import threading
 
         def worker():
             result = webdoc.serve_doc_editor(data, schema, title, icon)
             if result:
-                self.root.after(0, lambda: G.open_preview(
-                    self.root, lambda p: export_cb(p, result), title, "pdf"))
+                def done():
+                    if on_saved:
+                        try:
+                            on_saved(result)
+                        except Exception:
+                            pass
+                    G.open_preview(self.root,
+                                   lambda p: export_cb(p, result), title, "pdf")
+                self.root.after(0, done)
         threading.Thread(target=worker, daemon=True).start()
         messagebox.showinfo(
             "محرّر المستند (المتصفّح)",
