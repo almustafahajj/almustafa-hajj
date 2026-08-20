@@ -176,15 +176,63 @@ _FUI = "Segoe UI"
 _FSB = "Segoe UI Semibold"
 
 
+_FONTS_LOADED = False
+
+
+def load_bundled_fonts() -> None:
+    """يسجّل الخطوط المضمّنة (Tajawal) في عملية البرنامج دون تثبيت ولا صلاحية.
+
+    على ويندوز نستعمل ``AddFontResourceExW`` مع علم ``FR_PRIVATE`` فتصبح
+    الخطوط متاحة لهذه العملية فقط (بما فيها Tkinter) — يضمن مظهراً موحّداً
+    على أيّ جهاز حتى لو لم يكن الخطّ مثبّتاً في النظام.
+    """
+    global _FONTS_LOADED
+    if _FONTS_LOADED:
+        return
+    _FONTS_LOADED = True
+    try:
+        import sys
+        from .paths import resource_dir
+        fonts_dir = resource_dir() / "assets" / "fonts"
+        if not fonts_dir.is_dir():
+            return
+        ttfs = sorted(fonts_dir.glob("*.ttf")) + sorted(fonts_dir.glob("*.otf"))
+        if not ttfs:
+            return
+        if sys.platform == "win32":
+            import ctypes
+            FR_PRIVATE = 0x10
+            add = ctypes.windll.gdi32.AddFontResourceExW
+            for p in ttfs:
+                try:
+                    add(ctypes.c_wchar_p(str(p)), FR_PRIVATE, 0)
+                except Exception:
+                    pass
+        else:  # macOS/Linux: تحميل عبر Tk إن توفّر
+            try:
+                from tkinter import font as _tkfont
+                for p in ttfs:
+                    try:
+                        _tkfont.Font(file=str(p))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def detect_fonts(root) -> None:
-    """يختار أجمل خطّ عربي متوفّر (Dubai/Sakkal) مع تراجع إلى Segoe UI."""
+    """يختار أجمل خطّ عربي متوفّر: Tajawal المضمّن أولاً، ثم Dubai/Sakkal/Segoe."""
     global _FUI, _FSB
+    load_bundled_fonts()
     try:
         from tkinter import font as _tkfont
         fams = set(_tkfont.families(root))
     except Exception:
         return
-    for reg, semi in (("Dubai", "Dubai Medium"),
+    for reg, semi in (("Tajawal", "Tajawal Medium"),
+                      ("Dubai", "Dubai Medium"),
                       ("Sakkal Majalla", "Sakkal Majalla"),
                       ("Segoe UI", "Segoe UI Semibold")):
         if reg in fams:
@@ -8932,6 +8980,7 @@ def main() -> None:
     from .logging_setup import setup_logging, install_tk_excepthook
     setup_logging()
     install_tk_excepthook(tk)
+    load_bundled_fonts()    # قبل إنشاء أيّ نافذة Tk (شاشة الدخول) ليُرى الخطّ
     if OPEN_MODE_NO_LOGIN:
         _mode_loop(None, True)
         return

@@ -38,7 +38,7 @@ def detect_font(root) -> None:
         fams = set(_tkfont.families(root))
     except Exception:
         return
-    for fam in ("Dubai", "Sakkal Majalla", "Segoe UI"):
+    for fam in ("Tajawal", "Dubai", "Sakkal Majalla", "Segoe UI"):
         if fam in fams:
             _FUI = fam
             return
