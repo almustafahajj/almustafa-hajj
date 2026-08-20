@@ -1231,8 +1231,6 @@ class HajjApp:
                          "swap", self.switch_mode)
         self._nav_action(("الوضع الفاتح" if _dark_now else "الوضع الداكن"),
                          "moon", self.toggle_theme)
-        _st = self._nav_action("الإعدادات", "gear", lambda: None)
-        _st.configure(command=lambda b=_st: self._open_settings(b))
         tk.Frame(self._nav_holder, bg=SIDEBAR_SEP, height=1).pack(
             fill="x", padx=16, pady=(8, 4))
 
@@ -1383,6 +1381,15 @@ class HajjApp:
                 ("📷  إضافة جوازات (صور / PDF)", self.add_images),
             ], icon=("add", GREEN),
                 tip="استيراد من إكسل أو قراءة الجوازات")
+
+        # ⚙ الإعدادات (قسم أكورديون — الموسم والعرض والوضع)
+        self._nav_item("الإعدادات", [
+            ("🗓  اختيار الموسم (السنة الهجرية)", self._pick_season),
+            None,
+            ("↕  كثافة الصفوف", self._pick_density),
+            ("🔤  حجم الخط", self._pick_font),
+            ("🎨  الوضع (فاتح/داكن)", self._pick_theme),
+        ], icon=("gear", GRAY), tip="الموسم وكثافة الصفوف وحجم الخط والوضع")
 
         # استعادة حالة الطيّ المحفوظة
         if self._ui.get("sidebar_collapsed"):
@@ -1787,12 +1794,71 @@ class HajjApp:
         self._menus.append(menu)
         return mb
 
-    def _open_settings(self, anchor) -> None:
-        """يفتح قائمة الإعدادات (الموسم/العرض) كقائمة منبثقة من الشريط الجانبي."""
-        menu = tk.Menu(self._nav_holder, tearoff=0, font=(_FUI, 10))
-        self._populate_settings_menu(menu)
-        self._menus.append(menu)
-        self._popup_menu(menu, anchor)
+    def _choose(self, title, options, current, on_pick, labeler=None) -> None:
+        """حوار اختيار صغير (أزرار راديو) — للإعدادات المختارة من الشريط الجانبي."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title(title)
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        try:
+            apply_window_icon(dlg)
+        except Exception:
+            pass
+        frm = ttk.Frame(dlg, style="Toolbar.TFrame", padding=18)
+        frm.pack(fill=BOTH, expand=True)
+        ttk.Label(frm, text=rtl(title), font=(_FSB, 13), foreground=BRONZE,
+                  background=BG).pack(anchor="e", pady=(0, 10))
+        var = StringVar(value=str(current))
+        for o in options:
+            lbl = labeler(o) if labeler else str(o)
+            ttk.Radiobutton(frm, text=rtl(lbl), value=str(o), variable=var).pack(
+                anchor="e", fill="x", pady=1)
+        bar = ttk.Frame(frm, style="Toolbar.TFrame")
+        bar.pack(fill=X, pady=(14, 0))
+
+        def _ok():
+            v = var.get()
+            dlg.destroy()
+            on_pick(v)
+        _cbtn(bar, "تطبيق", _ok, "primary").pack(side=RIGHT, padx=3)
+        _cbtn(bar, "إلغاء", dlg.destroy).pack(side=LEFT, padx=3)
+        dlg.grab_set()
+        dlg.update_idletasks()
+        x = (dlg.winfo_screenwidth() - dlg.winfo_width()) // 2
+        y = (dlg.winfo_screenheight() - dlg.winfo_height()) // 3
+        dlg.geometry(f"+{x}+{y}")
+
+    def _pick_season(self) -> None:
+        self._choose("اختر الموسم (السنة الهجرية)", HIJRI_YEARS,
+                     self.season_year.get(),
+                     lambda v: (self.season_year.set(v), self._on_season_change()),
+                     lambda v: f"{v} هـ")
+
+    def _pick_density(self) -> None:
+        def _set(v):
+            self._density = v
+            if hasattr(self, "_density_var"):
+                self._density_var.set(v)
+            self._apply_table_style()
+            self._save_ui_settings()
+        self._choose("كثافة الصفوف", list(self._DENSITY), self._density, _set)
+
+    def _pick_font(self) -> None:
+        def _set(v):
+            self._font_size = v
+            if hasattr(self, "_fontsize_var"):
+                self._fontsize_var.set(v)
+            self._apply_table_style()
+            self._save_ui_settings()
+        self._choose("حجم الخط", list(self._FONT_SIZES), self._font_size, _set)
+
+    def _pick_theme(self) -> None:
+        def _set(v):
+            self._theme = v
+            self._apply_theme_choice()
+        self._choose("الوضع (فاتح/داكن)", list(THEMES),
+                     getattr(self, "_theme", "فاتح"), _set)
 
     def _apply_theme_choice(self) -> None:
         """يحفظ الوضع المختار ويعيد بناء الواجهة به فوراً (كتغيير اللون)."""
