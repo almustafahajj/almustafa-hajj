@@ -1476,7 +1476,54 @@ class UmrahApp:
             lambda p, d: export_invoice_pdf(rec, p, data=d, company=co))
 
     def prog_contract(self):
-        self._prog_doc(export_umrah_contract_pdf, "عقد")
+        t = self._sel_trip_or_warn("عقد")
+        if t is None:
+            return
+        rec = self._pick_pilgrim(t, "عقد")
+        if rec is None:
+            return
+        from .pdf_io import (build_contract_data, CONTRACT_SCHEMA,
+                             export_contract_pdf, _umrah_services_text)
+        from .fields import format_amount, parse_amount
+        pn = self._prog_name(t)
+        total = parse_amount(rec.program_value) or parse_amount(rec.paid_amount) or 0.0
+        paid = parse_amount(rec.paid_amount) or 0.0
+        remaining = max(0.0, total - paid)
+        hotel = rec.hotel or "—"
+        room = f" في غرفة {rec.room_type}" if rec.room_type else ""
+        svc = _umrah_services_text(rec)
+        svc_part = f" والخدمات ({svc})" if svc else ""
+        clauses = [
+            ("البند الأول: موضوع العقد",
+             f"يقدّم الطرف الأول للطرف الثاني برنامج {pn}، ويشمل الإقامة في "
+             f"{hotel}{room} والتنقّلات الداخلية وتذاكر الطيران{svc_part} وفق "
+             "البرنامج المعتمد."),
+            ("البند الثاني: قيمة العقد",
+             f"القيمة الإجمالية {format_amount(total)} درهماً. المدفوع "
+             f"{format_amount(paid)} درهماً، والمتبقّي {format_amount(remaining)} "
+             "درهماً."),
+            ("البند الثالث: الدفعات",
+             "جميع الدفعات المسدّدة غير مستردّة وتُستخدَم في تأكيد الحجوزات والخدمات."),
+            ("البند الرابع: التزامات الطرف الثاني",
+             "يلتزم الطرف الثاني بصحّة بياناته وصلاحية جوازه، وبالمواعيد والتعليمات "
+             "المنظّمة للرحلة، وبالأنظمة المعمول بها في المملكة العربية السعودية."),
+            ("البند الخامس: القوة القاهرة",
+             "لا يُسأل أيّ طرف عن الإخلال الناتج عن ظروف قاهرة خارجة عن الإرادة."),
+            ("البند السادس: القانون والاختصاص",
+             "يخضع هذا العقد لأنظمة دولة الإمارات العربية المتحدة، وتختصّ محاكمها "
+             "المختصّة بالفصل في أيّ نزاع ينشأ عنه."),
+        ]
+        body = "\n\n".join(f"{a}\n{b}" for a, b in clauses)
+        co = self._company_dict()
+        data = build_contract_data(
+            rec, company=co, number="CON-0001", body=body,
+            title_ar="عقد خدمات عمرة",
+            preamble="تمهيد: رغبةً من الطرف الثاني في أداء العمرة، اتّفق الطرفان "
+                     "— وهما بكامل الأهلية — على ما يلي:")
+        self._web_edit_doc(
+            data, CONTRACT_SCHEMA, "عقد خدمات عمرة", "📜",
+            lambda p, d: export_contract_pdf(
+                rec, p, company=co, title_en="Umrah Services Agreement", data=d))
 
     def prog_quotation(self):
         t = self._sel_trip_or_warn("عرض سعر")

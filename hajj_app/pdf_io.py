@@ -2586,15 +2586,58 @@ def build_contract_body(rec, *, company=None, season: str = "",
     return "\n\n".join(f"{t}\n{b}" for t, b in clauses)
 
 
+_CONTRACT_PREAMBLE = ("تمهيد: رغبةً من الطرف الثاني في أداء فريضة الحج، اتّفق "
+                      "الطرفان — وهما بكامل الأهلية — على ما يلي:")
+
+
+def build_contract_data(rec, *, company=None, season="", vat_mode="none",
+                        number="CON-0001", date_str="", title_ar="عقد خدمات حج",
+                        preamble="", body=""):
+    """يبني بيانات العقد (قاموس قابل للتحرير في المحرّر الويب)."""
+    company_info(company)
+    if not date_str:
+        date_str = date.today().isoformat()
+    if not body:
+        body = build_contract_body(rec, company=company, season=season,
+                                   vat_mode=vat_mode)
+    return {
+        "number": str(number or "CON-0001"),
+        "date": date_str,
+        "title_ar": title_ar,
+        "guest_ar": str(getattr(rec, "full_name_ar", "") or
+                        getattr(rec, "full_name_en", "") or ""),
+        "passport": str(getattr(rec, "passport_number", "") or ""),
+        "phone": str(getattr(rec, "phone", "") or ""),
+        "preamble": preamble or _CONTRACT_PREAMBLE,
+        "body": body,
+    }
+
+
+# مخطّط حقول العقد للمحرّر الويب
+CONTRACT_SCHEMA = [
+    {"legend": "بيانات العقد", "fields": [
+        {"key": "number", "label": "رقم العقد", "ro": True},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "title_ar", "label": "عنوان العقد"},
+        {"key": "guest_ar", "label": "الطرف الثاني (المستفيد)"},
+        {"key": "passport", "label": "رقم الجواز"},
+        {"key": "phone", "label": "الهاتف"},
+    ]},
+    {"legend": "التمهيد والبنود", "fields": [
+        {"key": "preamble", "label": "التمهيد", "type": "area"},
+        {"key": "body", "label": "البنود (عنوان البند في سطر، ثم محتواه؛ "
+                                 "افصل بين البنود بسطر فارغ)", "type": "area"},
+    ]},
+]
+
+
 def export_contract_pdf(rec, path: str | Path, *, company=None,
                         number: str = "CON-0001", date_str: str = "",
                         season: str = "", body: str = "",
                         vat_mode: str = "none",
                         title_ar: str = "عقد خدمات حج",
                         title_en: str = "Hajj Services Agreement",
-                        preamble: str = ("تمهيد: رغبةً من الطرف الثاني في أداء "
-                                         "فريضة الحج، اتّفق الطرفان — وهما بكامل "
-                                         "الأهلية — على ما يلي:")) -> Path:
+                        preamble: str = _CONTRACT_PREAMBLE, data=None) -> Path:
     """يبني **عقد خدمات** بين الشركة (الطرف الأول) والمستفيد (الطرف الثاني)
     على صفحة A4 عمودية، مع بنود قابلة للتحرير وتوقيعَي الطرفين."""
     _register_fonts()
@@ -2606,6 +2649,19 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
     if not body:
         body = build_contract_body(rec, company=co, season=season,
                                    vat_mode=vat_mode)
+    # قيم قابلة للتحرير من المحرّر الويب
+    guest = rec.full_name_ar or rec.full_name_en or "—"
+    passport = str(rec.passport_number or "")
+    phone = str(rec.phone or "")
+    if data:
+        number = str(data.get("number") or number)
+        date_str = str(data.get("date") or date_str)
+        title_ar = str(data.get("title_ar") or title_ar)
+        preamble = str(data.get("preamble") or preamble)
+        body = str(data.get("body") or body)
+        guest = str(data.get("guest_ar") or guest)
+        passport = str(data.get("passport") or passport)
+        phone = str(data.get("phone") or phone)
 
     doc = SimpleDocTemplate(
         str(path), pagesize=A4,
@@ -2655,10 +2711,9 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
     p1 = (f"الطرف الأول (المزوّد): {co['name_ar']}"
           + (f" — الرقم الضريبي {co['trn']}" if co["trn"] else "")
           + (f" — هاتف {co['phone']}" if co["phone"] else "") + ".")
-    who = rec.full_name_ar or rec.full_name_en or "—"
-    p2 = (f"الطرف الثاني (المستفيد): {who}"
-          + (f" — جواز رقم {rec.passport_number}" if rec.passport_number else "")
-          + (f" — هاتف {rec.phone}" if rec.phone else "") + ".")
+    p2 = (f"الطرف الثاني (المستفيد): {guest}"
+          + (f" — جواز رقم {passport}" if passport else "")
+          + (f" — هاتف {phone}" if phone else "") + ".")
     story.append(Paragraph(ar(p1), pbody))
     story.append(Paragraph(ar(p2), pbody))
     story.append(Paragraph(ar(preamble), pbody))
