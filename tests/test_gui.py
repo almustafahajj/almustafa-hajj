@@ -482,7 +482,9 @@ print("  OK: مصروفان، الصافي 9,000، والحذف يخفّض ال�
 print("\n=== جدول المناسك ===")
 from hajj_app.gui import ItineraryDialog as _ID
 _itin = _ID(root, app)
+_mb.askyesno = lambda *a, **k: True     # نؤكّد استبدال الجدول بالقالب تلقائياً
 _itin._fill_template()
+_mb.askyesno = _orig_yes
 assert len(_itin._items) == 8
 _saved_itin = _st.load_settings().get("itinerary", [])
 assert len(_saved_itin) == 8 and "عرفة" in _saved_itin[1][2]

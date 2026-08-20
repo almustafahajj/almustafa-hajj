@@ -19,6 +19,11 @@ for _p in (_TESTDB, _TESTDB.with_suffix('.bak')):
     _p.unlink(missing_ok=True)
 _g.default_data_path = lambda: _TESTDB
 _st.default_data_path = lambda: _TESTDB   # عزل مجلد الصور أيضاً
+# كتم نوافذ الرسائل: الدفعة تتضمّن ملفاً تالفاً عمداً (notapdf.pdf) فلا
+# نريد نافذة «ملفات تعذّرت قراءتها» أن تقفز وتطلب ضغطاً أثناء الاختبار.
+_g.messagebox.showwarning = lambda *a, **k: None
+_g.messagebox.showerror = lambda *a, **k: None
+_g.messagebox.showinfo = lambda *a, **k: None
 
 OUT = _OUTDIR
 
