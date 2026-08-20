@@ -98,6 +98,7 @@ from .pdf_io import (
     QUOTE_NOTES, QUOTE_OFFICE_NAME, QUOTE_OFFICE_PHONE, QUOTE_OFFICE_TITLE,
     QUOTE_ROOM_COUNTS, QUOTE_ROOM_TYPES, QUOTE_STAY_HEADS, QUOTE_VIEWS,
     TREQ_BOOK_HEADS, TREQ_FLIGHT_HEADS, TREQ_HONORIFICS, TREQ_MOVE_HEADS,
+    TREQ_ROUTE_OPTIONS, PHONE_DIAL_CODES,
     VOUCHER_CAR_TYPES, VOUCHER_CITY_OPTIONS, VOUCHER_CITY_OPTIONS_EN,
     VOUCHER_ROOM_COUNTS, VOUCHER_ROOM_TYPES, VOUCHER_ROOM_TYPES_EN,
     VOUCHER_STAY_HEADS, VOUCHER_TRANSPORT_HEADS,
@@ -2825,6 +2826,10 @@ class _EditorMixin:
             entry[0].destroy()
         self._flight_rows.clear()
         for r in rows:
+            # صفوف أماديوس [تاريخ، ناقل، إقلاع، من، وصول، إلى] — ندرج رقم رحلة فارغاً
+            r = list(r)
+            if len(r) >= 6:
+                r = [r[0], r[1], ""] + r[2:]
             self._add_flight_row(r)
         messagebox.showinfo("قراءة أماديوس", f"تمّت قراءة {len(rows)} رحلة.",
                             parent=self)
@@ -3284,7 +3289,19 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
                    values=TREQ_HONORIFICS)
         self._mrow(lf, "اسم الضيف", "guest_ar", 2, 1, data)
         self._mrow(lf, "الجنسية", "nationality", 3, 0, data, width=14)
-        self._mrow(lf, "جوال رقم", "phone", 3, 1, data)
+        # جوال رقم مقسوم: رمز النداء الدولي (قائمة بكل البلاد) + الرقم يدوياً
+        ttk.Label(lf, text="جوال رقم").grid(row=3, column=2, sticky="e",
+                                            padx=(8, 4), pady=3)
+        phwrap = ttk.Frame(lf)
+        phwrap.grid(row=3, column=3, sticky="we", padx=(0, 8), pady=3)
+        code_var = StringVar(value=str(data.get("phone_code") or ""))
+        self._meta["phone_code"] = code_var
+        ttk.Combobox(phwrap, textvariable=code_var, values=list(PHONE_DIAL_CODES),
+                     width=14, state="normal").pack(side=RIGHT, padx=(4, 0))
+        num_var = StringVar(value=str(data.get("phone") or ""))
+        self._meta["phone"] = num_var
+        ttk.Entry(phwrap, textvariable=num_var, width=18,
+                  justify="right").pack(side=RIGHT, fill=X, expand=True)
         self._mrow(lf, "عدد الأشخاص", "persons", 4, 0, data, width=8)
         lf.columnconfigure(1, weight=1)
         lf.columnconfigure(3, weight=1)
@@ -3336,12 +3353,13 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
                                                                 pady=(4, 0))
 
     def _add_flight_row(self, values=None):
-        # [التاريخ، الناقل، الإقلاع، من، الوصول، إلى]
-        values = list(values or []) + [""] * 6
+        # [التاريخ، الناقل، رقم الرحلة، الإقلاع، من، الوصول، إلى]
+        values = list(values or []) + [""] * 7
         fr = ttk.Frame(self._flight_box)
         fr.pack(fill=X, pady=2)
         dp = self._date_cell(fr, "التاريخ", values[0])
         specs = [("الناقل", QUOTE_CARRIERS, 10, False),
+                 ("رقم الرحلة", [], 8, False),
                  ("الإقلاع", quote_times(), 7, False),
                  ("من", QUOTE_AIRPORT_CITIES, 8, False),
                  ("الوصول", quote_times(), 7, False),
@@ -3376,7 +3394,9 @@ class TransportRequestEditorDialog(Toplevel, _EditorMixin):
         sub = ttk.Frame(fr)
         sub.pack(side=RIGHT, padx=2)
         ttk.Label(sub, text="خط السير", font=(G._FUI, 7)).pack()
-        ttk.Entry(sub, textvariable=route, width=26, justify="right").pack()
+        # قائمة منسدلة بخطوط السير الجاهزة (مع إمكانية الكتابة اليدوية)
+        ttk.Combobox(sub, textvariable=route, values=list(TREQ_ROUTE_OPTIONS),
+                     width=30, state="normal").pack()
         count = self._cell(fr, "عدد", values[2] or "1",
                            [str(i) for i in range(1, 11)], 4, False)
         car = self._cell(fr, "نوع السيارة", values[3], VOUCHER_CAR_TYPES, 9,

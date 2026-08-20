@@ -2862,11 +2862,78 @@ def voucher_car_models() -> list:
 # ---- طلب/تأكيد حجز المواصلات (خطاب رسمي لشركة النقل) ----
 # جدول الطيران بمخطّط متوافق مع قراءة الأماديوس: [التاريخ، الناقل، الإقلاع، من،
 # الوصول، إلى] — فيُملأ مباشرةً من قارئ صورة حجز الأماديوس.
-TREQ_FLIGHT_HEADS = ("التاريخ", "الناقل", "الإقلاع", "من", "الوصول", "إلى")
+TREQ_FLIGHT_HEADS = ("التاريخ", "الناقل", "رقم الرحلة", "الإقلاع", "من",
+                     "الوصول", "إلى")
 TREQ_MOVE_HEADS = ("التاريخ", "خط السير", "عدد", "نوع السيارة", "موديل", "الوقت")
 TREQ_BOOK_HEADS = ("المدينة", "الفندق", "نوع الغرفة", "الإطلالة")
 TREQ_HONORIFICS = ("السيد", "السيدة", "السادة", "الأخ", "الأخت")
 TREQ_THANKS = "ولكم جزيل الشكر ،،"
+# اسم الجهة الثابت (يُملأ افتراضياً في طلب حجز المواصلات)
+TREQ_RECIPIENT_DEFAULT = "جنى عبدالله السكيت"
+# خيارات «خط السير» في جدول الحركة (قائمة منسدلة جاهزة)
+TREQ_ROUTE_OPTIONS = (
+    "من مطار جدة الى الفندق في مكة",
+    "من الفندق في مكة الى مطار جدة",
+    "من الفندق في مكة الى محطة قطار مكة",
+    "من محطة قطار المدينة الى الفندق في المدينة",
+    "من الفندق في المدينة الى مطار المدينة",
+    "من مطار المدينة الى الفندق في المدينة",
+    "من الفندق في المدينة الى محطة قطار المدينة",
+    "من محطة قطار مكة الى الفندق في مكة",
+)
+# رموز النداء الدولي لجميع الدول (الخليج والعرب أولاً ثم بقية العالم)
+PHONE_DIAL_CODES = (
+    "+971 الإمارات", "+966 السعودية", "+965 الكويت", "+974 قطر",
+    "+973 البحرين", "+968 عُمان", "+962 الأردن", "+961 لبنان",
+    "+963 سوريا", "+964 العراق", "+970 فلسطين", "+20 مصر",
+    "+249 السودان", "+218 ليبيا", "+216 تونس", "+213 الجزائر",
+    "+212 المغرب", "+222 موريتانيا", "+967 اليمن", "+253 جيبوتي",
+    "+252 الصومال", "+269 جزر القمر",
+    "+93 أفغانستان", "+355 ألبانيا", "+376 أندورا", "+244 أنغولا",
+    "+1 أنتيغوا وبربودا", "+54 الأرجنتين", "+374 أرمينيا", "+61 أستراليا",
+    "+43 النمسا", "+994 أذربيجان", "+1 الباهاما", "+880 بنغلاديش",
+    "+1 بربادوس", "+375 بيلاروسيا", "+32 بلجيكا", "+501 بليز",
+    "+229 بنين", "+975 بوتان", "+591 بوليفيا", "+387 البوسنة والهرسك",
+    "+267 بوتسوانا", "+55 البرازيل", "+673 بروناي", "+359 بلغاريا",
+    "+226 بوركينا فاسو", "+257 بوروندي", "+855 كمبوديا", "+237 الكاميرون",
+    "+1 كندا", "+238 الرأس الأخضر", "+236 أفريقيا الوسطى", "+235 تشاد",
+    "+56 تشيلي", "+86 الصين", "+57 كولومبيا", "+242 الكونغو",
+    "+243 الكونغو الديمقراطية", "+506 كوستاريكا", "+225 ساحل العاج",
+    "+385 كرواتيا", "+53 كوبا", "+357 قبرص", "+420 التشيك",
+    "+45 الدنمارك", "+1 دومينيكا", "+1 جمهورية الدومينيكان", "+593 الإكوادور",
+    "+503 السلفادور", "+240 غينيا الاستوائية", "+291 إريتريا", "+372 إستونيا",
+    "+268 إسواتيني", "+251 إثيوبيا", "+679 فيجي", "+358 فنلندا",
+    "+33 فرنسا", "+241 الغابون", "+220 غامبيا", "+995 جورجيا",
+    "+49 ألمانيا", "+233 غانا", "+30 اليونان", "+1 غرينادا",
+    "+502 غواتيمالا", "+224 غينيا", "+245 غينيا بيساو", "+592 غيانا",
+    "+509 هايتي", "+504 هندوراس", "+36 المجر", "+354 آيسلندا",
+    "+91 الهند", "+62 إندونيسيا", "+98 إيران", "+353 أيرلندا",
+    "+972 إسرائيل", "+39 إيطاليا", "+1 جامايكا", "+81 اليابان",
+    "+7 كازاخستان", "+254 كينيا", "+686 كيريباتي", "+383 كوسوفو",
+    "+996 قيرغيزستان", "+856 لاوس", "+371 لاتفيا", "+266 ليسوتو",
+    "+231 ليبيريا", "+423 ليختنشتاين", "+370 ليتوانيا", "+352 لوكسمبورغ",
+    "+261 مدغشقر", "+265 مالاوي", "+60 ماليزيا", "+960 المالديف",
+    "+223 مالي", "+356 مالطا", "+692 جزر مارشال", "+230 موريشيوس",
+    "+52 المكسيك", "+691 ميكرونيزيا", "+373 مولدوفا", "+377 موناكو",
+    "+976 منغوليا", "+382 الجبل الأسود", "+258 موزمبيق", "+95 ميانمار",
+    "+264 ناميبيا", "+674 ناورو", "+977 نيبال", "+31 هولندا",
+    "+64 نيوزيلندا", "+505 نيكاراغوا", "+227 النيجر", "+234 نيجيريا",
+    "+850 كوريا الشمالية", "+389 مقدونيا الشمالية", "+47 النرويج",
+    "+92 باكستان", "+680 بالاو", "+507 بنما", "+675 بابوا غينيا الجديدة",
+    "+595 باراغواي", "+51 بيرو", "+63 الفلبين", "+48 بولندا",
+    "+351 البرتغال", "+40 رومانيا", "+7 روسيا", "+250 رواندا",
+    "+1 سانت كيتس ونيفيس", "+1 سانت لوسيا", "+685 ساموا", "+378 سان مارينو",
+    "+239 ساو تومي وبرينسيبي", "+221 السنغال", "+381 صربيا", "+248 سيشل",
+    "+232 سيراليون", "+65 سنغافورة", "+421 سلوفاكيا", "+386 سلوفينيا",
+    "+677 جزر سليمان", "+27 جنوب أفريقيا", "+82 كوريا الجنوبية",
+    "+211 جنوب السودان", "+34 إسبانيا", "+94 سريلانكا", "+597 سورينام",
+    "+46 السويد", "+41 سويسرا", "+886 تايوان", "+992 طاجيكستان",
+    "+255 تنزانيا", "+66 تايلاند", "+670 تيمور الشرقية", "+228 توغو",
+    "+676 تونغا", "+1 ترينيداد وتوباغو", "+90 تركيا", "+993 تركمانستان",
+    "+688 توفالو", "+256 أوغندا", "+380 أوكرانيا", "+44 المملكة المتحدة",
+    "+1 الولايات المتحدة", "+598 أوروغواي", "+998 أوزبكستان", "+678 فانواتو",
+    "+58 فنزويلا", "+84 فيتنام", "+260 زامبيا", "+263 زيمبابوي",
+)
 
 
 def build_transport_request_data(rec, *, trip=None, program_name="",
@@ -2894,27 +2961,31 @@ def build_transport_request_data(rec, *, trip=None, program_name="",
     airline = T("airline")
     flights = []
     if trip:
+        # [التاريخ، الناقل، رقم الرحلة، الإقلاع، من، الوصول، إلى]
         flights = [
-            [dep, airline, T("out_depart_time"), "", T("out_arrive_time"), ""],
-            [ret, airline, T("ret_depart_time"), "", T("ret_arrive_time"), ""],
+            [dep, airline, T("flight_out"), T("out_depart_time"), "",
+             T("out_arrive_time"), ""],
+            [ret, airline, T("flight_ret"), T("ret_depart_time"), "",
+             T("ret_arrive_time"), ""],
         ]
 
     car = next((c for c in VOUCHER_CAR_TYPES
                 if c.lower() in T("transport").lower()), "FORD")
     model = voucher_car_models()[0]
     movements = [
-        [dep, "من مطار جدة إلى فندق مكة", "1", car, model, ""],
-        ["", "من فندق مكة إلى محطة قطار مكة", "1", car, model, ""],
-        ["", "من محطة قطار المدينة إلى فندق المدينة", "1", car, model, ""],
-        [ret, "من فندق المدينة إلى مطار المدينة", "1", car, model, ""],
+        [dep, TREQ_ROUTE_OPTIONS[0], "1", car, model, ""],
+        ["", TREQ_ROUTE_OPTIONS[2], "1", car, model, ""],
+        ["", TREQ_ROUTE_OPTIONS[3], "1", car, model, ""],
+        [ret, TREQ_ROUTE_OPTIONS[4], "1", car, model, ""],
     ]
     return {
         "number": number,
         "date": date_str,
-        "recipient": recipient or "",
+        "recipient": recipient or TREQ_RECIPIENT_DEFAULT,
         "honorific": "السيد",
         "guest_ar": str(getattr(rec, "full_name_ar", "") or ""),
         "nationality": str(getattr(rec, "nationality_ar", "") or ""),
+        "phone_code": "",
         "phone": str(getattr(rec, "phone", "") or ""),
         "persons": "",
         "bookings": bookings,
@@ -2969,7 +3040,7 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
         except Exception:
             return ""
 
-    header = Table([[_logo(_NIRVANA_PATH, 50), _logo(_LOGO_PATH, 40)]],
+    header = Table([[_logo(_NIRVANA_PATH, 64), _logo(_LOGO_PATH, 52)]],
                    colWidths=[W / 2, W / 2])
     header.setStyle(TableStyle([
         ("ALIGN", (0, 0), (0, 0), "LEFT"), ("ALIGN", (1, 0), (1, 0), "RIGHT"),
@@ -2983,8 +3054,7 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     band = Table([[Paragraph(ar("طلب حجز مواصلات"), ParagraphStyle(
                        "tbt", fontName=_FONT_BOLD, fontSize=16, alignment=1,
                        textColor=colors.white, leading=20))],
-                  [Paragraph(co["name_en"].upper() + "   ·   TRANSPORTATION "
-                             "REQUEST", ParagraphStyle(
+                  [Paragraph("TRANSPORTATION REQUEST", ParagraphStyle(
                        "tbs", fontName=_FONT, fontSize=8, alignment=1,
                        textColor=colors.HexColor("#EFE6D8"), leading=11))]],
                  colWidths=[W])
@@ -3032,14 +3102,12 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     story.append(Spacer(1, 3))
     # الموضوع في شريط مميّز
     subj = Table([[Paragraph(ar("الموضوع:  تأكيد حجز مواصلات"), ParagraphStyle(
-                       "tsub", fontName=_FONT_BOLD, fontSize=11, alignment=2,
+                       "tsub", fontName=_FONT_BOLD, fontSize=11, alignment=1,
                        textColor=_DEEP, leading=15))]], colWidths=[W])
     subj.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), _ALT_ROW),
-        ("LINEBEFORE", (0, 0), (0, -1), 3, _ACCENT),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8)]))
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story.append(subj)
     story.append(Spacer(1, 6))
 
@@ -3050,7 +3118,10 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     story.append(line("اسم الضيف:  " + who, bold=True))
     info_bits = []
     if str(data.get("phone") or "").strip():
-        info_bits.append(f"جوال رقم: {ltr(data.get('phone'))}")
+        _code = str(data.get("phone_code") or "").strip()
+        _code = _code.split()[0] if _code else ""   # نأخذ رمز النداء فقط (+xxx)
+        _num = ltr(str(data.get("phone")).strip())
+        info_bits.append(f"جوال رقم: {(_code + ' ' if _code else '')}{_num}")
     if str(data.get("persons") or "").strip():
         info_bits.append(f"عدد الأشخاص: ( {ltr(data.get('persons'))} ) أشخاص")
     if info_bits:
@@ -3109,7 +3180,7 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
         story.append(sec("جدول الطيران"))
         story.append(Spacer(1, 3))
         story.append(table(TREQ_FLIGHT_HEADS, flights,
-                           [72, 78, 60, 78, 60, 78], date_col=0))
+                           [64, 66, 66, 54, 60, 54, 60], date_col=0))
         story.append(Spacer(1, 8))
 
     moves = [m for m in (data.get("movements") or [])
@@ -3120,27 +3191,21 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
                        [66, 214, 26, 80, 38, 46], date_col=0))
     story.append(Spacer(1, 14))
 
+    # عبارة الشكر موسّطة
     story.append(Paragraph(ar(TREQ_THANKS), ParagraphStyle(
-        "tthx", parent=rpb, alignment=2, fontSize=11)))
+        "tthx", parent=rpb, alignment=1, fontSize=11)))
     story.append(Spacer(1, 14))
 
-    # التوقيع (يميناً) + رمز تحقّق QR (يساراً) — لمسة توثيق عصرية
-    sig = ParagraphStyle("tsig", parent=st["cell"], alignment=1, fontSize=11,
+    # التوقيع (مدير المكتب — الاسم) بمحاذاة اليسار قدر المستطاع (بلا رمز تحقّق)
+    sig = ParagraphStyle("tsig", parent=st["cell"], alignment=0, fontSize=11,
                          fontName=_FONT_BOLD, leading=17)
-    cap = ParagraphStyle("tqc", parent=st["cell"], alignment=1, fontSize=7.5,
-                         textColor=colors.HexColor("#888888"), leading=10)
     sig_cell = [Paragraph(ar(data.get("office_title") or "مدير المكتب"), sig),
                 Spacer(1, 2),
                 Paragraph(ar(data.get("office_manager") or ""), sig)]
-    guest = str(data.get("guest_ar") or "").strip()
-    qr = _qr_drawing(f"{co['name_ar']} | مواصلات {number} | {guest} | "
-                     f"{date_str}", 58)
-    qr_cell = [qr, Spacer(1, 2), Paragraph(ar("رمز التحقّق"), cap)] if qr else ""
-    sig_tbl = Table([[qr_cell, sig_cell]], colWidths=[W * 0.32, W * 0.68])
+    sig_tbl = Table([[sig_cell]], colWidths=[W])
     sig_tbl.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (0, 0), "CENTER"),
-        ("ALIGN", (1, 0), (1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (0, 0), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story.append(sig_tbl)
