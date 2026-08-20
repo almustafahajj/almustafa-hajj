@@ -1554,6 +1554,23 @@ class HajjApp:
             if clickable:
                 for w in (card, top, val, sub):
                     w.bind("<Button-1>", lambda _e: self.open_collections())
+        # شريط نسبة التحصيل من إجمالي القيمة — مؤشّر مدير سريع يتلوّن حسب الصحّة
+        prog = _ctk.CTkFrame(outer, fg_color="transparent")
+        prog.pack(fill=X, pady=(14, 0))
+        cap = _ctk.CTkFrame(prog, fg_color="transparent")
+        cap.pack(fill=X)
+        self._kpi_pct_lbl = _ctk.CTkLabel(
+            cap, text="—", font=_ctk.CTkFont(_FSB, 13, "bold"),
+            text_color=SUCCESS_FG, fg_color="transparent")
+        self._kpi_pct_lbl.pack(side=LEFT)
+        _ctk.CTkLabel(cap, text=rtl("نسبة التحصيل من إجمالي القيمة"),
+                      font=_ctk.CTkFont(_FUI, 11), text_color=MUTED,
+                      fg_color="transparent").pack(side=RIGHT)
+        self._kpi_progress = _ctk.CTkProgressBar(
+            prog, height=12, corner_radius=6, progress_color=SUCCESS_FG,
+            fg_color=BORDER)
+        self._kpi_progress.pack(fill=X, pady=(6, 0))
+        self._kpi_progress.set(0)
 
     def _build_kpi_band_classic(self) -> None:
         """النسخة الكلاسيكية (ttk) — عند غياب CustomTkinter."""
@@ -1594,6 +1611,19 @@ class HajjApp:
                     except Exception:
                         pass
                     w.bind("<Button-1>", lambda _e: self.open_collections())
+        # شريط نسبة التحصيل (نسخة ttk)
+        prog = ttk.Frame(outer, style="Toolbar.TFrame")
+        prog.pack(fill=X, pady=(12, 0))
+        cap = ttk.Frame(prog, style="Toolbar.TFrame")
+        cap.pack(fill=X)
+        self._kpi_pct_lbl = ttk.Label(cap, text="—", font=(_FSB, 11),
+                                      foreground=SUCCESS_FG, background=BG)
+        self._kpi_pct_lbl.pack(side=LEFT)
+        ttk.Label(cap, text=rtl("نسبة التحصيل من إجمالي القيمة"),
+                  font=(_FUI, 10), foreground=MUTED, background=BG).pack(side=RIGHT)
+        self._kpi_progress = ttk.Progressbar(prog, mode="determinate",
+                                             maximum=100, value=0)
+        self._kpi_progress.pack(fill=X, pady=(6, 0))
 
     def _build_filters(self) -> None:
         outer = ttk.Frame(self._body, style="Toolbar.TFrame", padding=(16, 0, 16, 8))
@@ -2528,6 +2558,18 @@ class HajjApp:
             self._kpi_lbls["remaining"].configure(
                 text=format_amount(fin.remaining) or "0")
             self._kpi_lbls["late"].configure(text=str(fin.unpaid_count))
+        if hasattr(self, "_kpi_progress"):
+            cp = fin.collected_percent if fin.total else 0.0
+            # لون الصحّة: أخضر ≥75٪، كهرماني ≥40٪، أحمر دون ذلك
+            hue = SUCCESS_FG if cp >= 75 else (AMBER_FG if cp >= 40 else DANGER)
+            pct_txt = f"{cp:.0f}٪" if fin.total else "—"
+            try:                                    # CTkProgressBar + CTkLabel
+                self._kpi_progress.set(max(0.0, min(1.0, cp / 100.0)))
+                self._kpi_progress.configure(progress_color=hue)
+                self._kpi_pct_lbl.configure(text=pct_txt, text_color=hue)
+            except Exception:                       # ttk.Progressbar + ttk.Label
+                self._kpi_progress["value"] = max(0.0, min(100.0, cp))
+                self._kpi_pct_lbl.configure(text=pct_txt, foreground=hue)
 
         # حالة فارغة: نُظهر اللوحة الترحيبية فوق الجدول حين لا سجلات
         if hasattr(self, "_empty"):

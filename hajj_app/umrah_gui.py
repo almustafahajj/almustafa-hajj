@@ -266,6 +266,23 @@ class UmrahApp:
                 for w in (card, top, val, sub):
                     w.bind("<Button-1>", lambda _e: self.open_collections())
                 self._kpi["late_card"] = card
+        # شريط نسبة التحصيل من إجمالي القيمة — مؤشّر مدير يتلوّن حسب الصحّة
+        prog = _ctk.CTkFrame(outer, fg_color="transparent")
+        prog.pack(fill=X, pady=(14, 0))
+        cap = _ctk.CTkFrame(prog, fg_color="transparent")
+        cap.pack(fill=X)
+        self._kpi_pct_lbl = _ctk.CTkLabel(
+            cap, text="—", font=_ctk.CTkFont(G._FSB, 13, "bold"),
+            text_color=G.SUCCESS_FG, fg_color="transparent")
+        self._kpi_pct_lbl.pack(side=LEFT)
+        _ctk.CTkLabel(cap, text=G.rtl("نسبة التحصيل من إجمالي القيمة"),
+                      font=_ctk.CTkFont(G._FUI, 11), text_color=G.MUTED,
+                      fg_color="transparent").pack(side=RIGHT)
+        self._kpi_progress = _ctk.CTkProgressBar(
+            prog, height=12, corner_radius=6, progress_color=G.SUCCESS_FG,
+            fg_color=G.BORDER)
+        self._kpi_progress.pack(fill=X, pady=(6, 0))
+        self._kpi_progress.set(0)
 
     def _build_kpi_classic(self) -> None:
         """النسخة الكلاسيكية (ttk) — تعمل عند غياب CustomTkinter."""
@@ -314,6 +331,20 @@ class UmrahApp:
                         pass
                     w.bind("<Button-1>", lambda _e: self.open_collections())
                 self._kpi["late_card"] = card
+        # شريط نسبة التحصيل (نسخة ttk)
+        prog = ttk.Frame(outer, style="Toolbar.TFrame")
+        prog.pack(fill=X, pady=(12, 0))
+        cap = ttk.Frame(prog, style="Toolbar.TFrame")
+        cap.pack(fill=X)
+        self._kpi_pct_lbl = ttk.Label(cap, text="—", font=(G._FSB, 11),
+                                      foreground=G.SUCCESS_FG, background=G.BG)
+        self._kpi_pct_lbl.pack(side=LEFT)
+        ttk.Label(cap, text=G.rtl("نسبة التحصيل من إجمالي القيمة"),
+                  font=(G._FUI, 10), foreground=G.MUTED,
+                  background=G.BG).pack(side=RIGHT)
+        self._kpi_progress = ttk.Progressbar(prog, mode="determinate",
+                                             maximum=100, value=0)
+        self._kpi_progress.pack(fill=X, pady=(6, 0))
 
     def _update_kpi(self, pilgrims, cap_total, total, paid, late) -> None:
         """يحدّث بطاقات لوحة التحكّم من أرقام الموسم الحالية."""
@@ -327,6 +358,18 @@ class UmrahApp:
         if "paid_sub" in self._kpi:
             self._kpi["paid_sub"].configure(text=f"AED · محصّل {pct}")
         self._kpi["late"].configure(text=str(late))
+        if hasattr(self, "_kpi_progress"):
+            cp = (paid / total * 100.0) if total else 0.0
+            hue = (G.SUCCESS_FG if cp >= 75 else
+                   (G.AMBER_FG if cp >= 40 else G.DANGER))
+            pct_txt = f"{cp:.0f}٪" if total else "—"
+            try:                                    # CTkProgressBar + CTkLabel
+                self._kpi_progress.set(max(0.0, min(1.0, cp / 100.0)))
+                self._kpi_progress.configure(progress_color=hue)
+                self._kpi_pct_lbl.configure(text=pct_txt, text_color=hue)
+            except Exception:                       # ttk
+                self._kpi_progress["value"] = max(0.0, min(100.0, cp))
+                self._kpi_pct_lbl.configure(text=pct_txt, foreground=hue)
 
     def _build_statusbar(self) -> None:
         bar = ttk.Frame(self._body, style="Panel.TFrame", padding=(16, 6))
