@@ -755,6 +755,30 @@ class _AuthWindow:
         if prefill:
             self.username.insert(0, prefill)
 
+        # تذكّر كلمة المرور (وضع الدخول فقط) — تُحفظ مشفّرة بـ DPAPI
+        self.remember = None
+        if not self.setup_mode:
+            self.remember = tk.BooleanVar(value=False)
+            saved = None
+            if not prefill:
+                try:
+                    from . import remember as _rem
+                    saved = _rem.load(self.auth_path)
+                except Exception:
+                    saved = None
+            if saved:
+                _u, _pw = saved
+                self.username.delete(0, "end")
+                self.username.insert(0, _u)
+                self.password.insert(0, _pw)
+                self.remember.set(True)
+            tk.Checkbutton(
+                outer, variable=self.remember, bg=PAPER, fg=INK,
+                activebackground=PAPER, selectcolor=PAPER, font=(_FUI, 9),
+                anchor="e", cursor="hand2",
+                text=rtl("تذكّر كلمة المرور على هذا الجهاز"),
+            ).pack(fill="x", pady=(12, 0))
+
         self.message = tk.Label(
             outer, text="", bg=PAPER, fg=DANGER, font=(_FUI, 9),
             wraplength=330, justify="center",
@@ -943,6 +967,17 @@ class _AuthWindow:
             self._fail(f"{exc}\nمحاولات متبقية: {remaining}")
             return
         self._log_audit("تسجيل دخول", self.session.username)
+
+        # حفظ/مسح بيانات الدخول حسب خيار «تذكّر كلمة المرور»
+        try:
+            from . import remember as _rem
+            if getattr(self, "remember", None) is not None \
+                    and self.remember.get():
+                _rem.save(username, password, self.auth_path)
+            else:
+                _rem.clear(self.auth_path)
+        except Exception:
+            pass
 
         # حساب أُنشئ قبل ميزة الاسترداد: نرقّيه الآن ونعرض مفتاحه مرة واحدة.
         # الترقية لا تعيد تشفير الكشف — تعيد تغليف المفتاح فقط.
