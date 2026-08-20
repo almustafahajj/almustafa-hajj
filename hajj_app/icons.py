@@ -91,17 +91,23 @@ def make_icon(name: str, color: str, size: int = 18) -> Image.Image:
         for ox, oy in ((0.16, 0.16), (0.54, 0.16), (0.16, 0.54), (0.54, 0.54)):
             _rr(d, [P * ox, P * oy, P * (ox + 0.30), P * (oy + 0.30)],
                 P * 0.06, fill=c)
-    elif name == "gear":                  # ترس
-        d.ellipse([P * 0.3, P * 0.3, P * 0.7, P * 0.7], outline=c, width=lw)
-        d.ellipse([P * 0.42, P * 0.42, P * 0.58, P * 0.58], outline=c, width=lw)
+    elif name == "gear":                  # ترس عصري ممتلئ بأسنان مستديرة
         import math
-        for a in range(0, 360, 45):
+        body_r = P * 0.25
+        tw = max(3, int(P * 0.15))         # سمك السنّ
+        for a in range(0, 360, 45):        # ثمانية أسنان
             rad = math.radians(a)
-            x0 = cx + math.cos(rad) * P * 0.36
-            y0 = cy + math.sin(rad) * P * 0.36
-            x1 = cx + math.cos(rad) * P * 0.46
-            y1 = cy + math.sin(rad) * P * 0.46
-            d.line([x0, y0, x1, y1], fill=c, width=lw)
+            x0 = cx + math.cos(rad) * body_r * 0.5
+            y0 = cy + math.sin(rad) * body_r * 0.5
+            x1 = cx + math.cos(rad) * (body_r + P * 0.13)
+            y1 = cy + math.sin(rad) * (body_r + P * 0.13)
+            d.line([x0, y0, x1, y1], fill=c, width=tw)
+            d.ellipse([x1 - tw / 2, y1 - tw / 2, x1 + tw / 2, y1 + tw / 2],
+                      fill=c)               # طرف مستدير للسنّ
+        d.ellipse([cx - body_r, cy - body_r, cx + body_r, cy + body_r], fill=c)
+        hole = P * 0.10
+        d.ellipse([cx - hole, cy - hole, cx + hole, cy + hole],
+                  fill=(0, 0, 0, 0))        # تفريغ المركز
     elif name == "clear":                 # مسح (x)
         d.ellipse([m, m, P - m, P - m], outline=c, width=lw)
         d.line([P * 0.36, P * 0.36, P * 0.64, P * 0.64], fill=c, width=lw)

@@ -134,6 +134,8 @@ class UmrahApp:
     # الشريط الجانبي المشترك (شعار + أكورديون + طيّ) — نفس آلية الحج
     _SIDEBAR_W = G.HajjApp._SIDEBAR_W
     _SIDEBAR_W_MIN = G.HajjApp._SIDEBAR_W_MIN
+    _NAV_ICON = G.HajjApp._NAV_ICON
+    _NAV_ICON_BIG = G.HajjApp._NAV_ICON_BIG
     _build_shell = G.HajjApp._build_shell
     _build_sidebar = G.HajjApp._build_sidebar
     _nav_item = G.HajjApp._nav_item
@@ -605,10 +607,12 @@ class UmrahApp:
         # ---- إجراءات مباشرة أعلى التنقّل (نُقلت من الشريط العلوي) ----
         # (الوضع الفاتح/الداكن يبقى داخل قسم «الإعدادات» فقط)
         _other = app_mode.mode_label(app_mode.HAJJ)
-        self._nav_action("برنامج جديد", "add", self.new_trip)
-        self._nav_action("المعتمرون", "id", self.open_pilgrims)
-        self._nav_action("اسأل بياناتك", "search", self.ask_data)
-        self._nav_action(f"التبديل إلى {_other}", "swap", self.switch_mode)
+        self._nav_action("برنامج جديد", "add", self.new_trip, color=G.NAV_LIME)
+        self._nav_action("المعتمرون", "id", self.open_pilgrims, color=G.NAV_SKY)
+        self._nav_action("اسأل بياناتك", "search", self.ask_data,
+                         color=G.NAV_BLUE)
+        self._nav_action(f"التبديل إلى {_other}", "swap", self.switch_mode,
+                         color=G.NAV_VIOLET)
         import tkinter as _tk
         _tk.Frame(self._nav_holder, bg=G.SIDEBAR_SEP, height=1).pack(
             fill="x", padx=16, pady=(8, 4))
@@ -620,14 +624,14 @@ class UmrahApp:
             ("🔎  اسأل بياناتك", self.ask_data),
             ("💰  متابعة التحصيل (المتأخرون)", self.open_collections),
             ("📋  نسخ ملخّص الموسم", self.copy_season_summary),
-        ), icon=("report", G.BRONZE), tip="تقارير الموسم والتحصيل والمساعد")
+        ), icon=("report", G.NAV_ROSE), tip="تقارير الموسم والتحصيل والمساعد")
         self._nav_item("البرنامج", (
             ("➕  برنامج جديد", self.new_trip),
             ("👤  المعتمرون", self.open_pilgrims),
             None,
             ("✏️  تعديل البرنامج", self.edit_trip),
             ("🗑  حذف البرنامج", self.delete_trip),
-        ), icon=("columns", G.BRONZE), tip="إدارة برامج العمرة ومعتمريها")
+        ), icon=("columns", G.NAV_TEAL), tip="إدارة برامج العمرة ومعتمريها")
         self._nav_item("التسعير والعروض", (
             ("📋  عروض الأسعار المحفوظة", self.open_quotes),
             ("💲  عرض سعر يدوي جديد", self.new_manual_quotation),
@@ -635,7 +639,7 @@ class UmrahApp:
             None,
             ("🧮  مسعّر المجموعات", self.open_group_pricer),
             ("🗂  التسعيرات المحفوظة", self.open_pricings),
-        ), icon=("chart", G.BRONZE), tip="عروض الأسعار والمسعّر والتسعيرات")
+        ), icon=("chart", G.NAV_GOLD), tip="عروض الأسعار والمسعّر والتسعيرات")
         self._nav_item("مستندات وكشوف", (
             ("💰  الملخّص المالي", self.prog_finance),
             ("🛏  التسكين", self.prog_rooming),
@@ -650,18 +654,18 @@ class UmrahApp:
             None,
             ("🏨  فاوتشر فندق يدوي", self.new_manual_voucher),
             ("🗂  الفاوتشرات المحفوظة", self.open_vouchers),
-        ), icon=("id", G.BRONZE), tip="كشوف البرنامج ومستنداته")
+        ), icon=("id", G.NAV_GREEN), tip="كشوف البرنامج ومستنداته")
         self._nav_item("الطلبات", (
             ("🚖  طلب حجز مواصلات", self.new_transport_request),
             ("🗂  الطلبات المحفوظة", self.open_transport_requests),
-        ), icon=("tent", G.BRONZE), tip="طلبات حجز المواصلات المحفوظة")
+        ), icon=("tent", G.NAV_ORANGE), tip="طلبات حجز المواصلات المحفوظة")
         self._nav_item("الإعدادات", [
             ("🗓  اختيار الموسم (السنة)", self._pick_season),
             None,
             ("↕  كثافة الصفوف", self._pick_density),
             ("🔤  حجم الخط", self._pick_font),
             ("🎨  الوضع (فاتح/داكن)", self._pick_theme),
-        ], icon=("gear", G.BRONZE), tip="الموسم وكثافة الصفوف وحجم الخط والوضع")
+        ], icon=("gear", G.NAV_BRONZE), tip="الموسم وكثافة الصفوف وحجم الخط والوضع")
         if self._ui.get("sidebar_collapsed"):
             self._set_sidebar_collapsed(True)
 

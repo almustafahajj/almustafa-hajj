@@ -83,6 +83,20 @@ _DEFAULT_HIDDEN_COLS = (
     "emergency_phone", "emergency_relation",
 )
 
+# ---- ألوان أيقونات التنقّل — عصرية زاهية، لونٌ مميّز لكل قسم ----
+# (ثابتة عبر الوضعين؛ مختارة لتبقى واضحة على الشريط الفاتح والداكن)
+NAV_BLUE = "#3B6FE0"
+NAV_VIOLET = "#7C5CE0"
+NAV_TEAL = "#12A594"
+NAV_SKY = "#0EA5E9"
+NAV_ORANGE = "#E0801E"
+NAV_GOLD = "#D4A017"
+NAV_GREEN = "#2FA35B"
+NAV_ROSE = "#E05260"
+NAV_SLATE = "#6B7280"
+NAV_LIME = "#7FB024"
+NAV_BRONZE = "#A67A44"
+
 # ---- ألوان العلامة الثابتة (لا تتبدّل بين الفاتح والداكن) ----
 ACCENT = "#241E17"          # فحميّ دافئ — سطح رؤوس الجدول (منسجم مع البرونزي)
 BRONZE = "#8A6E4B"          # البرونزي — التمييز والتفاعل
@@ -704,6 +718,8 @@ class HajjApp:
 
     _SIDEBAR_W = 238
     _SIDEBAR_W_MIN = 82
+    _NAV_ICON = 28              # حجم أيقونة التنقّل (موسَّع) — أكبر وأوضح
+    _NAV_ICON_BIG = 34         # حجم الأيقونة في الوضع المطويّ (أيقونات فقط)
 
     def _build_sidebar(self) -> None:
         """الشعار أعلى الشريط، التنقّل في الوسط، والحساب وزرّ الطيّ أسفله."""
@@ -786,8 +802,9 @@ class HajjApp:
                 s["close"]()                 # اطوِ الأقسام المفتوحة
             self._sidebar.configure(width=self._SIDEBAR_W_MIN)
             for h in getattr(self, "_nav_headers", []):
-                big = (self._cticon(h["icon"], SIDEBAR_FG, 30)
-                       if h.get("icon") else None)   # أكبر وأسطع في الوضع المطويّ
+                big = (self._cticon(h["icon"], h.get("color") or SIDEBAR_ICON,
+                                    self._NAV_ICON_BIG)
+                       if h.get("icon") else None)   # أكبر وملوّن في الوضع المطويّ
                 h["btn"].configure(text="", anchor="center", image=big)
             # يبقى الشعار (مُصغّراً) ويُخفى الاسم فقط
             if self._logo_lbl is not None and self._logo_small is not None:
@@ -803,7 +820,8 @@ class HajjApp:
         else:
             self._sidebar.configure(width=self._SIDEBAR_W)
             for h in getattr(self, "_nav_headers", []):
-                small = (self._cticon(h["icon"], SIDEBAR_ICON, 24)
+                small = (self._cticon(h["icon"], h.get("color") or SIDEBAR_ICON,
+                                      self._NAV_ICON)
                          if h.get("icon") else None)
                 h["btn"].configure(text=rtl(h["label"]), anchor="e", image=small)
             # استعادة الشعار الكبير والاسم
@@ -860,10 +878,12 @@ class HajjApp:
 
         # ---- رأس القسم ----
         icon_name = icon[0] if icon else None
-        img = self._cticon(icon_name, SIDEBAR_ICON, 24) if icon_name else None
+        icon_color = icon[1] if (icon and len(icon) > 1 and icon[1]) else SIDEBAR_ICON
+        img = (self._cticon(icon_name, icon_color, self._NAV_ICON)
+               if icon_name else None)
         header = _ctk.CTkButton(
             holder, text=rtl(i18n.tr(label)), image=img, compound="right",
-            anchor="e", corner_radius=10, height=42,
+            anchor="e", corner_radius=10, height=44,
             font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
             hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG)
         header.pack(fill="x", padx=5, pady=(2, 0))
@@ -908,7 +928,7 @@ class HajjApp:
         sect["close"] = close
         self._nav_sections.append(sect)
         self._nav_headers.append({"btn": header, "label": i18n.tr(label),
-                                  "icon": icon_name})
+                                  "icon": icon_name, "color": icon_color})
         header.configure(command=toggle)
         # التلميح يعرض اسم القسم — مفيد خاصّةً عند طيّ الشريط (أيقونات فقط)
         add_tooltip(header, i18n.tr(label))
@@ -931,23 +951,25 @@ class HajjApp:
                   background=BG).pack(side=RIGHT, padx=(4, 0))
         self.progress = ttk.Progressbar(bar, mode="determinate", length=160)
 
-    def _nav_action(self, label, icon_name, command):
+    def _nav_action(self, label, icon_name, command, color=None):
         """زرّ إجراء مباشر في الشريط الجانبي (كعنصر تنقّل ينفّذ أمراً فوراً)."""
         from . import i18n
         txt = i18n.tr(label)
+        color = color or SIDEBAR_ICON
         if not _HAS_CTK:
             b = ttk.Button(self._nav_holder, text=rtl(txt),
                            style="Ghost.TButton", command=command)
             b.pack(fill="x", padx=6, pady=2)
             return b
-        img = self._cticon(icon_name, SIDEBAR_ICON, 24)
+        img = self._cticon(icon_name, color, self._NAV_ICON)
         btn = _ctk.CTkButton(
             self._nav_holder, text=rtl(txt), image=img, compound="right",
             anchor="e", corner_radius=10, height=44,
             font=_ctk.CTkFont(_FSB, 14, "bold"), fg_color=SIDEBAR_BG,
             hover_color=SIDEBAR_HOVER, text_color=SIDEBAR_FG, command=command)
         btn.pack(fill="x", padx=8, pady=(2, 0))
-        self._nav_headers.append({"btn": btn, "label": txt, "icon": icon_name})
+        self._nav_headers.append({"btn": btn, "label": txt, "icon": icon_name,
+                                  "color": color})
         add_tooltip(btn, txt)
         return btn
 
@@ -1281,16 +1303,17 @@ class HajjApp:
         self._menus: list = []
         self._nav_sections: list = []      # أقسام الأكورديون (للفتح/الإغلاق)
         self._nav_headers: list = []       # رؤوس الأقسام (لطيّ النصوص)
-        # ---- الأقسام الرئيسية السبعة (مستوحاة من نظام إدارة الحجّ) ----
-        BLUE, ORANGE, GOLD = "#2C5AA0", "#C77B30", "#C9A227"
-        GRAY, GREEN = "#6B6459", "#2E7D46"
+        # ---- ألوان أيقونات عصرية زاهية، لونٌ مميّز لكل قسم ----
+        BLUE, ORANGE, GOLD = NAV_SKY, NAV_ORANGE, NAV_GOLD
+        GRAY, GREEN = NAV_SLATE, NAV_GREEN
 
         # ---- إجراءات مباشرة أعلى التنقّل (نُقلت من الشريط العلوي) ----
         # (الوضع الفاتح/الداكن يبقى داخل قسم «الإعدادات» فقط)
         _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
-        self._nav_action("لوحة التحكم", "home", self.do_dashboard)
+        self._nav_action("لوحة التحكم", "home", self.do_dashboard,
+                         color=NAV_BLUE)
         self._nav_action(f"التبديل إلى {app_mode.mode_label(_other)}",
-                         "swap", self.switch_mode)
+                         "swap", self.switch_mode, color=NAV_VIOLET)
         tk.Frame(self._nav_holder, bg=SIDEBAR_SEP, height=1).pack(
             fill="x", padx=16, pady=(8, 4))
 
@@ -1309,7 +1332,7 @@ class HajjApp:
             if not app_mode.is_umrah():
                 programs_items.append(("🗓  جدول المناسك", self.do_itinerary))
             programs_items.append(("🧳  مواعيد وتعليمات السفر", self.do_travel_info))
-            self._nav_item("البرامج", programs_items, icon=("columns", BRONZE),
+            self._nav_item("البرامج", programs_items, icon=("columns", NAV_TEAL),
                            tip="الموسم والبرامج والمجموعات ومواعيد السفر")
 
         # 🪪 الحجوزات (سجلّات الحجّاج)
@@ -1382,7 +1405,7 @@ class HajjApp:
             ("📜  عقد خدمات حج (معاينة)", self._contract_selected),
             None,
             ("🧾  توليد جماعي للمستندات (للمعروضين)", self.do_bulk_docs),
-        ], icon=("chart", GOLD),
+        ], icon=("chart", NAV_GREEN),
             tip="الإحصاءات والسندات والفواتير والعقود")
 
         # 📊 التقارير
@@ -1397,7 +1420,7 @@ class HajjApp:
             ("🪪  بطاقات الحجّاج", self.do_badges),
             ("🏷  طباعة الاستيكرات (حقائب/غرف/أظرف)", self.do_stickers),
             ("🖼  طباعة الجوازات والتصاريح", self.do_print_images),
-        ], icon=("report", BLUE),
+        ], icon=("report", NAV_ROSE),
             tip="التصدير والكشوفات والبطاقات والطباعة")
 
         # ⚙ لوحة الإدارة (النسخ الاحتياطية والحساب)
@@ -1439,7 +1462,7 @@ class HajjApp:
             self._nav_item("استيراد البيانات", [
                 ("📁  استيراد من إكسل", self.import_from_excel),
                 ("📷  إضافة جوازات (صور / PDF)", self.add_images),
-            ], icon=("add", GREEN),
+            ], icon=("add", NAV_LIME),
                 tip="استيراد من إكسل أو قراءة الجوازات")
 
         # ⚙ الإعدادات (قسم أكورديون — الموسم والعرض والوضع)
@@ -1449,7 +1472,7 @@ class HajjApp:
             ("↕  كثافة الصفوف", self._pick_density),
             ("🔤  حجم الخط", self._pick_font),
             ("🎨  الوضع (فاتح/داكن)", self._pick_theme),
-        ], icon=("gear", GRAY), tip="الموسم وكثافة الصفوف وحجم الخط والوضع")
+        ], icon=("gear", NAV_BRONZE), tip="الموسم وكثافة الصفوف وحجم الخط والوضع")
 
         # استعادة حالة الطيّ المحفوظة
         if self._ui.get("sidebar_collapsed"):
