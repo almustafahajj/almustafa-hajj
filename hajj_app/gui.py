@@ -660,16 +660,22 @@ class HajjApp:
     def _build_sidebar(self) -> None:
         """الشعار أعلى الشريط، التنقّل في الوسط، والحساب وزرّ الطيّ أسفله."""
         sb = self._sidebar
-        # العلامة (شعار + اسم) — تُخفى عند الطيّ
+        # العلامة (شعار + اسم). عند الطيّ يبقى الشعار مُصغّراً ويُخفى الاسم فقط.
         self._brand = tk.Frame(sb, bg=SIDEBAR_BG)
-        self._brand.pack(fill="x", pady=(20, 2), padx=12)
-        self._logo = logo_image(self.root, width=150)
+        self._brand.pack(fill="x", pady=(18, 2), padx=8)
+        self._logo = logo_image(self.root, width=150)      # الشعار الكبير
+        self._logo_small = logo_image(self.root, width=52)  # مُصغّر عند الطيّ
+        self._logo_lbl = None
         if self._logo is not None:
-            tk.Label(self._brand, image=self._logo, bg=SIDEBAR_BG).pack()
+            self._logo_lbl = tk.Label(self._brand, image=self._logo,
+                                      bg=SIDEBAR_BG)
+            self._logo_lbl.pack()
         # عنوان قصير يتّسع لعرض الشريط (العنوان الطويل كان يُقصّ)
-        tk.Label(self._brand, text=rtl(app_mode.label("program")),
-                 bg=SIDEBAR_BG, fg=SIDEBAR_FG, font=(_FSB, 13, "bold"),
-                 wraplength=200, justify="center").pack(pady=(6, 0))
+        self._brand_title = tk.Label(
+            self._brand, text=rtl(app_mode.label("program")), bg=SIDEBAR_BG,
+            fg=SIDEBAR_FG, font=(_FSB, 13, "bold"), wraplength=200,
+            justify="center")
+        self._brand_title.pack(pady=(6, 0))
         self._sep = tk.Frame(sb, bg=SIDEBAR_SEP, height=1)
         self._sep.pack(fill="x", padx=16, pady=(10, 8))
 
@@ -735,7 +741,11 @@ class HajjApp:
                 big = (self._cticon(h["icon"], SIDEBAR_FG, 30)
                        if h.get("icon") else None)   # أكبر وأسطع في الوضع المطويّ
                 h["btn"].configure(text="", anchor="center", image=big)
-            self._brand.pack_forget()
+            # يبقى الشعار (مُصغّراً) ويُخفى الاسم فقط
+            if self._logo_lbl is not None and self._logo_small is not None:
+                self._logo_lbl.configure(image=self._logo_small)
+            if getattr(self, "_brand_title", None) is not None:
+                self._brand_title.pack_forget()
             self._foot_info.pack_forget()
             if self._logout_btn is not None:
                 self._logout_btn.configure(text=rtl("🚪"))
@@ -748,7 +758,11 @@ class HajjApp:
                 small = (self._cticon(h["icon"], SIDEBAR_ICON, 24)
                          if h.get("icon") else None)
                 h["btn"].configure(text=rtl(h["label"]), anchor="e", image=small)
-            self._brand.pack(fill="x", pady=(20, 2), padx=12, before=self._sep)
+            # استعادة الشعار الكبير والاسم
+            if self._logo_lbl is not None and self._logo is not None:
+                self._logo_lbl.configure(image=self._logo)
+            if getattr(self, "_brand_title", None) is not None:
+                self._brand_title.pack(pady=(6, 0))
             self._foot_info.pack(fill="x")
             if self._logout_btn is not None:
                 self._logout_btn.configure(text=rtl("🚪  تسجيل الخروج"))
