@@ -1286,13 +1286,11 @@ class HajjApp:
         GRAY, GREEN = "#6B6459", "#2E7D46"
 
         # ---- إجراءات مباشرة أعلى التنقّل (نُقلت من الشريط العلوي) ----
+        # (الوضع الفاتح/الداكن يبقى داخل قسم «الإعدادات» فقط)
         _other = app_mode.UMRAH if app_mode.is_hajj() else app_mode.HAJJ
-        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
         self._nav_action("لوحة التحكم", "home", self.do_dashboard)
         self._nav_action(f"التبديل إلى {app_mode.mode_label(_other)}",
                          "swap", self.switch_mode)
-        self._nav_action(("الوضع الفاتح" if _dark_now else "الوضع الداكن"),
-                         "moon", self.toggle_theme)
         tk.Frame(self._nav_holder, bg=SIDEBAR_SEP, height=1).pack(
             fill="x", padx=16, pady=(8, 4))
 

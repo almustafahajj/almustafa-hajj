@@ -560,14 +560,12 @@ class UmrahApp:
         self._nav_sections = []
         self._nav_headers = []
         # ---- إجراءات مباشرة أعلى التنقّل (نُقلت من الشريط العلوي) ----
+        # (الوضع الفاتح/الداكن يبقى داخل قسم «الإعدادات» فقط)
         _other = app_mode.mode_label(app_mode.HAJJ)
-        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
         self._nav_action("برنامج جديد", "add", self.new_trip)
         self._nav_action("المعتمرون", "id", self.open_pilgrims)
         self._nav_action("اسأل بياناتك", "search", self.ask_data)
         self._nav_action(f"التبديل إلى {_other}", "swap", self.switch_mode)
-        self._nav_action(("الوضع الفاتح" if _dark_now else "الوضع الداكن"),
-                         "moon", self.toggle_theme)
         import tkinter as _tk
         _tk.Frame(self._nav_holder, bg=G.SIDEBAR_SEP, height=1).pack(
             fill="x", padx=16, pady=(8, 4))
