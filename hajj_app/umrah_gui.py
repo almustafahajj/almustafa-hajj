@@ -141,6 +141,8 @@ class UmrahApp:
     _set_sidebar_collapsed = G.HajjApp._set_sidebar_collapsed
     _cticon = G.HajjApp._cticon
     _icon = G.HajjApp._icon
+    _nav_action = G.HajjApp._nav_action
+    _choose = G.HajjApp._choose
 
     def __init__(self, root, session=None, open_mode: bool = False) -> None:
         self.root = root
@@ -557,6 +559,18 @@ class UmrahApp:
         self._menus = []
         self._nav_sections = []
         self._nav_headers = []
+        # ---- إجراءات مباشرة أعلى التنقّل (نُقلت من الشريط العلوي) ----
+        _other = app_mode.mode_label(app_mode.HAJJ)
+        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
+        self._nav_action("برنامج جديد", "add", self.new_trip)
+        self._nav_action("المعتمرون", "id", self.open_pilgrims)
+        self._nav_action("اسأل بياناتك", "search", self.ask_data)
+        self._nav_action(f"التبديل إلى {_other}", "swap", self.switch_mode)
+        self._nav_action(("الوضع الفاتح" if _dark_now else "الوضع الداكن"),
+                         "moon", self.toggle_theme)
+        import tkinter as _tk
+        _tk.Frame(self._nav_holder, bg=G.SIDEBAR_SEP, height=1).pack(
+            fill="x", padx=16, pady=(8, 4))
         self._nav_item("لوحة الموسم", (
             ("📊  نظرة سريعة", self.open_dashboard),
             ("🌐  تقرير ويب (يُشارك برابط)", self.export_web_dashboard),
@@ -600,54 +614,71 @@ class UmrahApp:
             ("🚖  طلب حجز مواصلات", self.new_transport_request),
             ("🗂  الطلبات المحفوظة", self.open_transport_requests),
         ), icon=("tent", G.BRONZE), tip="طلبات حجز المواصلات المحفوظة")
+        self._nav_item("الإعدادات", [
+            ("🗓  اختيار الموسم (السنة)", self._pick_season),
+            None,
+            ("↕  كثافة الصفوف", self._pick_density),
+            ("🔤  حجم الخط", self._pick_font),
+            ("🎨  الوضع (فاتح/داكن)", self._pick_theme),
+        ], icon=("gear", G.BRONZE), tip="الموسم وكثافة الصفوف وحجم الخط والوضع")
         if self._ui.get("sidebar_collapsed"):
             self._set_sidebar_collapsed(True)
 
+    # ---- اختيارات الإعدادات (من الشريط الجانبي) ----
+    def _pick_season(self) -> None:
+        self._choose("اختر الموسم (السنة)", list(self._season_years),
+                     self._season.get(),
+                     lambda v: (self._season.set(v), self._on_season_change()))
+
+    def _pick_density(self) -> None:
+        def _set(v):
+            self._density = v
+            self._apply_table_style()
+            self._save_ui_settings()
+        self._choose("كثافة الصفوف", list(self._DENSITY), self._density, _set)
+
+    def _pick_font(self) -> None:
+        def _set(v):
+            self._font_size = v
+            self._apply_table_style()
+            self._save_ui_settings()
+        self._choose("حجم الخط", list(self._FONT_SIZES), self._font_size, _set)
+
+    def _pick_theme(self) -> None:
+        def _set(v):
+            self._theme = v
+            self._ui["theme"] = v
+            self._settings["ui"] = self._ui
+            try:
+                save_settings(self._settings)
+            except Exception:
+                pass
+            if self.session is None:
+                G.apply_theme(v)
+                return
+            self._exit_action = "restart"
+            self.root.destroy()
+        self._choose("الوضع (فاتح/داكن)", list(G.THEMES),
+                     getattr(self, "_theme", "فاتح"), _set)
+
     def _build_topbar(self) -> None:
-        """شريط علوي رفيع في منطقة المحتوى: الموسم + الإجراءات الأكثر استخداماً."""
+        """شريط علوي رفيع: عنوان الموسم فقط (بقيّة الأزرار في الشريط الجانبي)."""
         bar = ttk.Frame(self._body, style="Toolbar.TFrame",
                         padding=(18, 12, 18, 6))
         bar.pack(fill=X)
-        # زرّ طيّ/توسيع القائمة الجانبية
-        if _HAS_CTK:
-            ham = _ctk.CTkButton(
-                bar, text="", width=42, height=38, corner_radius=11,
-                image=self._cticon("menu", G.TEXT, 20), fg_color=G.GHOST_BG,
-                hover_color=G.GHOST_HOVER, command=self._toggle_sidebar)
-        else:
-            ham = ttk.Button(bar, text=G.rtl("☰"), style="Ghost.TMenubutton",
-                             command=self._toggle_sidebar)
-        ham.pack(side=RIGHT, padx=(0, 12))
-        G.add_tooltip(ham, G.rtl("طيّ/توسيع القائمة الجانبية"))
-        # الموسم (يمين)
         titles = ttk.Frame(bar, style="Toolbar.TFrame")
         titles.pack(side=RIGHT)
+        # العنوان + السنة للعرض فقط (تحديد الموسم من الإعدادات في الشريط الجانبي)
         row1 = ttk.Frame(titles, style="Toolbar.TFrame")
         row1.pack(anchor="e")
         ttk.Label(row1, text="إدارة موسم العمرة", font=(G._FSB, 18),
                   foreground=G.TEXT, background=G.BG).pack(side=RIGHT)
-        year_box = ttk.Combobox(row1, textvariable=self._season,
-                                state="readonly", width=7, font=(G._FSB, 14),
-                                values=self._season_years)
-        year_box.pack(side=RIGHT, padx=(8, 0))
-        year_box.bind("<<ComboboxSelected>>", lambda _e: self._on_season_change())
+        ttk.Label(row1, textvariable=self._season, font=(G._FSB, 18, "bold"),
+                  foreground=G.BRONZE, background=G.BG).pack(side=RIGHT, padx=(8, 0))
         self._subtitle = ttk.Label(titles, text=self._season_text(),
                                     font=(G._FUI, 10), foreground=G.MUTED,
                                     background=G.BG)
         self._subtitle.pack(anchor="e")
-        # الإجراءات الأكثر استخداماً (يسار)
-        b_new = self._mkbtn(bar, "➕  برنامج جديد", self.new_trip, "primary")
-        b_new.pack(side=LEFT)
-        G.add_tooltip(b_new, G.rtl("إضافة برنامج عمرة جديد  (Ctrl+N)"))
-        b_pil = self._mkbtn(bar, "👤  المعتمرون", self.open_pilgrims, "act")
-        b_pil.pack(side=LEFT, padx=(8, 0))
-        G.add_tooltip(b_pil, G.rtl("فتح معتمري البرنامج المحدَّد  (Enter)"))
-        other = app_mode.mode_label(app_mode.HAJJ)
-        self._mkbtn(bar, f"🕋  {other}", self.switch_mode).pack(
-            side=LEFT, padx=(8, 0))
-        _dark_now = getattr(self, "_theme", "فاتح") == "داكن"
-        self._mkbtn(bar, ("☀️  فاتح" if _dark_now else "🌙  داكن"),
-                    self.toggle_theme).pack(side=LEFT, padx=(8, 0))
 
     # ---- جدول البرامج ----
     def _build_table(self) -> None:
