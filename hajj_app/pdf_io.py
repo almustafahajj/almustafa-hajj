@@ -2188,11 +2188,62 @@ def build_invoice_item(rec, *, season: str = "") -> str:
     return desc
 
 
+def build_invoice_data(rec, *, company=None, number="INV-0001", date_str="",
+                       item_desc="", vat_mode="none", season="", notes=""):
+    """يبني بيانات الفاتورة (قاموس قابل للتحرير في المحرّر الويب)."""
+    from .fields import parse_amount
+    company_info(company)
+    if not date_str:
+        date_str = date.today().isoformat()
+    gross = parse_amount(rec.program_value)
+    if gross is None:
+        gross = parse_amount(rec.paid_amount)
+    if not item_desc:
+        item_desc = build_invoice_item(rec, season=season)
+    return {
+        "number": str(number or "INV-0001"),
+        "date": date_str,
+        "guest_ar": str(getattr(rec, "full_name_ar", "") or
+                        getattr(rec, "full_name_en", "") or ""),
+        "phone": str(getattr(rec, "phone", "") or ""),
+        "passport": str(getattr(rec, "passport_number", "") or ""),
+        "nationality": str(getattr(rec, "nationality_ar", "") or ""),
+        "item_desc": item_desc,
+        "amount": f"{float(gross or 0):.2f}",
+        "paid": f"{float(parse_amount(rec.paid_amount) or 0):.2f}",
+        "vat_mode": vat_mode,
+        "notes": notes,
+    }
+
+
+# مخطّط حقول الفاتورة للمحرّر الويب
+INVOICE_SCHEMA = [
+    {"legend": "بيانات الفاتورة", "fields": [
+        {"key": "number", "label": "رقم الفاتورة", "ro": True},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "guest_ar", "label": "المستفيد"},
+        {"key": "phone", "label": "الهاتف"},
+        {"key": "passport", "label": "رقم الجواز"},
+        {"key": "nationality", "label": "الجنسية"},
+    ]},
+    {"legend": "البند والمبالغ", "fields": [
+        {"key": "item_desc", "label": "البيان", "type": "area"},
+        {"key": "amount", "label": "المبلغ (د.إ)"},
+        {"key": "paid", "label": "المدفوع"},
+        {"key": "vat_mode", "label": "ضريبة القيمة المضافة", "type": "select",
+         "options": ["none", "extract", "add"]},
+    ]},
+    {"legend": "ملاحظات", "fields": [
+        {"key": "notes", "label": "ملاحظات أسفل الفاتورة", "type": "area"},
+    ]},
+]
+
+
 def export_invoice_pdf(rec, path: str | Path, *, company=None,
                        number: str = "INV-0001", date_str: str = "",
                        electronic: bool = False, vat_mode: str = "none",
                        season: str = "", item_desc: str = "",
-                       notes: str = "") -> Path:
+                       notes: str = "", data=None) -> Path:
     """يبني **فاتورة ضريبية** (أو **فاتورة إلكترونية** بصيغة PEPPOL عند
     ``electronic=True``) لحاج واحد على صفحة A4 عمودية، ثنائية اللغة.
 
@@ -2209,14 +2260,37 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     if gross is None:
         gross = parse_amount(rec.paid_amount)
     gross = float(gross or 0.0)
-    net, vat, total = vat_breakdown(gross, mode=vat_mode)
     paid = parse_amount(rec.paid_amount) or 0.0
-    remaining = max(0.0, total - paid)
 
     if not date_str:
         date_str = date.today().isoformat()
     if not item_desc:
         item_desc = build_invoice_item(rec, season=season)
+
+    # قيم قابلة للتحرير من المحرّر الويب (تتجاوز المشتقّة من السجلّ)
+    guest = str(rec.full_name_ar or rec.full_name_en or "—")
+    phone = str(rec.phone or "")
+    passport = str(rec.passport_number or "")
+    nat = str(rec.nationality_ar or "")
+    if data:
+        number = str(data.get("number") or number)
+        date_str = str(data.get("date") or date_str)
+        item_desc = str(data.get("item_desc") or item_desc)
+        vat_mode = str(data.get("vat_mode") or vat_mode)
+        notes = str(data.get("notes") or notes)
+        guest = str(data.get("guest_ar") or guest)
+        phone = str(data.get("phone") or phone)
+        passport = str(data.get("passport") or passport)
+        nat = str(data.get("nationality") or nat)
+        _g = parse_amount(data.get("amount"))
+        if _g is not None:
+            gross = float(_g)
+        _p = parse_amount(data.get("paid"))
+        if _p is not None:
+            paid = float(_p)
+
+    net, vat, total = vat_breakdown(gross, mode=vat_mode)
+    remaining = max(0.0, total - paid)
 
     title_ar = "فاتورة إلكترونية" if electronic else "فاتورة ضريبية"
     title_en = "E-Invoice (PEPPOL)" if electronic else "Tax Invoice"
@@ -2285,10 +2359,10 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
         return t
 
     meta = kv([("رقم الفاتورة", number), ("التاريخ", date_str)])
-    billto = kv([("المستفيد", rec.full_name_ar or rec.full_name_en or "—"),
-                 ("الهاتف", rec.phone or ""),
-                 ("رقم الجواز", rec.passport_number or ""),
-                 ("الجنسية", rec.nationality_ar)])
+    billto = kv([("المستفيد", guest),
+                 ("الهاتف", phone),
+                 ("رقم الجواز", passport),
+                 ("الجنسية", nat)])
     hdr = Table([[billto, meta]],
                 colWidths=[doc.width * 0.5, doc.width * 0.5])
     hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -2362,8 +2436,7 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     tot.setStyle(TableStyle(tstyle))
 
     # رمز تحقّق QR بجانب الإجماليات (كما في فواتير الضريبة الرسمية)
-    _name = rec.full_name_ar or rec.full_name_en or "—"
-    _qr = _qr_drawing(f"{co['name_ar']} | فاتورة {number} | {_name} | "
+    _qr = _qr_drawing(f"{co['name_ar']} | فاتورة {number} | {guest} | "
                       f"{money(total)} AED | {date_str}", 66)
     if _qr is not None:
         _qr.hAlign = "CENTER"

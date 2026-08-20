@@ -1395,11 +1395,53 @@ class UmrahApp:
             rec, p, program_name=self._prog_name(t),
             company=self._company_dict()), f"{base} {t.code}", "pdf")
 
+    def _web_edit_doc(self, data, schema, title, icon, export_cb):
+        """يفتح المستند في محرّر الويب (عربية سليمة)، ثم يولّد الـ PDF بعد الحفظ."""
+        from . import webdoc
+        import threading
+
+        def worker():
+            result = webdoc.serve_doc_editor(data, schema, title, icon)
+            if result:
+                self.root.after(0, lambda: G.open_preview(
+                    self.root, lambda p: export_cb(p, result), title, "pdf"))
+        threading.Thread(target=worker, daemon=True).start()
+        messagebox.showinfo(
+            "محرّر المستند (المتصفّح)",
+            "فُتح المحرّر في المتصفّح.\n\nعدّل النصوص هناك — العربية تعمل بشكل "
+            "صحيح تماماً — ثم اضغط «💾 حفظ ومعاينة PDF»، وستُفتح المعاينة هنا "
+            "تلقائياً.", parent=self.root)
+
     def prog_receipt(self):
         self._prog_doc(export_umrah_receipt_pdf, "سند")
 
     def prog_invoice(self):
-        self._prog_doc(export_umrah_invoice_pdf, "فاتورة")
+        t = self._sel_trip_or_warn("فاتورة")
+        if t is None:
+            return
+        rec = self._pick_pilgrim(t, "فاتورة")
+        if rec is None:
+            return
+        from .pdf_io import (build_invoice_data, INVOICE_SCHEMA,
+                             export_invoice_pdf, _umrah_services_text)
+        # بيان الفاتورة كما في export_umrah_invoice_pdf
+        desc = f"برنامج {self._prog_name(t)}".strip()
+        extra = []
+        if rec.hotel:
+            h = f"الإقامة في {rec.hotel}"
+            if rec.room_type:
+                h += f" - غرفة {rec.room_type}"
+            extra.append(h)
+        svc = _umrah_services_text(rec)
+        if svc:
+            extra.append(f"خدمات: {svc}")
+        if extra:
+            desc += " (" + "، ".join(extra) + ")"
+        co = self._company_dict()
+        data = build_invoice_data(rec, company=co, item_desc=desc)
+        self._web_edit_doc(
+            data, INVOICE_SCHEMA, "فاتورة ضريبية", "🧾",
+            lambda p, d: export_invoice_pdf(rec, p, data=d, company=co))
 
     def prog_contract(self):
         self._prog_doc(export_umrah_contract_pdf, "عقد")
