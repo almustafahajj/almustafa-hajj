@@ -100,7 +100,12 @@ _GRID = colors.HexColor("#D8CFC2")
 
 
 def _register_fonts() -> None:
-    """يسجّل أول خط عربي متاح. يتراجع إلى Helvetica إن لم يوجد أي خط."""
+    """يسجّل أول خط عربي متاح. يتراجع إلى Helvetica إن لم يوجد أي خط.
+
+    ملاحظة: نعتمد خطوط النظام (Amiri/Tahoma/Arial) عمداً لأنها تحوي أشكال
+    العرض العربية (Presentation Forms-B) التي يخرجها ``arabic_reshaper``؛
+    الخطوط الحديثة كـ Tajawal تعتمد تشكيل OpenType (GSUB) الذي لا يطبّقه
+    reportlab، فتظهر بعض الحروف مبعثرة أو ناقصة. لذا لا نستعملها للطباعة."""
     global _FONT, _FONT_BOLD, _registered
     if _registered:
         return
