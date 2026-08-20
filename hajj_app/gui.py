@@ -2254,6 +2254,7 @@ class HajjApp:
         self.tree.tag_configure("waitlist", background="#FBF0DC",
                                 foreground="#7A5A12")           # قائمة انتظار
         self.tree.tag_configure("hover", background=HOVER_BG)
+        self._build_row_legend(wrap)
         self.tree.bind("<Double-1>", lambda _e: self.edit_selected())
         self._hover_iid = None
         self._hover_prev: tuple = ()
@@ -2317,6 +2318,26 @@ class HajjApp:
         # "ملاحظات" و"الملف المصدر" في آخر الكشف.
         self._scrolled_home = False
         self.tree.bind("<Configure>", lambda _e: self._scroll_to_start(), add="+")
+
+    # (تنبيه المراجعة وقائمة الانتظار يشتركان في اللون الكهرماني، فيُدمجان)
+    _ROW_LEGEND = (("مكتمل السداد", "PAID_BG"), ("عليه متأخّرات", "DUE_BG"),
+                   ("تنبيه / قائمة انتظار", "WARN_BG"), ("ملغى", "#ECE7E1"))
+
+    def _build_row_legend(self, parent) -> None:
+        """وسيلة إيضاح مدمجة تشرح معاني ألوان صفوف الجدول (تُقرأ بلمحة)."""
+        legend = ttk.Frame(parent, style="Toolbar.TFrame", padding=(2, 5, 2, 0))
+        legend.pack(side="bottom", fill=X)
+        _g = globals()
+        for txt, color in self._ROW_LEGEND:
+            color = _g.get(color, color)          # DUE_BG/PAID_BG… → قيمة الوضع الحالي
+            item = ttk.Frame(legend, style="Toolbar.TFrame")
+            item.pack(side=RIGHT, padx=(0, 14))
+            ttk.Label(item, text=rtl(txt), font=(_FUI, 9), foreground=MUTED,
+                      background=BG).pack(side=RIGHT, padx=(0, 5))
+            sw = tk.Frame(item, background=color, width=16, height=12,
+                          highlightbackground=BORDER, highlightthickness=1)
+            sw.pack(side=RIGHT)
+            sw.pack_propagate(False)
 
     def _scroll_to_start(self) -> None:
         """يضبط العرض الأفقي على أقصى اليمين، مرة واحدة بعد أول رسم.

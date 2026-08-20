@@ -792,6 +792,21 @@ class UmrahApp:
         self.tree.tag_configure("full", background="#E6F1E9")
         self.tree.tag_configure("over", background="#F6D9D0")
         self.tree.bind("<Double-1>", lambda _e: self.open_pilgrims())
+        # وسيلة إيضاح ألوان السعة — تُقرأ بلمحة
+        import tkinter as _tk
+        legend = ttk.Frame(wrap, style="Toolbar.TFrame", padding=(2, 6, 2, 0))
+        legend.pack(side="bottom", fill=X)
+        for txt, color in (("مكتمل السعة", "#E6F1E9"),
+                           ("متجاوز السعة", "#F6D9D0")):
+            item = ttk.Frame(legend, style="Toolbar.TFrame")
+            item.pack(side=RIGHT, padx=(0, 14))
+            ttk.Label(item, text=G.rtl(txt), font=(G._FUI, 9),
+                      foreground=G.MUTED, background=G.BG).pack(
+                          side=RIGHT, padx=(0, 5))
+            sw = _tk.Frame(item, background=color, width=16, height=12,
+                           highlightbackground=G.BORDER, highlightthickness=1)
+            sw.pack(side=RIGHT)
+            sw.pack_propagate(False)
 
         self._empty = ttk.Label(
             self._body, justify="center", background=G.BG, foreground=G.MUTED,
