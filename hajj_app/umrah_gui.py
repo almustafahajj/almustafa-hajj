@@ -1559,7 +1559,25 @@ class UmrahApp:
             pass
         co = self._company_dict()
         data = build_quotation_data(rec, trip=t, company=co, number=number)
-        QuotationEditorDialog(self.root, rec, t, data, app=self, company=co)
+        self._web_edit_quotation(data, rec, t, co)
+
+    def _web_edit_quotation(self, data, rec, trip, co):
+        """يفتح عرض السعر في محرّر الويب، ثم يحفظه في «عروض الأسعار» ويعاينه."""
+        from .pdf_io import UMRAH_QUOTATION_SCHEMA, export_umrah_quotation_pdf
+        code = getattr(trip, "code", "") or ""
+
+        def _save(result):
+            umrah.save_quote(self._settings, code, result)
+            try:
+                save_settings(self._settings)
+            except OSError:
+                pass
+            self._reload()
+        self._web_edit_doc(
+            data, UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
+            lambda p, d: export_umrah_quotation_pdf(rec, p, trip=trip,
+                                                    company=co, data=d),
+            on_saved=_save)
 
     def open_quotes(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة للبرنامج المحدّد."""
@@ -1581,7 +1599,7 @@ class UmrahApp:
             pass
         rec = PassportData()
         data = build_quotation_data(rec, trip=None, company=co, number=number)
-        QuotationEditorDialog(self.root, rec, None, data, app=self, company=co)
+        self._web_edit_quotation(data, rec, None, co)
 
     def open_manual_quotes(self) -> None:
         """قائمة «عروض الأسعار اليدوية» المحفوظة (خارج البرامج)."""

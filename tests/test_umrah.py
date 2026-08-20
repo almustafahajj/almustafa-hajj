@@ -17,6 +17,9 @@ _mb.showinfo = lambda *a, **k: "ok"
 _mb.showwarning = lambda *a, **k: "ok"
 _mb.showerror = lambda *a, **k: "ok"
 _mb.askyesno = lambda *a, **k: True
+# المستندات المنقولة للويب تفتح متصفّحاً وخادماً محلّياً — نعطّلها في الاختبار
+import hajj_app.webdoc as _webdoc
+_webdoc.serve_doc_editor = lambda *a, **k: None
 import hajj_app.storage as st
 from hajj_app import app_mode, umrah
 from hajj_app.mrz import PassportData
@@ -657,9 +660,7 @@ assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 # مستند لكل معتمر: برنامج فيه معتمر واحد يُختار تلقائياً (بلا منتقٍ)
 app10.prog_receipt()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
-app10.prog_quotation()
-assert any(isinstance(w, _ug.QuotationEditorDialog)
-           for w in r10.winfo_children())
+app10.prog_quotation()      # صار يُحرَّر على الويب (مُعطَّل في الاختبار) — لا يتعطّل
 r10.destroy()
 print("  OK: سند وفاتورة وعقد وفاوتشر ومواصلات ومستندات البرنامج من الرئيسية")
 
@@ -844,10 +845,12 @@ _qe._preview()
 assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 assert len(umrah.load_quotes(appq._settings, "Q1")) == 1   # حُفظ تلقائياً
 _qe.destroy()
-# عرض سعر يدوي خارج البرامج
-appq.new_manual_quotation()
-_qm = [w for w in rq.winfo_children()
-       if isinstance(w, _ug.QuotationEditorDialog)][-1]
+# عرض سعر يدوي خارج البرامج (المحرّر لا يزال متاحاً؛ الدخول من القائمة صار ويب)
+_qmnum = umrah.next_quote_number(appq._settings)
+_qm = _ug.QuotationEditorDialog(
+    rq, PassportData(), None,
+    build_quotation_data(PassportData(), trip=None, number=_qmnum),
+    app=appq, company=None)
 assert _qm.trip is None and _qm._number.startswith("MA-Q")
 _qm._add_stay_row(["مكة المكرّمة", "4", "فندق النور", "ثنائي", "1",
                    "مطلّة كعبة", "إفطار"])

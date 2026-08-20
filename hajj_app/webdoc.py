@@ -150,6 +150,13 @@ function field(f){
   let val = D[key];
   if(type==='lines' && Array.isArray(val)) val = val.join('\n');
   let inp;
+  if(type==='bool'){
+    inp = el('input',{id:'f_'+key, type:'checkbox'});
+    inp.style.flex='none'; inp.style.width='20px'; inp.style.height='20px';
+    if(val) inp.setAttribute('checked','');
+    const lab0 = el('label',{class:'row'},[el('span',{},txt(f.label)), inp]);
+    return lab0;
+  }
   if(type==='area' || type==='lines'){
     inp = el('textarea',{id:'f_'+key}); inp.value = val==null?'':val;
   } else if(type==='select'){
@@ -188,6 +195,8 @@ function tableSection(sec){
         if(vals[i]!=null && vals[i]!=='' && !opts.includes(vals[i])) opts=[vals[i],...opts];
         opts.forEach(o=>{const op=el('option',{value:o},txt(o));
           if(o===vals[i])op.setAttribute('selected',''); w.append(op);});
+      } else if((c.type||'')==='date'){
+        w = el('input',{type:'date',style:'flex:1',value:(vals[i]==null?'':vals[i])});
       } else {
         w = el('input',{type:'text',style:'flex:1',value:(vals[i]==null?'':vals[i])});
       }
@@ -224,7 +233,8 @@ function submitForm(){
     if(sec.table) return;
     (sec.fields||[]).forEach(f=>{
       const e=document.getElementById('f_'+f.key); if(!e) return;
-      if((f.type||'')==='lines')
+      if((f.type||'')==='bool') out[f.key]=e.checked;
+      else if((f.type||'')==='lines')
         out[f.key]=e.value.split('\n').map(x=>x.trim()).filter(Boolean);
       else out[f.key]=e.value;
     });

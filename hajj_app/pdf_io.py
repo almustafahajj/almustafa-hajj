@@ -3198,7 +3198,7 @@ TREQ_SCHEMA = [
         {"key": "view", "label": "الإطلالة"},
     ]},
     {"legend": "جدول الطيران", "table": "flights", "columns": [
-        {"key": "date", "label": "التاريخ"},
+        {"key": "date", "label": "التاريخ", "type": "date"},
         {"key": "carrier", "label": "الناقل"},
         {"key": "flightno", "label": "رقم الرحلة"},
         {"key": "depart", "label": "الإقلاع"},
@@ -3207,7 +3207,7 @@ TREQ_SCHEMA = [
         {"key": "to", "label": "إلى"},
     ]},
     {"legend": "جدول الحركة", "table": "movements", "columns": [
-        {"key": "date", "label": "التاريخ"},
+        {"key": "date", "label": "التاريخ", "type": "date"},
         {"key": "route", "label": "خط السير", "type": "select",
          "options": list(TREQ_ROUTE_OPTIONS)},
         {"key": "count", "label": "عدد"},
@@ -4146,6 +4146,84 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
         "office_name": QUOTE_OFFICE_NAME,
         "office_phone": QUOTE_OFFICE_PHONE,
     }
+
+
+# مخطّط حقول عرض سعر العمرة للمحرّر الويب (بجداوله وبنوده)
+UMRAH_QUOTATION_SCHEMA = [
+    {"legend": "بيانات العرض", "fields": [
+        {"key": "number", "label": "الرقم المرجعي", "ro": True},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "lang", "label": "لغة العرض", "type": "select",
+         "options": ["ar", "en"]},
+        {"key": "title", "label": "عنوان العرض"},
+        {"key": "greeting", "label": "عبارة التحية"},
+        {"key": "addressed_title", "label": "لقب المستلِم", "type": "select",
+         "options": ["السيد", "السيدة", "السادة", "الأخ", "الأخت"]},
+        {"key": "addressed_to", "label": "عناية (اسم المستلِم)"},
+        {"key": "period_from", "label": "الفترة من", "type": "date"},
+        {"key": "period_to", "label": "الفترة إلى", "type": "date"},
+    ]},
+    {"legend": "الضيوف", "table": "guests", "columns": [
+        {"key": "count", "label": "العدد"}, {"key": "type", "label": "النوع"}]},
+    {"legend": "الإقامة", "table": "stays", "columns": [
+        {"key": "city", "label": "المدينة"},
+        {"key": "nights", "label": "الليالي"},
+        {"key": "hotel", "label": "الفندق"},
+        {"key": "room", "label": "نوع الغرفة"},
+        {"key": "rooms", "label": "عدد الغرف"},
+        {"key": "view", "label": "الإطلالة"},
+        {"key": "meals", "label": "الوجبات"},
+        {"key": "cin", "label": "الدخول", "type": "date"},
+        {"key": "cout", "label": "المغادرة", "type": "date"}]},
+    {"legend": "الطيران", "fields": [
+        {"key": "flight_class", "label": "درجة الطيران"}]},
+    {"legend": "جدول الطيران", "table": "flights", "columns": [
+        {"key": "day", "label": "التاريخ", "type": "date"},
+        {"key": "carrier", "label": "الناقل"},
+        {"key": "depart", "label": "الإقلاع"},
+        {"key": "from", "label": "من"},
+        {"key": "arrive", "label": "الوصول"},
+        {"key": "to", "label": "إلى"}]},
+    {"legend": "المواصلات", "fields": [
+        {"key": "car_type", "label": "نوع السيارة"},
+        {"key": "car_model", "label": "الموديل"},
+        {"key": "car_count", "label": "العدد"}]},
+    {"legend": "بنود التنقّل", "table": "transport_lines", "columns": [
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "from", "label": "من"},
+        {"key": "to", "label": "إلى"}]},
+    {"legend": "قطار الحرمين (اختياري)", "table": "trains", "columns": [
+        {"key": "tickets", "label": "التذاكر"},
+        {"key": "class", "label": "الدرجة"},
+        {"key": "from", "label": "من"},
+        {"key": "to", "label": "إلى"},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "depart", "label": "الإقلاع"},
+        {"key": "arrive", "label": "الوصول"}]},
+    {"legend": "التأشيرات", "fields": [
+        {"key": "visa_count", "label": "العدد"},
+        {"key": "visa_type", "label": "النوع"}]},
+    {"legend": "التسعير", "table": "pricing", "columns": [
+        {"key": "person", "label": "نوع الشخص"},
+        {"key": "room", "label": "نوع الغرفة"},
+        {"key": "count", "label": "العدد"},
+        {"key": "price", "label": "سعر الفرد"}]},
+    {"legend": "الصلاحية والملاحظات والختام", "fields": [
+        {"key": "currency", "label": "العملة"},
+        {"key": "validity", "label": "صلاحية العرض حتى", "type": "date"},
+        {"key": "validity_time", "label": "وقت انتهاء الصلاحية"},
+        {"key": "note", "label": "ملاحظة", "type": "area"},
+        {"key": "closing", "label": "عبارة الختام", "type": "area"}]},
+    {"legend": "إظهار / إخفاء بنود العرض", "fields": [
+        {"key": "show_stays", "label": "إظهار الإقامة", "type": "bool"},
+        {"key": "show_flights", "label": "إظهار الطيران", "type": "bool"},
+        {"key": "show_transport", "label": "إظهار المواصلات", "type": "bool"},
+        {"key": "show_costs", "label": "إظهار التكلفة", "type": "bool"}]},
+    {"legend": "التوقيع (المدير العام)", "fields": [
+        {"key": "gm_title", "label": "الصفة"},
+        {"key": "gm_name", "label": "الاسم"},
+        {"key": "gm_phone", "label": "الهاتف"}]},
+]
 
 
 def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None,
