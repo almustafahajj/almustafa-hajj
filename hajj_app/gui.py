@@ -666,9 +666,10 @@ class HajjApp:
         self._logo = logo_image(self.root, width=150)
         if self._logo is not None:
             tk.Label(self._brand, image=self._logo, bg=SIDEBAR_BG).pack()
-        tk.Label(self._brand, text=rtl(app_mode.label("window_title")),
-                 bg=SIDEBAR_BG, fg=SIDEBAR_FG, font=(_FSB, 12, "bold")).pack(
-                     pady=(6, 0))
+        # عنوان قصير يتّسع لعرض الشريط (العنوان الطويل كان يُقصّ)
+        tk.Label(self._brand, text=rtl(app_mode.label("program")),
+                 bg=SIDEBAR_BG, fg=SIDEBAR_FG, font=(_FSB, 13, "bold"),
+                 wraplength=200, justify="center").pack(pady=(6, 0))
         self._sep = tk.Frame(sb, bg=SIDEBAR_SEP, height=1)
         self._sep.pack(fill="x", padx=16, pady=(10, 8))
 
