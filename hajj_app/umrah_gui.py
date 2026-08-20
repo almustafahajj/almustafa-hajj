@@ -145,6 +145,9 @@ class UmrahApp:
     _icon = G.HajjApp._icon
     _nav_action = G.HajjApp._nav_action
     _choose = G.HajjApp._choose
+    _icon_button = G.HajjApp._icon_button
+    _toggle_filter_panel = G.HajjApp._toggle_filter_panel
+    _hide_filter_panel = G.HajjApp._hide_filter_panel
 
     def __init__(self, root, session=None, open_mode: bool = False) -> None:
         self.root = root
@@ -730,29 +733,24 @@ class UmrahApp:
         wrap = ttk.Frame(self._body, style="Toolbar.TFrame", padding=(16, 4, 16, 14))
         wrap.pack(fill=BOTH, expand=True)
 
-        # صفّ بحث فوري في البرامج (بالرمز/الاسم/الفندق)
+        # صفّ الفلاتر والبحث (بنفس تصميم نافذة الحج): زرّ «الفلاتر» + بحث فوري
         filt = ttk.Frame(wrap, style="Toolbar.TFrame")
-        filt.pack(fill=X, pady=(0, 8))
+        filt.pack(fill=X, pady=(0, 4))
+        # مربّع البحث الحرّ أقصى اليمين
         self._query = StringVar(master=self.root, value="")
-        if _HAS_CTK:
-            ent = _ctk.CTkEntry(
-                filt, textvariable=self._query, width=320, height=38,
-                corner_radius=11, justify="right",
-                font=_ctk.CTkFont(G._FUI, 13), fg_color=G.PANEL,
-                border_color=G.BORDER, text_color=G.TEXT,
-                placeholder_text=G.rtl("🔎 ابحث بالرمز أو الاسم أو الفندق…"))
-            ent.pack(side=RIGHT)
-            self._mkbtn(filt, "مسح", lambda: self._query.set("")).pack(
-                side=RIGHT, padx=8)
-        else:
-            ttk.Label(filt, text=G.rtl("🔎  بحث:"), background=G.BG,
-                      foreground=G.TEXT).pack(side=RIGHT, padx=(0, 6))
-            ent = ttk.Entry(filt, textvariable=self._query, width=32,
-                            justify="right")
-            ent.pack(side=RIGHT)
-            ttk.Button(filt, text="مسح", style="Ghost.TButton",
-                       command=lambda: self._query.set("")).pack(
-                           side=RIGHT, padx=6)
+        ent = ttk.Entry(filt, textvariable=self._query, width=20,
+                        justify="right", font=(G._FUI, 10))
+        ent.pack(side=RIGHT, padx=(0, 6))
+        ttk.Label(filt, text=G.rtl("🔍 بحث"), font=(G._FUI, 9),
+                  background=G.BG, foreground=G.TEXT).pack(side=RIGHT, padx=(2, 4))
+        # زرّ واحد يفتح لوحة الفلاتر (فندق مكة/المدينة/حالة السعة)
+        self._filter_btn = self._icon_button(
+            filt, "الفلاتر  ▾", self._toggle_filter_panel, "Ghost.TButton",
+            ("filter", G.TEXT))
+        self._filter_btn.pack(side=RIGHT, padx=(0, 12))
+        # صفّ رقائق الفلاتر النشطة (يُظهَر في _reload عند وجود فلاتر)
+        self._chips_row = ttk.Frame(wrap, style="Toolbar.TFrame")
+        self._build_filter_panel()
         self._query.trace_add("write", lambda *a: self._reload())
 
         # الجدول داخل بطاقة مدوّرة (مظهر عصري) مع تباعد أوسع للصفوف
@@ -819,6 +817,111 @@ class UmrahApp:
                        "ابدأ بـ «➕ برنامج جديد» لإنشاء أوّل برنامج عمرة،\n"
                        "أو غيّر «الموسم» أعلى النافذة لعرض موسمٍ آخر."))
 
+    # ---- لوحة الفلاتر (بنفس أسلوب نافذة الحج، بحقول العمرة) ----
+    _ALL = "الكل"
+    _STATUS_OPTIONS = ("الكل", "متاح", "مكتمل", "متجاوز السعة")
+    # (المفتاح، العنوان، سمة البرنامج)
+    _FILTER_FIELDS = (("makkah", "فندق مكة", "makkah_hotel"),
+                      ("madinah", "فندق المدينة", "madinah_hotel"))
+
+    def _build_filter_panel(self) -> None:
+        """لوحة منسدلة تجمع فلاتر برامج العمرة (الفنادق وحالة السعة)."""
+        self.filter_vars = {"makkah": StringVar(value=self._ALL),
+                            "madinah": StringVar(value=self._ALL),
+                            "status": StringVar(value=self._ALL)}
+        self.filter_boxes = {}
+        panel = Toplevel(self.root)
+        panel.withdraw()
+        panel.overrideredirect(True)
+        panel.configure(bg=G.BORDER)                 # إطار رفيع
+        self._filter_panel = panel
+        inner = ttk.Frame(panel, style="Panel.TFrame", padding=14)
+        inner.pack(padx=1, pady=1)
+        ttk.Label(inner, text=G.rtl("تصفية البرامج"), font=(G._FSB, 11),
+                  foreground=G.TEXT, background=G.BG).grid(
+                      row=0, column=0, columnspan=4, sticky="e", pady=(0, 8))
+        rows = [("makkah", "فندق مكة"), ("madinah", "فندق المدينة"),
+                ("status", "حالة السعة")]
+        for i, (key, label) in enumerate(rows):
+            ttk.Label(inner, text=G.rtl(label), font=(G._FUI, 9),
+                      foreground=G.TEXT, background=G.BG).grid(
+                          row=1 + i, column=1, sticky="e", padx=(10, 3), pady=3)
+            vals = ([self._ALL] if key != "status"
+                    else list(self._STATUS_OPTIONS))
+            box = ttk.Combobox(inner, textvariable=self.filter_vars[key],
+                               state="readonly", width=18, font=(G._FUI, 9),
+                               values=vals)
+            box.grid(row=1 + i, column=0, sticky="e", pady=3)
+            box.bind("<<ComboboxSelected>>", lambda _e: self._reload())
+            self.filter_boxes[key] = box
+        ttk.Separator(inner, orient="horizontal").grid(
+            row=97, column=0, columnspan=4, sticky="ew", pady=(12, 0))
+        btns = ttk.Frame(inner, style="Panel.TFrame")
+        btns.grid(row=99, column=0, columnspan=4, sticky="e", pady=(12, 0))
+        self._mkbtn(btns, "🧹 مسح الفلاتر", self.clear_filters).pack(
+            side=RIGHT, padx=3)
+        self._mkbtn(btns, "إغلاق", self._hide_filter_panel).pack(
+            side=RIGHT, padx=3)
+        panel.bind("<Escape>", lambda _e: self._hide_filter_panel())
+
+    def clear_filters(self) -> None:
+        for v in self.filter_vars.values():
+            v.set(self._ALL)
+        if hasattr(self, "_query"):
+            self._query.set("")
+        self._reload()
+
+    def _update_filter_button(self) -> None:
+        if not hasattr(self, "_filter_btn"):
+            return
+        active = sum(1 for v in self.filter_vars.values() if v.get() != self._ALL)
+        text = f"الفلاتر ({active})  ▾" if active else "الفلاتر  ▾"
+        self._filter_btn.configure(text=G.rtl(text))
+
+    def _populate_filter_values(self, trips) -> None:
+        """يملأ قوائم الفنادق من برامج الموسم (كما في فلاتر الحج)."""
+        if not hasattr(self, "filter_boxes"):
+            return
+        for key, _label, attr in self._FILTER_FIELDS:
+            vals = sorted({(getattr(t, attr) or "").strip()
+                           for t in trips if (getattr(t, attr) or "").strip()})
+            self.filter_boxes[key].configure(values=[self._ALL, *vals])
+            if self.filter_vars[key].get() not in (self._ALL, *vals):
+                self.filter_vars[key].set(self._ALL)   # قيمة اختفت بتغيّر الموسم
+
+    def _update_chips(self) -> None:
+        """يعرض الفلاتر النشطة كوسوم قابلة للإزالة بنقرة (كما في الحج)."""
+        if not hasattr(self, "_chips_row"):
+            return
+        for w in self._chips_row.winfo_children():
+            w.destroy()
+        active = []
+        labels = {"makkah": "فندق مكة", "madinah": "فندق المدينة",
+                  "status": "حالة السعة"}
+        for key, label in labels.items():
+            val = self.filter_vars[key].get()
+            if val != self._ALL:
+                active.append((f"{label}: {val}",
+                               lambda k=key: (self.filter_vars[k].set(self._ALL),
+                                              self._reload())))
+        q = (self._query.get() if hasattr(self, "_query") else "").strip()
+        if q:
+            active.append((f"بحث: {q}", lambda: self._query.set("")))
+        if not active:
+            self._chips_row.pack_forget()
+            return
+        self._chips_row.pack(fill=X, pady=(4, 0))
+        ttk.Label(self._chips_row, text=G.rtl("الفلاتر النشطة:"),
+                  font=(G._FUI, 9), foreground=G.MUTED,
+                  background=G.BG).pack(side=RIGHT, padx=(0, 6))
+        import tkinter as _tk
+        for text, clear in active:
+            chip = _tk.Label(self._chips_row, text=G.rtl(f" ✕  {text} "),
+                             bg=G.GHOST_BG, fg=G.TEXT, font=(G._FUI, 9),
+                             padx=2, cursor="hand2")
+            chip.pack(side=RIGHT, padx=3)
+            chip.bind("<Button-1>", lambda _e, c=clear: c())
+
     def _season_text(self) -> str:
         y = self._season.get()
         return f"موسم العمرة {y} — من ١ يناير إلى ٣١ ديسمبر {y}"
@@ -840,7 +943,7 @@ class UmrahApp:
                 if not umrah.trip_year(t) or umrah.trip_year(t) == season]
 
     def _visible_trips(self) -> list:
-        """برامج الموسم بعد تطبيق بحث الفلترة الفوري (رمز/اسم/فندق)."""
+        """برامج الموسم بعد تطبيق البحث الفوري وفلاتر الفنادق وحالة السعة."""
         trips = self._season_trips()
         q = (self._query.get() if hasattr(self, "_query") else "").strip().lower()
         if q:
@@ -849,6 +952,30 @@ class UmrahApp:
                      or q in (t.name or "").lower()
                      or q in (t.makkah_hotel or "").lower()
                      or q in (t.madinah_hotel or "").lower()]
+        fv = getattr(self, "filter_vars", None)
+        if not fv:
+            return trips
+        mk, md = fv["makkah"].get(), fv["madinah"].get()
+        if mk != self._ALL:
+            trips = [t for t in trips if (t.makkah_hotel or "").strip() == mk]
+        if md != self._ALL:
+            trips = [t for t in trips if (t.madinah_hotel or "").strip() == md]
+        st = fv["status"].get()
+        if st != self._ALL:
+            def _match(t):
+                try:
+                    cap = int(float(str(t.capacity or "").strip() or 0))
+                except ValueError:
+                    cap = 0
+                if not cap:
+                    return False                 # بلا سعة محدّدة → بلا حالة
+                n = len(umrah.trip_pilgrims(self.records, t.code))
+                if st == "متاح":
+                    return n < cap
+                if st == "مكتمل":
+                    return n == cap
+                return n > cap                   # متجاوز السعة
+            trips = [t for t in trips if _match(t)]
         return trips
 
     def _sort_by(self, col: str) -> None:
@@ -884,6 +1011,7 @@ class UmrahApp:
 
     def _reload(self) -> None:
         self.tree.delete(*self.tree.get_children())
+        self._populate_filter_values(self._season_trips())
         rows = []
         n_pil = cap_total = late = 0
         total = paid = 0.0
@@ -929,12 +1057,16 @@ class UmrahApp:
                 f"    ·    💰 المحصّل: {format_amount(paid)}"
                 f"    ·    ⏳ المتبقّي: {format_amount(total - paid)}"))
         self._update_kpi(n_pil, cap_total, total, paid, late)
+        self._update_filter_button()
+        self._update_chips()
         if not shown:
             q = (self._query.get() if hasattr(self, "_query") else "").strip()
-            if q:
+            _flt_on = any(v.get() != self._ALL
+                          for v in getattr(self, "filter_vars", {}).values())
+            if q or _flt_on:
                 self._empty.configure(text=G.rtl(
-                    f"🔎  لا برامج مطابقة لبحثك «{q}».\n\n"
-                    "جرّب كلمةً أخرى أو اضغط «مسح»."))
+                    "🔎  لا برامج مطابقة للبحث/الفلاتر الحالية.\n\n"
+                    "عدّل الفلاتر أو اضغط «🧹 مسح الفلاتر»."))
             else:
                 self._empty.configure(text=G.rtl(
                     "🌙  لا برامج في هذا الموسم بعد.\n\n"
