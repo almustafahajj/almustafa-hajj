@@ -236,6 +236,42 @@ def _web_edit_umrah_contract(app, rec, prog_name, company):
             rec, p, company=company, title_en="Umrah Services Agreement", data=d))
 
 
+def open_group_pricer_web(app):
+    """يفتح مسعّر المجموعات في المتصفّح (حساب حيّ) ثم يحفظ ويعاين الـ PDF.
+
+    يشترك فيه مدخلا الحج والعمرة (كلاهما يمرّر التطبيق ذا ``_settings``/``root``)."""
+    from . import webpricer
+    from .pdf_io import export_group_pricing_pdf
+    import threading
+    number = umrah.next_pricing_number(app._settings)
+    try:
+        save_settings(app._settings)
+    except OSError:
+        pass
+    defaults = (GroupPricerWindow._HAJJ_ITEMS if app_mode.is_hajj()
+                else GroupPricerWindow._DEFAULT_ITEMS)
+    data = {"number": number, "currency": "درهم", "include_madinah": "1",
+            "room_types": [n for n, _ in umrah.GROUP_ROOM_TYPES],
+            "items": [[n, ""] for n in defaults]}
+    co = app._settings.get("company")
+
+    def worker():
+        result = webpricer.serve_pricer(data)
+        if result:
+            def done():
+                umrah.save_pricing(app._settings, result)
+                try:
+                    save_settings(app._settings)
+                except OSError:
+                    pass
+                G.open_preview(
+                    app.root,
+                    lambda p: export_group_pricing_pdf(result, p, company=co),
+                    f"تسعير {result.get('number') or ''}", "pdf")
+            app.root.after(0, done)
+    threading.Thread(target=worker, daemon=True).start()
+
+
 class UmrahApp:
     """الشاشة الرئيسية لبرنامج العمرة: إدارة برامج العمرة."""
 
@@ -1627,8 +1663,8 @@ class UmrahApp:
         QuotesListWindow(self.root, self, None)
 
     def open_group_pricer(self) -> None:
-        """مسعّر المجموعات: أداة حساب كلفة الفرد وسعر البيع لكل نوع غرفة."""
-        GroupPricerWindow(self.root, self)
+        """مسعّر المجموعات: حاسبة حيّة على الويب لكلفة الفرد وسعر البيع لكل نوع غرفة."""
+        open_group_pricer_web(self)
 
     def open_pricings(self) -> None:
         """قائمة التسعيرات المحفوظة (فتح/تعديل، معاينة، حذف)."""

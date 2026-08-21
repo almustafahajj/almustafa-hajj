@@ -3183,9 +3183,9 @@ class HajjApp:
         ug.AskWindow(self.root, ug.HajjCtx(self))
 
     def open_group_pricer(self) -> None:
-        """مسعّر المجموعات: حساب كلفة الفرد وسعر البيع لكل نوع غرفة (للحج)."""
+        """مسعّر المجموعات: حاسبة حيّة على الويب (للحج) — حساب فوري ثم حفظ ومعاينة."""
         from . import umrah_gui as ug
-        ug.GroupPricerWindow(self.root, self)
+        ug.open_group_pricer_web(self)
 
     def open_pricings(self) -> None:
         """قائمة التسعيرات المحفوظة (فتح/تعديل، معاينة، حذف)."""

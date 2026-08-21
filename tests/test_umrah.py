@@ -921,9 +921,8 @@ assert (WORK / "gsel.pdf").read_bytes()[:5] == b"%PDF-"
 # نافذة المسعّر مع حساب حيّ
 rg = tk.Tk(); rg.withdraw()
 appg = _ug.UmrahApp(rg, session=None)
-appg.open_group_pricer()
-_gw = [w for w in rg.winfo_children()
-       if isinstance(w, _ug.GroupPricerWindow)][-1]
+# open_group_pricer صار مسعّراً على الويب؛ الحاسبة لا تزال متاحة — نبنيها مباشرةً
+_gw = _ug.GroupPricerWindow(rg, appg)
 _gw._f["title"].set("تسعير مجموعة")             # عنوان التسعير
 _gw._f["makkah_rate"].set("1426"); _gw._f["makkah_nights"].set("3")
 assert len(_gw._item_rows) == 7                 # بنود افتراضية
