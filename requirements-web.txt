@@ -1,0 +1,9 @@
+# متطلّبات النشر السحابي (نسخة الويب فقط — بلا مكتبات الواجهة/الـ OCR)
+flask>=3.0
+gunicorn>=21
+cryptography
+reportlab
+pillow
+openpyxl
+arabic-reshaper
+python-bidi

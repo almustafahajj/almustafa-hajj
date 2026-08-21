@@ -41,7 +41,14 @@ def data_dir() -> Path:
     * **نسخة مثبّتة** (exe في ``Program Files`` للقراءة فقط): مجلد المستخدم
       ``%LOCALAPPDATA%\\HajjApp\\data`` — لأن الكتابة بجوار البرنامج ممنوعة.
     * **من المصدر**: مجلد ``data`` بجانب حزمة ``hajj_app``.
+    * **النشر السحابي**: يُضبط ``HAJJ_DATA_DIR`` على قرصٍ دائم فيُخزَّن الكشف
+      والحسابات هناك (يبقيان عبر إعادات التشغيل والنشر).
     """
+    env_dir = os.environ.get("HAJJ_DATA_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
     if is_frozen():
         exe_dir = Path(sys.executable).resolve().parent
         beside_exe = exe_dir / "data"

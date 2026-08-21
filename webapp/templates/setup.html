@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>التهيئة الأولى — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body>
+<div class="login-wrap">
+  <form class="login-card" method="post" action="{{ url_for('setup') }}">
+    <div class="brand-dot">🕋</div>
+    <h1>التهيئة الأولى</h1>
+    <p class="sub">أنشئ حساب المالك (المدير) — منه تدير بقيّة المستخدمين وصلاحياتهم.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label>اسم المستخدم</label>
+      <input name="username" required autocomplete="off">
+    </div>
+    <div class="field">
+      <label>كلمة المرور (٨ أحرف فأكثر)</label>
+      <input name="password" type="password" required autocomplete="new-password">
+    </div>
+    <div class="field">
+      <label>تأكيد كلمة المرور</label>
+      <input name="confirm" type="password" required autocomplete="new-password">
+    </div>
+    <button class="btn primary" type="submit">🚀 إنشاء حساب المالك</button>
+    <p class="sub" style="margin-top:14px">سيظهر لك <b>مفتاح استرداد</b> مرّة واحدة —
+      احفظه لاستعادة الدخول إن نسيت كلمة المرور.</p>
+  </form>
+</div>
+</body></html>

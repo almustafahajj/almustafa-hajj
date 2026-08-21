@@ -111,7 +111,20 @@ def _register_fonts() -> None:
         return
     _registered = True
 
-    for name, regular, bold in _FONT_CANDIDATES:
+    # خطّ Amiri المضمّن أولاً — يعمل على أيّ نظام (بما فيه خوادم النشر السحابي
+    # حيث لا توجد خطوط ويندوز)، ويحوي أشكال العرض العربية اللازمة لـ reportlab.
+    _bundled = ()
+    try:
+        from .paths import resource_dir
+        _afdir = resource_dir() / "assets" / "fonts"
+        _areg, _abold = _afdir / "Amiri-Regular.ttf", _afdir / "Amiri-Bold.ttf"
+        if _areg.is_file():
+            _bundled = (("Amiri", str(_areg),
+                         str(_abold) if _abold.is_file() else None),)
+    except Exception:
+        _bundled = ()
+
+    for name, regular, bold in _bundled + _FONT_CANDIDATES:
         if not Path(regular).is_file():
             continue
         try:

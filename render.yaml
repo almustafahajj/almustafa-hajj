@@ -1,0 +1,21 @@
+# مخطّط نشر Render — تطبيق ويب Python بقرص دائم للبيانات
+services:
+  - type: web
+    name: almustafa-hajj
+    runtime: python
+    plan: starter            # القرص الدائم يتطلّب خطة مدفوعة (Starter فأعلى)
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: gunicorn wsgi:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: SECRET_KEY       # مفتاح توقيع الجلسات (يُولَّد تلقائياً)
+        generateValue: true
+      - key: HTTPS            # يفعّل ملفّات ارتباط آمنة خلف HTTPS
+        value: "1"
+      - key: HAJJ_DATA_DIR    # مسار القرص الدائم (الكشف + الحسابات)
+        value: /var/data
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+    disk:
+      name: hajj-data
+      mountPath: /var/data
+      sizeGB: 1

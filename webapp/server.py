@@ -42,7 +42,16 @@ _GROUPS = [
 ]
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)
+# مفتاح توقيع الجلسات: من البيئة في النشر (يُبقي الجلسات صالحة عبر إعادات
+# التشغيل)؛ وإلّا عشوائي للتطوير المحلّي.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(16)
+# أمان ملفّات الارتباط — يُفعَّل Secure تلقائياً خلف HTTPS في النشر السحابي.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(os.environ.get("HTTPS", "").lower()
+                           in ("1", "true", "yes")),
+)
 
 # جلسات hajj_app الحيّة (المفكوكة التشفير) مفهرسة برمز جلسة المتصفّح
 _SESSIONS: dict = {}
@@ -91,8 +100,43 @@ def index():
     return redirect(url_for("dashboard"))
 
 
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    """التهيئة الأولى عند النشر: إنشاء حساب المالك (المدير) من المتصفّح."""
+    if auth.is_configured():
+        return redirect(url_for("login"))
+    error = ""
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm") or ""
+        problem = auth.password_problem(password, confirm)
+        if not username:
+            error = "اسم المستخدم مطلوب."
+        elif problem:
+            error = problem
+        else:
+            try:
+                sess, key = auth.create_account(username, password)
+                sid = secrets.token_hex(16)
+                _SESSIONS[sid] = sess
+                session["sid"] = sid
+                session["mode"] = app_mode.HAJJ
+                session["username"] = username
+                session["role"] = sess.role_label
+                session["acc_key"] = key           # يُعرض مرّة في صفحة الحسابات
+                session["acc_added"] = username
+                session["acc_msg"] = "تمّت التهيئة — هذا حساب المالك (مدير)."
+                return redirect(url_for("accounts"))
+            except Exception as exc:
+                error = str(exc)
+    return render_template("setup.html", error=error)
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if not auth.is_configured():           # نشر جديد بلا حسابات → تهيئة المالك
+        return redirect(url_for("setup"))
     error = ""
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
