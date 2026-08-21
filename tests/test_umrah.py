@@ -528,8 +528,18 @@ for _lg in ("ar", "en"):
     _pd.close()
 w9 = _ug.TripPilgrimsWindow(app9, t9)
 w9.tree.selection_set("0")
-for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract):
-    _do()
+# مستندات المعتمر (سند/فاتورة/عقد) صارت تُحرَّر على الويب — نتحقّق من مسار
+# البيانات المشترك ثم توليد الـ PDF من data (كما يفعل المحرّر بعد الحفظ)
+from hajj_app.pdf_io import (export_receipt_pdf as _exrc,
+                             export_invoice_pdf as _exiv,
+                             export_contract_pdf as _exct)
+_rsel9 = w9._selected()
+_pn9 = t9.name or t9.code
+for _bld, _exp in ((_ug._umrah_receipt_data, _exrc),
+                   (_ug._umrah_invoice_data, _exiv),
+                   (_ug._umrah_contract_data, _exct)):
+    _dd = _bld(_rsel9, _pn9, None)
+    _exp(_rsel9, WORK / "sel.pdf", data=_dd)
     assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 # فاوتشر الفندق يفتح محرّراً قابلاً للتعديل (رقم تسلسلي، إطلالة/نقل منسدلة،
 # تاريخ منسدل، إضافة/حذف خلايا) قبل المعاينة

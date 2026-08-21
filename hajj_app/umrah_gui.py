@@ -124,6 +124,118 @@ def _center(win, parent=None) -> None:
     win.geometry(f"+{(sw - w) // 2}+{(sh - h) // 3}")
 
 
+# ---- بناة بيانات مستندات العمرة (مشتركة بين القائمة الرئيسية وقائمة المعتمرين) ----
+def _umrah_invoice_data(rec, prog_name, company, number="INV-0001"):
+    """بيانات فاتورة عمرة قابلة للتحرير في المحرّر الويب."""
+    from .pdf_io import build_invoice_data, _umrah_services_text
+    desc = f"برنامج {prog_name}".strip()
+    extra = []
+    if rec.hotel:
+        h = f"الإقامة في {rec.hotel}"
+        if rec.room_type:
+            h += f" - غرفة {rec.room_type}"
+        extra.append(h)
+    svc = _umrah_services_text(rec)
+    if svc:
+        extra.append(f"خدمات: {svc}")
+    if extra:
+        desc += " (" + "، ".join(extra) + ")"
+    return build_invoice_data(rec, company=company, number=number, item_desc=desc)
+
+
+def _umrah_receipt_data(rec, prog_name, company, number="0001"):
+    """بيانات سند قبض عمرة قابلة للتحرير في المحرّر الويب."""
+    from .pdf_io import build_receipt_data, _umrah_services_text
+    from .fields import format_amount, parse_amount
+    amount = parse_amount(rec.paid_amount)
+    if amount is None:
+        amount = parse_amount(rec.program_value)
+    amount = float(amount or 0.0)
+    parts = [f"وذلك عن: برنامج {prog_name}".strip()]
+    if rec.hotel:
+        hp = f"الإقامة في {rec.hotel}"
+        if rec.room_type:
+            hp += f" في غرفة {rec.room_type}"
+        parts.append(hp)
+    svc = _umrah_services_text(rec)
+    if svc:
+        parts.append(f"الخدمات: {svc}")
+    if amount:
+        parts.append(f"والبالغ قيمته: {format_amount(amount)}")
+    parts.append("والدفعات غير مستردّة لاستخدامها في تأكيد الحجوزات.")
+    return build_receipt_data(rec, company=company, number=number,
+                              amount=amount, description="، ".join(parts))
+
+
+def _umrah_contract_data(rec, prog_name, company, number="CON-0001"):
+    """بيانات عقد خدمات عمرة قابلة للتحرير في المحرّر الويب."""
+    from .pdf_io import build_contract_data, _umrah_services_text
+    from .fields import format_amount, parse_amount
+    total = parse_amount(rec.program_value) or parse_amount(rec.paid_amount) or 0.0
+    paid = parse_amount(rec.paid_amount) or 0.0
+    remaining = max(0.0, total - paid)
+    hotel = rec.hotel or "—"
+    room = f" في غرفة {rec.room_type}" if rec.room_type else ""
+    svc = _umrah_services_text(rec)
+    svc_part = f" والخدمات ({svc})" if svc else ""
+    clauses = [
+        ("البند الأول: موضوع العقد",
+         f"يقدّم الطرف الأول للطرف الثاني برنامج {prog_name}، ويشمل الإقامة في "
+         f"{hotel}{room} والتنقّلات الداخلية وتذاكر الطيران{svc_part} وفق "
+         "البرنامج المعتمد."),
+        ("البند الثاني: قيمة العقد",
+         f"القيمة الإجمالية {format_amount(total)} درهماً. المدفوع "
+         f"{format_amount(paid)} درهماً، والمتبقّي {format_amount(remaining)} "
+         "درهماً."),
+        ("البند الثالث: الدفعات",
+         "جميع الدفعات المسدّدة غير مستردّة وتُستخدَم في تأكيد الحجوزات والخدمات."),
+        ("البند الرابع: التزامات الطرف الثاني",
+         "يلتزم الطرف الثاني بصحّة بياناته وصلاحية جوازه، وبالمواعيد والتعليمات "
+         "المنظّمة للرحلة، وبالأنظمة المعمول بها في المملكة العربية السعودية."),
+        ("البند الخامس: القوة القاهرة",
+         "لا يُسأل أيّ طرف عن الإخلال الناتج عن ظروف قاهرة خارجة عن الإرادة."),
+        ("البند السادس: القانون والاختصاص",
+         "يخضع هذا العقد لأنظمة دولة الإمارات العربية المتحدة، وتختصّ محاكمها "
+         "المختصّة بالفصل في أيّ نزاع ينشأ عنه."),
+    ]
+    body = "\n\n".join(f"{a}\n{b}" for a, b in clauses)
+    return build_contract_data(
+        rec, company=company, number=number, body=body,
+        title_ar="عقد خدمات عمرة",
+        preamble="تمهيد: رغبةً من الطرف الثاني في أداء العمرة، اتّفق الطرفان "
+                 "— وهما بكامل الأهلية — على ما يلي:")
+
+
+def _web_edit_umrah_invoice(app, rec, prog_name, company):
+    """يفتح فاتورة العمرة في محرّر الويب ثم يعاينها (يشترك فيه مدخلا القائمة)."""
+    from .pdf_io import INVOICE_SCHEMA, export_invoice_pdf
+    data = _umrah_invoice_data(rec, prog_name, company)
+    app._web_edit_doc(
+        data, INVOICE_SCHEMA, "فاتورة ضريبية", "🧾",
+        lambda p, d: export_invoice_pdf(rec, p, data=d, company=company))
+
+
+def _web_edit_umrah_receipt(app, rec, prog_name, company):
+    """يفتح سند قبض العمرة في محرّر الويب ثم يعاينه."""
+    from .pdf_io import RECEIPT_SCHEMA, export_receipt_pdf, company_info
+    co = company_info(company)
+    data = _umrah_receipt_data(rec, prog_name, company)
+    app._web_edit_doc(
+        data, RECEIPT_SCHEMA, "سند قبض", "🧾",
+        lambda p, d: export_receipt_pdf(
+            rec, p, company=co["name_ar"], company_en=co["name_en"], data=d))
+
+
+def _web_edit_umrah_contract(app, rec, prog_name, company):
+    """يفتح عقد خدمات العمرة في محرّر الويب ثم يعاينه."""
+    from .pdf_io import CONTRACT_SCHEMA, export_contract_pdf
+    data = _umrah_contract_data(rec, prog_name, company)
+    app._web_edit_doc(
+        data, CONTRACT_SCHEMA, "عقد خدمات عمرة", "📜",
+        lambda p, d: export_contract_pdf(
+            rec, p, company=company, title_en="Umrah Services Agreement", data=d))
+
+
 class UmrahApp:
     """الشاشة الرئيسية لبرنامج العمرة: إدارة برامج العمرة."""
 
@@ -1406,17 +1518,6 @@ class UmrahApp:
         win.wait_window()
         return chosen["rec"]
 
-    def _prog_doc(self, export_fn, base):
-        t = self._sel_trip_or_warn(base)
-        if t is None:
-            return
-        rec = self._pick_pilgrim(t, base)
-        if rec is None:
-            return
-        G.open_preview(self.root, lambda p: export_fn(
-            rec, p, program_name=self._prog_name(t),
-            company=self._company_dict()), f"{base} {t.code}", "pdf")
-
     def _web_edit_doc(self, data, schema, title, icon, export_cb, on_saved=None):
         """يفتح المستند في محرّر الويب (عربية سليمة)، ثم يولّد الـ PDF بعد الحفظ.
 
@@ -1448,113 +1549,27 @@ class UmrahApp:
         if t is None:
             return
         rec = self._pick_pilgrim(t, "سند")
-        if rec is None:
-            return
-        from .pdf_io import (build_receipt_data, RECEIPT_SCHEMA,
-                             export_receipt_pdf, company_info,
-                             _umrah_services_text)
-        from .fields import format_amount, parse_amount
-        co = company_info(self._company_dict())
-        amount = parse_amount(rec.paid_amount)
-        if amount is None:
-            amount = parse_amount(rec.program_value)
-        amount = float(amount or 0.0)
-        parts = [f"وذلك عن: برنامج {self._prog_name(t)}".strip()]
-        if rec.hotel:
-            hp = f"الإقامة في {rec.hotel}"
-            if rec.room_type:
-                hp += f" في غرفة {rec.room_type}"
-            parts.append(hp)
-        svc = _umrah_services_text(rec)
-        if svc:
-            parts.append(f"الخدمات: {svc}")
-        if amount:
-            parts.append(f"والبالغ قيمته: {format_amount(amount)}")
-        parts.append("والدفعات غير مستردّة لاستخدامها في تأكيد الحجوزات.")
-        data = build_receipt_data(rec, company=self._company_dict(),
-                                  amount=amount, description="، ".join(parts))
-        self._web_edit_doc(
-            data, RECEIPT_SCHEMA, "سند قبض", "🧾",
-            lambda p, d: export_receipt_pdf(
-                rec, p, company=co["name_ar"], company_en=co["name_en"], data=d))
+        if rec is not None:
+            _web_edit_umrah_receipt(self, rec, self._prog_name(t),
+                                    self._company_dict())
 
     def prog_invoice(self):
         t = self._sel_trip_or_warn("فاتورة")
         if t is None:
             return
         rec = self._pick_pilgrim(t, "فاتورة")
-        if rec is None:
-            return
-        from .pdf_io import (build_invoice_data, INVOICE_SCHEMA,
-                             export_invoice_pdf, _umrah_services_text)
-        # بيان الفاتورة كما في export_umrah_invoice_pdf
-        desc = f"برنامج {self._prog_name(t)}".strip()
-        extra = []
-        if rec.hotel:
-            h = f"الإقامة في {rec.hotel}"
-            if rec.room_type:
-                h += f" - غرفة {rec.room_type}"
-            extra.append(h)
-        svc = _umrah_services_text(rec)
-        if svc:
-            extra.append(f"خدمات: {svc}")
-        if extra:
-            desc += " (" + "، ".join(extra) + ")"
-        co = self._company_dict()
-        data = build_invoice_data(rec, company=co, item_desc=desc)
-        self._web_edit_doc(
-            data, INVOICE_SCHEMA, "فاتورة ضريبية", "🧾",
-            lambda p, d: export_invoice_pdf(rec, p, data=d, company=co))
+        if rec is not None:
+            _web_edit_umrah_invoice(self, rec, self._prog_name(t),
+                                    self._company_dict())
 
     def prog_contract(self):
         t = self._sel_trip_or_warn("عقد")
         if t is None:
             return
         rec = self._pick_pilgrim(t, "عقد")
-        if rec is None:
-            return
-        from .pdf_io import (build_contract_data, CONTRACT_SCHEMA,
-                             export_contract_pdf, _umrah_services_text)
-        from .fields import format_amount, parse_amount
-        pn = self._prog_name(t)
-        total = parse_amount(rec.program_value) or parse_amount(rec.paid_amount) or 0.0
-        paid = parse_amount(rec.paid_amount) or 0.0
-        remaining = max(0.0, total - paid)
-        hotel = rec.hotel or "—"
-        room = f" في غرفة {rec.room_type}" if rec.room_type else ""
-        svc = _umrah_services_text(rec)
-        svc_part = f" والخدمات ({svc})" if svc else ""
-        clauses = [
-            ("البند الأول: موضوع العقد",
-             f"يقدّم الطرف الأول للطرف الثاني برنامج {pn}، ويشمل الإقامة في "
-             f"{hotel}{room} والتنقّلات الداخلية وتذاكر الطيران{svc_part} وفق "
-             "البرنامج المعتمد."),
-            ("البند الثاني: قيمة العقد",
-             f"القيمة الإجمالية {format_amount(total)} درهماً. المدفوع "
-             f"{format_amount(paid)} درهماً، والمتبقّي {format_amount(remaining)} "
-             "درهماً."),
-            ("البند الثالث: الدفعات",
-             "جميع الدفعات المسدّدة غير مستردّة وتُستخدَم في تأكيد الحجوزات والخدمات."),
-            ("البند الرابع: التزامات الطرف الثاني",
-             "يلتزم الطرف الثاني بصحّة بياناته وصلاحية جوازه، وبالمواعيد والتعليمات "
-             "المنظّمة للرحلة، وبالأنظمة المعمول بها في المملكة العربية السعودية."),
-            ("البند الخامس: القوة القاهرة",
-             "لا يُسأل أيّ طرف عن الإخلال الناتج عن ظروف قاهرة خارجة عن الإرادة."),
-            ("البند السادس: القانون والاختصاص",
-             "يخضع هذا العقد لأنظمة دولة الإمارات العربية المتحدة، وتختصّ محاكمها "
-             "المختصّة بالفصل في أيّ نزاع ينشأ عنه."),
-        ]
-        body = "\n\n".join(f"{a}\n{b}" for a, b in clauses)
-        co = self._company_dict()
-        data = build_contract_data(
-            rec, company=co, number="CON-0001", body=body,
-            title_ar="عقد خدمات عمرة",
-            preamble="تمهيد: رغبةً من الطرف الثاني في أداء العمرة، اتّفق الطرفان "
-                     "— وهما بكامل الأهلية — على ما يلي:")
-        self._web_edit_doc(
-            data, CONTRACT_SCHEMA, "عقد خدمات عمرة", "📜",
-            lambda p, d: export_contract_pdf(
-                rec, p, company=co, title_en="Umrah Services Agreement", data=d))
+        if rec is not None:
+            _web_edit_umrah_contract(self, rec, self._prog_name(t),
+                                     self._company_dict())
 
     def prog_quotation(self):
         t = self._sel_trip_or_warn("عرض سعر")
@@ -2434,29 +2449,26 @@ class TripPilgrimsWindow(Toplevel):
         co = self.app._settings.get("company")
         return co if isinstance(co, dict) else None
 
-    def _doc_for_selected(self, export_fn, base) -> None:
-        """يعاين مستند العمرة (سند/فاتورة/عقد) للمعتمر المحدّد."""
+    def _web_doc_for_selected(self, web_edit_fn, base):
+        """يفتح مستند المعتمر المحدّد في محرّر الويب (سند/فاتورة/عقد)."""
         rec = self._selected()
         if rec is None:
             messagebox.showinfo("مستند", "اختر معتمراً أولاً.", parent=self)
             return
-        company = self._company()
-        prog = self.trip.name or self.trip.code
-        G.open_preview(
-            self, lambda p: export_fn(rec, p, program_name=prog, company=company),
-            f"{base} {self.trip.code}", "pdf")
+        web_edit_fn(self.app, rec, self.trip.name or self.trip.code,
+                    self._company())
 
     def do_receipt(self) -> None:
-        """معاينة سند قبض العمرة للمعتمر المحدّد."""
-        self._doc_for_selected(export_umrah_receipt_pdf, "سند")
+        """تحرير سند قبض العمرة للمعتمر المحدّد على الويب."""
+        self._web_doc_for_selected(_web_edit_umrah_receipt, "سند")
 
     def do_invoice(self) -> None:
-        """معاينة فاتورة العمرة للمعتمر المحدّد."""
-        self._doc_for_selected(export_umrah_invoice_pdf, "فاتورة")
+        """تحرير فاتورة العمرة للمعتمر المحدّد على الويب."""
+        self._web_doc_for_selected(_web_edit_umrah_invoice, "فاتورة")
 
     def do_contract(self) -> None:
-        """معاينة عقد خدمات العمرة للمعتمر المحدّد."""
-        self._doc_for_selected(export_umrah_contract_pdf, "عقد")
+        """تحرير عقد خدمات العمرة للمعتمر المحدّد على الويب."""
+        self._web_doc_for_selected(_web_edit_umrah_contract, "عقد")
 
     def do_voucher(self) -> None:
         """فتح محرّر فاوتشر الفندق للمعتمر المحدّد (تعديل/إضافة/حذف الخلايا
