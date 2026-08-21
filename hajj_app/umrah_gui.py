@@ -1538,11 +1538,6 @@ class UmrahApp:
                                    lambda p: export_cb(p, result), title, "pdf")
                 self.root.after(0, done)
         threading.Thread(target=worker, daemon=True).start()
-        messagebox.showinfo(
-            "محرّر المستند (المتصفّح)",
-            "فُتح المحرّر في المتصفّح.\n\nعدّل النصوص هناك — العربية تعمل بشكل "
-            "صحيح تماماً — ثم اضغط «💾 حفظ ومعاينة PDF»، وستُفتح المعاينة هنا "
-            "تلقائياً.", parent=self.root)
 
     def prog_receipt(self):
         t = self._sel_trip_or_warn("سند")

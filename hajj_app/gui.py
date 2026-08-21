@@ -3222,11 +3222,6 @@ class HajjApp:
                 self.root.after(0, lambda: self._web_quote_saved(result))
 
         threading.Thread(target=worker, daemon=True).start()
-        messagebox.showinfo(
-            "محرّر العرض (المتصفّح)",
-            "فُتح محرّر العرض في المتصفّح.\n\nعدّل النصوص هناك — العربية تعمل "
-            "بشكل صحيح تماماً — ثم اضغط «💾 حفظ ومعاينة PDF»، وستُفتح المعاينة "
-            "هنا تلقائياً.", parent=self.root)
 
     def _web_quote_saved(self, data: dict) -> None:
         from . import pdf_io, quotes
@@ -3756,11 +3751,6 @@ class HajjApp:
                                  lambda p: export_cb(p, result), title, "pdf")
                 self.root.after(0, done)
         threading.Thread(target=worker, daemon=True).start()
-        messagebox.showinfo(
-            "محرّر المستند (المتصفّح)",
-            "فُتح المحرّر في المتصفّح.\n\nعدّل النصوص هناك — العربية تعمل بشكل "
-            "صحيح تماماً — ثم اضغط «💾 حفظ ومعاينة PDF»، وستُفتح المعاينة هنا "
-            "تلقائياً.", parent=self.root)
 
     def _receipt_selected(self) -> None:
         """يفتح سند القبض للحاج المحدّد في محرّر الويب ثم يعاينه."""
