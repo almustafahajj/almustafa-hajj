@@ -3691,12 +3691,45 @@ class HajjApp:
         self.toast(f"بدأ موسم {year}هـ", kind="success")
         ProgramsDialog(self.root, self)         # اضبط برامج الموسم الجديد
 
+    def _web_edit_doc(self, data, schema, title, icon, export_cb, on_saved=None):
+        """يفتح المستند في محرّر الويب (عربية سليمة)، ثم يولّد الـ PDF بعد الحفظ."""
+        from . import webdoc
+        import threading
+
+        def worker():
+            result = webdoc.serve_doc_editor(data, schema, title, icon)
+            if result:
+                def done():
+                    if on_saved:
+                        try:
+                            on_saved(result)
+                        except Exception:
+                            pass
+                    open_preview(self.root,
+                                 lambda p: export_cb(p, result), title, "pdf")
+                self.root.after(0, done)
+        threading.Thread(target=worker, daemon=True).start()
+        messagebox.showinfo(
+            "محرّر المستند (المتصفّح)",
+            "فُتح المحرّر في المتصفّح.\n\nعدّل النصوص هناك — العربية تعمل بشكل "
+            "صحيح تماماً — ثم اضغط «💾 حفظ ومعاينة PDF»، وستُفتح المعاينة هنا "
+            "تلقائياً.", parent=self.root)
+
     def _receipt_selected(self) -> None:
-        """يفتح نافذة سند القبض للحاج المحدّد — **معاينة فقط** بلا حفظ مباشر."""
+        """يفتح سند القبض للحاج المحدّد في محرّر الويب ثم يعاينه."""
         rec = self._selected_record()
-        if rec is not None:
-            ReceiptDialog(self.root, rec, number=self._receipt_number(rec),
-                          season=self.season_year.get())
+        if rec is None:
+            return
+        from .pdf_io import (build_receipt_data, RECEIPT_SCHEMA,
+                             export_receipt_pdf, company_info)
+        co = company_info(self._company_info())
+        data = build_receipt_data(rec, company=self._company_info(),
+                                  season=self.season_year.get(),
+                                  number=self._receipt_number(rec))
+        self._web_edit_doc(
+            data, RECEIPT_SCHEMA, "سند قبض", "🧾",
+            lambda p, d: export_receipt_pdf(
+                rec, p, company=co["name_ar"], company_en=co["name_en"], data=d))
 
     def _selected_record(self):
         """يعيد السجل المحدّد أو None (مع تنبيه) — لأوامر المستندات الفردية."""
@@ -3724,23 +3757,37 @@ class HajjApp:
         PaymentsDialog(self.root, rec, _on_change)
 
     def _invoice_selected(self, *, electronic: bool = False) -> None:
-        """يفتح نافذة الفاتورة (الضريبية أو الإلكترونية) — معاينة فقط."""
+        """يفتح الفاتورة (الضريبية أو الإلكترونية) في محرّر الويب ثم يعاينها."""
         rec = self._selected_record()
         if rec is None:
             return
         prefix = "EINV-" if electronic else "INV-"
         num = self._doc_number(rec, "invoices", prefix, 119)
-        InvoiceDialog(self.root, rec, self, number=num,
-                      season=self.season_year.get(), electronic=electronic)
+        from .pdf_io import (build_invoice_data, INVOICE_SCHEMA,
+                             export_invoice_pdf)
+        co = self._settings.get("company")
+        data = build_invoice_data(rec, company=co, number=num,
+                                  season=self.season_year.get())
+        title = "فاتورة إلكترونية" if electronic else "فاتورة ضريبية"
+        self._web_edit_doc(
+            data, INVOICE_SCHEMA, title, "🧾",
+            lambda p, d: export_invoice_pdf(rec, p, company=co,
+                                            electronic=electronic, data=d))
 
     def _contract_selected(self) -> None:
-        """يفتح نافذة عقد الخدمات للحاج المحدّد — معاينة فقط."""
+        """يفتح عقد الخدمات للحاج المحدّد في محرّر الويب ثم يعاينه."""
         rec = self._selected_record()
         if rec is None:
             return
         num = self._doc_number(rec, "contracts", "CON-", 119)
-        ContractDialog(self.root, rec, self, number=num,
-                       season=self.season_year.get())
+        from .pdf_io import (build_contract_data, CONTRACT_SCHEMA,
+                             export_contract_pdf)
+        co = self._settings.get("company")
+        data = build_contract_data(rec, company=co, number=num,
+                                   season=self.season_year.get())
+        self._web_edit_doc(
+            data, CONTRACT_SCHEMA, "عقد خدمات حج", "📜",
+            lambda p, d: export_contract_pdf(rec, p, company=co, data=d))
 
     def do_pilgrim_packet(self) -> None:
         """حزمة مستندات حاج واحد: الجواز + البطاقة + سند القبض + العقد في ملف."""
