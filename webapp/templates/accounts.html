@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}إدارة الحسابات — المصطفى{% endblock %}
+{% block heading %}👥 إدارة الحسابات{% endblock %}
+{% block subhead %}<div class="season">شارك البرنامج: أضِف مستخدمين، حدّد صلاحياتهم، واحذفهم وقتما تريد</div>{% endblock %}
+{% block content %}
+{% if forbidden %}
+  <div class="acc-msg err">إدارة الحسابات للمدير فقط.</div>
+{% else %}
+
+  {% if msg %}<div class="acc-msg ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="acc-msg err">{{ err }}</div>{% endif %}
+  {% if recovery_key %}
+  <div class="acc-key">
+    <div class="t">🔑 مفتاح استرداد الحساب «{{ added_user }}»</div>
+    <div class="k">{{ recovery_key }}</div>
+    <div class="d">انسخه وسلّمه لصاحب الحساب الآن — لن يظهر مرّة أخرى. يستعيد به
+      الدخول إن نسي كلمة المرور.</div>
+  </div>
+  {% endif %}
+
+  <div class="acc-cards">
+    <div class="acc-card">
+      <h3>➕ إضافة مستخدم</h3>
+      <form method="post" action="{{ url_for('accounts_add') }}" class="acc-form">
+        <label>اسم المستخدم
+          <input name="username" required autocomplete="off"></label>
+        <label>كلمة المرور (٨ أحرف فأكثر)
+          <input name="password" type="password" required
+                 autocomplete="new-password"></label>
+        <label>الصلاحية
+          <select name="role">
+            {% for value, label in roles %}
+            <option value="{{ value }}" {{ 'selected' if value=='viewer' }}>{{ label }}</option>
+            {% endfor %}
+          </select></label>
+        <button class="acc-btn add" type="submit">➕ إضافة الحساب</button>
+      </form>
+      <ul class="acc-roles">
+        <li><b>مدير</b> — كل شيء + إدارة الحسابات وأدوارها.</li>
+        <li><b>محرّر</b> — إضافة/تعديل/حذف السجلات والاستيراد والتصدير.</li>
+        <li><b>مطّلع</b> — عرض وتصدير وطباعة فقط، بلا تعديل.</li>
+      </ul>
+    </div>
+
+    <div class="acc-card wide">
+      <h3>المستخدمون الحاليون</h3>
+      <table class="acc-table">
+        <thead><tr><th>المستخدم</th><th>الصلاحية</th><th>آخر تحديث</th>
+          <th>إجراءات</th></tr></thead>
+        <tbody>
+        {% for a in accounts %}
+          <tr>
+            <td>{{ a.username }}{% if a.me %} <span class="you">(أنت)</span>{% endif %}</td>
+            <td>
+              <form method="post" action="{{ url_for('accounts_role', username=a.username) }}"
+                    class="inline">
+                <select name="role" onchange="this.form.submit()">
+                  {% for value, label in roles %}
+                  <option value="{{ value }}" {{ 'selected' if value==a.role }}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+            <td class="muted">{{ a.updated or '—' }}</td>
+            <td>
+              {% if not a.me %}
+              <form method="post" action="{{ url_for('accounts_delete', username=a.username) }}"
+                    class="inline" onsubmit="return confirm('حذف الحساب «{{ a.username }}» نهائياً؟');">
+                <button class="acc-btn del" type="submit">🗑 حذف</button>
+              </form>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="hint-note">كل الحسابات تفتح البيانات نفسها (مشفّرة)؛ الصلاحية تحدّد ما
+    يُسمح لكل مستخدم بفعله. غيّر الصلاحية من القائمة المنسدلة مباشرةً.</p>
+{% endif %}
+{% endblock %}

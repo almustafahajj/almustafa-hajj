@@ -158,11 +158,80 @@ def dashboard():
 
 
 def _ctx() -> dict:
-    """سياق مشترك للقوالب (الوضع/النوع/زر التبديل)."""
+    """سياق مشترك للقوالب (الوضع/النوع/زر التبديل/الصلاحيات)."""
+    s = _sess()
     return dict(
         noun=_noun(), mode=_mode(),
         other=(app_mode.UMRAH if _mode() == app_mode.HAJJ else app_mode.HAJJ),
-        other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"))
+        other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"),
+        is_admin=bool(s is not None and s.is_admin),
+        can_edit=bool(s is not None and s.can_edit))
+
+
+@app.get("/accounts")
+def accounts():
+    """إدارة الحسابات عن بُعد — للمدير فقط: عرض/إضافة/تغيير الصلاحية/حذف."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if not s.is_admin:
+        return render_template("accounts.html", active="accounts",
+                               forbidden=True, accounts=[], roles=[], **_ctx())
+    rows = [{"username": a["username"], "role": a["role"],
+             "role_label": auth.ROLE_LABELS.get(a["role"], a["role"]),
+             "updated": (a.get("updated_at") or "").replace("T", "  "),
+             "me": a["username"].lower() == s.username.lower()}
+            for a in auth.list_accounts()]
+    return render_template(
+        "accounts.html", active="accounts", forbidden=False, accounts=rows,
+        roles=[(r, auth.ROLE_LABELS[r]) for r in auth.ROLES],
+        recovery_key=session.pop("acc_key", None),
+        added_user=session.pop("acc_added", None),
+        msg=session.pop("acc_msg", ""), err=session.pop("acc_err", ""), **_ctx())
+
+
+@app.post("/accounts/add")
+def accounts_add():
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    try:
+        key = auth.add_account(
+            s, (request.form.get("username") or "").strip(),
+            request.form.get("password") or "",
+            request.form.get("role") or "viewer")
+        session["acc_key"] = key
+        session["acc_added"] = (request.form.get("username") or "").strip()
+        session["acc_msg"] = "أُضيف الحساب — سلّم صاحبه كلمة المرور ومفتاح الاسترداد."
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/<username>/role")
+def accounts_role(username):
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    try:
+        auth.set_role(s, username, request.form.get("role") or "viewer")
+        session["acc_msg"] = f"غُيّرت صلاحية «{username}»."
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/<username>/delete")
+def accounts_delete(username):
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    try:
+        auth.remove_account(s, username)
+        session["acc_msg"] = f"حُذف الحساب «{username}»."
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
 
 
 def _noun_singular() -> str:
@@ -220,6 +289,8 @@ def hujjaj_new():
     if _sess() is None:
         return redirect(url_for("login"))
     from hajj_app.mrz import PassportData
+    if not _sess().can_edit:                 # المطّلع لا يضيف
+        return redirect(url_for("hujjaj"))
     records = _load_records()
     if request.method == "POST":
         rec = PassportData(source_file="إدخال ويب")
@@ -249,6 +320,8 @@ def hujjaj_edit(idx):
     rec = records[idx]
     drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
     saved = False
+    if request.method == "POST" and not _sess().can_edit:   # المطّلع لا يعدّل
+        return redirect(url_for("hujjaj"))
     if request.method == "POST":
         for _title, keys in _GROUPS:
             for k in keys:
