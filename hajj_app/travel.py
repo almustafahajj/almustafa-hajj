@@ -216,3 +216,34 @@ def save_travel(settings: dict, idx: int, data: dict) -> None:
     if not isinstance(store, dict):
         store = settings["travel"] = {}
     store[str(idx)] = data
+
+
+# مفاتيح الرحلة المسطّحة (ذهاب + عودة) — للمحرّر الويب
+FLIGHT_KEYS = (tuple("out_" + k for k, _ in FLIGHT_FIELDS)
+               + tuple("ret_" + k for k, _ in FLIGHT_FIELDS))
+
+
+def web_schema() -> list:
+    """مخطّط حقول «مواعيد وتعليمات السفر» للمحرّر الويب (رحلة مسطّحة + نصوص)."""
+    out = [{"key": "out_" + k, "label": lbl} for k, lbl in FLIGHT_FIELDS]
+    ret = [{"key": "ret_" + k, "label": lbl} for k, lbl in FLIGHT_FIELDS]
+    sections = [{"legend": lbl, "fields": [{"key": k, "label": lbl,
+                                            "type": "area"}]}
+                for k, lbl in TEXT_SECTIONS]
+    return [{"legend": "رحلة الذهاب", "fields": out},
+            {"legend": "رحلة العودة", "fields": ret}, *sections]
+
+
+def flatten(d: dict) -> dict:
+    """يحوّل بيانات برنامج (flight متداخلة + نصوص) إلى قاموس مسطّح للمحرّر."""
+    flat = {k: str((d.get("flight") or {}).get(k, "") or "") for k in FLIGHT_KEYS}
+    for key, _ in TEXT_SECTIONS:
+        flat[key] = str(d.get(key, "") or "")
+    return flat
+
+
+def unflatten(result: dict) -> dict:
+    """يعيد بناء بيانات البرنامج المتداخلة من نتيجة المحرّر الويب المسطّحة."""
+    return {"flight": {k: str(result.get(k, "") or "") for k in FLIGHT_KEYS},
+            **{key: str(result.get(key, "") or "")
+               for key, _ in TEXT_SECTIONS}}

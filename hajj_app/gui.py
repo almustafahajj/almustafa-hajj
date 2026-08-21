@@ -3641,16 +3641,63 @@ class HajjApp:
         GroupsDialog(self.root, self)
 
     def do_itinerary(self) -> None:
-        """يفتح جدول المناسك الزمني (قابل للتعديل والتصدير)."""
+        """يفتح جدول المناسك الزمني في محرّر الويب (تعديل + حفظ + تصدير)."""
         if not self._require_edit():
             return
-        ItineraryDialog(self.root, self)
+        from .pdf_io import ITINERARY_SCHEMA, export_itinerary_pdf
+        season = self.season_year.get()
+        rows = [list(r) for r in self._settings.get("itinerary", [])]
+        if not rows:                          # قالب أيام الحجّ الافتراضي مبدئياً
+            rows = [list(r) for r in ItineraryDialog.TEMPLATE]
+        data = {"rows": rows}
+
+        def _save(result):
+            self._settings["itinerary"] = [list(r)
+                                           for r in result.get("rows", [])]
+            try:
+                save_settings(self._settings)
+            except OSError:
+                pass
+            self._audit("تعديل جدول المناسك",
+                        f"{len(self._settings['itinerary'])} بند")
+
+        self._web_edit_doc(
+            data, ITINERARY_SCHEMA, "جدول المناسك", "🗓",
+            lambda p, d: export_itinerary_pdf(
+                p, rows=[list(r) for r in d.get("rows", [])], season=season),
+            on_saved=_save)
 
     def do_travel_info(self) -> None:
-        """يفتح «مواعيد وتعليمات السفر» لكل برنامج (تحرير + تصدير PDF)."""
+        """يفتح «مواعيد وتعليمات السفر» لبرنامج مختار في محرّر الويب."""
         if not self._require_edit():
             return
-        TravelInfoDialog(self.root, self)
+        from .programs import PROGRAM_NAMES
+        names = list(PROGRAM_NAMES)
+        self._choose("اختر البرنامج", names, names[0],
+                     lambda name: self._travel_web(names.index(name), names))
+
+    def _travel_web(self, idx: int, names: list) -> None:
+        from . import travel
+        from .pdf_io import export_travel_pdf
+        progs = self._load_programs()
+        prog = progs[idx] if idx < len(progs) else None
+        data = travel.flatten(travel.load_travel(self._settings, idx, prog))
+        name = names[idx]
+        season = self.season_year.get()
+
+        def _save(result):
+            travel.save_travel(self._settings, idx, travel.unflatten(result))
+            try:
+                save_settings(self._settings)
+            except OSError:
+                pass
+            self._audit("تعديل مواعيد وتعليمات السفر", name)
+
+        self._web_edit_doc(
+            data, travel.web_schema(), f"مواعيد وتعليمات السفر — {name}", "🧳",
+            lambda p, d: export_travel_pdf(
+                p, program_name=name, data=travel.unflatten(d), season=season),
+            on_saved=_save)
 
     def do_new_season(self) -> None:
         """يبدأ موسماً جديداً: يؤرشف كشف الموسم الحالي (نسخة احتياطية) ثم

@@ -786,6 +786,17 @@ def export_travel_pdf(path: str | Path, *, program_name: str = "البرنامج
     return path
 
 
+# مخطّط حقول جدول المناسك للمحرّر الويب
+ITINERARY_SCHEMA = [
+    {"legend": "جدول المناسك الزمني", "table": "rows", "columns": [
+        {"key": "day", "label": "اليوم"},
+        {"key": "date", "label": "التاريخ", "type": "date"},
+        {"key": "activity", "label": "النشاط / المنسك"},
+        {"key": "place", "label": "المكان"},
+        {"key": "note", "label": "ملاحظة"}]},
+]
+
+
 def export_itinerary_pdf(path: str | Path, *, rows: list | None = None,
                          season: str = "", title: str = "جدول المناسك") -> Path:
     """يصدّر جدول المناسك الزمني إلى PDF (A4 عمودي): يوم/تاريخ/نشاط/مكان/ملاحظة."""
