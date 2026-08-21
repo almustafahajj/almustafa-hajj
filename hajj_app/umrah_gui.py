@@ -2474,8 +2474,19 @@ class TripPilgrimsWindow(Toplevel):
         company = self._company()
         data = build_voucher_data(rec, trip=self.trip, program_name=prog,
                                   company=company, number=number)
-        VoucherEditorDialog(self, rec, self.trip, data, program=prog,
-                            company=company, app=self.app)
+        from .pdf_io import VOUCHER_SCHEMA, export_umrah_voucher_pdf
+
+        def _save(result):
+            umrah.save_voucher(self.app._settings, result)
+            try:
+                save_settings(self.app._settings)
+            except OSError:
+                pass
+        self.app._web_edit_doc(
+            data, VOUCHER_SCHEMA, "فاوتشر فندق", "🏨",
+            lambda p, d: export_umrah_voucher_pdf(rec, p, trip=self.trip,
+                                                  company=company, data=d),
+            on_saved=_save)
 
     def do_transport_request(self) -> None:
         """فتح محرّر طلب حجز المواصلات (خطاب لشركة النقل) للمعتمر المحدّد."""
@@ -2493,8 +2504,19 @@ class TripPilgrimsWindow(Toplevel):
         data = build_transport_request_data(rec, trip=self.trip,
                                             program_name=prog, company=company,
                                             number=number)
-        TransportRequestEditorDialog(self, rec, self.trip, data, company=company,
-                                     app=self.app)
+        from .pdf_io import TREQ_SCHEMA, export_umrah_transport_request_pdf
+
+        def _save(result):
+            umrah.save_transport_request(self.app._settings, result)
+            try:
+                save_settings(self.app._settings)
+            except OSError:
+                pass
+        self.app._web_edit_doc(
+            data, TREQ_SCHEMA, "طلب حجز مواصلات", "🚖",
+            lambda p, d: export_umrah_transport_request_pdf(
+                rec, p, company=company, data=d),
+            on_saved=_save)
 
     def do_quotation(self) -> None:
         """فتح محرّر عرض السعر للبرنامج (يأخذ نوع غرفة المعتمر المحدّد إن وُجد)."""
@@ -2507,8 +2529,7 @@ class TripPilgrimsWindow(Toplevel):
         company = self._company()
         data = build_quotation_data(rec, trip=self.trip, company=company,
                                     number=number)
-        QuotationEditorDialog(self, rec, self.trip, data, app=self.app,
-                              company=company)
+        self.app._web_edit_quotation(data, rec, self.trip, company)
 
     def do_quotes_list(self) -> None:
         """فتح قائمة «عروض الأسعار» المحفوظة لهذا البرنامج."""

@@ -533,13 +533,14 @@ for _do in (w9.do_receipt, w9.do_invoice, w9.do_contract):
     assert (WORK / "sel.pdf").read_bytes()[:5] == b"%PDF-"
 # فاوتشر الفندق يفتح محرّراً قابلاً للتعديل (رقم تسلسلي، إطلالة/نقل منسدلة،
 # تاريخ منسدل، إضافة/حذف خلايا) قبل المعاينة
-w9.do_voucher()
-_vdlg = [w for w in app9.root.winfo_children()
-         if isinstance(w, _ug.VoucherEditorDialog)] or \
-        [w for w in w9.winfo_children()
-         if isinstance(w, _ug.VoucherEditorDialog)]
-assert _vdlg, "محرّر الفاوتشر لم يُفتح"
-_ed = _vdlg[-1]
+# do_voucher صار ويب؛ المحرّر لا يزال متاحاً — نبنيه مباشرةً لاختباره
+from hajj_app.pdf_io import build_voucher_data as _bvd9
+_rec9 = w9._selected() or PassportData()
+_ed = _ug.VoucherEditorDialog(
+    app9.root, _rec9, t9,
+    _bvd9(_rec9, trip=t9, program_name=t9.name or t9.code,
+          number=umrah.next_voucher_number(app9._settings)),
+    program=t9.name or t9.code, company=None, app=app9)
 assert _ed._number.startswith("MA")          # رقم تسلسلي تلقائي
 _n0 = len(_ed._stay_rows)
 _ed._add_stay_row(["المدينة المنوّرة", "دار الإيمان", "ثلاثي", "Haram",
@@ -584,13 +585,16 @@ _ptr = WORK / "treq.pdf"
 export_umrah_transport_request_pdf(_recv, _ptr, data=_trb)
 assert _ptr.read_bytes()[:5] == b"%PDF-" and _ptr.stat().st_size > 3000
 # المحرّر: يفتح من نافذة المعتمرين (رقم خاص MA-T)، يعدّل ويحفظ ويعاين
-w9.do_transport_request()
-_tr = [w for w in w9.winfo_children()
-       if isinstance(w, _ug.TransportRequestEditorDialog)] or \
-      [w for w in app9.root.winfo_children()
-       if isinstance(w, _ug.TransportRequestEditorDialog)]
-assert _tr, "محرّر طلب المواصلات لم يُفتح"
-_trd = _tr[-1]
+# do_transport_request صار ويب؛ المحرّر لا يزال متاحاً — نبنيه مباشرةً
+from hajj_app.pdf_io import build_transport_request_data as _btrq9
+_rt9 = w9._selected() or PassportData(full_name_ar="ضيف")
+if not (_rt9.full_name_ar or _rt9.full_name_en):
+    _rt9 = PassportData(full_name_ar="ضيف")
+_trd = _ug.TransportRequestEditorDialog(
+    app9.root, _rt9, t9,
+    _btrq9(_rt9, trip=t9, program_name=t9.name or t9.code,
+           number=umrah.next_transport_number(app9._settings)),
+    company=None, app=app9)
 assert _trd._number.startswith("MA-T") and _trd._meta["guest_ar"].get()
 _trd._meta["recipient"].set("جنى عبد الله السكيت")
 _trd._meta["honorific"].set("السيدة")
@@ -729,9 +733,13 @@ appq.records.append(PassportData(full_name_ar="خالد", trip="Q1",
                                  room_type="ثنائي"))
 wq = _ug.TripPilgrimsWindow(appq, _tripq)
 wq.tree.selection_set("0")
-wq.do_quotation()
-_qe = [w for w in wq.winfo_children()
-       if isinstance(w, _ug.QuotationEditorDialog)][-1]
+# do_quotation صار ويب؛ المحرّر لا يزال متاحاً — نبنيه مباشرةً لاختباره
+_qenum = umrah.next_quote_number(appq._settings)
+_qe = _ug.QuotationEditorDialog(
+    wq, PassportData(full_name_ar="خالد", room_type="ثنائي"), _tripq,
+    build_quotation_data(PassportData(full_name_ar="خالد", room_type="ثنائي"),
+                         trip=_tripq, company=None, number=_qenum),
+    app=appq, company=None)
 assert _qe._number.startswith("MA-Q") and _qe._stay_rows and _qe._flight_rows
 # تبديل اللغة إلى الإنجليزية ثم العودة للعربية (يحافظ على الرقم)
 _num = _qe._number
