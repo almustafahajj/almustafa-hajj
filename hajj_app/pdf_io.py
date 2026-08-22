@@ -3402,8 +3402,10 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     if str(data.get("phone") or "").strip():
         _code = str(data.get("phone_code") or "").strip()
         _code = _code.split()[0] if _code else ""   # نأخذ رمز النداء فقط (+xxx)
-        _num = ltr(str(data.get("phone")).strip())
-        info_bits.append(f"جوال رقم: {(_code + ' ' if _code else '')}{_num}")
+        _num = str(data.get("phone")).strip()
+        # نلفّ الرمز والرقم معاً كوحدة LTR واحدة كي لا يعكس bidi ترتيبهما
+        _phone = ltr(f"{_code} {_num}" if _code else _num)
+        info_bits.append(f"جوال رقم: {_phone}")
     if str(data.get("persons") or "").strip():
         info_bits.append(f"عدد الأشخاص: ( {ltr(data.get('persons'))} ) أشخاص")
     if info_bits:
