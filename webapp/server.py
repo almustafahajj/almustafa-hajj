@@ -42,9 +42,32 @@ _GROUPS = [
 ]
 
 app = Flask(__name__)
-# مفتاح توقيع الجلسات: من البيئة في النشر (يُبقي الجلسات صالحة عبر إعادات
-# التشغيل)؛ وإلّا عشوائي للتطوير المحلّي.
-app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(16)
+
+
+def _session_secret() -> str:
+    """مفتاح توقيع الجلسات — لا يُخزَّن في الشيفرة أبداً.
+
+    الأولوية: متغيّر البيئة ``SECRET_KEY``؛ وإلّا مفتاح ثابت يُولَّد **على الخادم**
+    ويُحفظ في مجلّد البيانات (يبقي الجلسات صالحة عبر إعادات التشغيل بلا تضمين
+    أي سرّ في المستودع)."""
+    env = os.environ.get("SECRET_KEY")
+    if env:
+        return env
+    try:
+        from hajj_app.paths import data_dir
+        p = data_dir() / "web_secret.key"
+        if p.exists():
+            got = p.read_text(encoding="utf-8").strip()
+            if got:
+                return got
+        key = secrets.token_hex(32)
+        p.write_text(key, encoding="utf-8")
+        return key
+    except Exception:
+        return secrets.token_hex(16)
+
+
+app.secret_key = _session_secret()
 # أمان ملفّات الارتباط — يُفعَّل Secure تلقائياً خلف HTTPS في النشر السحابي.
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
