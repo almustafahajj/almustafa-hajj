@@ -71,16 +71,24 @@ def serve_doc_editor(data: dict, schema: list, doc_title: str = "مستند",
     return box.get("data")
 
 
+_BACK_LINK = ('<a href="__URL__" style="color:#fff;background:#0003;'
+              'padding:7px 14px;border-radius:9px;text-decoration:none;'
+              'font-weight:700">↩ رجوع</a>')
+
+
 def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
-              submit_action: str | None = None) -> str:
+              submit_action: str | None = None,
+              back_url: str | None = None) -> str:
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     sch = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
+    back = _BACK_LINK.replace("__URL__", back_url) if back_url else ""
     return (_TEMPLATE.replace("__DATA__", payload)
             .replace("__SCHEMA__", sch)
             .replace("__TITLE__", doc_title)
             .replace("__ICON__", header_icon)
             .replace("__SUBMIT_ACTION__",
-                     submit_action or _SUBMIT_ACTION_DESKTOP))
+                     submit_action or _SUBMIT_ACTION_DESKTOP)
+            .replace("__BACK__", back))
 
 
 _TEMPLATE = r"""<!doctype html>
@@ -132,7 +140,10 @@ _TEMPLATE = r"""<!doctype html>
 <body>
 <header>
   <h1>__ICON__ __TITLE__</h1>
-  <span class="num" id="hnum"></span>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span class="num" id="hnum"></span>
+    __BACK__
+  </div>
 </header>
 <div class="wrap" id="form"></div>
 <footer>

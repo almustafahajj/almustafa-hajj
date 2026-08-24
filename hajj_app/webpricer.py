@@ -58,11 +58,19 @@ def serve_pricer(data: dict, doc_title: str = "مسعّر المجموعات",
     return box.get("data")
 
 
-def _pricer_html(data: dict, doc_title: str, submit_js: str | None = None) -> str:
+_BACK_LINK = ('<a href="__URL__" style="color:#fff;background:#0003;'
+              'padding:7px 14px;border-radius:9px;text-decoration:none;'
+              'font-weight:700">↩ رجوع</a>')
+
+
+def _pricer_html(data: dict, doc_title: str, submit_js: str | None = None,
+                 back_url: str | None = None) -> str:
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    back = _BACK_LINK.replace("__URL__", back_url) if back_url else ""
     return (_TEMPLATE.replace("__DATA__", payload)
             .replace("__TITLE__", doc_title)
-            .replace("__SUBMIT__", submit_js or _SUBMIT_DESKTOP))
+            .replace("__SUBMIT__", submit_js or _SUBMIT_DESKTOP)
+            .replace("__BACK__", back))
 
 
 _TEMPLATE = r"""<!doctype html>
@@ -121,7 +129,10 @@ _TEMPLATE = r"""<!doctype html>
 <body>
 <header>
   <h1>🧮 مسعّر المجموعات</h1>
-  <span class="num" id="hnum"></span>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span class="num" id="hnum"></span>
+    __BACK__
+  </div>
 </header>
 <div class="wrap">
   <fieldset><legend>العنوان والفترة والعملة</legend>

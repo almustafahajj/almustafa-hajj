@@ -506,7 +506,8 @@ def pricer():
             "room_types": [n for n, _ in umrah.GROUP_ROOM_TYPES],
             "items": [[n, ""] for n in defaults]}
     return webpricer._pricer_html(data, "مسعّر المجموعات",
-                                  submit_js=webpricer._SUBMIT_WEB)
+                                  submit_js=webpricer._SUBMIT_WEB,
+                                  back_url=url_for("offers"))
 
 
 @app.post("/pricer/pdf")
@@ -586,7 +587,8 @@ def quote_new():
                                        number=number)
     return webdoc._doc_html(
         data, pdf_io.UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
-        submit_action=webdoc.web_submit_action(url_for("quote_pdf")))
+        submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
+        back_url=url_for("offers"))
 
 
 @app.get("/quotes/<code>/<num>")
@@ -601,7 +603,8 @@ def quote_edit(code, num):
         return redirect(url_for("quotes"))
     return webdoc._doc_html(
         dict(q), pdf_io.UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
-        submit_action=webdoc.web_submit_action(url_for("quote_pdf")))
+        submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
+        back_url=url_for("quotes"))
 
 
 @app.post("/quotes/pdf")
@@ -686,7 +689,8 @@ def pricing_edit(num):
     if p is None:
         return redirect(url_for("pricings"))
     return webpricer._pricer_html(dict(p), "مسعّر المجموعات",
-                                  submit_js=webpricer._SUBMIT_WEB)
+                                  submit_js=webpricer._SUBMIT_WEB,
+                                  back_url=url_for("pricings"))
 
 
 @app.post("/pricings/<num>/delete")
