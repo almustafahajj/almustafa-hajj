@@ -536,3 +536,169 @@ def pricer_pdf():
     buf.seek(0)
     return send_file(buf, mimetype="application/pdf", as_attachment=False,
                      download_name=f"تسعير-{data.get('number','') or ''}.pdf")
+
+
+def _pdf_response(gen, fname):
+    """يولّد PDF عبر ``gen(path)`` ويعيده كاستجابة (يفتح في المتصفّح)."""
+    import io
+    p = _tmp(".pdf")
+    gen(p)
+    with open(p, "rb") as f:
+        buf = io.BytesIO(f.read())
+    try:
+        os.unlink(p)
+    except OSError:
+        pass
+    buf.seek(0)
+    return send_file(buf, mimetype="application/pdf", as_attachment=False,
+                     download_name=fname)
+
+
+# ================= التسعير والعروض (لوحة + عروض الأسعار + التسعيرات) =========
+@app.get("/offers")
+def offers():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    settings = storage.load_settings()
+    nq = sum(len(v) for v in (settings.get("umrah_quotes") or {}).values()
+             if isinstance(v, list))
+    npr = len(settings.get("umrah_pricings") or [])
+    return render_template("offers.html", active="offers",
+                           n_quotes=nq, n_pricings=npr, **_ctx())
+
+
+@app.get("/quotes/new")
+def quote_new():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("offers"))
+    from hajj_app import umrah, webdoc, pdf_io
+    from hajj_app.mrz import PassportData
+    settings = storage.load_settings()
+    number = umrah.next_quote_number(settings)
+    try:
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data = pdf_io.build_quotation_data(PassportData(), trip=None, company=co,
+                                       number=number)
+    return webdoc._doc_html(
+        data, pdf_io.UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
+        submit_action=webdoc.web_submit_action(url_for("quote_pdf")))
+
+
+@app.get("/quotes/<code>/<num>")
+def quote_edit(code, num):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, webdoc, pdf_io
+    settings = storage.load_settings()
+    q = next((x for x in umrah.load_quotes(settings, code)
+              if str(x.get("number")) == str(num)), None)
+    if q is None:
+        return redirect(url_for("quotes"))
+    return webdoc._doc_html(
+        dict(q), pdf_io.UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
+        submit_action=webdoc.web_submit_action(url_for("quote_pdf")))
+
+
+@app.post("/quotes/pdf")
+def quote_pdf():
+    if _sess() is None:
+        return ("", 401)
+    if not _sess().can_edit:
+        return ("forbidden", 403)
+    from hajj_app import umrah, pdf_io
+    from hajj_app.mrz import PassportData
+    data = request.get_json(force=True, silent=True) or {}
+    settings = storage.load_settings()
+    try:
+        umrah.save_quote(settings, data.get("code") or "", data)
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    co = settings.get("company") if isinstance(settings, dict) else None
+    return _pdf_response(
+        lambda p: pdf_io.export_umrah_quotation_pdf(
+            PassportData(), p, trip=None, company=co, data=data),
+        f"عرض-سعر-{data.get('number','') or ''}.pdf")
+
+
+@app.get("/quotes")
+def quotes():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    settings = storage.load_settings()
+    store = settings.get("umrah_quotes") or {}
+    rows = []
+    for code, lst in store.items():
+        if not isinstance(lst, list):
+            continue
+        for q in lst:
+            rows.append({"code": code, "number": q.get("number", ""),
+                         "title": q.get("title", "") or "عرض سعر",
+                         "to": q.get("addressed_to", "") or "—",
+                         "date": q.get("date", "")})
+    rows.sort(key=lambda r: str(r["number"]), reverse=True)
+    return render_template("quotes_list.html", active="offers", rows=rows,
+                           **_ctx())
+
+
+@app.post("/quotes/<code>/<num>/delete")
+def quote_delete(code, num):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _sess().can_edit:
+        from hajj_app import umrah
+        settings = storage.load_settings()
+        try:
+            umrah.delete_quote(settings, code, num)
+            storage.save_settings(settings)
+        except Exception:
+            pass
+    return redirect(url_for("quotes"))
+
+
+@app.get("/pricings")
+def pricings():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah
+    settings = storage.load_settings()
+    rows = [{"number": p.get("number", ""), "title": p.get("title", "") or "تسعير",
+             "date": p.get("date", ""), "currency": p.get("currency", "")}
+            for p in umrah.load_pricings(settings)]
+    rows.sort(key=lambda r: str(r["number"]), reverse=True)
+    return render_template("pricings_list.html", active="offers", rows=rows,
+                           **_ctx())
+
+
+@app.get("/pricings/<num>")
+def pricing_edit(num):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, webpricer
+    settings = storage.load_settings()
+    p = next((x for x in umrah.load_pricings(settings)
+              if str(x.get("number")) == str(num)), None)
+    if p is None:
+        return redirect(url_for("pricings"))
+    return webpricer._pricer_html(dict(p), "مسعّر المجموعات",
+                                  submit_js=webpricer._SUBMIT_WEB)
+
+
+@app.post("/pricings/<num>/delete")
+def pricing_delete(num):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _sess().can_edit:
+        from hajj_app import umrah
+        settings = storage.load_settings()
+        try:
+            umrah.delete_pricing(settings, num)
+            storage.save_settings(settings)
+        except Exception:
+            pass
+    return redirect(url_for("pricings"))

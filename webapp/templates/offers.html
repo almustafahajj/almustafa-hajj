@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}التسعير والعروض — المصطفى{% endblock %}
+{% block heading %}🧮 التسعير والعروض{% endblock %}
+{% block subhead %}<div class="season">عروض الأسعار ومسعّر المجموعات والتسعيرات المحفوظة</div>{% endblock %}
+{% block content %}
+<div class="repgrid">
+  {% if can_edit %}
+  <a class="repcard" href="{{ url_for('quote_new') }}">
+    <div class="ic" style="background:#efe6d6;color:#8A6E4B">💲</div>
+    <div><div class="t">عرض سعر جديد</div>
+      <div class="d">أنشئ عرض سعر عمرة، حرّره بالكامل، ثم احفظه واطبعه.</div></div>
+  </a>
+  {% endif %}
+  <a class="repcard" href="{{ url_for('quotes') }}">
+    <div class="ic" style="background:#e6f1e9;color:#2E7D5B">📋</div>
+    <div><div class="t">العروض المحفوظة ({{ n_quotes }})</div>
+      <div class="d">استعرض أو عدّل أو احذف عروض الأسعار.</div></div>
+  </a>
+  {% if can_edit %}
+  <a class="repcard" href="{{ url_for('pricer') }}">
+    <div class="ic" style="background:#fbf0dc;color:#B26A00">🧮</div>
+    <div><div class="t">مسعّر المجموعات</div>
+      <div class="d">حاسبة حيّة لكلفة الفرد وسعر البيع لكل نوع غرفة.</div></div>
+  </a>
+  {% endif %}
+  <a class="repcard" href="{{ url_for('pricings') }}">
+    <div class="ic" style="background:#e8eef8;color:#2C5AA0">🗂</div>
+    <div><div class="t">التسعيرات المحفوظة ({{ n_pricings }})</div>
+      <div class="d">استعرض أو عدّل أو احذف تسعيرات المجموعات.</div></div>
+  </a>
+</div>
+{% endblock %}

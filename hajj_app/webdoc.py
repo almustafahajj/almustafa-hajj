@@ -71,13 +71,16 @@ def serve_doc_editor(data: dict, schema: list, doc_title: str = "مستند",
     return box.get("data")
 
 
-def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str) -> str:
+def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
+              submit_action: str | None = None) -> str:
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     sch = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
     return (_TEMPLATE.replace("__DATA__", payload)
             .replace("__SCHEMA__", sch)
             .replace("__TITLE__", doc_title)
-            .replace("__ICON__", header_icon))
+            .replace("__ICON__", header_icon)
+            .replace("__SUBMIT_ACTION__",
+                     submit_action or _SUBMIT_ACTION_DESKTOP))
 
 
 _TEMPLATE = r"""<!doctype html>
@@ -243,14 +246,28 @@ function submitForm(){
     out[b._key]=Array.from(b._rows.children).map(r=>r._get())
       .filter(row=>row.some(x=>x&&String(x).trim()));
   });
-  fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},
+  __SUBMIT_ACTION__
+}
+</script>
+</body></html>
+"""
+
+
+# سلوك الحفظ في سطح المكتب: يرسل للخادم المحلّي ثم يعرض رسالة نجاح.
+_SUBMIT_ACTION_DESKTOP = r"""fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(out)}).then(()=>{ document.open();
       document.write('<meta charset=utf-8><body style="font-family:sans-serif;'
       +'direction:rtl;text-align:center;padding:60px;background:#F4F1EC;color:#2C2318">'
       +'<div style="font-size:52px">✅</div><h2>تمّ الحفظ</h2>'
       +'<p style="color:#6E543A">عُد إلى البرنامج — ستُفتح معاينة الـ PDF.</p>');
-      document.close(); }).catch(e=>alert('تعذّر الحفظ: '+e));
-}
-</script>
-</body></html>
-"""
+      document.close(); }).catch(e=>alert('تعذّر الحفظ: '+e));"""
+
+
+def web_submit_action(save_url: str) -> str:
+    """سلوك الحفظ في الويب: يرسل البيانات فيعيد الخادم PDF يُفتح مباشرةً."""
+    return (
+        "fetch('" + save_url + "',{method:'POST',"
+        "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
+        ".then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();})"
+        ".then(b=>{window.location=URL.createObjectURL(b);})"
+        ".catch(e=>alert('تعذّر إنشاء PDF: '+e));")
