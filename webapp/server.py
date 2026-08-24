@@ -478,3 +478,61 @@ def rep_financial_pdf():
     p = _tmp(".pdf")
     pdf_io.export_stats_pdf(records, p)
     return send_file(p, as_attachment=True, download_name="financial.pdf")
+
+
+# ---- مسعّر المجموعات (حاسبة حيّة على الويب) ----
+_PRICER_DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة",
+                         "تذكرة الطيران", "ماء وعصير وتمر", "الهدايا",
+                         "المصاريف الإدارية")
+_PRICER_HAJJ_ITEMS = ("تصريح الحج (نُسك)", "خدمات المشاعر (منى/عرفات/مزدلفة)",
+                      "مخيّم منى", "الهدي / الأضحية", "الإعاشة",
+                      "النقل والتنقّلات", "تذكرة الطيران", "المصاريف الإدارية")
+
+
+@app.get("/pricer")
+def pricer():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, webpricer
+    settings = storage.load_settings()
+    number = umrah.next_pricing_number(settings)
+    try:
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    defaults = (_PRICER_HAJJ_ITEMS if _mode() == app_mode.HAJJ
+                else _PRICER_DEFAULT_ITEMS)
+    data = {"number": number, "currency": "درهم", "include_madinah": "1",
+            "room_types": [n for n, _ in umrah.GROUP_ROOM_TYPES],
+            "items": [[n, ""] for n in defaults]}
+    return webpricer._pricer_html(data, "مسعّر المجموعات",
+                                  submit_js=webpricer._SUBMIT_WEB)
+
+
+@app.post("/pricer/pdf")
+def pricer_pdf():
+    if _sess() is None:
+        return ("", 401)
+    if not _sess().can_edit:                       # المطّلع لا يحفظ تسعيراً
+        return ("forbidden", 403)
+    import io
+    from hajj_app import umrah, pdf_io
+    data = request.get_json(force=True, silent=True) or {}
+    settings = storage.load_settings()
+    try:                                           # حفظ في «التسعيرات المحفوظة»
+        umrah.save_pricing(settings, data)
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    co = settings.get("company") if isinstance(settings, dict) else None
+    p = _tmp(".pdf")
+    pdf_io.export_group_pricing_pdf(data, p, company=co)
+    with open(p, "rb") as f:
+        buf = io.BytesIO(f.read())
+    try:
+        os.unlink(p)
+    except OSError:
+        pass
+    buf.seek(0)
+    return send_file(buf, mimetype="application/pdf", as_attachment=False,
+                     download_name=f"تسعير-{data.get('number','') or ''}.pdf")

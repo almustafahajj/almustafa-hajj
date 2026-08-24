@@ -13,7 +13,7 @@
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
       <a href="#">💰 المالية</a>
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
-      <a href="#">🧮 التسعير والعروض</a>
+      <a class="{{ 'active' if active=='pricer' }}" href="{{ url_for('pricer') }}">🧮 مسعّر المجموعات</a>
       {% if is_admin %}<a class="{{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">👥 إدارة الحسابات</a>{% endif %}
     </nav>
     <div class="foot">

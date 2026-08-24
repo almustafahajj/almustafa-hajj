@@ -58,10 +58,11 @@ def serve_pricer(data: dict, doc_title: str = "مسعّر المجموعات",
     return box.get("data")
 
 
-def _pricer_html(data: dict, doc_title: str) -> str:
+def _pricer_html(data: dict, doc_title: str, submit_js: str | None = None) -> str:
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     return (_TEMPLATE.replace("__DATA__", payload)
-            .replace("__TITLE__", doc_title))
+            .replace("__TITLE__", doc_title)
+            .replace("__SUBMIT__", submit_js or _SUBMIT_DESKTOP))
 
 
 _TEMPLATE = r"""<!doctype html>
@@ -311,7 +312,14 @@ SIMPLE.forEach(k=>{ const e=$(k); if(e){ e.oninput=recalc; e.onchange=recalc; } 
 $('include_madinah').onchange=recalc;
 recalc();
 
-function submitForm(){
+__SUBMIT__
+</script>
+</body></html>
+"""
+
+
+# سلوك زرّ الحفظ في نسخة سطح المكتب: يرسل للخادم المحلّي ثم يعرض رسالة نجاح.
+_SUBMIT_DESKTOP = r"""function submitForm(){
   fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(collect())}).then(()=>{ document.open();
       document.write('<meta charset=utf-8><body style="font-family:sans-serif;'
@@ -319,7 +327,12 @@ function submitForm(){
       +'<div style="font-size:52px">✅</div><h2>تمّ حفظ التسعير</h2>'
       +'<p style="color:#6E543A">عُد إلى البرنامج — ستُفتح معاينة الـ PDF.</p>');
       document.close(); }).catch(e=>alert('تعذّر الحفظ: '+e));
-}
-</script>
-</body></html>
-"""
+}"""
+
+# سلوك زرّ الحفظ في نسخة الويب: يرسل البيانات فيعيد الخادم ملفّ PDF يُفتح مباشرةً.
+_SUBMIT_WEB = r"""function submitForm(){
+  fetch('/pricer/pdf',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(collect())}).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.blob(); }).then(b=>{ window.location = URL.createObjectURL(b); })
+    .catch(e=>alert('تعذّر إنشاء PDF: '+e));
+}"""
