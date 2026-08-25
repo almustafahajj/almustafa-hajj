@@ -11,7 +11,7 @@
     <nav class="nav">
       <a class="{{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
-      <a href="#">💰 المالية</a>
+      <a class="{{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">💰 المالية</a>
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
       <a class="{{ 'active' if active=='offers' }}" href="{{ url_for('offers') }}">🧮 التسعير والعروض</a>
       {% if is_admin %}<a class="{{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">👥 إدارة الحسابات</a>{% endif %}

@@ -706,3 +706,77 @@ def pricing_delete(num):
         except Exception:
             pass
     return redirect(url_for("pricings"))
+
+
+# ============================ المالية والتحصيل =============================
+@app.get("/finance")
+def finance():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app.fields import parse_amount
+    records = _load_records()
+    fin = stats.financial_summary(records)
+    cards = [
+        {"icon": "💰", "label": "إجمالي القيمة",
+         "value": format_amount(fin.total) or "0", "sub": "", "color": "#8A6E4B"},
+        {"icon": "✅", "label": "المحصّل", "value": format_amount(fin.paid) or "0",
+         "sub": f"{fin.collected_percent}% من الإجمالي", "color": "#2E7D5B"},
+        {"icon": "⏳", "label": "المتبقّي",
+         "value": format_amount(fin.remaining) or "0", "sub": "AED",
+         "color": "#2C5AA0"},
+        {"icon": "⚠", "label": "المتأخّرون عن السداد",
+         "value": f"{fin.unpaid_count:,}", "sub": "بحاجة متابعة",
+         "color": "#C0392B"},
+    ]
+    progs = [{"name": name, "count": pf.count,
+              "paid": format_amount(pf.paid) or "0",
+              "remaining": format_amount(pf.remaining) or "0",
+              "pct": pf.collected_percent}
+             for name, pf in _by_group(records)]
+    idx_of = {id(r): i for i, r in enumerate(records)}
+    arrears = []
+    for r, amt in stats.outstanding(records):
+        arrears.append({
+            "idx": idx_of[id(r)],
+            "name": getattr(r, "full_name_ar", "") or getattr(
+                r, "full_name_en", "") or "—",
+            "program": str(getattr(r, _group_attr(), "") or "") or "—",
+            "phone": getattr(r, "phone", "") or "—",
+            "total": format_amount(parse_amount(r.program_value) or 0) or "0",
+            "paid": format_amount(parse_amount(r.paid_amount) or 0) or "0",
+            "remaining": format_amount(amt) or "0"})
+    return render_template("finance.html", active="finance", cards=cards,
+                           progs=progs, arrears=arrears, **_ctx())
+
+
+@app.post("/finance/<int:idx>/pay")
+def finance_pay(idx):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("finance"))
+    from datetime import date as _date
+    from hajj_app.fields import parse_amount, format_amount as _fmt, sync_paid_amount
+    records = _load_records()
+    if 0 <= idx < len(records):
+        amt = parse_amount(request.form.get("amount"))
+        if amt and amt > 0:
+            rec = records[idx]
+            pays = list(getattr(rec, "payments", None) or [])
+            # مبلغ مدفوع سابق أُدخل مباشرةً بلا سجلّ دفعات: نُدرجه كرصيد افتتاحي
+            # حتى لا يُلغيه sync_paid_amount عند إعادة الحساب من مجموع الدفعات.
+            if not pays:
+                prev = parse_amount(getattr(rec, "paid_amount", "")) or 0
+                if prev > 0:
+                    pays.append({"amount": _fmt(prev), "date": "",
+                                 "method": "رصيد سابق"})
+            pays.append({"amount": _fmt(amt), "date": _date.today().isoformat(),
+                         "method": (request.form.get("method") or "").strip()
+                         or "تحويل"})
+            rec.payments = pays
+            sync_paid_amount(rec)
+            try:
+                storage.save_records(records, session=_sess())
+            except Exception:
+                pass
+    return redirect(url_for("finance"))
