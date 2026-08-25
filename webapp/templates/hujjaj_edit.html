@@ -29,4 +29,17 @@
     <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع للقائمة</a>
   </div>
 </form>
+
+{% if docs %}
+<fieldset class="editcard">
+  <legend>📄 مستندات {{ noun_singular }}</legend>
+  <div class="docbtns">
+    {% for kind, label in docs %}
+      <a class="btn ghost" href="{{ url_for('doc_edit', idx=idx, kind=kind) }}"
+         target="_blank">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF».</p>
+</fieldset>
+{% endif %}
 {% endblock %}

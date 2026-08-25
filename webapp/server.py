@@ -401,10 +401,10 @@ def hujjaj_edit(idx):
             saved = True
         except Exception:
             saved = False
-    return _render_edit(rec, saved=saved)
+    return _render_edit(rec, saved=saved, idx=idx)
 
 
-def _render_edit(rec, saved=False, is_new=False):
+def _render_edit(rec, saved=False, is_new=False, idx=None):
     drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
     groups = []
     for title, keys in _GROUPS:
@@ -418,9 +418,15 @@ def _render_edit(rec, saved=False, is_new=False):
                        "type": ("date" if k in _DATE_FIELDS else "")})
         if fs:
             groups.append({"title": title.format(n=_noun()), "fields": fs})
+    docs = []
+    if idx is not None:                    # مستندات المعتمر (للسجلّ القائم فقط)
+        docs = [("receipt", "🧾 سند قبض"), ("invoice", "🧾 فاتورة"),
+                ("contract", "📜 عقد")]
+        if _mode() == app_mode.UMRAH:
+            docs += [("voucher", "🏨 فاوتشر"), ("treq", "🚖 طلب مواصلات")]
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
-        is_new=is_new,
+        is_new=is_new, idx=idx, docs=docs,
         name=getattr(rec, "full_name_ar", "") or getattr(
             rec, "full_name_en", "") or "",
         number=getattr(rec, "reference_number", "") or "",
@@ -706,6 +712,125 @@ def pricing_delete(num):
         except Exception:
             pass
     return redirect(url_for("pricings"))
+
+
+# ======================= مستندات كل معتمر/حاج ==============================
+_DOC_TITLES = {"receipt": ("سند قبض", "🧾"), "invoice": ("فاتورة ضريبية", "🧾"),
+               "contract": ("عقد خدمات", "📜"), "voucher": ("فاوتشر فندق", "🏨"),
+               "treq": ("طلب حجز مواصلات", "🚖")}
+
+
+def _web_doc_number(settings, rec, store_key, prefix, start):
+    """رقم مستند ثابت لكل سجلّ (نفس منطق سطح المكتب: عدّاد محفوظ + ثبات للسجلّ)."""
+    key = (str(getattr(rec, "reference_number", "") or "").strip()
+           or str(getattr(rec, "family_number", "") or "").strip()
+           or (getattr(rec, "full_name_ar", "") or
+               getattr(rec, "full_name_en", "") or "").strip())
+    store = settings.setdefault(store_key, {})
+    if key and key in store:
+        n = int(store[key])
+    else:
+        n = int(settings.get(store_key + "_next", start))
+        if key:
+            store[key] = n
+        settings[store_key + "_next"] = n + 1
+        try:
+            storage.save_settings(settings)
+        except Exception:
+            pass
+    return f"{prefix}{n:04d}"
+
+
+def _doc_build(kind, rec, co, settings):
+    """يبني بيانات المستند القابلة للتحرير + مخطّطه حسب النوع."""
+    from hajj_app import pdf_io, umrah
+    prog = str(getattr(rec, "trip", "") or getattr(rec, "program", "") or "")
+    if kind == "receipt":
+        num = _web_doc_number(settings, rec, "receipts", "", 119)
+        return pdf_io.build_receipt_data(rec, company=co, number=num), \
+            pdf_io.RECEIPT_SCHEMA
+    if kind == "invoice":
+        num = _web_doc_number(settings, rec, "invoices", "INV-", 119)
+        return pdf_io.build_invoice_data(rec, company=co, number=num), \
+            pdf_io.INVOICE_SCHEMA
+    if kind == "contract":
+        num = _web_doc_number(settings, rec, "contracts", "CON-", 119)
+        return pdf_io.build_contract_data(rec, company=co, number=num), \
+            pdf_io.CONTRACT_SCHEMA
+    if kind == "voucher":
+        num = umrah.next_voucher_number(settings)
+        try:
+            storage.save_settings(settings)
+        except Exception:
+            pass
+        return pdf_io.build_voucher_data(rec, trip=None, program_name=prog,
+                                         company=co, number=num), \
+            pdf_io.VOUCHER_SCHEMA
+    num = umrah.next_transport_number(settings)   # treq
+    try:
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    return pdf_io.build_transport_request_data(rec, trip=None, company=co,
+                                               number=num), pdf_io.TREQ_SCHEMA
+
+
+def _doc_export(kind, rec, co, data, path):
+    """يولّد الـ PDF للمستند من البيانات المُحرَّرة."""
+    from hajj_app import pdf_io
+    if kind == "receipt":
+        c = pdf_io.company_info(co)
+        pdf_io.export_receipt_pdf(rec, path, company=c["name_ar"],
+                                  company_en=c["name_en"], data=data)
+    elif kind == "invoice":
+        pdf_io.export_invoice_pdf(rec, path, company=co, data=data)
+    elif kind == "contract":
+        pdf_io.export_contract_pdf(rec, path, company=co, data=data)
+    elif kind == "voucher":
+        pdf_io.export_umrah_voucher_pdf(rec, path, trip=None, company=co,
+                                        data=data)
+    else:                                          # treq
+        pdf_io.export_umrah_transport_request_pdf(rec, path, company=co,
+                                                  data=data)
+
+
+@app.get("/doc/<int:idx>/<kind>")
+def doc_edit(idx, kind):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if kind not in _DOC_TITLES:
+        return redirect(url_for("hujjaj"))
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    from hajj_app import webdoc
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data, schema = _doc_build(kind, records[idx], co, settings)
+    title, icon = _DOC_TITLES[kind]
+    return webdoc._doc_html(
+        data, schema, title, icon,
+        submit_action=webdoc.web_submit_action(
+            url_for("doc_pdf", idx=idx, kind=kind)),
+        back_url=url_for("hujjaj_edit", idx=idx))
+
+
+@app.post("/doc/<int:idx>/<kind>/pdf")
+def doc_pdf(idx, kind):
+    if _sess() is None:
+        return ("", 401)
+    if kind not in _DOC_TITLES:
+        return ("", 404)
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return ("", 404)
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data = request.get_json(force=True, silent=True) or {}
+    title = _DOC_TITLES[kind][0]
+    return _pdf_response(
+        lambda p: _doc_export(kind, records[idx], co, data, p),
+        f"{title}-{data.get('number','') or ''}.pdf")
 
 
 # ============================ المالية والتحصيل =============================
