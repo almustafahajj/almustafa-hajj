@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}سجلّ التدقيق — المصطفى{% endblock %}
+{% block heading %}📝 سجلّ التدقيق{% endblock %}
+{% block subhead %}<div class="season">من فعل ماذا ومتى — آخر ٥٠٠ عملية</div>{% endblock %}
+{% block content %}
+{% if forbidden %}
+<div class="acc-msg err">هذه الصفحة للمدير فقط.</div>
+{% elif not entries %}
+<div class="acc-msg">لا توجد قيود بعد.</div>
+{% else %}
+<div class="panel">
+<table class="data">
+  <thead><tr><th>التاريخ والوقت</th><th>المستخدم</th><th>العملية</th><th>التفصيل</th></tr></thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ e.ts }}</td>
+      <td>{{ e.user }}</td>
+      <td>{{ e.action }}</td>
+      <td>{{ e.details }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

@@ -38,8 +38,11 @@
       <a class="btn ghost" href="{{ url_for('doc_edit', idx=idx, kind=kind) }}"
          target="_blank">{{ label }}</a>
     {% endfor %}
+    <a class="btn primary" href="{{ url_for('pilgrim_packet', idx=idx) }}"
+       target="_blank">📦 حزمة المستندات</a>
   </div>
-  <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF».</p>
+  <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF».
+    «حزمة المستندات» تدمج الجواز والبطاقة والسند والعقد في ملف واحد.</p>
 </fieldset>
 {% endif %}
 {% endblock %}

@@ -1199,6 +1199,82 @@ def doc_pdf(idx, kind):
         f"{title}-{data.get('number','') or ''}.pdf")
 
 
+@app.get("/hujjaj/<int:idx>/packet.pdf")
+def pilgrim_packet(idx):
+    """حزمة مستندات حاج واحد: الجواز (إن وُجدت صورته) + البطاقة + سند + عقد."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    rec = records[idx]
+    import io
+    import shutil
+    import tempfile
+    from hajj_app import pdf_io
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    company = pdf_io.company_info(co)
+    season = str(settings.get("season_year", "") or "")
+    name = getattr(rec, "full_name_ar", "") or getattr(rec, "full_name_en", "") \
+        or "حاج"
+    tmpdir = tempfile.mkdtemp(prefix="hajj_packet_")
+    out = _tmp(".pdf")
+    parts = []
+    try:
+        try:                                   # ١) صورة الجواز إن وُجدت
+            from hajj_app import images as imgmod
+            iid = getattr(rec, "image_id", "")
+            if iid and imgmod.has_image(iid, imgmod.PASSPORT):
+                data = imgmod.load_image(iid, imgmod.PASSPORT, _sess())
+                if data:
+                    entries = []
+                    for k, pb in enumerate(imgmod.render_pages_png(data), 1):
+                        ip = os.path.join(tmpdir, f"pp{k}.img")
+                        with open(ip, "wb") as fh:
+                            fh.write(pb)
+                        entries.append((name, ip))
+                    pp = os.path.join(tmpdir, "passport.pdf")
+                    pdf_io.export_passports_pdf(entries, pp, title="الجواز")
+                    parts.append(pp)
+        except Exception:                      # noqa: BLE001
+            pass
+        try:                                   # ٢) البطاقة
+            bp = os.path.join(tmpdir, "badge.pdf")
+            pdf_io.export_badges_pdf([rec], bp, company=company["name_ar"],
+                                     session=_sess())
+            parts.append(bp)
+        except Exception:                      # noqa: BLE001
+            pass
+        rp = os.path.join(tmpdir, "receipt.pdf")   # ٣) سند القبض
+        pdf_io.export_receipt_pdf(
+            rec, rp, season=season,
+            number=_web_doc_number(settings, rec, "receipts", "", 119))
+        parts.append(rp)
+        cp = os.path.join(tmpdir, "contract.pdf")  # ٤) العقد
+        pdf_io.export_contract_pdf(
+            rec, cp, company=co, season=season,
+            number=_web_doc_number(settings, rec, "contracts", "CON-", 119))
+        parts.append(cp)
+        pdf_io.merge_pdfs(parts, out)
+    finally:
+        for pth in parts:
+            try:
+                os.remove(pth)
+            except OSError:
+                pass
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    with open(out, "rb") as f:
+        buf = io.BytesIO(f.read())
+    try:
+        os.unlink(out)
+    except OSError:
+        pass
+    buf.seek(0)
+    return send_file(buf, mimetype="application/pdf", as_attachment=False,
+                     download_name=f"حزمة-{name}.pdf")
+
+
 @app.get("/reports/bulk/<kind>.pdf")
 def rep_bulk_docs(kind):
     """توليد جماعي لمستند (سند/فاتورة/عقد) لكل السجلات في ملف PDF واحد."""
@@ -1350,6 +1426,60 @@ def quality_report():
         "quality.html", active="quality", groups=groups, total=report.total,
         issues_count=len(report.issues), clean=report.clean,
         readiness=readiness, **_ctx())
+
+
+# ==================== سجلّ التدقيق =========================================
+@app.get("/audit")
+def audit_log():
+    """سجلّ التدقيق (من فعل ماذا ومتى) — للمدير فقط."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().is_admin:
+        return render_template("audit.html", active="audit", forbidden=True,
+                               entries=[], **_ctx())
+    from hajj_app import audit
+    entries = [{"ts": (e.get("ts") or "").replace("T", "  "),
+                "user": e.get("user") or "—", "action": e.get("action") or "",
+                "details": e.get("details") or ""}
+               for e in audit.read_entries(limit=500)]
+    return render_template("audit.html", active="audit", forbidden=False,
+                           entries=entries, **_ctx())
+
+
+# ==================== رسائل واتساب الجماعية ================================
+@app.route("/whatsapp", methods=["GET", "POST"])
+def whatsapp_page():
+    """يبني روابط wa.me لكل حاجّ برسالة جاهزة (لا يرسل تلقائياً)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import whatsapp
+    records = _load_records()
+    settings = storage.load_settings()
+    cc_default = str(settings.get("whatsapp_cc", "971")).strip() or "971"
+    tpl_names = list(whatsapp.TEMPLATES.keys())
+    message = whatsapp.DEFAULT_TEMPLATE
+    cc = cc_default
+    rows = None
+    if request.method == "POST":
+        tpl = request.form.get("template", "")
+        if tpl and tpl in whatsapp.TEMPLATES and request.form.get("use_tpl"):
+            message = whatsapp.TEMPLATES[tpl]
+        else:
+            message = request.form.get("message", "") or whatsapp.DEFAULT_TEMPLATE
+        cc = (request.form.get("cc", "") or cc_default).strip() or cc_default
+        rows = []
+        for i, rec in enumerate(records):
+            name = getattr(rec, "full_name_ar", "") or getattr(
+                rec, "full_name_en", "") or "—"
+            link = whatsapp.wa_link(getattr(rec, "phone", ""),
+                                    whatsapp.render_message(message, rec), cc)
+            rows.append({"idx": i, "name": name,
+                         "phone": str(getattr(rec, "phone", "") or "—"),
+                         "link": link})
+    return render_template(
+        "whatsapp.html", active="whatsapp", tpl_names=tpl_names, message=message,
+        cc=cc, rows=rows, count=len(records),
+        placeholders=" ".join(whatsapp.PLACEHOLDERS), **_ctx())
 
 
 # ============================ المالية والتحصيل =============================

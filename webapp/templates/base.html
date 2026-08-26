@@ -16,9 +16,11 @@
       <a class="{{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">💰 المالية</a>
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
       <a class="{{ 'active' if active=='quality' }}" href="{{ url_for('quality_report') }}">🔍 فحص الجودة</a>
+      <a class="{{ 'active' if active=='whatsapp' }}" href="{{ url_for('whatsapp_page') }}">📱 واتساب</a>
       {% if can_edit %}<a class="{{ 'active' if active=='import' }}" href="{{ url_for('data_import') }}">📥 استيراد إكسل</a>{% endif %}
       <a class="{{ 'active' if active=='offers' }}" href="{{ url_for('offers') }}">🧮 التسعير والعروض</a>
       {% if is_admin %}<a class="{{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">👥 إدارة الحسابات</a>{% endif %}
+      {% if is_admin %}<a class="{{ 'active' if active=='audit' }}" href="{{ url_for('audit_log') }}">📝 سجلّ التدقيق</a>{% endif %}
     </nav>
     <div class="foot">
       👤 {{ session.get('username','') }} · {{ session.get('role','') }}<br>

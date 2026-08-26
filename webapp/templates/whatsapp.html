@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}واتساب جماعي — المصطفى{% endblock %}
+{% block heading %}📱 رسائل واتساب جماعية{% endblock %}
+{% block subhead %}<div class="season">{{ count }} سجلّ · يفتح لكلٍّ محادثة برسالة جاهزة — تضغط «إرسال» بنفسك</div>{% endblock %}
+{% block content %}
+<form method="post">
+  <fieldset class="editcard">
+    <legend>الرسالة</legend>
+    <div class="fgrid">
+      <label class="ff"><span>قالب جاهز</span>
+        <select name="template" onchange="this.form.use_tpl.value='1';this.form.submit()">
+          {% for t in tpl_names %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select></label>
+      <label class="ff"><span>رمز الدولة (للأرقام التي تبدأ بـ 0)</span>
+        <input name="cc" value="{{ cc }}" dir="ltr" style="text-align:center"></label>
+    </div>
+    <input type="hidden" name="use_tpl" value="">
+    <label class="ff" style="margin-top:8px"><span>نصّ الرسالة</span>
+      <textarea name="message" rows="5">{{ message }}</textarea></label>
+    <p class="hint-note">عناصر نائبة تُستبدَل لكل حاج: {{ placeholders }}</p>
+    <div class="formbar">
+      <button class="btn primary" type="submit">🔗 توليد الروابط</button>
+      <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع</a>
+    </div>
+  </fieldset>
+</form>
+
+{% if rows is not none %}
+<div class="panel" style="margin-top:14px">
+<table class="data">
+  <thead><tr><th>الحاج</th><th>الرقم</th><th>واتساب</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.name }}</td>
+      <td dir="ltr">{{ r.phone }}</td>
+      <td>{% if r.link %}<a class="btn primary" target="_blank" href="{{ r.link }}">📱 فتح المحادثة</a>
+          {% else %}<span class="muted">رقم غير صالح</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}
