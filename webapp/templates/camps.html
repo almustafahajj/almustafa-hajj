@@ -1,20 +1,31 @@
 {% extends "base.html" %}
 {% block title %}مخيمات منى وعرفة — المصطفى{% endblock %}
-{% block heading %}⛺ مخيمات منى وعرفة{% endblock %}
-{% block subhead %}<div class="season">{{ count }} حاجّ · معاينة كشف التسكين لكل مخيّم</div>{% endblock %}
+{% block heading %}⛺ تسكين مخيمات منى وعرفة{% endblock %}
+{% block subhead %}<div class="season">{{ count }} حاجّ · اختر الخيارات ثم عاين كشف التسكين</div>{% endblock %}
 {% block content %}
-<div class="kpis">
-  {% for camp in camps %}
-  <a class="card" target="_blank" href="{{ url_for('camp_pdf', slug=camp.slug) }}"
-     style="text-decoration:none;color:inherit;display:block">
-    <div class="k-icon" style="background:#6E543A">⛺</div>
-    <div class="k-body">
-      <div class="k-label">مخيّم {{ camp.name }}</div>
-      <div class="k-value" style="font-size:15px">معاينة كشف التسكين ←</div>
+<form method="get" action="{{ url_for('camp_pdf') }}" target="_blank">
+  <fieldset class="editcard">
+    <legend>خيارات كشف التسكين</legend>
+    <div class="fgrid">
+      <label class="ff"><span>المخيّم</span>
+        <select name="camp">
+          {% for c in camps %}<option value="{{ c.slug }}">{{ c.name }}</option>{% endfor %}
+        </select></label>
+      <label class="ff"><span>التصنيف</span>
+        <select name="only">
+          {% for val, lbl in classes %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+        </select></label>
+      <label class="ff"><span>القطاع (اختياري)</span>
+        <input name="sector" placeholder="مثال: أ"></label>
+      <label class="ff"><span>سعة الخيمة</span>
+        <input name="capacity" type="number" value="40" min="1"></label>
     </div>
-  </a>
-  {% endfor %}
-</div>
-<p class="hint-note" style="margin-top:14px">يوزّع الحجّاج على خيام مفصولة بالجنس
-  (كل عائلة/سكّان غرفة معاً)، ويُفتح الكشف PDF في تبويب جديد.</p>
+    <div class="formbar">
+      <button class="btn primary" type="submit">⛺ معاينة كشف التسكين</button>
+    </div>
+  </fieldset>
+</form>
+<p class="hint-note">يوزّع الحجّاج على خيام بحجم «سعة الخيمة»، مفصولةً بالجنس، مع
+  إبقاء كل عائلة/سكّان غرفة معاً. اختر «رجال» أو «نساء» لطباعة كشف تصنيف واحد فقط.
+  يُفتح الكشف PDF في تبويب جديد.</p>
 {% endblock %}

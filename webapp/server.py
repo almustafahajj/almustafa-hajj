@@ -1544,36 +1544,51 @@ _CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}
 
 @app.get("/camps")
 def camps_page():
-    """صفحة كشوف تسكين المخيمات (منى/عرفة) — معاينة PDF لكلٍّ."""
+    """صفحة خيارات تسكين المخيمات (منى/عرفة): تصنيف/قطاع/سعة ثم معاينة PDF."""
     if _sess() is None:
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:              # خاصّ بالحج
         return redirect(url_for("reports"))
-    from hajj_app.camps import CAMPS
+    from hajj_app.camps import CAMPS, MEN, WOMEN
     slug_of = {v: k for k, v in _CAMP_SLUGS.items()}
     camps = [{"slug": slug_of.get(name, name), "name": name} for name in CAMPS]
-    return render_template("camps.html", active="camps",
-                           camps=camps, count=len(_load_records()), **_ctx())
+    return render_template("camps.html", active="camps", camps=camps,
+                           classes=[("", "الكل"), (MEN, MEN), (WOMEN, WOMEN)],
+                           count=len(_load_records()), **_ctx())
 
 
-@app.get("/camps/<slug>.pdf")
-def camp_pdf(slug):
+@app.get("/camps/plan.pdf")
+def camp_pdf():
+    """يبني كشف تسكين المخيّم حسب الخيارات (تصنيف/قطاع/سعة) ويعيده معاينة PDF."""
     if _sess() is None:
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:
         return ("", 404)
     from hajj_app import camps as campmod
     from hajj_app.pdf_io import export_camp_pdf
-    camp = _CAMP_SLUGS.get(slug)
+    camp = _CAMP_SLUGS.get(request.args.get("camp", ""))
     if camp is None or camp not in campmod.CAMPS:
         return redirect(url_for("camps_page"))
     records = _load_records()
     if not records:
         return redirect(url_for("camps_page"))
-    plan = campmod.build_camp_plan(records, camp)
-    return _pdf_response(
-        lambda p: export_camp_pdf(plan, p, title=f"كشف تسكين مخيّم {camp}"),
-        f"camp-{slug}.pdf")
+    try:
+        capacity = int(request.args.get("capacity", "40") or 40)
+    except ValueError:
+        capacity = 40
+    sector = (request.args.get("sector", "") or "").strip()
+    only = request.args.get("only", "") or ""
+    if only not in (campmod.MEN, campmod.WOMEN):
+        only = ""
+    plan = campmod.build_camp_plan(records, camp, capacity=capacity,
+                                   sector=sector, only=only)
+    title = f"كشف تسكين مخيّم {camp}"
+    if only:
+        title += f" — {only}"
+    if sector:
+        title += f" — قطاع {sector}"
+    return _pdf_response(lambda p: export_camp_pdf(plan, p, title=title),
+                         "camp-plan.pdf")
 
 
 # ==================== المصروفات والمحاسبة ==================================
