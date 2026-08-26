@@ -5,11 +5,11 @@
 {% block content %}
 <div class="kpis">
   {% for camp in camps %}
-  <a class="card" target="_blank" href="{{ url_for('camp_pdf', camp=camp) }}"
+  <a class="card" target="_blank" href="{{ url_for('camp_pdf', slug=camp.slug) }}"
      style="text-decoration:none;color:inherit;display:block">
     <div class="k-icon" style="background:#6E543A">⛺</div>
     <div class="k-body">
-      <div class="k-label">مخيّم {{ camp }}</div>
+      <div class="k-label">مخيّم {{ camp.name }}</div>
       <div class="k-value" style="font-size:15px">معاينة كشف التسكين ←</div>
     </div>
   </a>

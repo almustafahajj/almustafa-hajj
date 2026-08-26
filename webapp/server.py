@@ -1538,6 +1538,10 @@ def occupancy():
 
 
 # ==================== مخيمات منى وعرفة =====================================
+# خرائط ASCII للمخيمات — نتفادى العربية في مسار الرابط (بعض خوادم WSGI تخنقها)
+_CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}
+
+
 @app.get("/camps")
 def camps_page():
     """صفحة كشوف تسكين المخيمات (منى/عرفة) — معاينة PDF لكلٍّ."""
@@ -1546,19 +1550,22 @@ def camps_page():
     if _mode() != app_mode.HAJJ:              # خاصّ بالحج
         return redirect(url_for("reports"))
     from hajj_app.camps import CAMPS
+    slug_of = {v: k for k, v in _CAMP_SLUGS.items()}
+    camps = [{"slug": slug_of.get(name, name), "name": name} for name in CAMPS]
     return render_template("camps.html", active="camps",
-                           camps=list(CAMPS), count=len(_load_records()), **_ctx())
+                           camps=camps, count=len(_load_records()), **_ctx())
 
 
-@app.get("/camps/<camp>.pdf")
-def camp_pdf(camp):
+@app.get("/camps/<slug>.pdf")
+def camp_pdf(slug):
     if _sess() is None:
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:
         return ("", 404)
     from hajj_app import camps as campmod
     from hajj_app.pdf_io import export_camp_pdf
-    if camp not in campmod.CAMPS:
+    camp = _CAMP_SLUGS.get(slug)
+    if camp is None or camp not in campmod.CAMPS:
         return redirect(url_for("camps_page"))
     records = _load_records()
     if not records:
@@ -1566,7 +1573,7 @@ def camp_pdf(camp):
     plan = campmod.build_camp_plan(records, camp)
     return _pdf_response(
         lambda p: export_camp_pdf(plan, p, title=f"كشف تسكين مخيّم {camp}"),
-        f"مخيم-{camp}.pdf")
+        f"camp-{slug}.pdf")
 
 
 # ==================== المصروفات والمحاسبة ==================================
