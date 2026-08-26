@@ -1199,6 +1199,69 @@ def doc_pdf(idx, kind):
         f"{title}-{data.get('number','') or ''}.pdf")
 
 
+# ==================== مواعيد وتعليمات السفر (برامج الحج) ===================
+@app.get("/travel")
+def travel_list():
+    """قائمة برامج الحج لتحرير «مواعيد وتعليمات السفر» لكلٍّ منها."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:              # ميزة خاصّة بالحج
+        return redirect(url_for("reports"))
+    from hajj_app.programs import PROGRAM_NAMES
+    progs = [{"idx": i, "name": n} for i, n in enumerate(PROGRAM_NAMES)]
+    return render_template("travel.html", active="travel", progs=progs, **_ctx())
+
+
+@app.get("/travel/<int:idx>")
+def travel_edit(idx):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return redirect(url_for("reports"))
+    from hajj_app import travel, webdoc
+    from hajj_app.programs import PROGRAM_NAMES, load_programs
+    if not (0 <= idx < len(PROGRAM_NAMES)):
+        return redirect(url_for("travel_list"))
+    settings = storage.load_settings()
+    progs = load_programs(settings)
+    prog = progs[idx] if idx < len(progs) else None
+    data = travel.flatten(travel.load_travel(settings, idx, prog))
+    name = PROGRAM_NAMES[idx]
+    return webdoc._doc_html(
+        data, travel.web_schema(), f"مواعيد وتعليمات السفر — {name}", "🧳",
+        submit_action=webdoc.web_submit_action(url_for("travel_pdf", idx=idx)),
+        back_url=url_for("travel_list"))
+
+
+@app.post("/travel/<int:idx>/pdf")
+def travel_pdf(idx):
+    """يحفظ مواعيد/تعليمات البرنامج (للمحرّرين) ويعيد PDF للمعاينة."""
+    if _sess() is None:
+        return ("", 401)
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app import travel
+    from hajj_app.programs import PROGRAM_NAMES
+    from hajj_app.pdf_io import export_travel_pdf
+    if not (0 <= idx < len(PROGRAM_NAMES)):
+        return ("", 404)
+    settings = storage.load_settings()
+    result = request.get_json(force=True, silent=True) or {}
+    nested = travel.unflatten(result)
+    name = PROGRAM_NAMES[idx]
+    season = str(settings.get("season_year", "") or "")
+    if _sess().can_edit:                       # المطّلع يعاين دون حفظ
+        travel.save_travel(settings, idx, nested)
+        try:
+            storage.save_settings(settings)
+        except Exception:
+            pass
+    return _pdf_response(
+        lambda p: export_travel_pdf(p, program_name=name, data=nested,
+                                    season=season),
+        f"مواعيد-السفر-{name}.pdf")
+
+
 # ============================ المالية والتحصيل =============================
 @app.get("/finance")
 def finance():

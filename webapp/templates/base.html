@@ -12,6 +12,7 @@
       <a class="{{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
       {% if mode=='umrah' %}<a class="{{ 'active' if active=='programs' }}" href="{{ url_for('programs') }}">🗂 البرامج</a>{% endif %}
+      {% if mode=='hajj' %}<a class="{{ 'active' if active=='travel' }}" href="{{ url_for('travel_list') }}">🧳 مواعيد السفر</a>{% endif %}
       <a class="{{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">💰 المالية</a>
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
       {% if can_edit %}<a class="{{ 'active' if active=='import' }}" href="{{ url_for('data_import') }}">📥 استيراد إكسل</a>{% endif %}
