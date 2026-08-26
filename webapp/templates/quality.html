@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}فحص الجودة — المصطفى{% endblock %}
+{% block heading %}🔍 فحص جودة الكشف وجاهزيته{% endblock %}
+{% block subhead %}<div class="season">{{ total }} سجلّ ·
+  {% if clean %}لا مشكلات 🎉{% else %}{{ issues_count }} تنبيه{% endif %}</div>{% endblock %}
+{% block content %}
+
+<div class="panel" style="margin-top:4px">
+  <h3 style="margin:0 0 10px">نظرة الجاهزية العامة</h3>
+  <div class="ready-grid">
+    {% for r in readiness %}
+    <div class="ready-item">
+      <div class="ready-top"><span>{{ r.label }}</span>
+        <span class="ready-num">{{ r.done }}/{{ r.total }} · {{ r.pct }}%</span></div>
+      <div class="bar"><div class="bar-fill"
+        style="width:{{ r.pct }}%;background:{{ '#2E7D5B' if r.pct>=80 else ('#B26A00' if r.pct>=50 else '#C0392B') }}"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if clean %}
+<div class="acc-msg ok" style="margin-top:16px">✅ لا توجد مشكلات في الكشف — كل السجلات سليمة.</div>
+{% else %}
+{% for g in groups %}
+<div class="panel" style="margin-top:16px">
+  <h3 style="margin:0 0 10px">
+    <span class="qbadge">{{ g.issues|length }}</span> {{ g.kind }}</h3>
+  <table class="data">
+    <thead><tr><th>#</th><th>الاسم</th><th>رقم الجواز</th><th>التفصيل</th><th></th></tr></thead>
+    <tbody>
+      {% for iss in g.issues %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ iss.name }}</td>
+        <td dir="ltr">{{ iss.passport or '—' }}</td>
+        <td>{{ iss.detail }}</td>
+        <td><a class="btn ghost" href="{{ url_for('hujjaj_edit', idx=iss.idx) }}">تصحيح ←</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

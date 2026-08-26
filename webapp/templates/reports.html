@@ -42,6 +42,27 @@
       <div class="d">الجدول الزمني المحفوظ (يوم/نشاط/مكان).</div></div>
   </a>
 </div>
+
+{% if can_edit %}
+<h3 style="margin:22px 0 10px">🧾 توليد جماعي للمستندات (كل السجلات في ملف واحد)</h3>
+<div class="repgrid">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_bulk_docs', kind='receipt') }}">
+    <div class="ic" style="background:#e6f1e9;color:#2E7D5B">🧾</div>
+    <div><div class="t">سندات القبض — للجميع</div>
+      <div class="d">سند قبض لكل سجلّ برقم متسلسل، مدمجة في PDF واحد.</div></div>
+  </a>
+  <a class="repcard" target="_blank" href="{{ url_for('rep_bulk_docs', kind='invoice') }}">
+    <div class="ic" style="background:#e8eef8;color:#2C5AA0">🧾</div>
+    <div><div class="t">الفواتير — للجميع</div>
+      <div class="d">فاتورة ضريبية لكل سجلّ، مدمجة في PDF واحد.</div></div>
+  </a>
+  <a class="repcard" target="_blank" href="{{ url_for('rep_bulk_docs', kind='contract') }}">
+    <div class="ic" style="background:#efe6d6;color:#8A6E4B">📜</div>
+    <div><div class="t">العقود — للجميع</div>
+      <div class="d">عقد لكل سجلّ، مدمجة في PDF واحد.</div></div>
+  </a>
+</div>
+{% endif %}
 <p class="hint-note">تقارير الـ PDF تُفتح كمعاينة في تبويب جديد (ومنها تطبع أو
   تحفظ). ملف إكسل يُنزَّل مباشرةً. تقارير التسكين ومواعيد السفر (لكل برنامج)
   والحضور ستُضاف تباعاً.</p>

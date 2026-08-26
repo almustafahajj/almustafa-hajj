@@ -1199,6 +1199,61 @@ def doc_pdf(idx, kind):
         f"{title}-{data.get('number','') or ''}.pdf")
 
 
+@app.get("/reports/bulk/<kind>.pdf")
+def rep_bulk_docs(kind):
+    """توليد جماعي لمستند (سند/فاتورة/عقد) لكل السجلات في ملف PDF واحد."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("reports"))
+    if kind not in ("receipt", "invoice", "contract"):
+        return redirect(url_for("reports"))
+    import io
+    import shutil
+    import tempfile
+    from hajj_app import pdf_io
+    records = _load_records()
+    if not records:
+        return redirect(url_for("reports"))
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    tmpdir = tempfile.mkdtemp(prefix="hajj_bulk_")
+    out = _tmp(".pdf")
+    parts = []
+    try:
+        for i, rec in enumerate(records):
+            pth = os.path.join(tmpdir, f"{i}.pdf")
+            try:
+                data, _schema = _doc_build(kind, rec, co, settings)
+                _doc_export(kind, rec, co, data, pth)
+                parts.append(pth)
+            except Exception:                  # noqa: BLE001
+                continue
+        if not parts:
+            return redirect(url_for("reports"))
+        pdf_io.merge_pdfs(parts, out)
+    finally:
+        for pth in parts:
+            try:
+                os.remove(pth)
+            except OSError:
+                pass
+        try:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        except OSError:
+            pass
+    with open(out, "rb") as f:
+        buf = io.BytesIO(f.read())
+    try:
+        os.unlink(out)
+    except OSError:
+        pass
+    buf.seek(0)
+    label = _DOC_TITLES[kind][0]
+    return send_file(buf, mimetype="application/pdf", as_attachment=False,
+                     download_name=f"{label}-الجميع.pdf")
+
+
 # ==================== مواعيد وتعليمات السفر (برامج الحج) ===================
 @app.get("/travel")
 def travel_list():
@@ -1260,6 +1315,41 @@ def travel_pdf(idx):
         lambda p: export_travel_pdf(p, program_name=name, data=nested,
                                     season=season),
         f"مواعيد-السفر-{name}.pdf")
+
+
+# ==================== فحص الجودة والجاهزية =================================
+@app.get("/quality")
+def quality_report():
+    """فحص جاهزية الكشف: صلاحية الجواز، التكرار، النقص + نظرة جاهزية عامة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import quality
+    records = _load_records()
+    programs = None
+    if _mode() == app_mode.HAJJ:
+        from hajj_app.programs import PROGRAM_NAMES, load_programs
+        progs = load_programs(storage.load_settings())
+        programs = {PROGRAM_NAMES[i]: p for i, p in enumerate(progs)
+                    if i < len(PROGRAM_NAMES)}
+    report = quality.check_records(records, programs=programs)
+    groups = [{"kind": k, "issues": [
+        {"idx": iss.index, "name": iss.name, "passport": iss.passport,
+         "detail": iss.detail} for iss in v]}
+        for k, v in report.by_kind().items()]
+    labels = {"passport": "جواز ساري", "visa": "تأشيرة", "permit": "تصريح",
+              "vaccination": "تطعيم", "payment": "سداد كامل", "contact": "تواصل"}
+    tally = {k: 0 for k in labels}
+    for r in records:
+        for k, v in quality.pilgrim_readiness(r).items():
+            if v:
+                tally[k] += 1
+    n = len(records)
+    readiness = [{"label": labels[k], "done": tally[k], "total": n,
+                  "pct": round(100 * tally[k] / n) if n else 0} for k in labels]
+    return render_template(
+        "quality.html", active="quality", groups=groups, total=report.total,
+        issues_count=len(report.issues), clean=report.clean,
+        readiness=readiness, **_ctx())
 
 
 # ============================ المالية والتحصيل =============================
