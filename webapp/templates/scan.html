@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}قراءة جواز — المصطفى{% endblock %}
+{% block heading %}📷 قراءة جواز {{ noun_singular }}{% endblock %}
+{% block subhead %}<a class="pill" href="{{ url_for('hujjaj') }}">← {{ noun }}</a>{% endblock %}
+{% block content %}
+{% if ocr_err %}
+<div class="acc-msg" style="background:#fff8ec;color:#8A6E4B;border:1px solid #e7d3a8">
+  <strong>قراءة الجوازات غير متاحة على هذه الاستضافة حالياً.</strong><br>
+  {{ ocr_err }}<br>
+  استخدم <a href="{{ url_for('hujjaj_new') }}">الإدخال اليدوي</a> أو
+  <a href="{{ url_for('data_import') }}">استيراد إكسل</a>، أو اقرأ الجوازات على
+  نسخة سطح المكتب (أسرع) ثم صدّرها إكسل واستوردها هنا.
+</div>
+{% else %}
+{% if notes %}
+<div class="acc-msg" style="background:#fdeeee;color:#9B3B3B;border:1px solid #e7bcbc">
+  {% for n in notes %}<div>{{ n }}</div>{% endfor %}
+</div>
+{% endif %}
+<fieldset class="editcard">
+  <legend>رفع صورة الجواز</legend>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="image" accept="image/*" capture="environment" required
+           style="padding:10px;border:1px solid var(--border);border-radius:10px;
+                  background:#fff;width:100%">
+    <div class="formbar" style="margin-top:12px">
+      <button class="btn primary" type="submit">📷 اقرأ الجواز</button>
+      <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع</a>
+    </div>
+  </form>
+  <p class="hint-note">تُقرأ صفحة البيانات (شريط MRZ في الأسفل) تلقائياً، ثم تُعرض
+    البيانات المستخرجة في نموذج للمراجعة قبل الحفظ. صورة واضحة وأفقية تعطي دقّة أعلى.</p>
+</fieldset>
+{% endif %}
+{% endblock %}

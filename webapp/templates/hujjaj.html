@@ -8,6 +8,7 @@
   <button class="btn primary" type="submit">بحث</button>
   {% if q %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
   <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">➕ إضافة</a>
+  {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">📷 قراءة جواز</a>{% endif %}
 </form>
 
 <div class="panel" style="margin-top:14px">

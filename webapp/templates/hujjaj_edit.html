@@ -4,7 +4,7 @@
 {% block subhead %}<div class="season">{% if is_new %}سجلّ جديد{% else %}{{ name or '—' }}{% if number %} · {{ number }}{% endif %}{% endif %}</div>{% endblock %}
 {% block content %}
 {% if saved %}<div class="ok-banner">✅ تم حفظ التعديلات بنجاح.</div>{% endif %}
-<form method="post">
+<form method="post" {% if is_new %}action="{{ url_for('hujjaj_new') }}"{% endif %}>
   {% for group in groups %}
   <fieldset class="editcard">
     <legend>{{ group.title }}</legend>

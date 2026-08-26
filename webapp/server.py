@@ -444,6 +444,67 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
         noun_singular=_noun_singular(), **_ctx())
 
 
+@app.route("/hujjaj/scan", methods=["GET", "POST"])
+def hujjaj_scan():
+    """قراءة جواز من صورة (OCR) وتعبئة نموذج سجلّ جديد للمراجعة.
+
+    اختياري على الاستضافة: يتطلّب opencv/pytesseract + محرّك tesseract. إن لم
+    تتوفّر المكتبات أو المحرّك، تُعرض رسالة لطيفة وتبقى بقية البرنامج سليمة.
+    """
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:                  # المطّلع لا يضيف
+        return redirect(url_for("hujjaj"))
+    from hajj_app.mrz import PassportData
+
+    ocr_err = None
+    _ocr = None
+    try:
+        from hajj_app import ocr as _ocr        # يتطلّب cv2/pytesseract
+        from hajj_app.tesseract_setup import configure_tesseract
+        if not configure_tesseract():
+            ocr_err = ("محرّك القراءة (tesseract) غير مثبّت على الخادم — "
+                       "راجع دليل النشر لتفعيله.")
+    except Exception as exc:                    # noqa: BLE001
+        ocr_err = (f"مكتبات القراءة غير مثبّتة على هذه الاستضافة "
+                   f"({exc.__class__.__name__}).")
+
+    if request.method == "POST":
+        if ocr_err:
+            return render_template("scan.html", active="hujjaj", ocr_err=ocr_err,
+                                   notes=[], noun_singular=_noun_singular(), **_ctx())
+        f = request.files.get("image")
+        if not f or not f.filename:
+            return render_template("scan.html", active="hujjaj", ocr_err=None,
+                                   notes=["اختر صورة الجواز أولاً."],
+                                   noun_singular=_noun_singular(), **_ctx())
+        ext = os.path.splitext(f.filename)[1].lower() or ".jpg"
+        p = _tmp(ext)
+        f.save(p)
+        notes, data = [], None
+        try:
+            data = _ocr.extract_passport(p)
+        except Exception as exc:               # noqa: BLE001
+            notes = [f"تعذّرت قراءة الجواز: {exc}. جرّب صورة أوضح أو أدخل يدوياً."]
+        finally:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+        if data is None or not (data.full_name_ar or data.full_name_en
+                                or data.passport_number):
+            if not notes:
+                notes = ["تعذّر استخراج بيانات كافية من الصورة — جرّب صورة أوضح."]
+            return render_template("scan.html", active="hujjaj", ocr_err=None,
+                                   notes=notes, noun_singular=_noun_singular(), **_ctx())
+        data.source_file = "قراءة جواز (ويب)"
+        # تُعرض البيانات المستخرجة في نموذج جديد للمراجعة ثم الحفظ عبر /hujjaj/new
+        return _render_edit(data, is_new=True)
+
+    return render_template("scan.html", active="hujjaj", ocr_err=ocr_err,
+                           notes=[], noun_singular=_noun_singular(), **_ctx())
+
+
 # ------------------------------------------------------------------ التقارير
 def _tmp(suffix):
     fd, p = tempfile.mkstemp(suffix=suffix)
