@@ -13,8 +13,12 @@
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
       {% if mode=='umrah' %}<a class="{{ 'active' if active=='programs' }}" href="{{ url_for('programs') }}">🗂 البرامج</a>{% endif %}
       {% if mode=='hajj' %}<a class="{{ 'active' if active=='travel' }}" href="{{ url_for('travel_list') }}">🧳 مواعيد السفر</a>{% endif %}
+      {% if mode=='hajj' %}<a class="{{ 'active' if active=='camps' }}" href="{{ url_for('camps_page') }}">⛺ المخيمات</a>{% endif %}
+      <a class="{{ 'active' if active=='occupancy' }}" href="{{ url_for('occupancy') }}">🛏 إشغال الغرف</a>
       <a class="{{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">💰 المالية</a>
+      {% if can_edit %}<a class="{{ 'active' if active=='expenses' }}" href="{{ url_for('expenses_page') }}">🧮 المصروفات</a>{% endif %}
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
+      <a class="{{ 'active' if active=='charts' }}" href="{{ url_for('charts') }}">📊 الرسوم البيانية</a>
       <a class="{{ 'active' if active=='quality' }}" href="{{ url_for('quality_report') }}">🔍 فحص الجودة</a>
       <a class="{{ 'active' if active=='whatsapp' }}" href="{{ url_for('whatsapp_page') }}">📱 واتساب</a>
       {% if can_edit %}<a class="{{ 'active' if active=='import' }}" href="{{ url_for('data_import') }}">📥 استيراد إكسل</a>{% endif %}

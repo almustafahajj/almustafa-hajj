@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}الرسوم البيانية — المصطفى{% endblock %}
+{% block heading %}📊 الرسوم البيانية والتوزيعات{% endblock %}
+{% block subhead %}<div class="season">{{ count }} سجلّ في الموسم الحالي</div>{% endblock %}
+{% block content %}
+<div class="kpis" style="margin-bottom:16px">
+  {% for label, value in fin_rows %}
+  <div class="card"><div class="k-body">
+    <div class="k-label">{{ label }}</div>
+    <div class="k-value">{{ value }}</div></div></div>
+  {% endfor %}
+</div>
+<div class="chart-cols">
+  {% for ch in charts %}
+  <div class="panel">
+    <h3 style="margin:0 0 12px">{{ ch.title }}</h3>
+    {% if not ch.bars %}<p class="muted">لا بيانات.</p>{% endif %}
+    {% for b in ch.bars %}
+    <div class="chart-row">
+      <div class="chart-top"><span>{{ b.label }}</span>
+        <span class="ready-num">{{ b.count }} · {{ b.percent }}%</span></div>
+      <div class="bar"><div class="bar-fill" style="width:{{ b.percent }}%"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

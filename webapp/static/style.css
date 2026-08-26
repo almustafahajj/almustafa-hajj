@@ -194,3 +194,19 @@ table.data tr.rover td{ background:#f6d9d0; }
 .qbadge{ display:inline-block; min-width:22px; text-align:center; background:#fbe4e0;
   color:#C0392B; border-radius:11px; padding:1px 8px; font-size:13px;
   font-weight:700; margin-inline-end:4px; }
+
+/* ---- الرسوم البيانية وإشغال الغرف ---- */
+.chart-cols{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:16px; }
+.chart-row{ margin-bottom:9px; }
+.chart-top{ display:flex; justify-content:space-between; align-items:baseline;
+  font-size:13.5px; margin-bottom:5px; }
+table.data tr.rpart td{ background:#fbf0dc; }
+
+/* ---- بطاقات k-* (المخيمات/السفر/المصروفات/الرسوم) ---- */
+.card .k-icon{ width:44px; height:44px; border-radius:12px; display:flex;
+  align-items:center; justify-content:center; color:#fff; font-size:21px;
+  margin-bottom:10px; }
+.card .k-label{ color:var(--muted); font-size:14px; }
+.card .k-value{ font-size:22px; font-weight:800; margin-top:2px; color:var(--ink,#3a2e22); }
+.card:hover .k-value{ color:var(--bronze); }

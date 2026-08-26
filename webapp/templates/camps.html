@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}مخيمات منى وعرفة — المصطفى{% endblock %}
+{% block heading %}⛺ مخيمات منى وعرفة{% endblock %}
+{% block subhead %}<div class="season">{{ count }} حاجّ · معاينة كشف التسكين لكل مخيّم</div>{% endblock %}
+{% block content %}
+<div class="kpis">
+  {% for camp in camps %}
+  <a class="card" target="_blank" href="{{ url_for('camp_pdf', camp=camp) }}"
+     style="text-decoration:none;color:inherit;display:block">
+    <div class="k-icon" style="background:#6E543A">⛺</div>
+    <div class="k-body">
+      <div class="k-label">مخيّم {{ camp }}</div>
+      <div class="k-value" style="font-size:15px">معاينة كشف التسكين ←</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+<p class="hint-note" style="margin-top:14px">يوزّع الحجّاج على خيام مفصولة بالجنس
+  (كل عائلة/سكّان غرفة معاً)، ويُفتح الكشف PDF في تبويب جديد.</p>
+{% endblock %}

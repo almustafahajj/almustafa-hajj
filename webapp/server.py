@@ -1482,6 +1482,142 @@ def whatsapp_page():
         placeholders=" ".join(whatsapp.PLACEHOLDERS), **_ctx())
 
 
+# ==================== الرسوم البيانية (توزيعات) ===========================
+@app.get("/charts")
+def charts():
+    """توزيعات الكشف (برنامج/فندق/جنسية/حالة) كأشرطة + ملخّص مالي."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    group_key = "trip" if _mode() == app_mode.UMRAH else "program"
+    specs = [(group_key, "التوزيع حسب البرنامج"),
+             ("hotel", "التوزيع حسب الفندق"),
+             ("nationality_ar", "التوزيع حسب الجنسية"),
+             ("status", "التوزيع حسب الحالة")]
+    charts_data = []
+    for key, title in specs:
+        buckets = stats.distribution(records, key)[:8]
+        charts_data.append({"title": title, "bars": [
+            {"label": b.label, "count": b.count, "percent": b.percent}
+            for b in buckets]})
+    fin = stats.financial_summary(records)
+    fin_rows = fin.as_rows()
+    return render_template("charts.html", active="charts", charts=charts_data,
+                           fin_rows=fin_rows, count=len(records), **_ctx())
+
+
+# ==================== إشغال الغرف ==========================================
+@app.get("/occupancy")
+def occupancy():
+    """إشغال الغرف: المشغول مقابل السعة لكل غرفة، مع التجاوز والشواغر."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app.rooming import group_records_by_room
+    records = _load_records()
+    rooms_raw, unplaced = group_records_by_room(records)
+    rows = []
+    full = over = free_beds = 0
+    for hotel, cap, number, occ in rooms_raw:
+        n = len(occ)
+        cap = cap or n
+        if n > cap:
+            over += 1
+            status, cls = f"تجاوز (+{n - cap})", "rover"
+        elif n == cap:
+            full += 1
+            status, cls = "مكتملة", "rfull"
+        else:
+            free_beds += (cap - n)
+            status, cls = f"شاغر {cap - n}", "rpart"
+        rows.append({"hotel": hotel or "—", "number": number, "cap": cap,
+                     "occ": n, "status": status, "cls": cls})
+    summary = {"rooms": len(rows), "full": full, "over": over,
+               "free": free_beds, "unplaced": len(unplaced)}
+    return render_template("occupancy.html", active="occupancy", rows=rows,
+                           summary=summary, **_ctx())
+
+
+# ==================== مخيمات منى وعرفة =====================================
+@app.get("/camps")
+def camps_page():
+    """صفحة كشوف تسكين المخيمات (منى/عرفة) — معاينة PDF لكلٍّ."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:              # خاصّ بالحج
+        return redirect(url_for("reports"))
+    from hajj_app.camps import CAMPS
+    return render_template("camps.html", active="camps",
+                           camps=list(CAMPS), count=len(_load_records()), **_ctx())
+
+
+@app.get("/camps/<camp>.pdf")
+def camp_pdf(camp):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app import camps as campmod
+    from hajj_app.pdf_io import export_camp_pdf
+    if camp not in campmod.CAMPS:
+        return redirect(url_for("camps_page"))
+    records = _load_records()
+    if not records:
+        return redirect(url_for("camps_page"))
+    plan = campmod.build_camp_plan(records, camp)
+    return _pdf_response(
+        lambda p: export_camp_pdf(plan, p, title=f"كشف تسكين مخيّم {camp}"),
+        f"مخيم-{camp}.pdf")
+
+
+# ==================== المصروفات والمحاسبة ==================================
+_EXPENSE_CATS = ("فنادق", "نقل", "إعاشة", "تصاريح", "رواتب", "طيران", "أخرى")
+
+
+@app.route("/expenses", methods=["GET", "POST"])
+def expenses_page():
+    """مصروفات الحملة: صافي = المحصّل − المصروفات (للمحرّرين إضافة/حذف)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app.fields import format_amount, parse_amount
+    settings = storage.load_settings()
+    items = list(settings.get("expenses", []) or [])
+    if request.method == "POST" and _sess().can_edit:
+        action = request.form.get("action", "")
+        if action == "add":
+            items.append({
+                "date": (request.form.get("date", "") or "").strip(),
+                "supplier": (request.form.get("supplier", "") or "").strip(),
+                "category": (request.form.get("category", "") or "").strip(),
+                "amount": (request.form.get("amount", "") or "").strip(),
+                "note": (request.form.get("note", "") or "").strip()})
+        elif action == "del":
+            try:
+                items.pop(int(request.form.get("idx", "-1")))
+            except (ValueError, IndexError):
+                pass
+        settings["expenses"] = items
+        try:
+            storage.save_settings(settings)
+        except Exception:
+            pass
+        return redirect(url_for("expenses_page"))
+    records = _load_records()
+    collected = sum(parse_amount(getattr(r, "paid_amount", "")) or 0.0
+                    for r in records)
+    total_exp = sum(parse_amount(e.get("amount")) or 0.0 for e in items)
+    rows = [{"idx": i, "date": e.get("date", ""), "supplier": e.get("supplier", ""),
+             "category": e.get("category", ""),
+             "amount": format_amount(parse_amount(e.get("amount")) or 0.0) or "0",
+             "note": e.get("note", "")} for i, e in enumerate(items)]
+    totals = {"collected": format_amount(collected) or "0",
+              "expenses": format_amount(total_exp) or "0",
+              "net": format_amount(collected - total_exp) or "0"}
+    from datetime import date as _date
+    return render_template("expenses.html", active="expenses", rows=rows,
+                           totals=totals, cats=_EXPENSE_CATS,
+                           today=_date.today().isoformat(), **_ctx())
+
+
 # ============================ المالية والتحصيل =============================
 @app.get("/finance")
 def finance():

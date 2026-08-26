@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}إشغال الغرف — المصطفى{% endblock %}
+{% block heading %}🛏 إشغال الغرف{% endblock %}
+{% block subhead %}<div class="season">
+  غرف: {{ summary.rooms }} · مكتملة: {{ summary.full }} · متجاوِزة: {{ summary.over }}
+  · أسرّة شاغرة: {{ summary.free }} · بلا غرفة: {{ summary.unplaced }}</div>{% endblock %}
+{% block content %}
+{% if not rows %}
+<div class="acc-msg">لا توجد غرف مسكّنة بعد (لا نوع غرفة/رقم في السجلات).</div>
+{% else %}
+<div class="panel">
+<table class="data">
+  <thead><tr><th>الفندق</th><th>الغرفة</th><th>السعة</th><th>المشغول</th><th>الحالة</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{{ r.cls }}">
+      <td>{{ r.hotel }}</td>
+      <td dir="ltr">{{ r.number }}</td>
+      <td>{{ r.cap }}</td>
+      <td>{{ r.occ }}</td>
+      <td>{{ r.status }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}
