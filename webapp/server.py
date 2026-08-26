@@ -368,6 +368,8 @@ def hujjaj_new():
                     continue
                 if k in request.form:
                     setattr(rec, k, request.form.get(k, "").strip())
+        if _mode() == app_mode.UMRAH and "trip" in request.form:
+            rec.trip = request.form.get("trip", "").strip()
         records.append(rec)
         try:
             storage.save_records(records, session=_sess())
@@ -396,6 +398,8 @@ def hujjaj_edit(idx):
                     continue
                 if k in request.form:
                     setattr(rec, k, request.form.get(k, "").strip())
+        if _mode() == app_mode.UMRAH and "trip" in request.form:
+            rec.trip = request.form.get("trip", "").strip()
         try:
             storage.save_records(records, session=_sess())
             saved = True
@@ -418,6 +422,13 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
                        "type": ("date" if k in _DATE_FIELDS else "")})
         if fs:
             groups.append({"title": title.format(n=_noun()), "fields": fs})
+    if _mode() == app_mode.UMRAH:            # ربط المعتمر ببرنامج عمرة
+        from hajj_app import umrah
+        codes = [t.code for t in umrah.load_trips(storage.load_settings())]
+        groups.insert(0, {"title": "البرنامج", "fields": [{
+            "key": "trip", "label": "البرنامج (الرحلة)",
+            "value": str(getattr(rec, "trip", "") or ""),
+            "choices": [""] + codes, "type": ""}]})
     docs = []
     if idx is not None:                    # مستندات المعتمر (للسجلّ القائم فقط)
         docs = [("receipt", "🧾 سند قبض"), ("invoice", "🧾 فاتورة"),
@@ -712,6 +723,150 @@ def pricing_delete(num):
         except Exception:
             pass
     return redirect(url_for("pricings"))
+
+
+# ============================ برامج العمرة =================================
+_PROG_GROUPS = [
+    ("البيانات الأساسية", [("name", "اسم البرنامج", ""),
+                           ("manager", "المسؤول", ""),
+                           ("capacity", "السعة (المقاعد)", "number"),
+                           ("notes", "ملاحظات", "")]),
+    ("التواريخ", [("depart_date", "المغادرة", "date"),
+                  ("return_date", "العودة", "date")]),
+    ("فندق مكة", [("makkah_hotel", "الفندق", ""),
+                  ("makkah_nights", "الليالي", "number"),
+                  ("makkah_rooms", "عدد الغرف", "number")]),
+    ("فندق المدينة", [("madinah_hotel", "الفندق", ""),
+                      ("madinah_nights", "الليالي", "number"),
+                      ("madinah_rooms", "عدد الغرف", "number")]),
+    ("الطيران", [("airline", "الناقل", ""),
+                 ("flight_out", "رحلة الذهاب", ""),
+                 ("out_depart_time", "إقلاع الذهاب", ""),
+                 ("out_arrive_time", "وصول الذهاب", ""),
+                 ("flight_ret", "رحلة العودة", ""),
+                 ("ret_depart_time", "إقلاع العودة", ""),
+                 ("ret_arrive_time", "وصول العودة", ""),
+                 ("flight_pnr", "PNR الطيران", ""),
+                 ("transport_pnr", "PNR النقل", "")]),
+    ("الأسعار (للفرد حسب الغرفة)", [("price_single", "مفرد", "number"),
+                                    ("price_double", "ثنائي", "number"),
+                                    ("price_triple", "ثلاثي", "number"),
+                                    ("price_quad", "رباعي", "number"),
+                                    ("price_child", "طفل", "number"),
+                                    ("price_infant", "رضيع", "number")]),
+    ("أخرى", [("transport", "ملاحظة النقل الداخلي", ""),
+              ("emergency_uae", "طوارئ الإمارات", ""),
+              ("emergency_ksa", "طوارئ السعودية", "")]),
+]
+_PROG_KEYS = [k for _t, fs in _PROG_GROUPS for k, _l, _ty in fs]
+
+
+def _prog_groups(trip) -> list:
+    groups = []
+    for title, fs in _PROG_GROUPS:
+        groups.append({"title": title, "fields": [
+            {"key": k, "label": lbl, "type": ty,
+             "value": str(getattr(trip, k, "") or "")} for k, lbl, ty in fs]})
+    return groups
+
+
+@app.get("/programs")
+def programs():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah
+    from hajj_app.fields import parse_amount
+    settings = storage.load_settings()
+    trips = umrah.load_trips(settings)
+    records = _load_records()
+    rows = []
+    for t in trips:
+        n = len(umrah.trip_pilgrims(records, t.code))
+        try:
+            cap = int(float(str(t.capacity or "").strip() or 0))
+        except ValueError:
+            cap = 0
+        rows.append({"code": t.code, "name": t.name or "—",
+                     "depart": t.depart_date or "—", "return": t.return_date or "—",
+                     "makkah": t.makkah_hotel or "—", "madinah": t.madinah_hotel or "—",
+                     "count": n, "capacity": cap or "—",
+                     "remaining": (cap - n) if cap else "—",
+                     "over": bool(cap and n > cap), "full": bool(cap and n == cap)})
+    return render_template("programs.html", active="programs", rows=rows, **_ctx())
+
+
+@app.get("/programs/new")
+def program_new():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("programs"))
+    from hajj_app import umrah
+    settings = storage.load_settings()
+    trip = umrah.UmrahTrip(code=umrah.next_code(umrah.load_trips(settings)))
+    return render_template("program_edit.html", active="programs", is_new=True,
+                           code=trip.code, orig="", groups=_prog_groups(trip),
+                           services=[], **_ctx())
+
+
+@app.get("/programs/<code>")
+def program_edit(code):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah
+    settings = storage.load_settings()
+    trip = next((t for t in umrah.load_trips(settings) if t.code == code), None)
+    if trip is None:
+        return redirect(url_for("programs"))
+    return render_template("program_edit.html", active="programs", is_new=False,
+                           code=trip.code, orig=trip.code,
+                           groups=_prog_groups(trip),
+                           services=trip.services or [], **_ctx())
+
+
+@app.post("/programs/save")
+def program_save():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("programs"))
+    from hajj_app import umrah
+    settings = storage.load_settings()
+    trips = umrah.load_trips(settings)
+    data = {k: (request.form.get(k, "") or "").strip() for k in _PROG_KEYS}
+    data["code"] = (request.form.get("code", "") or "").strip()
+    names = request.form.getlist("service_name")
+    prices = request.form.getlist("service_price")
+    data["services"] = [{"name": n.strip(), "price": p.strip()}
+                        for n, p in zip(names, prices) if n.strip()]
+    if not data["code"]:
+        data["code"] = umrah.next_code(trips)
+    trip = umrah.trip_from_dict(data)
+    key = (request.form.get("orig", "") or "").strip() or trip.code
+    trips = [t for t in trips if t.code != key and t.code != trip.code]
+    trips.append(trip)
+    umrah.save_trips(settings, trips)
+    try:
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    return redirect(url_for("programs"))
+
+
+@app.post("/programs/<code>/delete")
+def program_delete(code):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _sess().can_edit:
+        from hajj_app import umrah
+        settings = storage.load_settings()
+        trips = [t for t in umrah.load_trips(settings) if t.code != code]
+        umrah.save_trips(settings, trips)
+        try:
+            storage.save_settings(settings)
+        except Exception:
+            pass
+    return redirect(url_for("programs"))
 
 
 # ======================= مستندات كل معتمر/حاج ==============================

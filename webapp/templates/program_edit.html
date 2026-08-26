@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ 'برنامج جديد' if is_new else 'تعديل برنامج' }} — المصطفى{% endblock %}
+{% block heading %}{{ '➕ برنامج عمرة جديد' if is_new else '✏️ تعديل البرنامج' }}{% endblock %}
+{% block subhead %}<div class="season">الرمز: {{ code }}</div>{% endblock %}
+{% block content %}
+<form method="post" action="{{ url_for('program_save') }}">
+  <input type="hidden" name="orig" value="{{ orig }}">
+  <fieldset class="editcard"><legend>رمز البرنامج</legend>
+    <div class="fgrid"><label class="ff"><span>الرمز (فريد)</span>
+      <input name="code" value="{{ code }}" {{ 'readonly' if not is_new }}></label></div>
+  </fieldset>
+  {% for group in groups %}
+  <fieldset class="editcard"><legend>{{ group.title }}</legend>
+    <div class="fgrid">
+      {% for f in group.fields %}
+      <label class="ff"><span>{{ f.label }}</span>
+        <input name="{{ f.key }}" value="{{ f.value }}"
+               {% if f.type %}type="{{ f.type }}"{% endif %}></label>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endfor %}
+  <fieldset class="editcard"><legend>الخدمات (اسم + سعر للفرد)</legend>
+    <div id="svc">
+      {% for s in services %}
+      <div class="svrow">
+        <input name="service_name" value="{{ s.name }}" placeholder="اسم الخدمة">
+        <input name="service_price" value="{{ s.price }}" type="number" placeholder="السعر">
+        <button type="button" class="acc-btn del" onclick="this.parentNode.remove()">🗑</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="acc-btn add" onclick="addSvc()">➕ إضافة خدمة</button>
+  </fieldset>
+  <div class="formbar">
+    <button class="btn primary" type="submit">💾 حفظ البرنامج</button>
+    <a class="btn ghost" href="{{ url_for('programs') }}">رجوع</a>
+  </div>
+</form>
+{% if not is_new and can_edit %}
+<form method="post" action="{{ url_for('program_delete', code=code) }}"
+      onsubmit="return confirm('حذف البرنامج «{{ code }}» نهائياً؟');"
+      style="margin-top:10px">
+  <button class="btn ghost" type="submit" style="color:#C0392B">🗑 حذف البرنامج</button>
+</form>
+{% endif %}
+<script>
+function addSvc(){
+  var d=document.createElement('div'); d.className='svrow';
+  d.innerHTML='<input name="service_name" placeholder="اسم الخدمة">'
+    +'<input name="service_price" type="number" placeholder="السعر">'
+    +'<button type="button" class="acc-btn del" onclick="this.parentNode.remove()">🗑</button>';
+  document.getElementById('svc').appendChild(d);
+}
+</script>
+{% endblock %}

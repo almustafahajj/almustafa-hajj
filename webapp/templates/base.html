@@ -11,6 +11,7 @@
     <nav class="nav">
       <a class="{{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
+      {% if mode=='umrah' %}<a class="{{ 'active' if active=='programs' }}" href="{{ url_for('programs') }}">🗂 البرامج</a>{% endif %}
       <a class="{{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">💰 المالية</a>
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
       <a class="{{ 'active' if active=='offers' }}" href="{{ url_for('offers') }}">🧮 التسعير والعروض</a>

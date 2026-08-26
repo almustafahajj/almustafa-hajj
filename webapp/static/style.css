@@ -172,3 +172,12 @@ label.ff input, label.ff select{ font:inherit; font-size:15px; color:var(--ink);
 /* ---- document buttons on edit page ---- */
 .docbtns{ display:flex; flex-wrap:wrap; gap:10px; margin:4px 0 2px; }
 .docbtns .btn{ text-decoration:none; }
+
+/* ---- programs ---- */
+.svrow{ display:flex; gap:8px; align-items:center; margin:6px 0; }
+.svrow input[name=service_name]{ flex:1; }
+.svrow input[name=service_price]{ width:130px; }
+.svrow input{ font:inherit; padding:8px 10px; border:1px solid var(--border);
+  border-radius:9px; background:#fff; color:var(--ink); }
+table.data tr.rfull td{ background:#e6f1e9; }
+table.data tr.rover td{ background:#f6d9d0; }
