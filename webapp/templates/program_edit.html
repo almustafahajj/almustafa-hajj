@@ -37,6 +37,20 @@
     <a class="btn ghost" href="{{ url_for('programs') }}">رجوع</a>
   </div>
 </form>
+{% if not is_new %}
+<fieldset class="editcard">
+  <legend>📄 كشوف هذا البرنامج (معاينة)</legend>
+  <div class="docbtns">
+    <a class="btn ghost" target="_blank"
+       href="{{ url_for('program_rooming_pdf', code=code, city='makkah') }}">🛏 تسكين مكة</a>
+    <a class="btn ghost" target="_blank"
+       href="{{ url_for('program_rooming_pdf', code=code, city='madinah') }}">🛏 تسكين المدينة</a>
+    <a class="btn ghost" target="_blank"
+       href="{{ url_for('program_transport_pdf', code=code) }}">🚐 كشف المواصلات</a>
+  </div>
+  <p class="hint-note">تُفتح كمعاينة في تبويب جديد لمعتمري هذا البرنامج فقط.</p>
+</fieldset>
+{% endif %}
 {% if not is_new and can_edit %}
 <form method="post" action="{{ url_for('program_delete', code=code) }}"
       onsubmit="return confirm('حذف البرنامج «{{ code }}» نهائياً؟');"

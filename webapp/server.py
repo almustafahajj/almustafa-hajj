@@ -927,6 +927,52 @@ def program_delete(code):
     return redirect(url_for("programs"))
 
 
+def _trip_or_none(code):
+    from hajj_app import umrah
+    return next((t for t in umrah.load_trips(storage.load_settings())
+                 if t.code == code), None)
+
+
+@app.get("/programs/<code>/transport.pdf")
+def program_transport_pdf(code):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, pdf_io
+    trip = _trip_or_none(code)
+    if trip is None:
+        return redirect(url_for("programs"))
+    recs = umrah.trip_pilgrims(_load_records(), code)
+    p = _tmp(".pdf")
+    pdf_io.export_umrah_transport_pdf(
+        recs, p, program_name=(trip.name or trip.code),
+        transport_pnr=str(getattr(trip, "transport_pnr", "") or ""))
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="transport.pdf")
+
+
+@app.get("/programs/<code>/rooming/<city>.pdf")
+def program_rooming_pdf(code, city):
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, pdf_io
+    trip = _trip_or_none(code)
+    if trip is None or city not in ("makkah", "madinah"):
+        return redirect(url_for("programs"))
+    if city == "makkah":
+        label, rf, hotel, nights = ("مكة المكرّمة", "makkah_room",
+                                    trip.makkah_hotel, trip.makkah_nights)
+    else:
+        label, rf, hotel, nights = ("المدينة المنوّرة", "madinah_room",
+                                    trip.madinah_hotel, trip.madinah_nights)
+    recs = umrah.trip_pilgrims(_load_records(), code)
+    p = _tmp(".pdf")
+    pdf_io.export_umrah_rooming_pdf(
+        recs, p, city_label=label, hotel=hotel or "", nights=str(nights or ""),
+        program_name=(trip.name or trip.code), room_field=rf)
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="rooming.pdf")
+
+
 # ======================= مستندات كل معتمر/حاج ==============================
 _DOC_TITLES = {"receipt": ("سند قبض", "🧾"), "invoice": ("فاتورة ضريبية", "🧾"),
                "contract": ("عقد خدمات", "📜"), "voucher": ("فاوتشر فندق", "🏨"),
