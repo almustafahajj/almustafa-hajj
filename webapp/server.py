@@ -497,6 +497,58 @@ def rep_financial_pdf():
     return send_file(p, as_attachment=True, download_name="financial.pdf")
 
 
+@app.get("/reports/airline.pdf")
+def rep_airline_pdf():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    p = _tmp(".pdf")
+    pdf_io.export_airline_pdf(records, p)
+    return send_file(p, as_attachment=True, download_name="airline.pdf")
+
+
+@app.get("/reports/cards.pdf")
+def rep_cards_pdf():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    p = _tmp(".pdf")
+    if _mode() == app_mode.UMRAH:
+        pdf_io.export_umrah_cards_pdf(records, p, company=co, session=_sess())
+    else:
+        c = pdf_io.company_info(co)
+        pdf_io.export_badges_pdf(records, p, company=c["name_ar"],
+                                 session=_sess())
+    return send_file(p, as_attachment=True, download_name="cards.pdf")
+
+
+@app.get("/reports/transport.pdf")
+def rep_transport_pdf():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    p = _tmp(".pdf")
+    pdf_io.export_umrah_transport_pdf(records, p)
+    return send_file(p, as_attachment=True, download_name="transport.pdf")
+
+
+@app.get("/reports/itinerary.pdf")
+def rep_itinerary_pdf():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    settings = storage.load_settings()
+    rows = [list(r) for r in settings.get("itinerary", [])]
+    p = _tmp(".pdf")
+    pdf_io.export_itinerary_pdf(p, rows=rows)
+    return send_file(p, as_attachment=True, download_name="itinerary.pdf")
+
+
 # ---- مسعّر المجموعات (حاسبة حيّة على الويب) ----
 _PRICER_DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة",
                          "تذكرة الطيران", "ماء وعصير وتمر", "الهدايا",
