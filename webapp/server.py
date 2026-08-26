@@ -555,6 +555,52 @@ def rep_itinerary_pdf():
                      download_name="itinerary.pdf")
 
 
+@app.route("/import", methods=["GET", "POST"])
+def data_import():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("hujjaj"))
+    result, notes = "", []
+    if request.method == "POST":
+        f = request.files.get("file")
+        if f and f.filename:
+            from hajj_app import excel_io
+            p = _tmp(".xlsx")
+            f.save(p)
+            try:
+                recs, notes = excel_io.import_excel(p)
+            except Exception as exc:
+                recs, notes = [], [f"تعذّر قراءة الملف: {exc}"]
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+            if recs:
+                records = _load_records()
+                records.extend(recs)
+                try:
+                    storage.save_records(records, session=_sess())
+                except Exception:
+                    pass
+                result = f"تمّ استيراد {len(recs)} سجلّاً ودمجها."
+                try:
+                    from hajj_app.quality import duplicate_groups
+                    dups = duplicate_groups(records)
+                    if dups:
+                        notes = list(notes) + [
+                            f"⚠ {len(dups)} رقم جواز مكرّر بعد الدمج — "
+                            "راجعها في القائمة."]
+                except Exception:
+                    pass
+            elif not notes:
+                notes = ["الملف لا يحتوي بيانات صالحة."]
+        else:
+            notes = ["اختر ملف إكسل أولاً."]
+    return render_template("import.html", active="import", result=result,
+                           notes=notes, **_ctx())
+
+
 # ---- مسعّر المجموعات (حاسبة حيّة على الويب) ----
 _PRICER_DEFAULT_ITEMS = ("النقل الداخلي", "نقل المطار", "التأشيرة",
                          "تذكرة الطيران", "ماء وعصير وتمر", "الهدايا",

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}استيراد إكسل — المصطفى{% endblock %}
+{% block heading %}📥 استيراد من إكسل{% endblock %}
+{% block subhead %}<a class="pill" href="{{ url_for('hujjaj') }}">← {{ noun }}</a>{% endblock %}
+{% block content %}
+{% if result %}<div class="acc-msg ok">{{ result }}</div>{% endif %}
+{% if notes %}
+<div class="acc-msg" style="background:#fff8ec;color:#8A6E4B;border:1px solid #e7d3a8">
+  {% for n in notes %}<div>{{ n }}</div>{% endfor %}
+</div>
+{% endif %}
+<fieldset class="editcard">
+  <legend>رفع ملف إكسل ودمجه</legend>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx,.xlsm" required
+           style="padding:10px;border:1px solid var(--border);border-radius:10px;
+                  background:#fff;width:100%">
+    <div class="formbar" style="margin-top:12px">
+      <button class="btn primary" type="submit">📥 استيراد ودمج</button>
+      <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع</a>
+    </div>
+  </form>
+  <p class="hint-note">تُضاف السجلات إلى {{ noun }} الحاليين (لا تُستبدل). يدعم
+    رؤوس الأعمدة العربية والإنجليزية تلقائياً. للتصدير: التقارير ← كشف {{ noun }} (إكسل).</p>
+</fieldset>
+{% endblock %}
