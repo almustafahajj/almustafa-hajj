@@ -472,7 +472,8 @@ def rep_pilgrims_pdf():
         pdf_io.export_umrah_pdf(records, p, program_name="")
     else:
         pdf_io.export_pdf(records, p, title=title)
-    return send_file(p, as_attachment=True, download_name="pilgrims.pdf")
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="pilgrims.pdf")
 
 
 @app.get("/reports/pilgrims.xlsx")
@@ -494,7 +495,8 @@ def rep_financial_pdf():
     records = _load_records()
     p = _tmp(".pdf")
     pdf_io.export_stats_pdf(records, p)
-    return send_file(p, as_attachment=True, download_name="financial.pdf")
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="financial.pdf")
 
 
 @app.get("/reports/airline.pdf")
@@ -505,7 +507,8 @@ def rep_airline_pdf():
     records = _load_records()
     p = _tmp(".pdf")
     pdf_io.export_airline_pdf(records, p)
-    return send_file(p, as_attachment=True, download_name="airline.pdf")
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="airline.pdf")
 
 
 @app.get("/reports/cards.pdf")
@@ -523,7 +526,8 @@ def rep_cards_pdf():
         c = pdf_io.company_info(co)
         pdf_io.export_badges_pdf(records, p, company=c["name_ar"],
                                  session=_sess())
-    return send_file(p, as_attachment=True, download_name="cards.pdf")
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="cards.pdf")
 
 
 @app.get("/reports/transport.pdf")
@@ -534,7 +538,8 @@ def rep_transport_pdf():
     records = _load_records()
     p = _tmp(".pdf")
     pdf_io.export_umrah_transport_pdf(records, p)
-    return send_file(p, as_attachment=True, download_name="transport.pdf")
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="transport.pdf")
 
 
 @app.get("/reports/itinerary.pdf")
@@ -546,7 +551,8 @@ def rep_itinerary_pdf():
     rows = [list(r) for r in settings.get("itinerary", [])]
     p = _tmp(".pdf")
     pdf_io.export_itinerary_pdf(p, rows=rows)
-    return send_file(p, as_attachment=True, download_name="itinerary.pdf")
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="itinerary.pdf")
 
 
 # ---- مسعّر المجموعات (حاسبة حيّة على الويب) ----

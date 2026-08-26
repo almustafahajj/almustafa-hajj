@@ -4,7 +4,7 @@
 {% block subhead %}<div class="season">{{ count }} سجلّ في الموسم الحالي</div>{% endblock %}
 {% block content %}
 <div class="repgrid">
-  <a class="repcard" href="{{ url_for('rep_pilgrims_pdf') }}">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_pilgrims_pdf') }}">
     <div class="ic" style="background:#fbe4e0;color:#C0392B">📄</div>
     <div><div class="t">كشف {{ noun }} (PDF)</div>
       <div class="d">جدول كامل بكل السجلات — جاهز للطباعة.</div></div>
@@ -14,34 +14,35 @@
     <div><div class="t">كشف {{ noun }} (إكسل)</div>
       <div class="d">ملف Excel قابل للتعديل والفرز.</div></div>
   </a>
-  <a class="repcard" href="{{ url_for('rep_financial_pdf') }}">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_financial_pdf') }}">
     <div class="ic" style="background:#efe6d6;color:#8A6E4B">💰</div>
     <div><div class="t">الإحصاءات والملخّص المالي (PDF)</div>
       <div class="d">المحصّل والمتبقّي والتوزيعات والمتأخّرات.</div></div>
   </a>
-  <a class="repcard" href="{{ url_for('rep_airline_pdf') }}">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_airline_pdf') }}">
     <div class="ic" style="background:#e8eef8;color:#2C5AA0">✈</div>
     <div><div class="t">كشف الطيران (Manifest)</div>
       <div class="d">كشف طيران إنجليزي بكل السجلات — لشركة الطيران.</div></div>
   </a>
-  <a class="repcard" href="{{ url_for('rep_cards_pdf') }}">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_cards_pdf') }}">
     <div class="ic" style="background:#fbf0dc;color:#B26A00">🪪</div>
     <div><div class="t">بطاقات {{ noun }}</div>
       <div class="d">بطاقات بمقاس موحّد للطباعة والقصّ.</div></div>
   </a>
   {% if mode=='umrah' %}
-  <a class="repcard" href="{{ url_for('rep_transport_pdf') }}">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_transport_pdf') }}">
     <div class="ic" style="background:#e6f1e9;color:#2E7D5B">🚐</div>
     <div><div class="t">كشف المواصلات</div>
       <div class="d">توزيع المعتمرين على المركبات مع الفندق.</div></div>
   </a>
   {% endif %}
-  <a class="repcard" href="{{ url_for('rep_itinerary_pdf') }}">
+  <a class="repcard" target="_blank" href="{{ url_for('rep_itinerary_pdf') }}">
     <div class="ic" style="background:#efe6d6;color:#6E543A">🗓</div>
     <div><div class="t">جدول المناسك</div>
       <div class="d">الجدول الزمني المحفوظ (يوم/نشاط/مكان).</div></div>
   </a>
 </div>
-<p class="hint-note">تُنزَّل الملفات مباشرةً في متصفّحك. تقارير التسكين ومواعيد
-  السفر (لكل برنامج) والحضور ستُضاف تباعاً.</p>
+<p class="hint-note">تقارير الـ PDF تُفتح كمعاينة في تبويب جديد (ومنها تطبع أو
+  تحفظ). ملف إكسل يُنزَّل مباشرةً. تقارير التسكين ومواعيد السفر (لكل برنامج)
+  والحضور ستُضاف تباعاً.</p>
 {% endblock %}
