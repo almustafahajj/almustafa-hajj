@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}خيمة بخيمة — المصطفى{% endblock %}
+{% block heading %}🏕 إنشاء خيام مخيّم {{ camp }} — خيمة بخيمة{% endblock %}
+{% block subhead %}<div class="season">
+  <a class="pill" href="{{ url_for('camps_page') }}">← الكشف الكامل بالخيارات</a></div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg }}
+  {% if has_last %} <a class="btn primary" target="_blank" style="margin-inline-start:8px"
+     href="{{ url_for('camp_tent_last_pdf') }}">📄 فتح كشف الخيمة</a>{% endif %}
+</div>{% endif %}
+
+<form method="get" action="{{ url_for('camp_tents') }}">
+  <fieldset class="editcard">
+    <legend>معطيات الخيمة</legend>
+    <div class="fgrid">
+      <label class="ff"><span>المخيّم</span>
+        <select name="camp" onchange="this.form.submit()">
+          {% for c in camps %}<option value="{{ c.slug }}" {{ 'selected' if c.slug==camp_slug }}>{{ c.name }}</option>{% endfor %}
+        </select></label>
+      <label class="ff"><span>التصنيف</span>
+        <select name="cls" onchange="this.form.submit()">
+          {% for c in classes %}<option value="{{ c }}" {{ 'selected' if c==cls }}>{{ c }}</option>{% endfor %}
+        </select></label>
+      <label class="ff"><span>القطاع (اختياري)</span>
+        <input name="sector" value="{{ sector }}" placeholder="مثال: أ"></label>
+      <label class="ff"><span>رقم الخيمة</span>
+        <input name="number" value="{{ number }}"></label>
+      <label class="ff"><span>عدد الأشخاص (السعة)</span>
+        <input name="count" type="number" value="{{ count }}" min="1"></label>
+      <label class="ff"><span>اسم الحملة</span>
+        <input name="campaign" value="{{ campaign }}"></label>
+    </div>
+    <div class="formbar">
+      <button class="btn ghost" type="submit">↻ تحديث المعاينة</button>
+      <button class="btn primary" type="submit"
+              formmethod="post" formaction="{{ url_for('camp_tents_export') }}">
+        🏕 تثبيت وتصدير هذه الخيمة</button>
+    </div>
+  </fieldset>
+</form>
+
+<div class="acc-msg" style="background:#eef3fb;color:#2C5AA0;border:1px solid #cfe0f5">
+  سيدخل هذه الخيمة: <strong>{{ summary.in_tent }}</strong> ·
+  المتبقّون ({{ cls }}): <strong>{{ summary.remaining }}</strong> ·
+  إجمالي المسكّنين: <strong>{{ summary.assigned }}</strong>
+</div>
+
+<div class="panel">
+{% if not rows %}
+<p class="muted">لا يوجد {{ cls }} غير مسكّنين — غيّر التصنيف أو أعد الضبط.</p>
+{% else %}
+<table class="data">
+  <thead><tr><th>م</th><th>اسم الحاج</th><th>العائلة</th><th>الفندق</th><th>الغرفة</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr><td>{{ r.serial }}</td><td>{{ r.name }}</td><td>{{ r.fam }}</td>
+      <td>{{ r.hotel }}</td><td dir="ltr">{{ r.room }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+</div>
+
+<form method="post" action="{{ url_for('camp_tents_reset') }}"
+      onsubmit="return confirm('مسح كل الخيام المثبّتة والبدء من جديد؟');" style="margin-top:12px">
+  <input type="hidden" name="camp" value="{{ camp_slug }}">
+  <button class="btn ghost" type="submit" style="color:#C0392B">↺ إعادة الضبط</button>
+</form>
+<p class="hint-note">تُملأ الخيمة تلقائياً بعدد الأشخاص المحدّد من التصنيف المختار
+  (العائلة وسكّان الغرفة معاً). «تثبيت وتصدير» يثبّت ركّاب هذه الخيمة وينتقل
+  للتالية بمن تبقّى، ويتيح فتح كشفها PDF. الحالة مؤقتة لهذه الجلسة (لا تُحفظ).</p>
+{% endblock %}

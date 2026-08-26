@@ -1541,6 +1541,20 @@ def occupancy():
 # خرائط ASCII للمخيمات — نتفادى العربية في مسار الرابط (بعض خوادم WSGI تخنقها)
 _CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}
 
+# حالة «خيمة بخيمة» التفاعلية لكل جلسة (لا تُحفظ في البيانات — كسطح المكتب)
+_TENT_STATE: dict = {}
+_DEFAULT_CAMPAIGN = "المصطفى للحج والعمرة"
+
+
+def _tent_state(camp_slug):
+    """حالة بناء الخيام للجلسة الحالية، تُهيّأ من جديد عند تغيير المخيّم."""
+    sid = session.get("sid") or "-"
+    st = _TENT_STATE.get(sid)
+    if not st or st.get("camp") != camp_slug:
+        st = {"camp": camp_slug, "assigned": [], "number": 1, "last": None}
+        _TENT_STATE[sid] = st
+    return st
+
 
 @app.get("/camps")
 def camps_page():
@@ -1589,6 +1603,135 @@ def camp_pdf():
         title += f" — قطاع {sector}"
     return _pdf_response(lambda p: export_camp_pdf(plan, p, title=title),
                          "camp-plan.pdf")
+
+
+@app.get("/camps/tents")
+def camp_tents():
+    """بناء «خيمة بخيمة» تفاعلي: معاينة ركّاب الخيمة التالية قبل تثبيتها."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return redirect(url_for("reports"))
+    from hajj_app import camps as campmod
+    from hajj_app.rooming import room_number_in_type
+    camp_slug = request.args.get("camp", "mina")
+    camp = _CAMP_SLUGS.get(camp_slug)
+    if camp is None:
+        return redirect(url_for("camps_page"))
+    records = _load_records()
+    st = _tent_state(camp_slug)
+    assigned = set(st["assigned"])
+    cls = request.args.get("cls", campmod.MEN)
+    if cls not in (campmod.MEN, campmod.WOMEN):
+        cls = campmod.MEN
+    count = request.args.get("count", "40")
+    sector = request.args.get("sector", "")
+    number = request.args.get("number", str(st["number"]))
+    campaign = request.args.get("campaign", _DEFAULT_CAMPAIGN)
+    preview = campmod.next_tent_indices(records, cls, count, assigned)
+    rows = []
+    for serial, i in enumerate(preview, start=1):
+        rec = records[i]
+        room = (str(getattr(rec, "room_number", "") or "").strip()
+                or room_number_in_type(str(getattr(rec, "room_type", "") or "")))
+        rows.append({"serial": serial,
+                     "name": getattr(rec, "full_name_ar", "") or getattr(
+                         rec, "full_name_en", "") or "—",
+                     "fam": str(getattr(rec, "family_number", "") or "").strip(),
+                     "hotel": str(getattr(rec, "hotel", "") or "").strip(),
+                     "room": room})
+    remaining = campmod.remaining_by_class(records, assigned)
+    summary = {"in_tent": len(preview), "remaining": remaining.get(cls, 0),
+               "assigned": len(assigned)}
+    slug_of = {v: k for k, v in _CAMP_SLUGS.items()}
+    camps = [{"slug": slug_of.get(n, n), "name": n} for n in campmod.CAMPS]
+    return render_template(
+        "camp_tents.html", active="camps", camp=camp, camp_slug=camp_slug,
+        camps=camps, classes=[campmod.MEN, campmod.WOMEN], cls=cls, count=count,
+        sector=sector, number=number, campaign=campaign, rows=rows,
+        summary=summary, has_last=bool(st.get("last")),
+        msg=request.args.get("msg", ""), **_ctx())
+
+
+@app.post("/camps/tents/export")
+def camp_tents_export():
+    """يثبّت ركّاب الخيمة الحالية ويحفظ مواصفاتها (لتنزيل PDF)، ثم يعود للبناء."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app import camps as campmod
+    camp_slug = request.form.get("camp", "mina")
+    camp = _CAMP_SLUGS.get(camp_slug)
+    if camp is None:
+        return redirect(url_for("camps_page"))
+    records = _load_records()
+    st = _tent_state(camp_slug)
+    assigned = set(st["assigned"])
+    cls = request.form.get("cls", campmod.MEN)
+    if cls not in (campmod.MEN, campmod.WOMEN):
+        cls = campmod.MEN
+    count = request.form.get("count", "40")
+    sector = (request.form.get("sector", "") or "").strip()
+    number = (request.form.get("number", "") or "1").strip() or "1"
+    campaign = (request.form.get("campaign", "") or _DEFAULT_CAMPAIGN).strip()
+    indices = campmod.next_tent_indices(records, cls, count, assigned)
+    back = dict(camp=camp_slug, cls=cls, count=count, sector=sector,
+                campaign=campaign)
+    if not indices:
+        return redirect(url_for("camp_tents", number=number,
+                                msg=f"لا يوجد {cls} غير مسكّنين لهذه الخيمة.", **back))
+    assigned |= set(indices)
+    st["assigned"] = sorted(assigned)
+    st["last"] = {"indices": indices, "camp": camp, "sector": sector,
+                  "number": number, "cls": cls, "capacity": count,
+                  "campaign": campaign}
+    try:
+        nxt = str(int(number) + 1)
+    except ValueError:
+        nxt = number
+    st["number"] = nxt
+    return redirect(url_for(
+        "camp_tents", number=nxt,
+        msg=f"تُثبّتت الخيمة {number} ({cls}): {len(indices)} شخصاً. "
+            f"افتح كشفها من الزر أدناه.", **back))
+
+
+@app.post("/camps/tents/reset")
+def camp_tents_reset():
+    """يمسح كل الخيام المثبّتة ويبدأ من جديد."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    camp_slug = request.form.get("camp", "mina")
+    st = _tent_state(camp_slug)
+    st["assigned"] = []
+    st["number"] = 1
+    st["last"] = None
+    return redirect(url_for("camp_tents", camp=camp_slug, msg="أُعيد الضبط."))
+
+
+@app.get("/camps/tents/last.pdf")
+def camp_tent_last_pdf():
+    """يولّد PDF لآخر خيمة مثبّتة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app import camps as campmod
+    from hajj_app.pdf_io import export_tents_pdf
+    sid = session.get("sid") or "-"
+    st = _TENT_STATE.get(sid)
+    last = st.get("last") if st else None
+    if not last:
+        return redirect(url_for("camp_tents"))
+    records = _load_records()
+    plan = campmod.make_tent(
+        records, last["indices"], camp=last["camp"], sector=last["sector"],
+        number=last["number"], classification_label=last["cls"],
+        capacity=last["capacity"])
+    return _pdf_response(
+        lambda p: export_tents_pdf(plan, p, campaign=last["campaign"]),
+        "tent.pdf")
 
 
 # ==================== المصروفات والمحاسبة ==================================
