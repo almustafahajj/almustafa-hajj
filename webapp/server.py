@@ -430,11 +430,10 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
             "value": str(getattr(rec, "trip", "") or ""),
             "choices": [""] + codes, "type": ""}]})
     docs = []
-    if idx is not None:                    # مستندات المعتمر (للسجلّ القائم فقط)
+    if idx is not None:                    # مستندات السجلّ (للقائم فقط) — للحج والعمرة
         docs = [("receipt", "🧾 سند قبض"), ("invoice", "🧾 فاتورة"),
-                ("contract", "📜 عقد")]
-        if _mode() == app_mode.UMRAH:
-            docs += [("voucher", "🏨 فاوتشر"), ("treq", "🚖 طلب مواصلات")]
+                ("contract", "📜 عقد"),
+                ("voucher", "🏨 فاوتشر فندق"), ("treq", "🚖 طلب حجز مواصلات")]
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
         is_new=is_new, idx=idx, docs=docs,
