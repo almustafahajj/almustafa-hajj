@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}المجموعات والمرشدون — المصطفى{% endblock %}
+{% block heading %}👥 المجموعات والمرشدون{% endblock %}
+{% block subhead %}<div class="season">مرشد/مطوّف وهاتف لكل مجموعة</div>{% endblock %}
+{% block content %}
+{% if saved %}<div class="acc-msg ok">✅ حُفظت بيانات المجموعات والمرشدين.</div>{% endif %}
+{% if not rows %}
+<div class="acc-msg">لا مجموعات بعد — عيّن حقل «المجموعة» في سجلّات {{ noun }} أولاً.</div>
+{% else %}
+<form method="post">
+<div class="panel">
+<table class="data">
+  <thead><tr><th>المجموعة</th><th>العدد</th><th>المرشد/المطوّف</th><th>الهاتف</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="prog-name">{{ r.name }}</td>
+      <td class="tag">{{ r.count }}</td>
+      <td><input name="guide__{{ r.name }}" value="{{ r.guide }}"
+                 {{ '' if can_edit else 'readonly' }} style="width:100%"></td>
+      <td><input name="phone__{{ r.name }}" value="{{ r.phone }}" dir="ltr"
+                 {{ '' if can_edit else 'readonly' }} style="width:100%;text-align:center"></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if can_edit %}
+<div class="formbar" style="margin-top:12px">
+  <button class="btn primary" type="submit">💾 حفظ</button>
+</div>
+{% endif %}
+</form>
+{% endif %}
+<p class="hint-note">تُحدَّد «المجموعة» في سجلّ كل حاج (حقل المجموعة)، وهنا تُسند
+  لكلٍّ مرشدها/مطوّفها وهاتفه.</p>
+{% endblock %}

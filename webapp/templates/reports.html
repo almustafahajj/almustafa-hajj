@@ -29,6 +29,11 @@
     <div><div class="t">بطاقات {{ noun }}</div>
       <div class="d">بطاقات بمقاس موحّد للطباعة والقصّ.</div></div>
   </a>
+  <a class="repcard" target="_blank" href="{{ url_for('rep_stickers_pdf') }}">
+    <div class="ic" style="background:#f1e4f0;color:#8E44AD">🏷</div>
+    <div><div class="t">ملصقات الحقائب</div>
+      <div class="d">استيكرات بأسماء {{ noun }} على شبكة A4 للطباعة واللصق.</div></div>
+  </a>
   {% if mode=='umrah' %}
   <a class="repcard" target="_blank" href="{{ url_for('rep_transport_pdf') }}">
     <div class="ic" style="background:#e6f1e9;color:#2E7D5B">🚐</div>

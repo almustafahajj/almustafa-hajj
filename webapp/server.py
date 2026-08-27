@@ -709,6 +709,24 @@ def rep_cards_pdf():
                      download_name="cards.pdf")
 
 
+@app.get("/reports/stickers.pdf")
+def rep_stickers_pdf():
+    """ملصقات الحقائب (شبكة على A4) لكل السجلات."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    season = str(settings.get("season_year", "") or "")
+    company = pdf_io.company_info(co)["name_ar"]
+    p = _tmp(".pdf")
+    pdf_io.export_stickers_pdf(records, p, kind="bag", company=company,
+                               season=season)
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name="stickers.pdf")
+
+
 @app.get("/reports/transport.pdf")
 def rep_transport_pdf():
     if _sess() is None:
@@ -1544,6 +1562,41 @@ def quality_report():
         "quality.html", active="quality", groups=groups, total=report.total,
         issues_count=len(report.issues), clean=report.clean,
         readiness=readiness, **_ctx())
+
+
+# ==================== المجموعات والمرشدون ==================================
+@app.route("/groups", methods=["GET", "POST"])
+def groups_page():
+    """المجموعات والمرشدون: مرشد/مطوّف وهاتف لكل مجموعة (تُحدَّد في سجلّ كل حاج)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    settings = storage.load_settings()
+    saved = dict(settings.get("groups", {}) or {})
+    counts: dict = {}
+    for r in records:
+        name = str(getattr(r, "group", "") or "").strip()
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    names = sorted(set(counts) | set(saved))
+    if request.method == "POST" and _sess().can_edit:
+        data = {}
+        for name in names:
+            data[name] = {
+                "guide": (request.form.get(f"guide__{name}", "") or "").strip(),
+                "phone": (request.form.get(f"phone__{name}", "") or "").strip()}
+        settings["groups"] = data
+        try:
+            storage.save_settings(settings)
+        except Exception:
+            pass
+        return redirect(url_for("groups_page", saved=1))
+    rows = [{"name": n, "count": counts.get(n, 0),
+             "guide": str(saved.get(n, {}).get("guide", "") or ""),
+             "phone": str(saved.get(n, {}).get("phone", "") or "")}
+            for n in names]
+    return render_template("groups.html", active="groups", rows=rows,
+                           saved=request.args.get("saved"), **_ctx())
 
 
 # ==================== سجلّ التدقيق =========================================

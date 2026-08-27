@@ -16,6 +16,7 @@
       {% if mode=='hajj' %}<a class="{{ 'active' if active=='travel' }}" href="{{ url_for('travel_list') }}">🧳 مواعيد السفر</a>{% endif %}
       {% if mode=='hajj' %}<a class="{{ 'active' if active=='camps' }}" href="{{ url_for('camps_page') }}">⛺ المخيمات</a>{% endif %}
       <a class="{{ 'active' if active=='occupancy' }}" href="{{ url_for('occupancy') }}">🛏 إشغال الغرف</a>
+      <a class="{{ 'active' if active=='groups' }}" href="{{ url_for('groups_page') }}">👥 المجموعات</a>
       <a class="{{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">💰 المالية</a>
       {% if can_edit %}<a class="{{ 'active' if active=='expenses' }}" href="{{ url_for('expenses_page') }}">🧮 المصروفات</a>{% endif %}
       <a class="{{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">📄 التقارير</a>
