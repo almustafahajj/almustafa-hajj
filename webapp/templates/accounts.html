@@ -24,9 +24,11 @@
       <form method="post" action="{{ url_for('accounts_add') }}" class="acc-form">
         <label>اسم المستخدم
           <input name="username" required autocomplete="off"></label>
-        <label>كلمة المرور (٨ أحرف فأكثر)
-          <input name="password" type="password" required
-                 autocomplete="new-password"></label>
+        <label>كلمة المرور
+          <input name="password" type="password" required minlength="8"
+                 pattern=".*[^0-9].*" autocomplete="new-password"
+                 title="٨ خانات على الأقل، وتحتوي حرفاً واحداً غير رقمي (ليست أرقاماً فقط)">
+          <small class="pw-hint">٨ خانات فأكثر، وليست أرقاماً فقط (أضف حرفاً).</small></label>
         <label>الصلاحية
           <select name="role">
             {% for value, label in roles %}
