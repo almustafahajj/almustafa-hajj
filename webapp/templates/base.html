@@ -11,6 +11,7 @@
     <nav class="nav">
       <a class="{{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
       <a class="{{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">🪪 {{ noun }}</a>
+      <a class="{{ 'active' if active=='documents' }}" href="{{ url_for('documents') }}">📄 المستندات</a>
       {% if mode=='umrah' %}<a class="{{ 'active' if active=='programs' }}" href="{{ url_for('programs') }}">🗂 البرامج</a>{% endif %}
       {% if mode=='hajj' %}<a class="{{ 'active' if active=='travel' }}" href="{{ url_for('travel_list') }}">🧳 مواعيد السفر</a>{% endif %}
       {% if mode=='hajj' %}<a class="{{ 'active' if active=='camps' }}" href="{{ url_for('camps_page') }}">⛺ المخيمات</a>{% endif %}

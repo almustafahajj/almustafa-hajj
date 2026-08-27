@@ -351,6 +351,43 @@ def hujjaj():
                            **_ctx())
 
 
+@app.get("/documents")
+def documents():
+    """بند مستقلّ للمستندات: اختر الشخص ثم أصدِر مستنداته (لا يرتبط بالإضافة)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    q = (request.args.get("q") or "").strip()
+    indexed = list(enumerate(records))
+    if q:
+        ql = q.lower()
+        indexed = [(i, r) for i, r in indexed if ql in " ".join(str(
+            getattr(r, k, "") or "") for k in
+            ("full_name_ar", "full_name_en", "passport_number", "phone",
+             "reference_number")).lower()]
+    total = len(indexed)
+    pages = max(1, (total + _PAGE - 1) // _PAGE)
+    try:
+        page = max(1, min(pages, int(request.args.get("page", 1))))
+    except ValueError:
+        page = 1
+    offset = (page - 1) * _PAGE
+    rows = []
+    for i, r in indexed[offset:offset + _PAGE]:
+        rows.append({
+            "idx": i,
+            "name": getattr(r, "full_name_ar", "") or getattr(
+                r, "full_name_en", "") or "—",
+            "passport": getattr(r, "passport_number", "") or "—",
+            "program": str(getattr(r, ("program" if _mode() == app_mode.HAJJ
+                                       else "trip"), "") or "") or "—",
+            "phone": getattr(r, "phone", "") or "—",
+        })
+    return render_template("documents.html", active="documents", rows=rows, q=q,
+                           total=total, page=page, pages=pages, offset=offset,
+                           **_ctx())
+
+
 @app.route("/hujjaj/new", methods=["GET", "POST"])
 def hujjaj_new():
     if _sess() is None:
