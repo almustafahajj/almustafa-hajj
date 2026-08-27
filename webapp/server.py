@@ -429,18 +429,40 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
             "key": "trip", "label": "البرنامج (الرحلة)",
             "value": str(getattr(rec, "trip", "") or ""),
             "choices": [""] + codes, "type": ""}]})
-    docs = []
-    if idx is not None:                    # مستندات السجلّ (للقائم فقط) — للحج والعمرة
-        docs = [("receipt", "🧾 سند قبض"), ("invoice", "🧾 فاتورة"),
-                ("contract", "📜 عقد"),
-                ("voucher", "🏨 فاوتشر فندق"), ("treq", "🚖 طلب حجز مواصلات")]
+    has_docs = idx is not None            # للسجلّ القائم فقط
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
-        is_new=is_new, idx=idx, docs=docs,
+        has_docs=has_docs,
+        is_new=is_new, idx=idx,
         name=getattr(rec, "full_name_ar", "") or getattr(
             rec, "full_name_en", "") or "",
         number=getattr(rec, "reference_number", "") or "",
         noun_singular=_noun_singular(), **_ctx())
+
+
+_RECORD_DOCS = [
+    ("receipt", "🧾", "سند قبض", "إيصال استلام مبلغ من العميل."),
+    ("invoice", "🧾", "فاتورة ضريبية", "فاتورة بقيمة البرنامج والضريبة."),
+    ("contract", "📜", "عقد خدمات", "عقد الخدمات بين المكتب والعميل."),
+    ("voucher", "🏨", "فاوتشر فندق", "قسيمة حجز الفندق للإبراز عند الوصول."),
+    ("treq", "🚖", "طلب حجز مواصلات", "طلب حجز مواصلات موجّه للناقل."),
+]
+
+
+@app.get("/hujjaj/<int:idx>/docs")
+def record_docs(idx):
+    """قائمة مستندات السجلّ مستقلّة (تحرير كلٍّ ثم حفظ ومعاينة PDF + الحزمة)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    rec = records[idx]
+    name = getattr(rec, "full_name_ar", "") or getattr(
+        rec, "full_name_en", "") or "—"
+    return render_template("record_docs.html", active="hujjaj", idx=idx,
+                           name=name, docs=_RECORD_DOCS,
+                           noun_singular=_noun_singular(), **_ctx())
 
 
 @app.route("/hujjaj/scan", methods=["GET", "POST"])

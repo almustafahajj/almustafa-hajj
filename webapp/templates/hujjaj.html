@@ -27,7 +27,9 @@
       <td>{{ r.phone }}</td>
       <td>{% if r.status %}<span class="st {{ r.status_cls }}">{{ r.status }}</span>{% endif %}</td>
       <td class="tag">{{ r.remaining }}</td>
-      <td><a class="btn ghost sm" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">✏️ تعديل</a></td>
+      <td style="white-space:nowrap">
+        <a class="btn ghost sm" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">✏️ تعديل</a>
+        <a class="btn ghost sm" href="{{ url_for('record_docs', idx=r.idx) }}">📄 مستندات</a></td>
     </tr>
   {% else %}
     <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">

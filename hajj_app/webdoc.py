@@ -275,10 +275,20 @@ _SUBMIT_ACTION_DESKTOP = r"""fetch('/save',{method:'POST',headers:{'Content-Type
 
 
 def web_submit_action(save_url: str) -> str:
-    """سلوك الحفظ في الويب: يرسل البيانات فيعيد الخادم PDF يُفتح مباشرةً."""
+    """سلوك الحفظ في الويب: يرسل البيانات فيعيد الخادم PDF يُفتح في تبويب جديد.
+
+    يُفتح الـ PDF عبر رابط blob في **تبويب جديد** مع إبقاء صفحة المحرّر حيّةً؛
+    الانتقال بـ window.location إلى blob كان يُلغى أثناء التنقّل في بعض المتصفّحات
+    فيظهر ERR_FILE_NOT_FOUND.
+    """
     return (
         "fetch('" + save_url + "',{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
         ".then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();})"
-        ".then(b=>{window.location=URL.createObjectURL(b);})"
+        ".then(b=>{var u=URL.createObjectURL(b);"
+        "var w=window.open(u,'_blank');"
+        "if(!w){var a=document.createElement('a');a.href=u;a.target='_blank';"
+        "a.download='document.pdf';document.body.appendChild(a);a.click();"
+        "a.remove();}"
+        "setTimeout(function(){URL.revokeObjectURL(u);},60000);})"
         ".catch(e=>alert('تعذّر إنشاء PDF: '+e));")

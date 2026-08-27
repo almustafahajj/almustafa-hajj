@@ -30,19 +30,14 @@
   </div>
 </form>
 
-{% if docs %}
+{% if has_docs %}
 <fieldset class="editcard">
-  <legend>📄 مستندات {{ noun_singular }}</legend>
+  <legend>📄 المستندات</legend>
   <div class="docbtns">
-    {% for kind, label in docs %}
-      <a class="btn ghost" href="{{ url_for('doc_edit', idx=idx, kind=kind) }}"
-         target="_blank">{{ label }}</a>
-    {% endfor %}
-    <a class="btn primary" href="{{ url_for('pilgrim_packet', idx=idx) }}"
-       target="_blank">📦 حزمة المستندات</a>
+    <a class="btn primary" href="{{ url_for('record_docs', idx=idx) }}">
+      📄 فتح قائمة مستندات {{ noun_singular }}</a>
   </div>
-  <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF».
-    «حزمة المستندات» تدمج الجواز والبطاقة والسند والعقد في ملف واحد.</p>
+  <p class="hint-note">سند/فاتورة/عقد/فاوتشر/طلب مواصلات + حزمة المستندات — في صفحة مستقلة.</p>
 </fieldset>
 {% endif %}
 {% endblock %}

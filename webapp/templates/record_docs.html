@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}مستندات {{ name }} — المصطفى{% endblock %}
+{% block heading %}📄 مستندات {{ noun_singular }}{% endblock %}
+{% block subhead %}<div class="season">{{ name }}
+  · <a class="pill" href="{{ url_for('hujjaj_edit', idx=idx) }}">← تعديل البيانات</a></div>{% endblock %}
+{% block content %}
+<div class="repgrid">
+  {% for kind, icon, label, desc in docs %}
+  <a class="repcard" target="_blank" href="{{ url_for('doc_edit', idx=idx, kind=kind) }}">
+    <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ icon }}</div>
+    <div><div class="t">{{ label }}</div><div class="d">{{ desc }}</div></div>
+  </a>
+  {% endfor %}
+  <a class="repcard" target="_blank" href="{{ url_for('pilgrim_packet', idx=idx) }}">
+    <div class="ic" style="background:#e6f1e9;color:#2E7D5B">📦</div>
+    <div><div class="t">حزمة المستندات</div>
+      <div class="d">الجواز والبطاقة والسند والعقد في ملف PDF واحد.</div></div>
+  </a>
+</div>
+<p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF»
+  (يُفتح الـ PDF في تبويب جديد). عُد لهذه القائمة لإصدار مستند آخر.</p>
+{% endblock %}
