@@ -1,16 +1,26 @@
 {% extends "base.html" %}
 {% block title %}المستندات — المصطفى{% endblock %}
 {% block heading %}📄 المستندات{% endblock %}
-{% block subhead %}<div class="season">اختر نوع المستند ثم الشخص</div>{% endblock %}
+{% block subhead %}<div class="season">اختر نوع المستند — من سجلّ شخص، أو يدوي بلا اسم</div>{% endblock %}
 {% block content %}
 <div class="repgrid">
   {% for kind, icon, label, desc in docs %}
-  <a class="repcard" href="{{ url_for('documents_pick', kind=kind) }}">
+  <div class="repcard" style="align-items:flex-start">
     <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ icon }}</div>
-    <div><div class="t">{{ label }}</div><div class="d">{{ desc }}</div></div>
-  </a>
+    <div style="flex:1">
+      <div class="t">{{ label }}</div>
+      <div class="d">{{ desc }}</div>
+      <div class="docbtns" style="margin-top:8px">
+        <a class="btn ghost sm" href="{{ url_for('documents_pick', kind=kind) }}">👤 من سجلّ شخص</a>
+        {% if kind != 'packet' %}
+        <a class="btn primary sm" target="_blank" href="{{ url_for('doc_manual', kind=kind) }}">✍ يدوي بلا اسم</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
   {% endfor %}
 </div>
-<p class="hint-note">هذا بند مستقلّ لإصدار المستندات — اختر النوع، ثم ابحث عن الشخص
-  واضغط اسمه، فيُفتح المستند للتحرير ثم «حفظ ومعاينة PDF».</p>
+<p class="hint-note">«من سجلّ شخص» يعبّئ البيانات من الكشف تلقائياً. «يدوي بلا اسم»
+  يفتح المستند بحقول فارغة تملؤها بالكامل — دون ربطه بأي سجلّ. (حزمة المستندات
+  تحتاج سجلّاً فلا يوجد لها وضع يدوي.)</p>
 {% endblock %}

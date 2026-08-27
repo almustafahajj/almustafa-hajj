@@ -412,6 +412,42 @@ def documents_pick(kind):
                            **_ctx())
 
 
+@app.get("/documents/<kind>/manual")
+def doc_manual(kind):
+    """محرّر مستند يدوي — بحقول فارغة، دون ربطه بأي سجلّ."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if kind not in _DOC_TITLES:               # الحزمة تحتاج سجلّاً، فتُستثنى
+        return redirect(url_for("documents"))
+    from hajj_app.mrz import PassportData
+    from hajj_app import webdoc
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data, schema = _doc_build(kind, PassportData(), co, settings)
+    title, icon = _DOC_TITLES[kind]
+    return webdoc._doc_html(
+        data, schema, f"{title} (يدوي)", icon,
+        submit_action=webdoc.web_submit_action(
+            url_for("doc_manual_pdf", kind=kind)),
+        back_url=url_for("documents"))
+
+
+@app.post("/documents/<kind>/manual/pdf")
+def doc_manual_pdf(kind):
+    """يولّد PDF لمستند يدوي من البيانات المُحرَّرة (بلا سجلّ)."""
+    if _sess() is None:
+        return ("", 401)
+    if kind not in _DOC_TITLES:
+        return ("", 404)
+    from hajj_app.mrz import PassportData
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data = request.get_json(force=True, silent=True) or {}
+    return _pdf_response(
+        lambda p: _doc_export(kind, PassportData(), co, data, p),
+        f"{kind}-manual.pdf")
+
+
 @app.route("/hujjaj/new", methods=["GET", "POST"])
 def hujjaj_new():
     if _sess() is None:
