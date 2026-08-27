@@ -25,7 +25,12 @@
       <label>كلمة المرور</label>
       <input name="password" type="password" autocomplete="current-password">
     </div>
+    <label class="remember">
+      <input type="checkbox" name="remember" value="1"> تذكّرني على هذا الجهاز
+    </label>
     <button class="btn primary" type="submit">دخول</button>
+    <p class="sub" style="margin-top:14px">
+      <a href="{{ url_for('recover') }}">نسيت كلمة المرور؟ (استرداد المدير)</a></p>
   </form>
 </div>
 </body></html>

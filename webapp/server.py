@@ -69,11 +69,13 @@ def _session_secret() -> str:
 
 app.secret_key = _session_secret()
 # أمان ملفّات الارتباط — يُفعَّل Secure تلقائياً خلف HTTPS في النشر السحابي.
+from datetime import timedelta as _timedelta
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=(os.environ.get("HTTPS", "").lower()
                            in ("1", "true", "yes")),
+    PERMANENT_SESSION_LIFETIME=_timedelta(days=14),   # مدّة «تذكّرني»
 )
 
 # جلسات hajj_app الحيّة (المفكوكة التشفير) مفهرسة برمز جلسة المتصفّح
@@ -174,10 +176,43 @@ def login():
             session["mode"] = mode
             session["username"] = username
             session["role"] = getattr(hs, "role_label", "")
+            session.permanent = bool(request.form.get("remember"))  # تذكّرني
             return redirect(url_for("dashboard"))
         except Exception:
             error = "اسم المستخدم أو كلمة المرور غير صحيحة."
     return render_template("login.html", error=error,
+                           modes=[(app_mode.HAJJ, "الحج"),
+                                  (app_mode.UMRAH, "العمرة")])
+
+
+@app.route("/recover", methods=["GET", "POST"])
+def recover():
+    """نسيت كلمة المرور (للمدير): إعادة تعيين عبر مفتاح الاسترداد ثم الدخول."""
+    if not auth.is_configured():
+        return redirect(url_for("setup"))
+    error = ""
+    if request.method == "POST":
+        rk = (request.form.get("recovery") or "").strip()
+        pw = request.form.get("password") or ""
+        confirm = request.form.get("confirm") or ""
+        mode = request.form.get("mode") or app_mode.HAJJ
+        if pw != confirm:
+            error = "كلمتا المرور غير متطابقتين."
+        else:
+            try:
+                app_mode.set_mode(mode)
+                hs = auth.reset_with_recovery_key(rk, pw,
+                                                  allowed_roles=("admin",))
+                sid = secrets.token_hex(16)
+                _SESSIONS[sid] = hs
+                session["sid"] = sid
+                session["mode"] = mode
+                session["username"] = hs.username
+                session["role"] = getattr(hs, "role_label", "")
+                return redirect(url_for("dashboard"))
+            except Exception as exc:
+                error = str(exc)
+    return render_template("recover.html", error=error,
                            modes=[(app_mode.HAJJ, "الحج"),
                                   (app_mode.UMRAH, "العمرة")])
 

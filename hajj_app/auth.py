@@ -475,7 +475,8 @@ def regenerate_recovery_key(
 
 
 def reset_with_recovery_key(
-    recovery_key: str, new_password: str, path: str | Path | None = None
+    recovery_key: str, new_password: str, path: str | Path | None = None,
+    allowed_roles: "tuple[str, ...] | None" = None,
 ) -> "Session":
     """يعيد تعيين كلمة المرور بمفتاح الاسترداد.
 
@@ -507,6 +508,9 @@ def reset_with_recovery_key(
         except (InvalidToken, KeyError, ValueError):
             continue
         role = account.get("role", "admin")
+        if allowed_roles is not None and role not in allowed_roles:
+            raise AuthError("الاسترداد الذاتي متاح للمدير فقط — "
+                            "اطلب من المدير إعادة تعيين كلمة مرورك.")
         username = account.get("username", "")
         accounts[key] = _wrap_account(username, role, data_key,
                                       new_password, normalized)

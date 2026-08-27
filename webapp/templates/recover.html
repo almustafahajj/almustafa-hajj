@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>استرداد كلمة المرور — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body>
+<div class="login-wrap">
+  <form class="login-card" method="post">
+    <div class="brand-dot">🔑</div>
+    <h1>استرداد كلمة مرور المدير</h1>
+    <p class="sub">أدخل مفتاح الاسترداد الذي حصلت عليه عند إنشاء الحساب</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label>الوضع</label>
+      <select name="mode">
+        {% for val,lbl in modes %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>مفتاح الاسترداد</label>
+      <input name="recovery" autofocus autocomplete="off" dir="ltr"
+             placeholder="XXXXX-XXXXX-XXXXX-XXXXX" style="text-align:center">
+    </div>
+    <div class="field">
+      <label>كلمة المرور الجديدة</label>
+      <input name="password" type="password" required minlength="8"
+             pattern=".*[^0-9].*" autocomplete="new-password"
+             title="٨ خانات على الأقل وبها حرف غير رقمي">
+    </div>
+    <div class="field">
+      <label>تأكيد كلمة المرور</label>
+      <input name="confirm" type="password" required autocomplete="new-password">
+    </div>
+    <button class="btn primary" type="submit">استرداد ودخول</button>
+    <p class="sub" style="margin-top:14px">
+      <a href="{{ url_for('login') }}">← العودة لتسجيل الدخول</a></p>
+  </form>
+</div>
+</body></html>
