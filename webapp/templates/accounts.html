@@ -65,12 +65,19 @@
             </td>
             <td class="muted">{{ a.updated or '—' }}</td>
             <td>
+              <form method="post" action="{{ url_for('accounts_password', username=a.username) }}"
+                    class="inline pw-reset">
+                <input name="password" type="password" required minlength="8"
+                       pattern=".*[^0-9].*" placeholder="كلمة مرور جديدة"
+                       title="٨ خانات على الأقل وبها حرف غير رقمي">
+                <button class="acc-btn" type="submit" title="تعيين كلمة مرور جديدة">🔑</button>
+              </form>
               {% if not a.me %}
               <form method="post" action="{{ url_for('accounts_delete', username=a.username) }}"
                     class="inline" onsubmit="return confirm('حذف الحساب «{{ a.username }}» نهائياً؟');">
                 <button class="acc-btn del" type="submit">🗑 حذف</button>
               </form>
-              {% else %}<span class="muted">—</span>{% endif %}
+              {% endif %}
             </td>
           </tr>
         {% endfor %}

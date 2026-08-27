@@ -288,6 +288,24 @@ def accounts_role(username):
     return redirect(url_for("accounts"))
 
 
+@app.post("/accounts/<username>/password")
+def accounts_password(username):
+    """إعادة تعيين كلمة مرور حساب — للمدير (لحلّ حساب لا يستطيع الدخول)."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    try:
+        rk = auth.admin_set_password(s, username,
+                                     request.form.get("password") or "")
+        session["acc_msg"] = f"غُيّرت كلمة مرور «{username}» — سلّمها لصاحبه."
+        if rk:
+            session["acc_key"] = rk
+            session["acc_added"] = username
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
 @app.post("/accounts/<username>/delete")
 def accounts_delete(username):
     s = _sess()

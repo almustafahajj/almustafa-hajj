@@ -291,6 +291,52 @@ def add_account(
     return recovery_key
 
 
+def admin_set_password(
+    session: "Session", username: str, new_password: str,
+    path: str | Path | None = None,
+) -> str | None:
+    """يعيّن كلمة مرور جديدة لحساب — للمدير فقط، دون الحاجة لكلمة المرور القديمة.
+
+    يعيد تغليف **مفتاح البيانات المشترك** (من جلسة المدير) بالكلمة الجديدة، فيدخل
+    صاحب الحساب بها فوراً ويفتح الكشف نفسه. يُبقي مفتاح الاسترداد إن وُجد، وإلا
+    يولّد واحداً ويعيده ليُعرض. لحلّ «حساب موجود لا يستطيع الدخول».
+    """
+    if session is None or not session.is_admin:
+        raise AuthError("إعادة تعيين كلمة المرور للمدير فقط.")
+    problem = password_problem(new_password)
+    if problem:
+        raise AuthError(problem)
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    if key is None:
+        raise AuthError("لا يوجد حساب بهذا الاسم.")
+    account = accounts[key]
+    role = account.get("role", "viewer")
+    password_salt = secrets.token_bytes(_SALT_BYTES)
+    new_acc = {k: v for k, v in account.items()
+               if k not in ("legacy1", "auth_salt", "auth_hash", "data_salt")}
+    new_acc.update({
+        "username": account.get("username", username),
+        "role": role,
+        "password_salt": _b64(password_salt),
+        "key_by_password": _fernet(_derive(new_password, password_salt))
+                           .encrypt(session.data_key).decode("ascii"),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    })
+    recovery_key = None
+    if not new_acc.get("key_by_recovery"):
+        recovery_key = generate_recovery_key()
+        recovery_salt = secrets.token_bytes(_SALT_BYTES)
+        new_acc["recovery_salt"] = _b64(recovery_salt)
+        new_acc["key_by_recovery"] = _fernet(_derive(
+            normalize_recovery_key(recovery_key), recovery_salt)
+        ).encrypt(session.data_key).decode("ascii")
+    accounts[key] = new_acc
+    _save_accounts(path, accounts)
+    return recovery_key
+
+
 def list_accounts(path: str | Path | None = None) -> list[dict]:
     """يعيد قائمة الحسابات: [{username, role, updated_at}] مرتّبة بالاسم."""
     accounts, _ = _load(path)
