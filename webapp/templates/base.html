@@ -4,22 +4,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}المصطفى للحج والعمرة{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>(function(){try{if(localStorage.getItem('navc')==='1')
+  document.documentElement.classList.add('nav-collapsed');}catch(e){}})();</script>
 </head><body>
 <div class="shell">
   <aside class="sidebar">
     <div class="logo">🕋 المصطفى</div>
     <nav class="nav">
-      <a class="navlink {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">📊 لوحة التحكم</a>
+      <a class="navlink toplink {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">
+        <span class="ng-ic" style="background:#8A6E4B">📊</span> لوحة التحكم</a>
 
       <details class="nav-group" {% if active in ['hujjaj','documents','groups'] %}open{% endif %}>
-        <summary><span class="ng-ic">🪪</span> {{ noun }}</summary>
+        <summary><span class="ng-ic" style="background:#2C5AA0">🪪</span> {{ noun }}</summary>
         <a class="navlink {{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">السجلّات والبيانات</a>
         <a class="navlink {{ 'active' if active=='documents' }}" href="{{ url_for('documents') }}">المستندات</a>
         <a class="navlink {{ 'active' if active=='groups' }}" href="{{ url_for('groups_page') }}">المجموعات والمرشدون</a>
       </details>
 
       <details class="nav-group" {% if active in ['programs','travel','camps','occupancy'] %}open{% endif %}>
-        <summary><span class="ng-ic">🧭</span> العمليات</summary>
+        <summary><span class="ng-ic" style="background:#2E7D5B">🧭</span> العمليات</summary>
         {% if mode=='umrah' %}<a class="navlink {{ 'active' if active=='programs' }}" href="{{ url_for('programs') }}">برامج العمرة</a>{% endif %}
         {% if mode=='hajj' %}<a class="navlink {{ 'active' if active=='travel' }}" href="{{ url_for('travel_list') }}">مواعيد وتعليمات السفر</a>{% endif %}
         {% if mode=='hajj' %}<a class="navlink {{ 'active' if active=='camps' }}" href="{{ url_for('camps_page') }}">تسكين المخيمات</a>{% endif %}
@@ -27,28 +30,28 @@
       </details>
 
       <details class="nav-group" {% if active in ['finance','expenses','offers'] %}open{% endif %}>
-        <summary><span class="ng-ic">💰</span> المالية والعروض</summary>
+        <summary><span class="ng-ic" style="background:#B26A00">💰</span> المالية والعروض</summary>
         <a class="navlink {{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">المالية والتحصيل</a>
         {% if can_edit %}<a class="navlink {{ 'active' if active=='expenses' }}" href="{{ url_for('expenses_page') }}">المصروفات والمحاسبة</a>{% endif %}
         <a class="navlink {{ 'active' if active=='offers' }}" href="{{ url_for('offers') }}">التسعير والعروض</a>
       </details>
 
       <details class="nav-group" {% if active in ['reports','charts','quality'] %}open{% endif %}>
-        <summary><span class="ng-ic">📊</span> التقارير والتحليل</summary>
+        <summary><span class="ng-ic" style="background:#8E44AD">📊</span> التقارير والتحليل</summary>
         <a class="navlink {{ 'active' if active=='reports' }}" href="{{ url_for('reports') }}">التقارير والكشوف</a>
         <a class="navlink {{ 'active' if active=='charts' }}" href="{{ url_for('charts') }}">الرسوم البيانية</a>
         <a class="navlink {{ 'active' if active=='quality' }}" href="{{ url_for('quality_report') }}">فحص الجودة والجاهزية</a>
       </details>
 
       <details class="nav-group" {% if active in ['import','whatsapp'] %}open{% endif %}>
-        <summary><span class="ng-ic">🧰</span> الأدوات</summary>
+        <summary><span class="ng-ic" style="background:#16A085">🧰</span> الأدوات</summary>
         {% if can_edit %}<a class="navlink {{ 'active' if active=='import' }}" href="{{ url_for('data_import') }}">استيراد من إكسل</a>{% endif %}
         <a class="navlink {{ 'active' if active=='whatsapp' }}" href="{{ url_for('whatsapp_page') }}">رسائل واتساب</a>
       </details>
 
       {% if is_admin %}
       <details class="nav-group" {% if active in ['accounts','audit'] %}open{% endif %}>
-        <summary><span class="ng-ic">⚙️</span> الإدارة</summary>
+        <summary><span class="ng-ic" style="background:#C0392B">⚙️</span> الإدارة</summary>
         <a class="navlink {{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">إدارة الحسابات</a>
         <a class="navlink {{ 'active' if active=='audit' }}" href="{{ url_for('audit_log') }}">سجلّ التدقيق</a>
       </details>
@@ -62,9 +65,13 @@
   </aside>
   <div class="main">
     <div class="topbar">
-      <div>
-        <h2>{% block heading %}{% endblock %}</h2>
-        {% block subhead %}{% endblock %}
+      <div class="tb-left">
+        <button class="menu-toggle" type="button" onclick="toggleNav()"
+                aria-label="طي القائمة" title="طي/فتح القائمة">☰</button>
+        <div>
+          <h2>{% block heading %}{% endblock %}</h2>
+          {% block subhead %}{% endblock %}
+        </div>
       </div>
       <div class="actions">
         <a class="pill" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_label }}</a>
@@ -73,4 +80,10 @@
     <div class="content">{% block content %}{% endblock %}</div>
   </div>
 </div>
+<script>
+function toggleNav(){
+  var c=document.documentElement.classList.toggle('nav-collapsed');
+  try{localStorage.setItem('navc',c?'1':'0');}catch(e){}
+}
+</script>
 </body></html>
