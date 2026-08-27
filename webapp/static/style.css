@@ -42,10 +42,29 @@ a{ color:inherit; text-decoration:none; }
   flex:none; display:flex; flex-direction:column; padding:18px 12px; }
 .sidebar .logo{ text-align:center; font-weight:800; font-size:18px;
   padding:6px 0 14px; border-bottom:1px solid #463829; margin-bottom:12px; }
-.nav a{ display:flex; align-items:center; gap:10px; padding:11px 12px;
-  border-radius:10px; color:var(--sidebar-fg); font-weight:600; margin:3px 0; }
-.nav a:hover{ background:#3C3025; }
-.nav a.active{ background:var(--bronze); color:#fff; }
+.nav{ display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
+.nav a.navlink{ display:flex; align-items:center; gap:10px; padding:10px 12px;
+  border-radius:10px; color:var(--sidebar-fg); font-weight:600; margin:1px 0;
+  font-size:14px; }
+.nav a.navlink:hover{ background:#3C3025; }
+.nav a.navlink.active{ background:var(--bronze); color:#fff; }
+/* مجموعات القائمة القابلة للطيّ */
+.nav-group{ margin:3px 0; }
+.nav-group > summary{ list-style:none; cursor:pointer; display:flex;
+  align-items:center; gap:9px; padding:10px 12px; border-radius:10px;
+  font-weight:700; font-size:12.5px; color:#c9b597; letter-spacing:.2px;
+  user-select:none; }
+.nav-group > summary::-webkit-details-marker{ display:none; }
+.nav-group > summary .ng-ic{ font-size:15px; }
+.nav-group > summary::after{ content:"⌄"; margin-inline-start:auto;
+  font-size:15px; color:#8a7a5e; transition:transform .18s; transform:translateY(-2px); }
+.nav-group:not([open]) > summary::after{ transform:rotate(90deg); }
+.nav-group > summary:hover{ background:#3C3025; color:#fff; }
+.nav-group[open] > summary{ color:#e6d8bd; }
+.nav-group .navlink{ padding-inline-start:34px; font-size:13.5px; font-weight:500;
+  color:#c3b295; }
+.nav-group .navlink:hover{ color:#fff; }
+.nav-group .navlink.active{ color:#fff; font-weight:700; }
 .sidebar .foot{ margin-top:auto; font-size:13px; color:#b7a98e;
   border-top:1px solid #463829; padding-top:12px; }
 .sidebar .foot a{ color:#e0b25e; }
