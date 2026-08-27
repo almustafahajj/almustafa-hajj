@@ -1,41 +1,16 @@
 {% extends "base.html" %}
 {% block title %}المستندات — المصطفى{% endblock %}
 {% block heading %}📄 المستندات{% endblock %}
-{% block subhead %}<div class="season">اختر الشخص لإصدار مستنداته (سند/فاتورة/عقد/فاوتشر/طلب مواصلات/حزمة)</div>{% endblock %}
+{% block subhead %}<div class="season">اختر نوع المستند ثم الشخص</div>{% endblock %}
 {% block content %}
-<form class="searchbar" method="get">
-  <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
-  <button class="btn primary" type="submit">بحث</button>
-  {% if q %}<a class="btn ghost" href="{{ url_for('documents') }}">مسح</a>{% endif %}
-</form>
-
-<div class="panel" style="margin-top:14px">
-<table class="data">
-  <thead><tr>
-    <th>م</th><th>الاسم</th><th>رقم الجواز</th><th>البرنامج</th><th>الهاتف</th><th></th>
-  </tr></thead>
-  <tbody>
-  {% for r in rows %}
-    <tr>
-      <td>{{ loop.index + offset }}</td>
-      <td class="prog-name">{{ r.name }}</td>
-      <td>{{ r.passport }}</td>
-      <td>{{ r.program }}</td>
-      <td>{{ r.phone }}</td>
-      <td><a class="btn primary sm" href="{{ url_for('record_docs', idx=r.idx) }}">📄 المستندات</a></td>
-    </tr>
-  {% else %}
-    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:26px">
-      {% if q %}لا نتائج مطابقة.{% else %}لا يوجد {{ noun }} بعد.{% endif %}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
-{% if pages > 1 %}
-<div class="pager">
-  {% for p in range(1, pages+1) %}
-    <a class="{{ 'on' if p==page }}" href="{{ url_for('documents', q=q, page=p) }}">{{ p }}</a>
+<div class="repgrid">
+  {% for kind, icon, label, desc in docs %}
+  <a class="repcard" href="{{ url_for('documents_pick', kind=kind) }}">
+    <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ icon }}</div>
+    <div><div class="t">{{ label }}</div><div class="d">{{ desc }}</div></div>
+  </a>
   {% endfor %}
 </div>
-{% endif %}
+<p class="hint-note">هذا بند مستقلّ لإصدار المستندات — اختر النوع، ثم ابحث عن الشخص
+  واضغط اسمه، فيُفتح المستند للتحرير ثم «حفظ ومعاينة PDF».</p>
 {% endblock %}

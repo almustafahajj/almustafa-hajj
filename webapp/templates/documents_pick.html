@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} — اختيار الشخص — المصطفى{% endblock %}
+{% block heading %}📄 {{ label }} — اختر الشخص{% endblock %}
+{% block subhead %}<div class="season">
+  <a class="pill" href="{{ url_for('documents') }}">← أنواع المستندات</a></div>{% endblock %}
+{% block content %}
+<form class="searchbar" method="get">
+  <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
+  <button class="btn primary" type="submit">بحث</button>
+  {% if q %}<a class="btn ghost" href="{{ url_for('documents_pick', kind=kind) }}">مسح</a>{% endif %}
+</form>
+
+<div class="panel" style="margin-top:14px">
+<table class="data">
+  <thead><tr>
+    <th>م</th><th>الاسم</th><th>رقم الجواز</th><th>البرنامج</th><th>الهاتف</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ loop.index + offset }}</td>
+      <td class="prog-name">{{ r.name }}</td>
+      <td>{{ r.passport }}</td>
+      <td>{{ r.program }}</td>
+      <td>{{ r.phone }}</td>
+      <td>
+        {% if kind == 'packet' %}
+        <a class="btn primary sm" target="_blank" href="{{ url_for('pilgrim_packet', idx=r.idx) }}">📦 إنشاء الحزمة</a>
+        {% else %}
+        <a class="btn primary sm" target="_blank" href="{{ url_for('doc_edit', idx=r.idx, kind=kind) }}">📄 إصدار {{ label }}</a>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:26px">
+      {% if q %}لا نتائج مطابقة.{% else %}لا يوجد {{ noun }} بعد.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% for p in range(1, pages+1) %}
+    <a class="{{ 'on' if p==page }}" href="{{ url_for('documents_pick', kind=kind, q=q, page=p) }}">{{ p }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

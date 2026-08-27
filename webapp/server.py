@@ -351,11 +351,34 @@ def hujjaj():
                            **_ctx())
 
 
+# أنواع المستندات المستقلّة (بند «المستندات») — تشمل الحزمة
+_DOC_KINDS = [
+    ("receipt", "🧾", "سند قبض", "إيصال استلام مبلغ من العميل."),
+    ("invoice", "🧾", "فاتورة ضريبية", "فاتورة بقيمة البرنامج والضريبة."),
+    ("contract", "📜", "عقد خدمات", "عقد الخدمات بين المكتب والعميل."),
+    ("voucher", "🏨", "فاوتشر فندق", "قسيمة حجز الفندق للإبراز عند الوصول."),
+    ("treq", "🚖", "طلب حجز مواصلات", "طلب حجز مواصلات موجّه للناقل."),
+    ("packet", "📦", "حزمة المستندات", "الجواز والبطاقة والسند والعقد في PDF واحد."),
+]
+_DOC_KIND_LABEL = {k: lbl for k, _ic, lbl, _d in _DOC_KINDS}
+
+
 @app.get("/documents")
 def documents():
-    """بند مستقلّ للمستندات: اختر الشخص ثم أصدِر مستنداته (لا يرتبط بالإضافة)."""
+    """بند «المستندات» المستقلّ: قائمة أنواع المستندات (اختر النوع ثم الشخص)."""
     if _sess() is None:
         return redirect(url_for("login"))
+    return render_template("documents.html", active="documents",
+                           docs=_DOC_KINDS, **_ctx())
+
+
+@app.get("/documents/<kind>")
+def documents_pick(kind):
+    """اختيار الشخص لإصدار مستند من النوع المحدّد (بحث في السجلات)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if kind not in _DOC_KIND_LABEL:
+        return redirect(url_for("documents"))
     records = _load_records()
     q = (request.args.get("q") or "").strip()
     indexed = list(enumerate(records))
@@ -383,7 +406,8 @@ def documents():
                                        else "trip"), "") or "") or "—",
             "phone": getattr(r, "phone", "") or "—",
         })
-    return render_template("documents.html", active="documents", rows=rows, q=q,
+    return render_template("documents_pick.html", active="documents", kind=kind,
+                           label=_DOC_KIND_LABEL[kind], rows=rows, q=q,
                            total=total, page=page, pages=pages, offset=offset,
                            **_ctx())
 
