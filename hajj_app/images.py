@@ -50,12 +50,54 @@ def has_image(image_id: str, kind: str) -> bool:
     return bool(image_id) and _image_path(image_id, kind).is_file()
 
 
+# حدّ ضغط الصور المخزَّنة — توفير مساحة دون التأثير على القراءة (OCR يقرأ الأصل).
+STORAGE_MAX_SIDE = 1800          # أطول ضلع بالبكسل (كافٍ لعرض/طباعة الجواز بوضوح)
+STORAGE_JPEG_QUALITY = 85
+
+
+def compress_for_storage(data: bytes, *, max_side: int = STORAGE_MAX_SIDE,
+                         quality: int = STORAGE_JPEG_QUALITY) -> bytes:
+    """يصغّر صورة نقطية ويعيد ترميزها JPEG لتوفير المساحة قبل التخزين.
+
+    - ملفّات PDF تُترك كما هي (الجواز الممسوح PDF)، والصور الصغيرة أصلاً كذلك.
+    - يُستخدم الناتج فقط إن كان أصغر فعلاً؛ وأي خطأ يُعيد الأصل بلا مساس.
+    - لا يؤثّر على دقّة قراءة الجواز (OCR يقرأ الملف الأصلي قبل الحفظ).
+    """
+    if not data or is_pdf(data):
+        return data
+    try:
+        from io import BytesIO
+        from PIL import Image as _PILImage
+        im = _PILImage.open(BytesIO(data))
+        im.load()
+        # تدوير حسب بيانات EXIF إن وُجدت ثم إسقاطها
+        try:
+            from PIL import ImageOps
+            im = ImageOps.exif_transpose(im)
+        except Exception:                          # noqa: BLE001
+            pass
+        w, h = im.size
+        scale = min(1.0, float(max_side) / float(max(w, h) or 1))
+        if scale < 1.0:
+            im = im.resize((max(1, int(w * scale)), max(1, int(h * scale))),
+                           _PILImage.LANCZOS)
+        if im.mode in ("RGBA", "P", "LA", "CMYK"):
+            im = im.convert("RGB")
+        out = BytesIO()
+        im.save(out, format="JPEG", quality=quality, optimize=True)
+        result = out.getvalue()
+        return result if 0 < len(result) < len(data) else data
+    except Exception:                              # noqa: BLE001
+        return data
+
+
 def save_image(image_id: str, kind: str, source: str | Path, session) -> None:
     """يقرأ صورة من مسار خارجي ويحفظها مشفّرة داخلياً (كتابة ذرّية).
 
+    تُصغَّر الصور النقطية وتُعاد ترميزها لتوفير المساحة (PDF يبقى كما هو).
     session: جلسة الدخول للتشفير. بدونها تُحفظ الصورة كما هي (اختبارات فقط).
     """
-    data = Path(source).read_bytes()
+    data = compress_for_storage(Path(source).read_bytes())
     blob = session.encrypt(data) if session is not None else data
     directory = images_dir()
     directory.mkdir(parents=True, exist_ok=True)
