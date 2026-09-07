@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+dist
+build
+__pycache__
+*.pyc
+*.spec
+*.bat
+*.command
+vendor
+tests
+tools
+installer.iss
+render.yaml
