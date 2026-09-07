@@ -17,4 +17,4 @@ COPY . .
 ENV HTTPS=1
 
 # Railway يمرّر المنفذ في المتغيّر PORT
-CMD ["sh","-c","gunicorn wsgi:app --workers 2 --timeout 120 --bind 0.0.0.0:${PORT:-8080}"]
+CMD ["gunicorn","wsgi:app","-c","gunicorn.conf.py"]
