@@ -3,6 +3,7 @@
 {% block heading %}⛺ تسكين مخيمات منى وعرفة{% endblock %}
 {% block subhead %}<div class="season">{{ count }} حاجّ · اختر الخيارات ثم عاين كشف التسكين</div>{% endblock %}
 {% block content %}
+{% if reset %}<div class="acc-msg ok">✅ أُعيد تعيين تسكين المخيمات — يمكنك البدء من جديد.</div>{% endif %}
 <form method="get" action="{{ url_for('camp_pdf') }}" target="_blank">
   <fieldset class="editcard">
     <legend>خيارات كشف التسكين</legend>
@@ -31,6 +32,14 @@
     </div>
   </fieldset>
 </form>
+
+{% if can_edit %}
+<form method="post" action="{{ url_for('camps_reset') }}"
+      onsubmit="return confirm('إعادة تعيين تسكين المخيمات؟ سيُمسح تقدّم «خيمة بخيمة» وتبدأ من جديد.');"
+      style="margin-top:4px">
+  <button class="btn ghost" type="submit" style="color:#C0392B">↺ إعادة تعيين التسكين</button>
+</form>
+{% endif %}
 <p class="hint-note">يوزّع الحجّاج على خيام بحجم «سعة الخيمة»، مفصولةً بالجنس، مع
   إبقاء كل عائلة/سكّان غرفة معاً. اختر «رجال» أو «نساء» لطباعة كشف تصنيف واحد فقط.
   يُفتح الكشف PDF في تبويب جديد.</p>

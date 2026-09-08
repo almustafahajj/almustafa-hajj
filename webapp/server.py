@@ -2014,7 +2014,20 @@ def camps_page():
     camps = [{"slug": slug_of.get(name, name), "name": name} for name in CAMPS]
     return render_template("camps.html", active="camps", camps=camps,
                            classes=[("", "الكل"), (MEN, MEN), (WOMEN, WOMEN)],
-                           count=len(_load_records()), **_ctx())
+                           count=len(_load_records()),
+                           reset=request.args.get("reset"), **_ctx())
+
+
+@app.post("/camps/reset")
+def camps_reset():
+    """إعادة تعيين تسكين المخيمات: يمسح تقدّم «خيمة بخيمة» لكل المخيمات في الجلسة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return redirect(url_for("reports"))
+    _TENT_STATE.pop(session.get("sid") or "-", None)
+    _audit("إعادة تعيين تسكين المخيمات")
+    return redirect(url_for("camps_page", reset=1))
 
 
 @app.get("/camps/plan.pdf")
