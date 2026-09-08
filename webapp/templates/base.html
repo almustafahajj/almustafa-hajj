@@ -44,8 +44,9 @@
         <a class="navlink {{ 'active' if active=='quality' }}" href="{{ url_for('quality_report') }}">فحص الجودة والجاهزية</a>
       </details>
 
-      <details class="nav-group" {% if active in ['import','whatsapp'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['import','whatsapp','season'] %}open{% endif %}>
         <summary><span class="ng-ic" style="background:#16A085"><svg viewBox="0 0 20 20"><path d="M3 6h8M14.5 6H17M3 10h2.5M9.5 10H17M3 14h8.5M15 14H17"/><circle cx="12.5" cy="6" r="1.7"/><circle cx="7" cy="10" r="1.7"/><circle cx="13" cy="14" r="1.7"/></svg></span> الأدوات</summary>
+        <a class="navlink {{ 'active' if active=='season' }}" href="{{ url_for('season_page') }}">تحديد الموسم</a>
         {% if can_edit %}<a class="navlink {{ 'active' if active=='import' }}" href="{{ url_for('data_import') }}">استيراد من إكسل</a>{% endif %}
         <a class="navlink {{ 'active' if active=='whatsapp' }}" href="{{ url_for('whatsapp_page') }}">رسائل واتساب</a>
       </details>
@@ -75,6 +76,7 @@
         </div>
       </div>
       <div class="actions">
+        <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}هـ</a>
         <a class="pill" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_label }}</a>
       </div>
     </div>

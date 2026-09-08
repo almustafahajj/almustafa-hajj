@@ -259,15 +259,52 @@ def dashboard():
         **_ctx())
 
 
+# السنوات الهجرية المتاحة للموسم (حج 2026 = 1447هـ)
+_HIJRI_YEARS = [str(y) for y in range(1445, 1456)]
+_DEFAULT_SEASON = "1447"
+
+
+def _season() -> str:
+    """السنة الهجرية للموسم الحالي (لكل وضع) — من الإعدادات أو الافتراضي."""
+    try:
+        v = str(storage.load_settings().get("season_year", "") or "").strip()
+    except Exception:
+        v = ""
+    return v or _DEFAULT_SEASON
+
+
 def _ctx() -> dict:
-    """سياق مشترك للقوالب (الوضع/النوع/زر التبديل/الصلاحيات)."""
+    """سياق مشترك للقوالب (الوضع/النوع/زر التبديل/الصلاحيات/الموسم)."""
     s = _sess()
     return dict(
         noun=_noun(), mode=_mode(),
         other=(app_mode.UMRAH if _mode() == app_mode.HAJJ else app_mode.HAJJ),
         other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"),
+        season=_season(),
         is_admin=bool(s is not None and s.is_admin),
         can_edit=bool(s is not None and s.can_edit))
+
+
+@app.route("/season", methods=["GET", "POST"])
+def season_page():
+    """تحديد موسم الحج/العمرة (السنة الهجرية) — مستقلّ لكل وضع، للمحرّرين."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    saved = ""
+    if request.method == "POST" and _sess().can_edit:
+        year = (request.form.get("season_year") or "").strip()
+        if year in _HIJRI_YEARS:
+            settings = storage.load_settings()
+            settings["season_year"] = year
+            try:
+                storage.save_settings(settings)
+                saved = year
+            except Exception:
+                pass
+        return redirect(url_for("season_page", saved=saved or year))
+    return render_template("season.html", active="season", years=_HIJRI_YEARS,
+                           current=_season(), saved=request.args.get("saved"),
+                           **_ctx())
 
 
 @app.get("/accounts")

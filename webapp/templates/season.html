@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}تحديد الموسم — المصطفى{% endblock %}
+{% block heading %}🗓 تحديد موسم {{ 'الحج' if mode=='hajj' else 'العمرة' }}{% endblock %}
+{% block subhead %}<div class="season">الموسم الحالي: {{ current }}هـ · مستقلّ لكل وضع (حج/عمرة)</div>{% endblock %}
+{% block content %}
+{% if saved %}<div class="acc-msg ok">✅ تم ضبط الموسم على {{ saved }}هـ.</div>{% endif %}
+<fieldset class="editcard" style="max-width:460px">
+  <legend>السنة الهجرية للموسم</legend>
+  <form method="post">
+    <div class="fgrid">
+      <label class="ff"><span>الموسم (السنة الهجرية)</span>
+        <select name="season_year" {{ '' if can_edit else 'disabled' }}>
+          {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==current }}>{{ y }}هـ</option>{% endfor %}
+        </select></label>
+    </div>
+    {% if can_edit %}
+    <div class="formbar"><button class="btn primary" type="submit">💾 حفظ الموسم</button></div>
+    {% else %}<p class="hint-note">العرض فقط — تغيير الموسم للمحرّرين والمدير.</p>{% endif %}
+  </form>
+</fieldset>
+<p class="hint-note">يظهر الموسم في ترويسة المستندات والتقارير (سند/فاتورة/عقد/كشوف).
+  لكل وضع موسمه المستقلّ: يمكن أن يكون الحج ١٤٤٧ والعمرة ١٤٤٦ مثلاً.</p>
+{% endblock %}
