@@ -282,3 +282,11 @@ input:invalid{ border-color:#e0a89f; }
   border-top:1px solid var(--border); padding-top:12px; font-size:13.5px; }
 .fltsort select{ font:inherit; padding:8px 10px; border:1px solid var(--border);
   border-radius:9px; background:#fff; color:var(--ink); }
+/* ---- طيّ لوحة الفلاتر ---- */
+details.filterpanel > summary{ list-style:none; cursor:pointer; font-size:15px;
+  font-weight:700; color:var(--bronze); display:flex; align-items:center; gap:8px; }
+details.filterpanel > summary::-webkit-details-marker{ display:none; }
+details.filterpanel > summary::after{ content:"⌄"; margin-inline-start:auto;
+  font-size:16px; color:#8a7a5e; transition:transform .18s; }
+details.filterpanel:not([open]) > summary::after{ transform:rotate(90deg); }
+details.filterpanel[open] > summary{ margin-bottom:12px; }

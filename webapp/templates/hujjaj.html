@@ -12,8 +12,8 @@
     {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">📷 قراءة جواز</a>{% endif %}
   </div>
 
-  <div class="panel filterpanel">
-    <h3>🔎 تصفية الكشف</h3>
+  <details class="panel filterpanel" id="fltpanel" {% if any_filter %}open{% endif %}>
+    <summary>🔎 تصفية الكشف{% if any_filter %} <span class="qbadge" style="background:#e6f1e9;color:#2E7D5B">مفعّلة</span>{% endif %}</summary>
     <div class="fltgrid">
       {% for key, label, vals in filteropts %}
       <label class="fltcell"><span>{{ label }}</span>
@@ -29,8 +29,15 @@
         {% for val, lbl in sortfields %}<option value="{{ val }}" {{ 'selected' if val==sort }}>{{ lbl }}</option>{% endfor %}
       </select>
     </div>
-  </div>
+  </details>
 </form>
+<script>
+(function(){
+  var p=document.getElementById('fltpanel'); if(!p) return;
+  try{ if(!p.hasAttribute('open') && localStorage.getItem('fltopen')==='1') p.open=true; }catch(e){}
+  p.addEventListener('toggle', function(){ try{ localStorage.setItem('fltopen', p.open?'1':'0'); }catch(e){} });
+})();
+</script>
 
 <div class="panel" style="margin-top:14px">
 <table class="data">
