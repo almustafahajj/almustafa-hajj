@@ -1965,6 +1965,19 @@ def occupancy():
                            summary=summary, **_ctx())
 
 
+@app.get("/occupancy/rooming.pdf")
+def rooming_pdf():
+    """كشف التسكين (PDF): كل غرفة وسكّانها مجموعين ككتلة — جاهز للطباعة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    title = f"كشف تسكين {_noun()} — موسم {_season()}{_season_suffix()}"
+    return _pdf_response(
+        lambda p: pdf_io.export_pdf(records, p, title=title, group_by_room=True),
+        "rooming.pdf")
+
+
 # ==================== مخيمات منى وعرفة =====================================
 # خرائط ASCII للمخيمات — نتفادى العربية في مسار الرابط (بعض خوادم WSGI تخنقها)
 _CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}

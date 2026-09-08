@@ -5,6 +5,9 @@
   غرف: {{ summary.rooms }} · مكتملة: {{ summary.full }} · متجاوِزة: {{ summary.over }}
   · أسرّة شاغرة: {{ summary.free }} · بلا غرفة: {{ summary.unplaced }}</div>{% endblock %}
 {% block content %}
+<div class="formbar" style="margin-bottom:12px">
+  <a class="btn primary" target="_blank" href="{{ url_for('rooming_pdf') }}">🏨 كشف التسكين (PDF)</a>
+</div>
 {% if not rows %}
 <div class="acc-msg">لا توجد غرف مسكّنة بعد (لا نوع غرفة/رقم في السجلات).</div>
 {% else %}
