@@ -261,3 +261,8 @@ input:invalid{ border-color:#e0a89f; }
 .logo-img{ display:block; width:100%; max-width:172px; margin:0 auto;
   background:#fff; border-radius:14px; padding:12px 14px;
   box-shadow:0 4px 12px #0003; }
+/* ---- شريط الفلاتر في قائمة السجلات ---- */
+.filterbar{ display:flex; flex-wrap:wrap; gap:8px; width:100%; margin-top:10px; }
+.filterbar select{ font:inherit; font-size:13.5px; padding:8px 10px;
+  border:1px solid var(--border); border-radius:10px; background:#fff;
+  color:var(--ink); max-width:190px; }

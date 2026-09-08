@@ -458,14 +458,44 @@ def hujjaj():
     if _sess() is None:
         return redirect(url_for("login"))
     records = _load_records()
+    gattr = _group_attr()                          # program (حج) / trip (عمرة)
     q = (request.args.get("q") or "").strip()
-    indexed = list(enumerate(records))
-    if q:
-        ql = q.lower()
-        indexed = [(i, r) for i, r in indexed if ql in " ".join(str(
-            getattr(r, k, "") or "") for k in
-            ("full_name_ar", "full_name_en", "passport_number", "phone",
-             "reference_number")).lower()]
+    ql = q.lower()
+    f = {"prog": (request.args.get("prog") or "").strip(),
+         "status": (request.args.get("status") or "").strip(),
+         "nat": (request.args.get("nat") or "").strip(),
+         "hotel": (request.args.get("hotel") or "").strip(),
+         "pay": (request.args.get("pay") or "").strip()}
+
+    def _distinct(attr):
+        return sorted({str(getattr(r, attr, "") or "").strip() for r in records
+                       if str(getattr(r, attr, "") or "").strip()})
+    opts = {"prog": _distinct(gattr), "status": _distinct("status"),
+            "nat": _distinct("nationality_ar"), "hotel": _distinct("hotel")}
+
+    indexed = []
+    for i, r in enumerate(records):
+        if q and ql not in " ".join(str(getattr(r, k, "") or "") for k in
+                                    ("full_name_ar", "full_name_en",
+                                     "passport_number", "phone",
+                                     "reference_number")).lower():
+            continue
+        if f["prog"] and str(getattr(r, gattr, "") or "").strip() != f["prog"]:
+            continue
+        if f["status"] and str(getattr(r, "status", "") or "").strip() != f["status"]:
+            continue
+        if f["nat"] and str(getattr(r, "nationality_ar", "") or "").strip() != f["nat"]:
+            continue
+        if f["hotel"] and str(getattr(r, "hotel", "") or "").strip() != f["hotel"]:
+            continue
+        if f["pay"]:
+            rem = remaining_amount(r)
+            if f["pay"] == "due" and not (rem > 0.005):
+                continue
+            if f["pay"] == "paid" and rem > 0.005:
+                continue
+        indexed.append((i, r))
+
     total = len(indexed)
     pages = max(1, (total + _PAGE - 1) // _PAGE)
     try:
@@ -481,13 +511,15 @@ def hujjaj():
             "name": getattr(r, "full_name_ar", "") or getattr(
                 r, "full_name_en", "") or "—",
             "passport": getattr(r, "passport_number", "") or "—",
-            "program": str(getattr(r, ("program" if _mode() == app_mode.HAJJ
-                                       else "trip"), "") or "") or "—",
+            "program": str(getattr(r, gattr, "") or "") or "—",
             "phone": getattr(r, "phone", "") or "—",
             "status": st, "status_cls": _STATUS_CLS.get(st, ""),
             "remaining": format_amount(remaining_amount(r)) or "0",
         })
+    qs = {"q": q, **f}                             # لحفظ الفلاتر في روابط الصفحات
     return render_template("hujjaj.html", active="hujjaj", rows=rows, q=q,
+                           opts=opts, f=f, qs=qs,
+                           any_filter=any(f.values()),
                            total=total, page=page, pages=pages, offset=offset,
                            **_ctx())
 
