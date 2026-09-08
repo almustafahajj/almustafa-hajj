@@ -209,6 +209,7 @@ def recover():
                 session["mode"] = mode
                 session["username"] = hs.username
                 session["role"] = getattr(hs, "role_label", "")
+                _audit("استرداد كلمة مرور (المدير)", hs.username)
                 return redirect(url_for("dashboard"))
             except Exception as exc:
                 error = str(exc)
