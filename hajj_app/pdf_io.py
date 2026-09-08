@@ -1068,6 +1068,17 @@ def export_rooming_cards_pdf(records: list, path: str | Path, *,
     if unplaced:
         bytype.setdefault("بلا غرفة", []).append(("—", "بلا غرفة", unplaced))
 
+    MAX_ROWS = 24                                   # أقصى سكّان لكل بطاقة (تفادي تجاوز الصفحة)
+
+    def cards_for(number, typ, occ):
+        if len(occ) <= MAX_ROWS:
+            return [card(number, typ, occ)]
+        out = []
+        for j in range(0, len(occ), MAX_ROWS):
+            part = occ[j:j + MAX_ROWS]
+            out.append(card(f"{number} ({ltr(j // MAX_ROWS + 1)})", typ, part))
+        return out
+
     def grid_rows(cards):
         blocks = []
         for k in range(0, len(cards), per_row):
@@ -1100,7 +1111,10 @@ def export_rooming_cards_pdf(records: list, path: str | Path, *,
                             f"عدد الغرف: {ltr(len(items))}") if x]
         story.append(Paragraph(ar("  •  ".join(subp)), st["subtitle"]))
         story.append(Spacer(1, 6))
-        story += grid_rows([card(no, ty, occ) for no, ty, occ in items])
+        cards = []
+        for no, ty, occ in items:
+            cards += cards_for(no, ty, occ)
+        story += grid_rows(cards)
 
     doc.build(story,
               onFirstPage=lambda c, d: _footer_portrait(c, d, "تسكين الغرف"),
