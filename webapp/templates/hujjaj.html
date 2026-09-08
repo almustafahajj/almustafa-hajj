@@ -32,8 +32,28 @@
       <option value="due" {{ 'selected' if f.pay=='due' }}>عليه متبقٍّ</option>
       <option value="paid" {{ 'selected' if f.pay=='paid' }}>مكتمل السداد</option>
     </select>
+
+    <span class="cfilter">
+      <select name="field" id="cfield" onchange="cfieldChanged()">
+        <option value="">فلتر مرن…</option>
+        {% for k,lbl in cfields %}<option value="{{ k }}" {{ 'selected' if k==cfield }}>{{ lbl }}</option>{% endfor %}
+      </select>
+      <select name="val" id="cval" onchange="this.form.submit()">
+        <option value="">— القيمة —</option>
+        {% if cfield %}{% for v in fieldopts[cfield] %}<option value="{{ v }}" {{ 'selected' if v==cval }}>{{ v }}</option>{% endfor %}{% endif %}
+      </select>
+    </span>
   </div>
 </form>
+<script>
+const FOPTS = {{ fieldopts|tojson }};
+function cfieldChanged(){
+  const f=document.getElementById('cfield'), v=document.getElementById('cval');
+  v.innerHTML='<option value="">— القيمة —</option>';
+  (FOPTS[f.value]||[]).forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;v.appendChild(o);});
+  if(!f.value){ f.form.submit(); }  // مسح الفلتر المرن
+}
+</script>
 
 <div class="panel" style="margin-top:14px">
 <table class="data">

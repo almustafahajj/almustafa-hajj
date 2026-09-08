@@ -473,6 +473,16 @@ def hujjaj():
     opts = {"prog": _distinct(gattr), "status": _distinct("status"),
             "nat": _distinct("nationality_ar"), "hotel": _distinct("hotel")}
 
+    # فلتر مرن: اختر الحقل ثم القيمة (الجنس/الطيران/نوع الغرفة/المجموعة…)
+    cfields = [("sex", "الجنس"), ("airline", "شركة الطيران"),
+               ("flight_number", "رقم الرحلة"), ("room_type", "نوع الغرفة"),
+               ("group", "المجموعة")]
+    fieldopts = {k: _distinct(k) for k, _ in cfields}
+    cfield = (request.args.get("field") or "").strip()
+    if cfield not in fieldopts:
+        cfield = ""
+    cval = (request.args.get("val") or "").strip()
+
     indexed = []
     for i, r in enumerate(records):
         if q and ql not in " ".join(str(getattr(r, k, "") or "") for k in
@@ -494,6 +504,8 @@ def hujjaj():
                 continue
             if f["pay"] == "paid" and rem > 0.005:
                 continue
+        if cfield and cval and str(getattr(r, cfield, "") or "").strip() != cval:
+            continue
         indexed.append((i, r))
 
     total = len(indexed)
@@ -516,10 +528,12 @@ def hujjaj():
             "status": st, "status_cls": _STATUS_CLS.get(st, ""),
             "remaining": format_amount(remaining_amount(r)) or "0",
         })
-    qs = {"q": q, **f}                             # لحفظ الفلاتر في روابط الصفحات
+    qs = {"q": q, **f, "field": cfield, "val": cval}   # لحفظ الفلاتر في الصفحات
     return render_template("hujjaj.html", active="hujjaj", rows=rows, q=q,
                            opts=opts, f=f, qs=qs,
-                           any_filter=any(f.values()),
+                           cfields=cfields, fieldopts=fieldopts,
+                           cfield=cfield, cval=cval,
+                           any_filter=any(f.values()) or bool(cfield and cval),
                            total=total, page=page, pages=pages, offset=offset,
                            **_ctx())
 

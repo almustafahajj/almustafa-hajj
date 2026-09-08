@@ -266,3 +266,6 @@ input:invalid{ border-color:#e0a89f; }
 .filterbar select{ font:inherit; font-size:13.5px; padding:8px 10px;
   border:1px solid var(--border); border-radius:10px; background:#fff;
   color:var(--ink); max-width:190px; }
+.cfilter{ display:inline-flex; gap:6px; align-items:center; padding:4px 8px;
+  background:#efe6d6; border-radius:10px; }
+.cfilter select{ max-width:150px; }
