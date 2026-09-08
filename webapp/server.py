@@ -288,6 +288,20 @@ def _audit(action: str, details: str = "") -> None:
         pass
 
 
+@app.before_request
+def _sync_mode():
+    """يزامن وضع التخزين (حج/عمرة) مع جلسة المتصفّح قبل كل طلب.
+
+    ملفّات الكشف والإعدادات مستقلّة لكل وضع؛ فبدون هذه المزامنة قد تُقرأ/تُكتب
+    بيانات وضع في ملفّ الآخر (كما حدث مع الموسم والمصروفات).
+    """
+    try:
+        if _sess() is not None:
+            app_mode.set_mode(_mode())
+    except Exception:                              # noqa: BLE001
+        pass
+
+
 def _season() -> str:
     """سنة الموسم الحالي (لكل وضع) — من الإعدادات أو الافتراضي حسب التقويم."""
     default = _DEFAULT_HIJRI if _mode() == app_mode.HAJJ else _DEFAULT_GREG
@@ -981,6 +995,7 @@ def pricer_pdf():
     try:                                           # حفظ في «التسعيرات المحفوظة»
         umrah.save_pricing(settings, data)
         storage.save_settings(settings)
+        _audit("حفظ تسعير مجموعات", str(data.get("number", "") or ""))
     except Exception:
         pass
     co = settings.get("company") if isinstance(settings, dict) else None
@@ -1078,6 +1093,7 @@ def quote_pdf():
     try:
         umrah.save_quote(settings, data.get("code") or "", data)
         storage.save_settings(settings)
+        _audit("حفظ عرض سعر", str(data.get("number", "") or ""))
     except Exception:
         pass
     co = settings.get("company") if isinstance(settings, dict) else None
@@ -1117,6 +1133,7 @@ def quote_delete(code, num):
         try:
             umrah.delete_quote(settings, code, num)
             storage.save_settings(settings)
+            _audit("حذف عرض سعر", str(num))
         except Exception:
             pass
     return redirect(url_for("quotes"))
@@ -1161,6 +1178,7 @@ def pricing_delete(num):
         try:
             umrah.delete_pricing(settings, num)
             storage.save_settings(settings)
+            _audit("حذف تسعير", str(num))
         except Exception:
             pass
     return redirect(url_for("pricings"))
@@ -2173,6 +2191,11 @@ def expenses_page():
         settings["expenses"] = items
         try:
             storage.save_settings(settings)
+            if action == "add":
+                _audit("إضافة مصروف", (request.form.get("category", "") or "")
+                       + " — " + (request.form.get("amount", "") or ""))
+            elif action == "del":
+                _audit("حذف مصروف")
         except Exception:
             pass
         return redirect(url_for("expenses_page"))
@@ -2262,6 +2285,9 @@ def finance_pay(idx):
             sync_paid_amount(rec)
             try:
                 storage.save_records(records, session=_sess())
+                _nm = getattr(rec, "full_name_ar", "") or getattr(
+                    rec, "full_name_en", "") or getattr(rec, "passport_number", "")
+                _audit("تسجيل دفعة", f"{_nm} — {_fmt(amt)}")
             except Exception:
                 pass
     return redirect(url_for("finance"))
