@@ -6,24 +6,24 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head><body>
 <div class="login-wrap">
-  <form class="login-card" method="post">
+  <form class="login-card" method="post" autocomplete="on">
     <div class="brand-dot">🕋</div>
     <h1>المصطفى للحج والعمرة</h1>
     <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <div class="field">
-      <label>الوضع</label>
-      <select name="mode">
+      <label for="mode">الوضع</label>
+      <select id="mode" name="mode">
         {% for val,lbl in modes %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
       </select>
     </div>
     <div class="field">
-      <label>اسم المستخدم</label>
-      <input name="username" autofocus autocomplete="username">
+      <label for="username">اسم المستخدم</label>
+      <input id="username" name="username" autofocus autocomplete="username">
     </div>
     <div class="field">
-      <label>كلمة المرور</label>
-      <input name="password" type="password" autocomplete="current-password">
+      <label for="password">كلمة المرور</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
     </div>
     <label class="remember">
       <input type="checkbox" name="remember" value="1"> تذكّرني على هذا الجهاز
