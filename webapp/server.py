@@ -2201,6 +2201,88 @@ def camp_tent_last_pdf():
         "tent.pdf")
 
 
+@app.get("/camps/tents/manual")
+def camp_tents_manual():
+    """تسكين يدوي: اختيار الحجّاج بالمربّعات لكل خيمة من قائمة غير المسكّنين."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return redirect(url_for("reports"))
+    from hajj_app.rooming import room_number_in_type
+    camp_slug = request.args.get("camp", "mina")
+    camp = _CAMP_SLUGS.get(camp_slug)
+    if camp is None:
+        return redirect(url_for("camps_page"))
+    records = _load_records()
+    st = _tent_state(camp_slug)
+    assigned = set(st["assigned"])
+    rows = []
+    for i, rec in enumerate(records):
+        if i in assigned:
+            continue
+        room = (str(getattr(rec, "room_number", "") or "").strip()
+                or room_number_in_type(str(getattr(rec, "room_type", "") or "")))
+        rows.append({"idx": i,
+                     "name": getattr(rec, "full_name_ar", "") or getattr(
+                         rec, "full_name_en", "") or "—",
+                     "fam": str(getattr(rec, "family_number", "") or "").strip(),
+                     "hotel": str(getattr(rec, "hotel", "") or "").strip(),
+                     "room": room, "sex": str(getattr(rec, "sex", "") or "").strip()})
+    slug_of = {v: k for k, v in _CAMP_SLUGS.items()}
+    from hajj_app.camps import CAMPS
+    camps = [{"slug": slug_of.get(n, n), "name": n} for n in CAMPS]
+    return render_template(
+        "camp_tents_manual.html", active="camps", camp=camp, camp_slug=camp_slug,
+        camps=camps, rows=rows, number=str(st["number"]),
+        campaign=_DEFAULT_CAMPAIGN, assigned=len(assigned),
+        has_last=bool(st.get("last")), msg=request.args.get("msg", ""), **_ctx())
+
+
+@app.post("/camps/tents/manual/assign")
+def camp_tents_manual_assign():
+    """يثبّت خيمة من الحجّاج المختارين يدوياً ويحفظ مواصفاتها لتنزيل الكشف."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app import camps as campmod
+    camp_slug = request.form.get("camp", "mina")
+    camp = _CAMP_SLUGS.get(camp_slug)
+    if camp is None:
+        return redirect(url_for("camps_page"))
+    records = _load_records()
+    st = _tent_state(camp_slug)
+    assigned = set(st["assigned"])
+    number = (request.form.get("number", "") or "1").strip() or "1"
+    sector = (request.form.get("sector", "") or "").strip()
+    label = (request.form.get("label", "") or "مختار").strip() or "مختار"
+    campaign = (request.form.get("campaign", "") or _DEFAULT_CAMPAIGN).strip()
+    picks = []
+    for v in request.form.getlist("pick"):
+        try:
+            i = int(v)
+        except ValueError:
+            continue
+        if 0 <= i < len(records) and i not in assigned:
+            picks.append(i)
+    if not picks:
+        return redirect(url_for("camp_tents_manual", camp=camp_slug,
+                                msg="لم تختر أي حاجّ لهذه الخيمة."))
+    assigned |= set(picks)
+    st["assigned"] = sorted(assigned)
+    st["last"] = {"indices": picks, "camp": camp, "sector": sector,
+                  "number": number, "cls": label, "capacity": len(picks),
+                  "campaign": campaign}
+    try:
+        st["number"] = str(int(number) + 1)
+    except ValueError:
+        st["number"] = number
+    _audit("تسكين خيمة يدوياً", f"{camp} — خيمة {number} — {len(picks)} شخصاً")
+    return redirect(url_for(
+        "camp_tents_manual", camp=camp_slug,
+        msg=f"ثُبّتت الخيمة {number}: {len(picks)} شخصاً. افتح كشفها من الزر أدناه."))
+
+
 # ==================== المصروفات والمحاسبة ==================================
 _EXPENSE_CATS = ("فنادق", "نقل", "إعاشة", "تصاريح", "رواتب", "طيران", "أخرى")
 
