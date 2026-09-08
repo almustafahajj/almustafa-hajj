@@ -1391,22 +1391,24 @@ def archive():
     docs = storage.load_documents(session=_sess())
     q = (request.args.get("q") or "").strip()
     ql = q.lower()
-    kind = request.args.get("kind", "") or ""
-    rows = []
+    buckets = {k: [] for k in _DOC_TITLES}          # مجموعة لكل نوع مستند
+    shown = 0
     for d in reversed(docs):
-        if kind and d.get("kind") != kind:
-            continue
         if ql and ql not in " ".join(str(d.get(k, "")) for k in
                                      ("title", "number", "name")).lower():
             continue
-        rows.append({"id": d.get("id"),
-                     "ts": (d.get("ts") or "").replace("T", "  "),
-                     "title": d.get("title") or d.get("kind"),
-                     "number": d.get("number") or "—",
-                     "name": d.get("name") or "—"})
-    kinds = [(k, v[0]) for k, v in _DOC_TITLES.items()]
-    return render_template("archive.html", active="archive", rows=rows,
-                           q=q, kind=kind, kinds=kinds, total=len(docs), **_ctx())
+        k = d.get("kind")
+        buckets.setdefault(k, [])
+        buckets[k].append({"id": d.get("id"),
+                           "ts": (d.get("ts") or "").replace("T", "  "),
+                           "number": d.get("number") or "—",
+                           "name": d.get("name") or "—"})
+        shown += 1
+    groups = [{"title": _DOC_TITLES.get(k, (k, ""))[0],
+               "icon": _DOC_TITLES.get(k, ("", ""))[1], "rows": buckets[k]}
+              for k in _DOC_TITLES if buckets.get(k)]
+    return render_template("archive.html", active="archive", groups=groups,
+                           q=q, total=len(docs), shown=shown, **_ctx())
 
 
 @app.get("/archive/<doc_id>.pdf")

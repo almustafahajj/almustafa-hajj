@@ -1,44 +1,46 @@
 {% extends "base.html" %}
 {% block title %}أرشيف المستندات — المصطفى{% endblock %}
 {% block heading %}🗄 أرشيف المستندات{% endblock %}
-{% block subhead %}<div class="season">{{ total }} مستند محفوظ · كل مستند يُنشأ يُحفظ هنا تلقائياً</div>{% endblock %}
+{% block subhead %}<div class="season">{{ total }} مستند محفوظ · مصنّفة حسب النوع</div>{% endblock %}
 {% block content %}
 <form class="searchbar" method="get">
   <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم المستند…" autofocus>
-  <select name="kind" style="max-width:170px">
-    <option value="">كل الأنواع</option>
-    {% for val,lbl in kinds %}<option value="{{ val }}" {{ 'selected' if val==kind }}>{{ lbl }}</option>{% endfor %}
-  </select>
   <button class="btn primary" type="submit">بحث</button>
-  {% if q or kind %}<a class="btn ghost" href="{{ url_for('archive') }}">مسح</a>{% endif %}
+  {% if q %}<a class="btn ghost" href="{{ url_for('archive') }}">مسح</a>{% endif %}
 </form>
 
-<div class="panel" style="margin-top:14px">
-<table class="data">
-  <thead><tr><th>التاريخ</th><th>النوع</th><th>الرقم</th><th>صاحب المستند</th><th></th></tr></thead>
-  <tbody>
-  {% for r in rows %}
-    <tr>
-      <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ r.ts }}</td>
-      <td>{{ r.title }}</td>
-      <td dir="ltr">{{ r.number }}</td>
-      <td>{{ r.name }}</td>
-      <td style="white-space:nowrap">
-        <a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=r.id) }}">📄 فتح/طباعة</a>
-        {% if can_edit %}
-        <form method="post" action="{{ url_for('archive_delete', doc_id=r.id) }}"
-              class="inline" onsubmit="return confirm('حذف هذا المستند من الأرشيف؟');" style="display:inline">
-          <button class="btn ghost sm" type="submit" style="color:#C0392B">🗑</button>
-        </form>{% endif %}
-      </td>
-    </tr>
-  {% else %}
-    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:26px">
-      {% if q or kind %}لا نتائج مطابقة.{% else %}لا مستندات محفوظة بعد — أي مستند تنشئه سيظهر هنا تلقائياً.{% endif %}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+{% if not groups %}
+<div class="acc-msg" style="margin-top:14px">
+  {% if q %}لا نتائج مطابقة.{% else %}لا مستندات محفوظة بعد — أي مستند تنشئه سيظهر هنا تلقائياً مصنّفاً حسب نوعه.{% endif %}
 </div>
-<p class="hint-note">يُحفظ لكل مستند بياناته ورقمه وتاريخه؛ ويُعاد توليد الـPDF عند الفتح
-  (توفيراً للمساحة). لا يُخزَّن ملف PDF مستقلّ.</p>
+{% else %}
+{% for g in groups %}
+<div class="panel" style="margin-top:16px">
+  <h3 style="margin:0 0 10px">{{ g.icon }} {{ g.title }}
+    <span class="qbadge" style="background:#efe6d6;color:#8A6E4B">{{ g.rows|length }}</span></h3>
+  <table class="data">
+    <thead><tr><th>التاريخ</th><th>الرقم</th><th>صاحب المستند</th><th></th></tr></thead>
+    <tbody>
+      {% for r in g.rows %}
+      <tr>
+        <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ r.ts }}</td>
+        <td dir="ltr">{{ r.number }}</td>
+        <td>{{ r.name }}</td>
+        <td style="white-space:nowrap">
+          <a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=r.id) }}">📄 فتح/طباعة</a>
+          {% if can_edit %}
+          <form method="post" action="{{ url_for('archive_delete', doc_id=r.id) }}"
+                class="inline" onsubmit="return confirm('حذف هذا المستند من الأرشيف؟');" style="display:inline">
+            <button class="btn ghost sm" type="submit" style="color:#C0392B">🗑</button>
+          </form>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endif %}
+<p class="hint-note">كل مستند يُنشأ يُحفظ هنا تلقائياً تحت نوعه. يُعاد توليد الـPDF عند
+  الفتح (توفيراً للمساحة)، والبيانات مشفّرة ومستقلّة لكل وضع (حج/عمرة).</p>
 {% endblock %}
