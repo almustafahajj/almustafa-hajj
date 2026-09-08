@@ -1,5 +1,6 @@
 import os
-# يقرأ منفذ Railway من متغيّر البيئة مباشرة (يتفادى مشكلة عدم توسيع $PORT)
+# منفذ Railway من البيئة
 bind = "0.0.0.0:" + os.environ.get("PORT", "8080")
-workers = int(os.environ.get("WEB_CONCURRENCY", "2"))
+# عامل واحد فقط: جلسات الدخول محفوظة في ذاكرة العملية (مشتركة)، فلا تُطرد
+workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
 timeout = 120
