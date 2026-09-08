@@ -2146,20 +2146,35 @@ def rooming_edit():
 # خرائط ASCII للمخيمات — نتفادى العربية في مسار الرابط (بعض خوادم WSGI تخنقها)
 _CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}
 
-# حالة «خيمة بخيمة» التفاعلية لكل جلسة (لا تُحفظ في البيانات — كسطح المكتب)
-_TENT_STATE: dict = {}
 _DEFAULT_CAMPAIGN = "المصطفى للحج والعمرة"
 
 
-def _tent_state(camp_slug):
-    """حالة بناء الخيام للجلسة الحالية، تُهيّأ من جديد عند تغيير المخيّم."""
-    sid = session.get("sid") or "-"
-    st = _TENT_STATE.get(sid)
-    if not st or st.get("camp") != camp_slug:
-        st = {"camp": camp_slug, "assigned": [], "number": 1, "last": None,
-              "tents": []}
-        _TENT_STATE[sid] = st
-    st.setdefault("tents", [])                     # توافق مع حالات قديمة
+def _load_camps():
+    """تسكين المخيمات المحفوظ (دائم، مشفّر، مشترك) — dict بمفتاح slug المخيّم."""
+    try:
+        return storage.load_camps(session=_sess()) or {}
+    except Exception:                              # noqa: BLE001
+        return {}
+
+
+def _save_camps(camps):
+    try:
+        storage.save_camps(camps, session=_sess())
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+def _camp_entry(camps, camp_slug):
+    """حالة مخيّم واحد داخل خريطة التسكين (تُهيّأ إن لم توجد)."""
+    st = camps.get(camp_slug)
+    if not isinstance(st, dict):
+        st = {}
+        camps[camp_slug] = st
+    st.setdefault("assigned", [])
+    st.setdefault("number", 1)
+    st.setdefault("last", None)
+    st.setdefault("tents", [])
+    st["camp"] = camp_slug
     return st
 
 
@@ -2181,12 +2196,12 @@ def camps_page():
 
 @app.post("/camps/reset")
 def camps_reset():
-    """إعادة تعيين تسكين المخيمات: يمسح تقدّم «خيمة بخيمة» لكل المخيمات في الجلسة."""
+    """إعادة تعيين تسكين المخيمات: يمسح كل الخيام المحفوظة لكل المخيمات."""
     if _sess() is None:
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:
         return redirect(url_for("reports"))
-    _TENT_STATE.pop(session.get("sid") or "-", None)
+    _save_camps({})                                # يمسح التسكين الدائم لكل المخيمات
     _audit("إعادة تعيين تسكين المخيمات")
     return redirect(url_for("camps_page", reset=1))
 
@@ -2247,7 +2262,7 @@ def camp_tents():
     if camp is None:
         return redirect(url_for("camps_page"))
     records = _load_records()
-    st = _tent_state(camp_slug)
+    st = _camp_entry(_load_camps(), camp_slug)
     assigned = set(st["assigned"])
     cls = request.args.get("cls", campmod.MEN)
     if cls not in (campmod.MEN, campmod.WOMEN):
@@ -2295,7 +2310,8 @@ def camp_tents_export():
     if camp is None:
         return redirect(url_for("camps_page"))
     records = _load_records()
-    st = _tent_state(camp_slug)
+    camps = _load_camps()
+    st = _camp_entry(camps, camp_slug)
     assigned = set(st["assigned"])
     cls = request.form.get("cls", campmod.MEN)
     if cls not in (campmod.MEN, campmod.WOMEN):
@@ -2316,12 +2332,13 @@ def camp_tents_export():
             "number": number, "cls": cls, "capacity": count,
             "campaign": campaign}
     st["last"] = tent
-    st["tents"].append(tent)                        # حفظ الخيمة للمعاينة لاحقاً
+    st["tents"].append(tent)                        # حفظ دائم للخيمة
     try:
         nxt = str(int(number) + 1)
     except ValueError:
         nxt = number
     st["number"] = nxt
+    _save_camps(camps)
     return redirect(url_for(
         "camp_tents", number=nxt,
         msg=f"تُثبّتت الخيمة {number} ({cls}): {len(indices)} شخصاً. "
@@ -2334,11 +2351,13 @@ def camp_tents_reset():
     if _sess() is None:
         return redirect(url_for("login"))
     camp_slug = request.form.get("camp", "mina")
-    st = _tent_state(camp_slug)
+    camps = _load_camps()
+    st = _camp_entry(camps, camp_slug)
     st["assigned"] = []
     st["number"] = 1
     st["last"] = None
     st["tents"] = []
+    _save_camps(camps)
     return redirect(url_for("camp_tents", camp=camp_slug, msg="أُعيد الضبط."))
 
 
@@ -2365,8 +2384,8 @@ def camp_tent_pdf(n):
     if _mode() != app_mode.HAJJ:
         return ("", 404)
     from hajj_app.pdf_io import export_tents_pdf
-    st = _TENT_STATE.get(session.get("sid") or "-")
-    tents = (st or {}).get("tents") or []
+    st = _load_camps().get(request.args.get("camp", "mina")) or {}
+    tents = st.get("tents") or []
     if not (0 <= n < len(tents)):
         return redirect(url_for("camp_tents"))
     spec = tents[n]
@@ -2385,8 +2404,8 @@ def camp_tents_all_pdf():
         return ("", 404)
     from hajj_app.camps import CampPlan
     from hajj_app.pdf_io import export_tents_pdf
-    st = _TENT_STATE.get(session.get("sid") or "-")
-    tents = (st or {}).get("tents") or []
+    st = _load_camps().get(request.args.get("camp", "mina")) or {}
+    tents = st.get("tents") or []
     if not tents:
         return redirect(url_for("camp_tents"))
     records = _load_records()
@@ -2410,9 +2429,8 @@ def camp_tent_last_pdf():
         return ("", 404)
     from hajj_app import camps as campmod
     from hajj_app.pdf_io import export_tents_pdf
-    sid = session.get("sid") or "-"
-    st = _TENT_STATE.get(sid)
-    last = st.get("last") if st else None
+    st = _load_camps().get(request.args.get("camp", "mina")) or {}
+    last = st.get("last")
     if not last:
         return redirect(url_for("camp_tents"))
     records = _load_records()
@@ -2438,7 +2456,7 @@ def camp_tents_manual():
     if camp is None:
         return redirect(url_for("camps_page"))
     records = _load_records()
-    st = _tent_state(camp_slug)
+    st = _camp_entry(_load_camps(), camp_slug)
     assigned = set(st["assigned"])
     rows = []
     for i, rec in enumerate(records):
@@ -2476,7 +2494,8 @@ def camp_tents_manual_assign():
     if camp is None:
         return redirect(url_for("camps_page"))
     records = _load_records()
-    st = _tent_state(camp_slug)
+    camps = _load_camps()
+    st = _camp_entry(camps, camp_slug)
     assigned = set(st["assigned"])
     number = (request.form.get("number", "") or "1").strip() or "1"
     sector = (request.form.get("sector", "") or "").strip()
@@ -2504,6 +2523,7 @@ def camp_tents_manual_assign():
         st["number"] = str(int(number) + 1)
     except ValueError:
         st["number"] = number
+    _save_camps(camps)
     _audit("تسكين خيمة يدوياً", f"{camp} — خيمة {number} — {len(picks)} شخصاً")
     return redirect(url_for(
         "camp_tents_manual", camp=camp_slug,

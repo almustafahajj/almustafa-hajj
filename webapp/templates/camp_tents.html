@@ -6,7 +6,7 @@
 {% block content %}
 {% if msg %}<div class="acc-msg ok">{{ msg }}
   {% if has_last %} <a class="btn primary" target="_blank" style="margin-inline-start:8px"
-     href="{{ url_for('camp_tent_last_pdf') }}">📄 فتح كشف الخيمة</a>{% endif %}
+     href="{{ url_for('camp_tent_last_pdf', camp=camp_slug) }}">📄 فتح كشف الخيمة</a>{% endif %}
 </div>{% endif %}
 
 <form method="get" action="{{ url_for('camp_tents') }}">
