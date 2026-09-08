@@ -259,18 +259,31 @@ def dashboard():
         **_ctx())
 
 
-# السنوات الهجرية المتاحة للموسم (حج 2026 = 1447هـ)
-_HIJRI_YEARS = [str(y) for y in range(1445, 1456)]
-_DEFAULT_SEASON = "1447"
+# الحج: سنة هجرية (هـ) — العمرة: سنة ميلادية (م)
+_HIJRI_YEARS = [str(y) for y in range(1445, 1456)]     # 1445..1455هـ
+_GREG_YEARS = [str(y) for y in range(2025, 2036)]      # 2025..2035م
+_DEFAULT_HIJRI = "1447"
+_DEFAULT_GREG = "2026"
+
+
+def _season_years() -> list:
+    """قائمة سنوات الموسم حسب الوضع (هجرية للحج، ميلادية للعمرة)."""
+    return _HIJRI_YEARS if _mode() == app_mode.HAJJ else _GREG_YEARS
+
+
+def _season_suffix() -> str:
+    return "هـ" if _mode() == app_mode.HAJJ else "م"
 
 
 def _season() -> str:
-    """السنة الهجرية للموسم الحالي (لكل وضع) — من الإعدادات أو الافتراضي."""
+    """سنة الموسم الحالي (لكل وضع) — من الإعدادات أو الافتراضي حسب التقويم."""
+    default = _DEFAULT_HIJRI if _mode() == app_mode.HAJJ else _DEFAULT_GREG
     try:
+        app_mode.set_mode(_mode())               # مزامنة ملفّ الإعدادات مع الوضع
         v = str(storage.load_settings().get("season_year", "") or "").strip()
     except Exception:
         v = ""
-    return v or _DEFAULT_SEASON
+    return v or default
 
 
 def _ctx() -> dict:
@@ -280,7 +293,7 @@ def _ctx() -> dict:
         noun=_noun(), mode=_mode(),
         other=(app_mode.UMRAH if _mode() == app_mode.HAJJ else app_mode.HAJJ),
         other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"),
-        season=_season(),
+        season=_season(), season_suffix=_season_suffix(),
         is_admin=bool(s is not None and s.is_admin),
         can_edit=bool(s is not None and s.can_edit))
 
@@ -290,10 +303,11 @@ def season_page():
     """تحديد موسم الحج/العمرة (السنة الهجرية) — مستقلّ لكل وضع، للمحرّرين."""
     if _sess() is None:
         return redirect(url_for("login"))
+    app_mode.set_mode(_mode())                   # الإعدادات مستقلّة لكل وضع
     saved = ""
     if request.method == "POST" and _sess().can_edit:
         year = (request.form.get("season_year") or "").strip()
-        if year in _HIJRI_YEARS:
+        if year in _season_years():
             settings = storage.load_settings()
             settings["season_year"] = year
             try:
@@ -302,8 +316,11 @@ def season_page():
             except Exception:
                 pass
         return redirect(url_for("season_page", saved=saved or year))
-    return render_template("season.html", active="season", years=_HIJRI_YEARS,
-                           current=_season(), saved=request.args.get("saved"),
+    cal_label = ("السنة الهجرية" if _mode() == app_mode.HAJJ
+                 else "السنة الميلادية")
+    return render_template("season.html", active="season",
+                           years=_season_years(), current=_season(),
+                           cal_label=cal_label, saved=request.args.get("saved"),
                            **_ctx())
 
 

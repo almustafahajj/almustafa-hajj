@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% block title %}تحديد الموسم — المصطفى{% endblock %}
 {% block heading %}🗓 تحديد موسم {{ 'الحج' if mode=='hajj' else 'العمرة' }}{% endblock %}
-{% block subhead %}<div class="season">الموسم الحالي: {{ current }}هـ · مستقلّ لكل وضع (حج/عمرة)</div>{% endblock %}
+{% block subhead %}<div class="season">الموسم الحالي: {{ current }}{{ season_suffix }} · مستقلّ لكل وضع</div>{% endblock %}
 {% block content %}
-{% if saved %}<div class="acc-msg ok">✅ تم ضبط الموسم على {{ saved }}هـ.</div>{% endif %}
+{% if saved %}<div class="acc-msg ok">✅ تم ضبط الموسم على {{ saved }}{{ season_suffix }}.</div>{% endif %}
 <fieldset class="editcard" style="max-width:460px">
-  <legend>السنة الهجرية للموسم</legend>
+  <legend>{{ cal_label }} للموسم</legend>
   <form method="post">
     <div class="fgrid">
-      <label class="ff"><span>الموسم (السنة الهجرية)</span>
+      <label class="ff"><span>{{ cal_label }}</span>
         <select name="season_year" {{ '' if can_edit else 'disabled' }}>
-          {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==current }}>{{ y }}هـ</option>{% endfor %}
+          {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==current }}>{{ y }}{{ season_suffix }}</option>{% endfor %}
         </select></label>
     </div>
     {% if can_edit %}
@@ -18,6 +18,6 @@
     {% else %}<p class="hint-note">العرض فقط — تغيير الموسم للمحرّرين والمدير.</p>{% endif %}
   </form>
 </fieldset>
-<p class="hint-note">يظهر الموسم في ترويسة المستندات والتقارير (سند/فاتورة/عقد/كشوف).
-  لكل وضع موسمه المستقلّ: يمكن أن يكون الحج ١٤٤٧ والعمرة ١٤٤٦ مثلاً.</p>
+<p class="hint-note">الحج يُحدَّد بالسنة <b>الهجرية (هـ)</b>، والعمرة بالسنة
+  <b>الميلادية (م)</b>. لكل وضع موسمه المستقلّ، ويظهر في ترويسة المستندات والتقارير.</p>
 {% endblock %}

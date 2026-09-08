@@ -76,7 +76,7 @@
         </div>
       </div>
       <div class="actions">
-        <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}هـ</a>
+        <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}{{ season_suffix }}</a>
         <a class="pill" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_label }}</a>
       </div>
     </div>
