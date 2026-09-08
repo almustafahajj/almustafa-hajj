@@ -8,12 +8,13 @@
 {% if saved is not none %}<div class="acc-msg ok">✅ حُفظ التسكين ({{ saved }} سجلّ مُعدّل).</div>{% endif %}
 
 <form method="get" class="searchbar" style="margin-bottom:12px">
-  <input name="frnum" value="{{ frnum }}" placeholder="فلترة برقم الغرفة" dir="ltr" style="max-width:160px">
-  <input name="ffam" value="{{ ffam }}" placeholder="فلترة برقم العائلة" dir="ltr" style="max-width:160px">
-  <input name="fq" value="{{ fq }}" placeholder="بحث بالاسم…">
-  <button class="btn primary" type="submit">فلترة</button>
-  {% if any_filter %}<a class="btn ghost" href="{{ url_for('rooming_edit') }}">مسح</a>{% endif %}
-  <span class="muted" style="align-self:center">المعروض: {{ rows|length }} / {{ total }}</span>
+  <span style="align-self:center">ترتيب حسب:</span>
+  <select name="sort" onchange="this.form.submit()" style="max-width:200px">
+    <option value="" {{ 'selected' if not sort }}>— بدون ترتيب —</option>
+    <option value="rtype" {{ 'selected' if sort=='rtype' }}>نوع الغرفة</option>
+    <option value="bus" {{ 'selected' if sort=='bus' }}>رقم الباص</option>
+    <option value="family" {{ 'selected' if sort=='family' }}>رقم العائلة</option>
+  </select>
 </form>
 
 <form method="post">
@@ -27,13 +28,14 @@
     <p class="muted">لا يوجد {{ noun }} بعد.</p>
   {% else %}
     <table class="data">
-      <thead><tr><th>م</th><th>الاسم</th><th>العائلة</th><th>الفندق</th><th>نوع الغرفة</th><th>رقم الغرفة</th></tr></thead>
+      <thead><tr><th>م</th><th>الاسم</th><th>العائلة</th><th>الباص</th><th>الفندق</th><th>نوع الغرفة</th><th>رقم الغرفة</th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
           <td>{{ loop.index }}</td>
           <td class="prog-name">{{ r.name }}</td>
           <td dir="ltr">{{ r.fam or '—' }}</td>
+          <td>{{ r.bus or '—' }}</td>
           <td><input name="hotel_{{ r.idx }}" value="{{ r.hotel }}" list="hotels" style="width:100%"></td>
           <td><input name="rtype_{{ r.idx }}" value="{{ r.rtype }}" list="rtypes" style="width:100%"></td>
           <td><input name="rnum_{{ r.idx }}" value="{{ r.rnum }}" dir="ltr" style="width:100%;text-align:center"></td>

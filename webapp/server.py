@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import re
 import tempfile
 
 from flask import (Flask, redirect, render_template, request, send_file,
@@ -2114,30 +2115,31 @@ def rooming_edit():
     def _distinct(attr):
         return sorted({str(getattr(r, attr, "") or "").strip() for r in records
                        if str(getattr(r, attr, "") or "").strip()})
-    frnum = (request.args.get("frnum") or "").strip()
-    ffam = (request.args.get("ffam") or "").strip()
-    fq = (request.args.get("fq") or "").strip().lower()
-    rows = []
-    for i, r in enumerate(records):
-        rn = str(getattr(r, "room_number", "") or "")
-        fa = str(getattr(r, "family_number", "") or "")
-        nm = getattr(r, "full_name_ar", "") or getattr(r, "full_name_en", "") or ""
-        if frnum and frnum not in rn:
-            continue
-        if ffam and ffam not in fa:
-            continue
-        if fq and fq not in nm.lower():
-            continue
-        rows.append({"idx": i, "name": nm or "—",
-                     "hotel": str(getattr(r, "hotel", "") or ""),
-                     "rtype": str(getattr(r, "room_type", "") or ""),
-                     "rnum": rn, "fam": fa})
+
+    def _natkey(s):                                # ترتيب طبيعي (الأرقام كأرقام)
+        s = str(s or "")
+        parts = re.split(r"(\d+)", s)
+        return [int(x) if x.isdigit() else x for x in parts]
+
+    sort = (request.args.get("sort") or "").strip()
+    sortmap = {"rtype": ("room_type", "room_number"),
+               "bus": ("transport", "family_number"),
+               "family": ("family_number", "room_number")}
+    items = list(enumerate(records))
+    if sort in sortmap:
+        attrs = sortmap[sort]
+        items.sort(key=lambda t: [_natkey(getattr(t[1], a, "")) for a in attrs])
+    rows = [{"idx": i, "name": (getattr(r, "full_name_ar", "") or getattr(
+                 r, "full_name_en", "") or "—"),
+             "hotel": str(getattr(r, "hotel", "") or ""),
+             "rtype": str(getattr(r, "room_type", "") or ""),
+             "rnum": str(getattr(r, "room_number", "") or ""),
+             "fam": str(getattr(r, "family_number", "") or ""),
+             "bus": str(getattr(r, "transport", "") or "")}
+            for i, r in items]
     return render_template("rooming_edit.html", active="occupancy", rows=rows,
                            hotels=_distinct("hotel"), rtypes=_distinct("room_type"),
-                           frnum=frnum, ffam=ffam, fq=request.args.get("fq", ""),
-                           total=len(records),
-                           any_filter=bool(frnum or ffam or fq),
-                           saved=request.args.get("saved"), **_ctx())
+                           sort=sort, saved=request.args.get("saved"), **_ctx())
 
 
 # ==================== مخيمات منى وعرفة =====================================
