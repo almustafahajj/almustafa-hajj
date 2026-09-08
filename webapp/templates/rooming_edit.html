@@ -27,7 +27,12 @@
   {% if not rows %}
     <p class="muted">لا يوجد {{ noun }} بعد.</p>
   {% else %}
-    <table class="data">
+    <table class="data" style="table-layout:fixed">
+      <colgroup>
+        <col style="width:4%"><col style="width:34%"><col style="width:9%">
+        <col style="width:13%"><col style="width:18%"><col style="width:14%">
+        <col style="width:8%">
+      </colgroup>
       <thead><tr><th>م</th><th>الاسم</th><th>العائلة</th><th>الباص</th><th>الفندق</th><th>نوع الغرفة</th><th>رقم الغرفة</th></tr></thead>
       <tbody>
         {% for r in rows %}
