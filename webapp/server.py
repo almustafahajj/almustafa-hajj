@@ -453,6 +453,20 @@ def _label(key: str) -> str:
     return lbl
 
 
+# حقول لوحة «تصفية الكشف» (تُملأ قيمها من البيانات) — كنسخة سطح المكتب
+_FILTER_FIELDS = [
+    ("group", "المجموعة"), ("hotel", "الفندق"), ("room_type", "نوع الغرفة"),
+    ("nationality_ar", "الجنسية"), ("airline", "الطيران"), ("sex", "الجنس"),
+    ("executive_service", "التنفيذي"), ("transport", "المواصلات"),
+    ("wheelchair", "كرسي متحرك"), ("notes", "ملاحظات"),
+]
+_SORT_FIELDS = [
+    ("", "— بدون ترتيب —"), ("name", "الاسم"), ("__group__", "البرنامج"),
+    ("hotel", "الفندق"), ("room_type", "نوع الغرفة"),
+    ("nationality_ar", "الجنسية"), ("passport_number", "رقم الجواز"),
+]
+
+
 @app.get("/hujjaj")
 def hujjaj():
     if _sess() is None:
@@ -461,27 +475,19 @@ def hujjaj():
     gattr = _group_attr()                          # program (حج) / trip (عمرة)
     q = (request.args.get("q") or "").strip()
     ql = q.lower()
-    f = {"prog": (request.args.get("prog") or "").strip(),
-         "status": (request.args.get("status") or "").strip(),
-         "nat": (request.args.get("nat") or "").strip(),
-         "hotel": (request.args.get("hotel") or "").strip(),
-         "pay": (request.args.get("pay") or "").strip()}
 
     def _distinct(attr):
         return sorted({str(getattr(r, attr, "") or "").strip() for r in records
                        if str(getattr(r, attr, "") or "").strip()})
-    opts = {"prog": _distinct(gattr), "status": _distinct("status"),
-            "nat": _distinct("nationality_ar"), "hotel": _distinct("hotel")}
 
-    # فلتر مرن: اختر الحقل ثم القيمة (الجنس/الطيران/نوع الغرفة/المجموعة…)
-    cfields = [("sex", "الجنس"), ("airline", "شركة الطيران"),
-               ("flight_number", "رقم الرحلة"), ("room_type", "نوع الغرفة"),
-               ("group", "المجموعة")]
-    fieldopts = {k: _distinct(k) for k, _ in cfields}
-    cfield = (request.args.get("field") or "").strip()
-    if cfield not in fieldopts:
-        cfield = ""
-    cval = (request.args.get("val") or "").strip()
+    # لوحة تصفية الكشف (نفس حقول سطح المكتب)
+    sel = {}
+    for key, _label in _FILTER_FIELDS:
+        v = (request.args.get("flt_" + key) or "").strip()
+        if v:
+            sel[key] = v
+    filteropts = [(key, label, _distinct(key)) for key, label in _FILTER_FIELDS]
+    sort = (request.args.get("sort") or "").strip()
 
     indexed = []
     for i, r in enumerate(records):
@@ -490,23 +496,15 @@ def hujjaj():
                                      "passport_number", "phone",
                                      "reference_number")).lower():
             continue
-        if f["prog"] and str(getattr(r, gattr, "") or "").strip() != f["prog"]:
-            continue
-        if f["status"] and str(getattr(r, "status", "") or "").strip() != f["status"]:
-            continue
-        if f["nat"] and str(getattr(r, "nationality_ar", "") or "").strip() != f["nat"]:
-            continue
-        if f["hotel"] and str(getattr(r, "hotel", "") or "").strip() != f["hotel"]:
-            continue
-        if f["pay"]:
-            rem = remaining_amount(r)
-            if f["pay"] == "due" and not (rem > 0.005):
-                continue
-            if f["pay"] == "paid" and rem > 0.005:
-                continue
-        if cfield and cval and str(getattr(r, cfield, "") or "").strip() != cval:
+        if any(str(getattr(r, key, "") or "").strip() != val
+               for key, val in sel.items()):
             continue
         indexed.append((i, r))
+
+    if sort:                                        # ترتيب حسب حقل مختار
+        sattr = (gattr if sort == "__group__"
+                 else "full_name_ar" if sort == "name" else sort)
+        indexed.sort(key=lambda t: str(getattr(t[1], sattr, "") or ""))
 
     total = len(indexed)
     pages = max(1, (total + _PAGE - 1) // _PAGE)
@@ -528,14 +526,14 @@ def hujjaj():
             "status": st, "status_cls": _STATUS_CLS.get(st, ""),
             "remaining": format_amount(remaining_amount(r)) or "0",
         })
-    qs = {"q": q, **f, "field": cfield, "val": cval}   # لحفظ الفلاتر في الصفحات
+    qs = {"q": q, "sort": sort}                     # لحفظ الفلاتر عبر الصفحات
+    for key, val in sel.items():
+        qs["flt_" + key] = val
     return render_template("hujjaj.html", active="hujjaj", rows=rows, q=q,
-                           opts=opts, f=f, qs=qs,
-                           cfields=cfields, fieldopts=fieldopts,
-                           cfield=cfield, cval=cval,
-                           any_filter=any(f.values()) or bool(cfield and cval),
-                           total=total, page=page, pages=pages, offset=offset,
-                           **_ctx())
+                           filteropts=filteropts, sel=sel, sort=sort,
+                           sortfields=_SORT_FIELDS, any_filter=bool(sel or sort),
+                           qs=qs, total=total, page=page, pages=pages,
+                           offset=offset, **_ctx())
 
 
 # أنواع المستندات المستقلّة (بند «المستندات») — تشمل الحزمة

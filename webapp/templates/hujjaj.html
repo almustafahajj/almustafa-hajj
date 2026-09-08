@@ -3,57 +3,34 @@
 {% block heading %}🪪 {{ noun }}{% endblock %}
 {% block subhead %}<div class="season">{{ total }} سجلّ{% if q %} · نتائج البحث عن «{{ q }}»{% endif %}</div>{% endblock %}
 {% block content %}
-<form class="searchbar" method="get">
-  <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
-  <button class="btn primary" type="submit">بحث</button>
-  {% if q or any_filter %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
-  <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">➕ إضافة</a>
-  {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">📷 قراءة جواز</a>{% endif %}
+<form method="get">
+  <div class="searchbar">
+    <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
+    <button class="btn primary" type="submit">بحث</button>
+    {% if q or any_filter %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
+    <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">➕ إضافة</a>
+    {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">📷 قراءة جواز</a>{% endif %}
+  </div>
 
-  <div class="filterbar">
-    <select name="prog" onchange="this.form.submit()">
-      <option value="">كل البرامج</option>
-      {% for v in opts.prog %}<option value="{{ v }}" {{ 'selected' if v==f.prog }}>{{ v }}</option>{% endfor %}
-    </select>
-    <select name="status" onchange="this.form.submit()">
-      <option value="">كل الحالات</option>
-      {% for v in opts.status %}<option value="{{ v }}" {{ 'selected' if v==f.status }}>{{ v }}</option>{% endfor %}
-    </select>
-    <select name="nat" onchange="this.form.submit()">
-      <option value="">كل الجنسيات</option>
-      {% for v in opts.nat %}<option value="{{ v }}" {{ 'selected' if v==f.nat }}>{{ v }}</option>{% endfor %}
-    </select>
-    <select name="hotel" onchange="this.form.submit()">
-      <option value="">كل الفنادق</option>
-      {% for v in opts.hotel %}<option value="{{ v }}" {{ 'selected' if v==f.hotel }}>{{ v }}</option>{% endfor %}
-    </select>
-    <select name="pay" onchange="this.form.submit()">
-      <option value="">السداد: الكل</option>
-      <option value="due" {{ 'selected' if f.pay=='due' }}>عليه متبقٍّ</option>
-      <option value="paid" {{ 'selected' if f.pay=='paid' }}>مكتمل السداد</option>
-    </select>
-
-    <span class="cfilter">
-      <select name="field" id="cfield" onchange="cfieldChanged()">
-        <option value="">فلتر مرن…</option>
-        {% for k,lbl in cfields %}<option value="{{ k }}" {{ 'selected' if k==cfield }}>{{ lbl }}</option>{% endfor %}
+  <div class="panel filterpanel">
+    <h3>🔎 تصفية الكشف</h3>
+    <div class="fltgrid">
+      {% for key, label, vals in filteropts %}
+      <label class="fltcell"><span>{{ label }}</span>
+        <select name="flt_{{ key }}" onchange="this.form.submit()">
+          <option value="">الكل</option>
+          {% for v in vals %}<option value="{{ v }}" {{ 'selected' if sel.get(key)==v }}>{{ v }}</option>{% endfor %}
+        </select></label>
+      {% endfor %}
+    </div>
+    <div class="fltsort">
+      <span>ترتيب حسب</span>
+      <select name="sort" onchange="this.form.submit()">
+        {% for val, lbl in sortfields %}<option value="{{ val }}" {{ 'selected' if val==sort }}>{{ lbl }}</option>{% endfor %}
       </select>
-      <select name="val" id="cval" onchange="this.form.submit()">
-        <option value="">— القيمة —</option>
-        {% if cfield %}{% for v in fieldopts[cfield] %}<option value="{{ v }}" {{ 'selected' if v==cval }}>{{ v }}</option>{% endfor %}{% endif %}
-      </select>
-    </span>
+    </div>
   </div>
 </form>
-<script>
-const FOPTS = {{ fieldopts|tojson }};
-function cfieldChanged(){
-  const f=document.getElementById('cfield'), v=document.getElementById('cval');
-  v.innerHTML='<option value="">— القيمة —</option>';
-  (FOPTS[f.value]||[]).forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;v.appendChild(o);});
-  if(!f.value){ f.form.submit(); }  // مسح الفلتر المرن
-}
-</script>
 
 <div class="panel" style="margin-top:14px">
 <table class="data">
