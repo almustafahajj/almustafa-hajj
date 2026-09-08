@@ -467,6 +467,60 @@ _SORT_FIELDS = [
 ]
 
 
+def _list_filtered(records, gattr):
+    """يطبّق البحث والفلاتر والترتيب من معطيات الطلب؛ يعيد [(idx, record)]."""
+    q = (request.args.get("q") or "").strip().lower()
+    sel = {}
+    for key, _l in _FILTER_FIELDS:
+        v = (request.args.get("flt_" + key) or "").strip()
+        if v:
+            sel[key] = v
+    sort = (request.args.get("sort") or "").strip()
+    out = []
+    for i, r in enumerate(records):
+        if q and q not in " ".join(str(getattr(r, k, "") or "") for k in
+                                   ("full_name_ar", "full_name_en",
+                                    "passport_number", "phone",
+                                    "reference_number")).lower():
+            continue
+        if any(str(getattr(r, key, "") or "").strip() != val
+               for key, val in sel.items()):
+            continue
+        out.append((i, r))
+    if sort:
+        sattr = (gattr if sort == "__group__"
+                 else "full_name_ar" if sort == "name" else sort)
+        out.sort(key=lambda t: str(getattr(t[1], sattr, "") or ""))
+    return out
+
+
+@app.get("/hujjaj/export.pdf")
+def hujjaj_export_pdf():
+    """معاينة PDF للنتائج المفلترة الحالية (نفس معطيات القائمة)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    recs = [r for _i, r in _list_filtered(_load_records(), _group_attr())]
+    title = f"كشف {_noun()} — موسم {_season()}{_season_suffix()}"
+    return _pdf_response(lambda p: pdf_io.export_pdf(recs, p, title=title),
+                         "list.pdf")
+
+
+@app.get("/hujjaj/export.xlsx")
+def hujjaj_export_xlsx():
+    """تصدير إكسل للنتائج المفلترة الحالية."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import excel_io
+    recs = [r for _i, r in _list_filtered(_load_records(), _group_attr())]
+    p = _tmp(".xlsx")
+    excel_io.export_excel(recs, p)
+    return send_file(
+        p, as_attachment=True, download_name="hujjaj.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument."
+                 "spreadsheetml.sheet")
+
+
 @app.get("/hujjaj")
 def hujjaj():
     if _sess() is None:
@@ -489,22 +543,7 @@ def hujjaj():
     filteropts = [(key, label, _distinct(key)) for key, label in _FILTER_FIELDS]
     sort = (request.args.get("sort") or "").strip()
 
-    indexed = []
-    for i, r in enumerate(records):
-        if q and ql not in " ".join(str(getattr(r, k, "") or "") for k in
-                                    ("full_name_ar", "full_name_en",
-                                     "passport_number", "phone",
-                                     "reference_number")).lower():
-            continue
-        if any(str(getattr(r, key, "") or "").strip() != val
-               for key, val in sel.items()):
-            continue
-        indexed.append((i, r))
-
-    if sort:                                        # ترتيب حسب حقل مختار
-        sattr = (gattr if sort == "__group__"
-                 else "full_name_ar" if sort == "name" else sort)
-        indexed.sort(key=lambda t: str(getattr(t[1], sattr, "") or ""))
+    indexed = _list_filtered(records, gattr)        # بحث + فلاتر + ترتيب
 
     total = len(indexed)
     pages = max(1, (total + _PAGE - 1) // _PAGE)
