@@ -1025,8 +1025,9 @@ def export_rooming_cards_pdf(records: list, path: str | Path, *,
                5: "خماسية", 6: "سداسية"}
     GUT = 6
     cardw = doc.width / per_row - GUT
-    # م ضيّق • الاسم واسع (اسم بسطر) • العائلة ضيّق • المواصلات أوسع قليلاً
-    inner = [cardw * 0.07, cardw * 0.51, cardw * 0.15, cardw * 0.27]
+    # ترتيب الأعمدة بصريّاً (RTL يمين←يسار): المواصلات، العائلة، الإسم، م
+    # لأن الخلايا تُبنى معكوسة؛ فالأحجام تتبع الترتيب المعكوس نفسه.
+    inner = [cardw * 0.26, cardw * 0.13, cardw * 0.53, cardw * 0.08]
     PAD = 2
     avail = [w - 2 * PAD - 1 for w in inner]
     heads = ["م", "الإسم", "العائلة", "المواصلات"]
