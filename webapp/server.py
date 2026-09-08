@@ -275,6 +275,19 @@ def _season_suffix() -> str:
     return "هـ" if _mode() == app_mode.HAJJ else "م"
 
 
+def _audit(action: str, details: str = "") -> None:
+    """يسجّل «من فعل ماذا ومتى» في سجلّ التدقيق (يُعرض للمدير فقط).
+
+    لا يرفع استثناءً كي لا يُعطّل العملية الأصلية.
+    """
+    try:
+        from hajj_app import audit
+        s = _sess()
+        audit.record(action, details, user=(s.username if s else "—"))
+    except Exception:                              # noqa: BLE001
+        pass
+
+
 def _season() -> str:
     """سنة الموسم الحالي (لكل وضع) — من الإعدادات أو الافتراضي حسب التقويم."""
     default = _DEFAULT_HIJRI if _mode() == app_mode.HAJJ else _DEFAULT_GREG
@@ -313,6 +326,7 @@ def season_page():
             try:
                 storage.save_settings(settings)
                 saved = year
+                _audit("تحديد الموسم", f"{year}{_season_suffix()}")
             except Exception:
                 pass
         return redirect(url_for("season_page", saved=saved or year))
@@ -357,8 +371,10 @@ def accounts_add():
             request.form.get("password") or "",
             request.form.get("role") or "viewer")
         session["acc_key"] = key
-        session["acc_added"] = (request.form.get("username") or "").strip()
+        _u = (request.form.get("username") or "").strip()
+        session["acc_added"] = _u
         session["acc_msg"] = "أُضيف الحساب — سلّم صاحبه كلمة المرور ومفتاح الاسترداد."
+        _audit("إضافة حساب", f"{_u} ({request.form.get('role') or 'viewer'})")
     except Exception as exc:
         session["acc_err"] = str(exc)
     return redirect(url_for("accounts"))
@@ -372,6 +388,7 @@ def accounts_role(username):
     try:
         auth.set_role(s, username, request.form.get("role") or "viewer")
         session["acc_msg"] = f"غُيّرت صلاحية «{username}»."
+        _audit("تغيير صلاحية", f"{username} → {request.form.get('role') or 'viewer'}")
     except Exception as exc:
         session["acc_err"] = str(exc)
     return redirect(url_for("accounts"))
@@ -387,6 +404,7 @@ def accounts_password(username):
         rk = auth.admin_set_password(s, username,
                                      request.form.get("password") or "")
         session["acc_msg"] = f"غُيّرت كلمة مرور «{username}» — سلّمها لصاحبه."
+        _audit("إعادة تعيين كلمة مرور", username)
         if rk:
             session["acc_key"] = rk
             session["acc_added"] = username
@@ -403,6 +421,7 @@ def accounts_delete(username):
     try:
         auth.remove_account(s, username)
         session["acc_msg"] = f"حُذف الحساب «{username}»."
+        _audit("حذف حساب", username)
     except Exception as exc:
         session["acc_err"] = str(exc)
     return redirect(url_for("accounts"))
@@ -551,6 +570,7 @@ def doc_manual_pdf(kind):
     co = settings.get("company") if isinstance(settings, dict) else None
     data = request.get_json(force=True, silent=True) or {}
     _archive_doc(kind, data, idx=None, name="يدوي بلا اسم")   # أرشفة تلقائية
+    _audit("إصدار مستند يدوي", _DOC_TITLES[kind][0])
     return _pdf_response(
         lambda p: _doc_export(kind, PassportData(), co, data, p),
         f"{kind}-manual.pdf")
@@ -578,6 +598,8 @@ def hujjaj_new():
         records.append(rec)
         try:
             storage.save_records(records, session=_sess())
+            _audit("إضافة سجلّ", getattr(rec, "full_name_ar", "") or getattr(
+                rec, "full_name_en", "") or getattr(rec, "passport_number", ""))
         except Exception:
             pass
         return redirect(url_for("hujjaj"))
@@ -608,6 +630,8 @@ def hujjaj_edit(idx):
         try:
             storage.save_records(records, session=_sess())
             saved = True
+            _audit("تعديل سجلّ", getattr(rec, "full_name_ar", "") or getattr(
+                rec, "full_name_en", "") or getattr(rec, "passport_number", ""))
         except Exception:
             saved = False
     return _render_edit(rec, saved=saved, idx=idx)
@@ -893,6 +917,7 @@ def data_import():
                 records.extend(recs)
                 try:
                     storage.save_records(records, session=_sess())
+                    _audit("استيراد إكسل", f"{len(recs)} سجلّ")
                 except Exception:
                     pass
                 result = f"تمّ استيراد {len(recs)} سجلّاً ودمجها."
@@ -1500,6 +1525,7 @@ def archive_delete(doc_id):
         docs = [d for d in docs if d.get("id") != doc_id]
         try:
             storage.save_documents(docs, session=_sess())
+            _audit("حذف مستند من الأرشيف", doc_id)
         except Exception:
             pass
     return redirect(url_for("archive"))
@@ -1542,6 +1568,7 @@ def doc_pdf(idx, kind):
     _name = getattr(records[idx], "full_name_ar", "") or getattr(
         records[idx], "full_name_en", "") or ""
     _archive_doc(kind, data, idx=idx, name=_name)   # أرشفة تلقائية
+    _audit("إصدار مستند", f"{title} — {_name}")
     return _pdf_response(
         lambda p: _doc_export(kind, records[idx], co, data, p),
         f"{title}-{data.get('number','') or ''}.pdf")
