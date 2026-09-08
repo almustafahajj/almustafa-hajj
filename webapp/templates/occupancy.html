@@ -8,6 +8,7 @@
 <div class="formbar" style="margin-bottom:12px">
   <a class="btn primary" target="_blank" href="{{ url_for('rooming_cards_pdf') }}">🏨 بطاقات الغرف (طباعة)</a>
   <a class="btn ghost" target="_blank" href="{{ url_for('rooming_pdf') }}">📄 كشف مجمّع (PDF)</a>
+  {% if can_edit %}<a class="btn ghost" href="{{ url_for('rooming_edit') }}">✏️ تعديل التسكين يدوياً</a>{% endif %}
 </div>
 {% if not rows %}
 <div class="acc-msg">لا توجد غرف مسكّنة بعد (لا نوع غرفة/رقم في السجلات).</div>

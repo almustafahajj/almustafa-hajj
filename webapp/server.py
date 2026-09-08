@@ -2082,6 +2082,50 @@ def rooming_cards_pdf():
         "rooming-cards.pdf")
 
 
+@app.route("/occupancy/edit", methods=["GET", "POST"])
+def rooming_edit():
+    """تعديل تسكين الغرف يدوياً: الفندق/نوع الغرفة/رقم الغرفة لكل سجلّ."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("occupancy"))
+    records = _load_records()
+    if request.method == "POST":
+        n = 0
+        for i, r in enumerate(records):
+            changed = False
+            for attr, fld in (("hotel", "hotel"), ("room_type", "rtype"),
+                              ("room_number", "rnum")):
+                key = f"{fld}_{i}"
+                if key in request.form:
+                    val = (request.form.get(key) or "").strip()
+                    if str(getattr(r, attr, "") or "") != val:
+                        setattr(r, attr, val)
+                        changed = True
+            if changed:
+                n += 1
+        try:
+            storage.save_records(records, session=_sess())
+            _audit("تعديل التسكين يدوياً", f"{n} سجلّ")
+        except Exception:
+            pass
+        return redirect(url_for("rooming_edit", saved=n))
+
+    def _distinct(attr):
+        return sorted({str(getattr(r, attr, "") or "").strip() for r in records
+                       if str(getattr(r, attr, "") or "").strip()})
+    rows = [{"idx": i,
+             "name": getattr(r, "full_name_ar", "") or getattr(
+                 r, "full_name_en", "") or "—",
+             "hotel": str(getattr(r, "hotel", "") or ""),
+             "rtype": str(getattr(r, "room_type", "") or ""),
+             "rnum": str(getattr(r, "room_number", "") or "")}
+            for i, r in enumerate(records)]
+    return render_template("rooming_edit.html", active="occupancy", rows=rows,
+                           hotels=_distinct("hotel"), rtypes=_distinct("room_type"),
+                           saved=request.args.get("saved"), **_ctx())
+
+
 # ==================== مخيمات منى وعرفة =====================================
 # خرائط ASCII للمخيمات — نتفادى العربية في مسار الرابط (بعض خوادم WSGI تخنقها)
 _CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}

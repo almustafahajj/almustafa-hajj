@@ -1006,42 +1006,35 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
 
 def export_rooming_cards_pdf(records: list, path: str | Path, *,
                              title: str = "تسكين الغرف",
-                             campaign: str = "", season: str = "") -> Path:
-    """كشف تسكين الغرف كبطاقات (٣ بالصفّ): رقم الغرفة + النوع، ثم جدول
-    السكّان بأعمدة (م / الإسم / العائلة / المواصلات) — كالنموذج المطبوع."""
+                             campaign: str = "", season: str = "",
+                             per_row: int = 4) -> Path:
+    """كشف تسكين الغرف كبطاقات (عرضيّ)، **كل نوع غرفة في صفحة مستقلّة**
+    (يمتدّ لأكثر من صفحة إن كثرت غرفه): رقم الغرفة + النوع، ثم جدول السكّان
+    بأعمدة (م / الإسم / العائلة / المواصلات) — كالنموذج المطبوع."""
+    from collections import OrderedDict
     from reportlab.lib.styles import ParagraphStyle
     from .rooming import group_records_by_room
     _register_fonts()
     path = Path(path)
-    doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=9 * mm,
-                            leftMargin=9 * mm, topMargin=13 * mm,
-                            bottomMargin=14 * mm, title=title, author="المصطفى")
+    doc = SimpleDocTemplate(str(path), pagesize=landscape(A4),
+                            rightMargin=8 * mm, leftMargin=8 * mm,
+                            topMargin=12 * mm, bottomMargin=13 * mm,
+                            title=title, author="المصطفى")
     st = _styles()
-    story = []
-    logo = _logo_flowable()
-    if logo is not None:
-        story += [logo, Spacer(1, 2)]
-    story.append(Paragraph(ar(title), st["title"]))
-    subp = [x for x in (campaign, (f"موسم {ltr(season)}" if season else "")) if x]
-    if subp:
-        story.append(Paragraph(ar("  •  ".join(subp)), st["subtitle"]))
-    story.append(Spacer(1, 6))
-
-    rooms, unplaced = group_records_by_room(records)
     capname = {1: "مفردة", 2: "ثنائية", 3: "ثلاثية", 4: "رباعية",
                5: "خماسية", 6: "سداسية"}
-    GUT = 5
-    cardw = doc.width / 3.0 - GUT
-    inner = [cardw * 0.11, cardw * 0.43, cardw * 0.22, cardw * 0.24]
+    GUT = 6
+    cardw = doc.width / per_row - GUT
+    inner = [cardw * 0.09, cardw * 0.46, cardw * 0.21, cardw * 0.24]
     PAD = 2
     avail = [w - 2 * PAD - 1 for w in inner]
     heads = ["م", "الإسم", "العائلة", "المواصلات"]
-    hdr_style = ParagraphStyle("rcHdr", fontName=_FONT_BOLD, fontSize=9.5,
+    hdr_style = ParagraphStyle("rcHdr", fontName=_FONT_BOLD, fontSize=10,
                                alignment=1, textColor=_INK)
     YELLOW = colors.HexColor("#F4D03F")
 
-    def card(cap, number, occ):
-        head = f"{ltr(number)}   {capname.get(cap, str(cap))}   ({ltr(len(occ))})"
+    def card(number, typ, occ):
+        head = f"{ltr(number)}  —  {typ}  ({ltr(len(occ))})"
         data = [[Paragraph(ar(head), hdr_style), "", "", ""]]
         data.append(_ar_cells(list(reversed(heads)), st["head"], avail))
         for i, r in enumerate(occ, 1):
@@ -1065,24 +1058,49 @@ def export_rooming_cards_pdf(records: list, path: str | Path, *,
         ]))
         return t
 
-    cards = [card(cap, number, occ) for _hotel, cap, number, occ in rooms]
+    rooms, unplaced = group_records_by_room(records)
+    # تجميع الغرف حسب النوع (كل نوع في صفحة/صفحات مستقلّة)
+    bytype = OrderedDict()
+    for _hotel, cap, number, occ in rooms:
+        typ = (str(occ[0].room_type).strip() if occ and occ[0].room_type
+               else "") or capname.get(cap, str(cap))
+        bytype.setdefault(typ, []).append((number, typ, occ))
     if unplaced:
-        cards.append(card(0, "بلا غرفة", unplaced))
-    for k in range(0, len(cards), 3):               # شبكة ٣ أعمدة (RTL)
-        rowcards = cards[k:k + 3]
-        while len(rowcards) < 3:
-            rowcards.append("")
-        grid = Table([list(reversed(rowcards))], colWidths=[doc.width / 3.0] * 3)
-        grid.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
-        ]))
-        story.append(grid)
-    if not cards:
+        bytype.setdefault("بلا غرفة", []).append(("—", "بلا غرفة", unplaced))
+
+    def grid_rows(cards):
+        blocks = []
+        for k in range(0, len(cards), per_row):
+            row = cards[k:k + per_row]
+            while len(row) < per_row:
+                row.append("")
+            g = Table([list(reversed(row))], colWidths=[doc.width / per_row] * per_row)
+            g.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]))
+            blocks.append(g)
+        return blocks
+
+    story = []
+    if not bytype:
         story.append(Paragraph(ar("لا توجد غرف مسكّنة."), st["subtitle"]))
+    for ti, (typ, items) in enumerate(bytype.items()):
+        if ti > 0:
+            story.append(PageBreak())               # كل نوع يبدأ صفحة جديدة
+        logo = _logo_flowable()
+        if logo is not None:
+            story += [logo, Spacer(1, 2)]
+        story.append(Paragraph(ar(f"{title} — {typ}"), st["title"]))
+        subp = [x for x in (campaign,
+                            (f"موسم {ltr(season)}" if season else ""),
+                            f"عدد الغرف: {ltr(len(items))}") if x]
+        story.append(Paragraph(ar("  •  ".join(subp)), st["subtitle"]))
+        story.append(Spacer(1, 6))
+        story += grid_rows([card(no, ty, occ) for no, ty, occ in items])
 
     doc.build(story,
               onFirstPage=lambda c, d: _footer_portrait(c, d, "تسكين الغرف"),

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}تعديل التسكين — المصطفى{% endblock %}
+{% block heading %}✏️ تعديل تسكين الغرف يدوياً{% endblock %}
+{% block subhead %}<div class="season">
+  <a class="pill" href="{{ url_for('occupancy') }}">← إشغال الغرف</a>
+  · عدّل الفندق ونوع الغرفة ورقمها لكل شخص ثم احفظ</div>{% endblock %}
+{% block content %}
+{% if saved is not none %}<div class="acc-msg ok">✅ حُفظ التسكين ({{ saved }} سجلّ مُعدّل).</div>{% endif %}
+<form method="post">
+  <datalist id="hotels">{% for h in hotels %}<option value="{{ h }}">{% endfor %}</datalist>
+  <datalist id="rtypes">{% for t in rtypes %}<option value="{{ t }}">{% endfor %}</datalist>
+  <div class="formbar" style="margin-bottom:10px">
+    <button class="btn primary" type="submit">💾 حفظ التسكين</button>
+  </div>
+  <div class="panel">
+  {% if not rows %}
+    <p class="muted">لا يوجد {{ noun }} بعد.</p>
+  {% else %}
+    <table class="data">
+      <thead><tr><th>م</th><th>الاسم</th><th>الفندق</th><th>نوع الغرفة</th><th>رقم الغرفة</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td class="prog-name">{{ r.name }}</td>
+          <td><input name="hotel_{{ r.idx }}" value="{{ r.hotel }}" list="hotels" style="width:100%"></td>
+          <td><input name="rtype_{{ r.idx }}" value="{{ r.rtype }}" list="rtypes" style="width:100%"></td>
+          <td><input name="rnum_{{ r.idx }}" value="{{ r.rnum }}" dir="ltr" style="width:100%;text-align:center"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  </div>
+  <div class="formbar" style="margin-top:10px">
+    <button class="btn primary" type="submit">💾 حفظ التسكين</button>
+  </div>
+</form>
+<p class="hint-note">اكتب الفندق ونوع الغرفة (يظهر اقتراح من القيم الموجودة) ورقم الغرفة.
+  من يتشاركون **نفس رقم الغرفة ونوعها والفندق** يظهرون معاً في كشف/بطاقات التسكين.</p>
+{% endblock %}
