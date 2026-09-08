@@ -253,3 +253,11 @@ input:invalid{ border-color:#e0a89f; }
 
 .remember{ display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); margin:6px 2px 14px; cursor:pointer; }
 .remember input{ width:16px; height:16px; }
+
+/* ---- أيقونات SVG ذكية + شعار الشركة في القائمة ---- */
+.ng-ic svg{ width:18px; height:18px; stroke:#fff; fill:none; stroke-width:1.7;
+  stroke-linecap:round; stroke-linejoin:round; }
+.sidebar .logo{ padding:4px 2px 14px; }
+.logo-img{ display:block; width:100%; max-width:172px; margin:0 auto;
+  background:#fff; border-radius:14px; padding:12px 14px;
+  box-shadow:0 4px 12px #0003; }
