@@ -1007,10 +1007,10 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
 def export_rooming_cards_pdf(records: list, path: str | Path, *,
                              title: str = "تسكين الغرف",
                              campaign: str = "", season: str = "",
-                             per_row: int = 4) -> Path:
-    """كشف تسكين الغرف كبطاقات (عرضيّ)، **كل نوع غرفة في صفحة مستقلّة**
-    (يمتدّ لأكثر من صفحة إن كثرت غرفه): رقم الغرفة + النوع، ثم جدول السكّان
-    بأعمدة (م / الإسم / العائلة / المواصلات) — كالنموذج المطبوع."""
+                             per_row: int = 3) -> Path:
+    """كشف تسكين الغرف كبطاقات (عرضيّ)، **كل سعة غرفة في صفحة مستقلّة**
+    (المفرد صفحة، الثنائي صفحة، الرباعي صفحة… ويمتدّ لأكثر من صفحة إن كثر):
+    رقم الغرفة + النوع، ثم جدول السكّان (م / الإسم / العائلة / المواصلات)."""
     from collections import OrderedDict
     from reportlab.lib.styles import ParagraphStyle
     from .rooming import group_records_by_room
@@ -1025,7 +1025,8 @@ def export_rooming_cards_pdf(records: list, path: str | Path, *,
                5: "خماسية", 6: "سداسية"}
     GUT = 6
     cardw = doc.width / per_row - GUT
-    inner = [cardw * 0.09, cardw * 0.46, cardw * 0.21, cardw * 0.24]
+    # م ضيّق • الاسم واسع (اسم بسطر) • العائلة ضيّق • المواصلات أوسع قليلاً
+    inner = [cardw * 0.07, cardw * 0.51, cardw * 0.15, cardw * 0.27]
     PAD = 2
     avail = [w - 2 * PAD - 1 for w in inner]
     heads = ["م", "الإسم", "العائلة", "المواصلات"]
@@ -1059,14 +1060,20 @@ def export_rooming_cards_pdf(records: list, path: str | Path, *,
         return t
 
     rooms, unplaced = group_records_by_room(records)
-    # تجميع الغرف حسب النوع (كل نوع في صفحة/صفحات مستقلّة)
-    bytype = OrderedDict()
+    # تجميع الغرف حسب **السعة** (المفرد/الثنائي/الرباعي…) كلٌّ في صفحته
+    bycap = {}
     for _hotel, cap, number, occ in rooms:
-        typ = (str(occ[0].room_type).strip() if occ and occ[0].room_type
-               else "") or capname.get(cap, str(cap))
-        bytype.setdefault(typ, []).append((number, typ, occ))
+        bycap.setdefault(cap, []).append((number, occ))
+    # ترتيب تصاعدي بالسعة، والسعة المجهولة (0) أخيراً
+    order = sorted(bycap, key=lambda cp: (cp == 0, cp))
+    bytype = OrderedDict()
+    for cp in order:
+        label = capname.get(cp) or (
+            str(bycap[cp][0][1][0].room_type).strip()
+            if bycap[cp][0][1] and bycap[cp][0][1][0].room_type else f"سعة {cp}")
+        bytype[label] = [(no, label, occ) for no, occ in bycap[cp]]
     if unplaced:
-        bytype.setdefault("بلا غرفة", []).append(("—", "بلا غرفة", unplaced))
+        bytype["بلا غرفة"] = [("—", "بلا غرفة", unplaced)]
 
     MAX_ROWS = 24                                   # أقصى سكّان لكل بطاقة (تفادي تجاوز الصفحة)
 
