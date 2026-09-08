@@ -2080,8 +2080,10 @@ def _tent_state(camp_slug):
     sid = session.get("sid") or "-"
     st = _TENT_STATE.get(sid)
     if not st or st.get("camp") != camp_slug:
-        st = {"camp": camp_slug, "assigned": [], "number": 1, "last": None}
+        st = {"camp": camp_slug, "assigned": [], "number": 1, "last": None,
+              "tents": []}
         _TENT_STATE[sid] = st
+    st.setdefault("tents", [])                     # توافق مع حالات قديمة
     return st
 
 
@@ -2200,6 +2202,7 @@ def camp_tents():
         camps=camps, classes=[campmod.MEN, campmod.WOMEN], cls=cls, count=count,
         sector=sector, number=number, campaign=campaign, rows=rows,
         summary=summary, has_last=bool(st.get("last")),
+        saved_tents=_tents_view(st),
         msg=request.args.get("msg", ""), **_ctx())
 
 
@@ -2233,9 +2236,11 @@ def camp_tents_export():
                                 msg=f"لا يوجد {cls} غير مسكّنين لهذه الخيمة.", **back))
     assigned |= set(indices)
     st["assigned"] = sorted(assigned)
-    st["last"] = {"indices": indices, "camp": camp, "sector": sector,
-                  "number": number, "cls": cls, "capacity": count,
-                  "campaign": campaign}
+    tent = {"indices": indices, "camp": camp, "sector": sector,
+            "number": number, "cls": cls, "capacity": count,
+            "campaign": campaign}
+    st["last"] = tent
+    st["tents"].append(tent)                        # حفظ الخيمة للمعاينة لاحقاً
     try:
         nxt = str(int(number) + 1)
     except ValueError:
@@ -2257,7 +2262,67 @@ def camp_tents_reset():
     st["assigned"] = []
     st["number"] = 1
     st["last"] = None
+    st["tents"] = []
     return redirect(url_for("camp_tents", camp=camp_slug, msg="أُعيد الضبط."))
+
+
+def _tents_view(st):
+    """قائمة عرض الخيام المحفوظة (للمعاينة/التصدير لاحقاً)."""
+    return [{"n": i, "number": t.get("number", ""), "cls": t.get("cls", ""),
+             "count": len(t.get("indices", [])), "sector": t.get("sector", "")}
+            for i, t in enumerate(st.get("tents") or [])]
+
+
+def _tent_plan_from(records, spec):
+    from hajj_app import camps as campmod
+    return campmod.make_tent(
+        records, spec["indices"], camp=spec["camp"], sector=spec["sector"],
+        number=spec["number"], classification_label=spec["cls"],
+        capacity=spec["capacity"])
+
+
+@app.get("/camps/tents/tent/<int:n>.pdf")
+def camp_tent_pdf(n):
+    """يعيد توليد كشف خيمة محفوظة برقمها في القائمة (المعاينة/التصدير لاحقاً)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app.pdf_io import export_tents_pdf
+    st = _TENT_STATE.get(session.get("sid") or "-")
+    tents = (st or {}).get("tents") or []
+    if not (0 <= n < len(tents)):
+        return redirect(url_for("camp_tents"))
+    spec = tents[n]
+    plan = _tent_plan_from(_load_records(), spec)
+    return _pdf_response(
+        lambda p: export_tents_pdf(plan, p, campaign=spec.get("campaign", "")),
+        "tent.pdf")
+
+
+@app.get("/camps/tents/all.pdf")
+def camp_tents_all_pdf():
+    """كشف كل الخيام المثبّتة — كل خيمة في صفحة مستقلّة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    from hajj_app.camps import CampPlan
+    from hajj_app.pdf_io import export_tents_pdf
+    st = _TENT_STATE.get(session.get("sid") or "-")
+    tents = (st or {}).get("tents") or []
+    if not tents:
+        return redirect(url_for("camp_tents"))
+    records = _load_records()
+    all_tents = []
+    for spec in tents:
+        all_tents.extend(_tent_plan_from(records, spec).tents)
+    campaign = tents[0].get("campaign", "") or _DEFAULT_CAMPAIGN
+    plan = CampPlan(camp=tents[0].get("camp", ""), sector="", capacity=0,
+                    tents=all_tents, notes=[])
+    return _pdf_response(
+        lambda p: export_tents_pdf(plan, p, campaign=campaign),
+        "camp-all-tents.pdf")
 
 
 @app.get("/camps/tents/last.pdf")
@@ -2318,7 +2383,8 @@ def camp_tents_manual():
         "camp_tents_manual.html", active="camps", camp=camp, camp_slug=camp_slug,
         camps=camps, rows=rows, number=str(st["number"]),
         campaign=_DEFAULT_CAMPAIGN, assigned=len(assigned),
-        has_last=bool(st.get("last")), msg=request.args.get("msg", ""), **_ctx())
+        has_last=bool(st.get("last")), saved_tents=_tents_view(st),
+        msg=request.args.get("msg", ""), **_ctx())
 
 
 @app.post("/camps/tents/manual/assign")
@@ -2353,9 +2419,11 @@ def camp_tents_manual_assign():
                                 msg="لم تختر أي حاجّ لهذه الخيمة."))
     assigned |= set(picks)
     st["assigned"] = sorted(assigned)
-    st["last"] = {"indices": picks, "camp": camp, "sector": sector,
-                  "number": number, "cls": label, "capacity": len(picks),
-                  "campaign": campaign}
+    tent = {"indices": picks, "camp": camp, "sector": sector,
+            "number": number, "cls": label, "capacity": len(picks),
+            "campaign": campaign}
+    st["last"] = tent
+    st["tents"].append(tent)                        # حفظ الخيمة للمعاينة لاحقاً
     try:
         st["number"] = str(int(number) + 1)
     except ValueError:

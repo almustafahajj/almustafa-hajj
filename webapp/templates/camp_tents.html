@@ -61,6 +61,8 @@
 {% endif %}
 </div>
 
+{% include "_saved_tents.html" %}
+
 <form method="post" action="{{ url_for('camp_tents_reset') }}"
       onsubmit="return confirm('مسح كل الخيام المثبّتة والبدء من جديد؟');" style="margin-top:12px">
   <input type="hidden" name="camp" value="{{ camp_slug }}">
