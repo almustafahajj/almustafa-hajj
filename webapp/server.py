@@ -2025,7 +2025,7 @@ def camp_pdf():
     if _mode() != app_mode.HAJJ:
         return ("", 404)
     from hajj_app import camps as campmod
-    from hajj_app.pdf_io import export_camp_pdf
+    from hajj_app.pdf_io import export_camp_pdf, export_tents_pdf, company_info
     camp = _CAMP_SLUGS.get(request.args.get("camp", ""))
     if camp is None or camp not in campmod.CAMPS:
         return redirect(url_for("camps_page"))
@@ -2040,6 +2040,7 @@ def camp_pdf():
     only = request.args.get("only", "") or ""
     if only not in (campmod.MEN, campmod.WOMEN):
         only = ""
+    layout = request.args.get("layout", "grouped")
     plan = campmod.build_camp_plan(records, camp, capacity=capacity,
                                    sector=sector, only=only)
     title = f"كشف تسكين مخيّم {camp}"
@@ -2047,6 +2048,13 @@ def camp_pdf():
         title += f" — {only}"
     if sector:
         title += f" — قطاع {sector}"
+    if layout == "pertent":                        # كل خيمة في صفحة مستقلّة
+        settings = storage.load_settings()
+        co = settings.get("company") if isinstance(settings, dict) else None
+        campaign = company_info(co)["name_ar"]
+        return _pdf_response(
+            lambda p: export_tents_pdf(plan, p, campaign=campaign, title=title),
+            "camp-tents.pdf")
     return _pdf_response(lambda p: export_camp_pdf(plan, p, title=title),
                          "camp-plan.pdf")
 
