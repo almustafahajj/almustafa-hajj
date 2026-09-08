@@ -2114,15 +2114,29 @@ def rooming_edit():
     def _distinct(attr):
         return sorted({str(getattr(r, attr, "") or "").strip() for r in records
                        if str(getattr(r, attr, "") or "").strip()})
-    rows = [{"idx": i,
-             "name": getattr(r, "full_name_ar", "") or getattr(
-                 r, "full_name_en", "") or "—",
-             "hotel": str(getattr(r, "hotel", "") or ""),
-             "rtype": str(getattr(r, "room_type", "") or ""),
-             "rnum": str(getattr(r, "room_number", "") or "")}
-            for i, r in enumerate(records)]
+    frnum = (request.args.get("frnum") or "").strip()
+    ffam = (request.args.get("ffam") or "").strip()
+    fq = (request.args.get("fq") or "").strip().lower()
+    rows = []
+    for i, r in enumerate(records):
+        rn = str(getattr(r, "room_number", "") or "")
+        fa = str(getattr(r, "family_number", "") or "")
+        nm = getattr(r, "full_name_ar", "") or getattr(r, "full_name_en", "") or ""
+        if frnum and frnum not in rn:
+            continue
+        if ffam and ffam not in fa:
+            continue
+        if fq and fq not in nm.lower():
+            continue
+        rows.append({"idx": i, "name": nm or "—",
+                     "hotel": str(getattr(r, "hotel", "") or ""),
+                     "rtype": str(getattr(r, "room_type", "") or ""),
+                     "rnum": rn, "fam": fa})
     return render_template("rooming_edit.html", active="occupancy", rows=rows,
                            hotels=_distinct("hotel"), rtypes=_distinct("room_type"),
+                           frnum=frnum, ffam=ffam, fq=request.args.get("fq", ""),
+                           total=len(records),
+                           any_filter=bool(frnum or ffam or fq),
                            saved=request.args.get("saved"), **_ctx())
 
 
