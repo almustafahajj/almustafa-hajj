@@ -1307,6 +1307,7 @@ def program_save():
     umrah.save_trips(settings, trips)
     try:
         storage.save_settings(settings)
+        _audit("حفظ برنامج عمرة", f"{trip.code} — {getattr(trip,'name','') or ''}")
     except Exception:
         pass
     return redirect(url_for("programs"))
@@ -1323,6 +1324,7 @@ def program_delete(code):
         umrah.save_trips(settings, trips)
         try:
             storage.save_settings(settings)
+            _audit("حذف برنامج عمرة", str(code))
         except Exception:
             pass
     return redirect(url_for("programs"))
@@ -1778,6 +1780,7 @@ def travel_pdf(idx):
         travel.save_travel(settings, idx, nested)
         try:
             storage.save_settings(settings)
+            _audit("تعديل مواعيد وتعليمات السفر", name)
         except Exception:
             pass
     return _pdf_response(
@@ -1845,6 +1848,7 @@ def groups_page():
         settings["groups"] = data
         try:
             storage.save_settings(settings)
+            _audit("تعديل المجموعات والمرشدين", f"{len(data)} مجموعة")
         except Exception:
             pass
         return redirect(url_for("groups_page", saved=1))
