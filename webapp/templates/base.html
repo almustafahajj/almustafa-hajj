@@ -14,10 +14,11 @@
       <a class="navlink toplink {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">
         <span class="ng-ic" style="background:#8A6E4B"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="6" height="6" rx="1.4"/><rect x="11" y="3" width="6" height="6" rx="1.4"/><rect x="3" y="11" width="6" height="6" rx="1.4"/><rect x="11" y="11" width="6" height="6" rx="1.4"/></svg></span> لوحة التحكم</a>
 
-      <details class="nav-group" {% if active in ['hujjaj','documents','groups'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['hujjaj','documents','archive','groups'] %}open{% endif %}>
         <summary><span class="ng-ic" style="background:#2C5AA0"><svg viewBox="0 0 20 20"><circle cx="8" cy="7" r="2.7"/><path d="M3 16.5c0-2.8 2.2-4.5 5-4.5s5 1.7 5 4.5"/><circle cx="14.5" cy="7.8" r="2"/><path d="M14 12.2c2 0 3.4 1.5 3.4 4"/></svg></span> {{ noun }}</summary>
         <a class="navlink {{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">السجلّات والبيانات</a>
         <a class="navlink {{ 'active' if active=='documents' }}" href="{{ url_for('documents') }}">المستندات</a>
+        <a class="navlink {{ 'active' if active=='archive' }}" href="{{ url_for('archive') }}">أرشيف المستندات</a>
         <a class="navlink {{ 'active' if active=='groups' }}" href="{{ url_for('groups_page') }}">المجموعات والمرشدون</a>
       </details>
 

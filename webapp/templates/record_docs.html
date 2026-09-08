@@ -18,5 +18,24 @@
   </a>
 </div>
 <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF»
-  (يُفتح الـ PDF في تبويب جديد). عُد لهذه القائمة لإصدار مستند آخر.</p>
+  (يُفتح الـ PDF في تبويب جديد). كل مستند تنشئه يُحفظ تلقائياً في الأرشيف أدناه.</p>
+
+{% if saved %}
+<div class="panel" style="margin-top:16px">
+  <h3 style="margin:0 0 10px">🗄 مستندات محفوظة لهذا {{ noun_singular }}</h3>
+  <table class="data">
+    <thead><tr><th>التاريخ</th><th>النوع</th><th>الرقم</th><th></th></tr></thead>
+    <tbody>
+      {% for s in saved %}
+      <tr>
+        <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ s.ts }}</td>
+        <td>{{ s.title }}</td>
+        <td dir="ltr">{{ s.number }}</td>
+        <td><a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=s.id) }}">📄 فتح/طباعة</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

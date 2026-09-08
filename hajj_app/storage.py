@@ -175,6 +175,47 @@ def _encode_records(records: list[PassportData], session: Session | None) -> byt
     return _ENCRYPTED_MAGIC + session.encrypt(text) if session else text
 
 
+# ----------------------------------------------- أرشيف المستندات (مشفّر، لكل وضع)
+def documents_path() -> Path:
+    """مسار أرشيف المستندات المُنشأة — مشفّر ومستقلّ لكل وضع (حج/عمرة)."""
+    base = default_data_path()
+    return base.with_name("documents_" + base.stem + ".json")
+
+
+def load_documents(session: Session | None = None) -> list:
+    """يحمّل قائمة المستندات المؤرشفة (يفكّ التشفير بالجلسة). يعيد [] عند التعذّر."""
+    path = documents_path()
+    if not path.is_file():
+        return []
+    try:
+        with open(path, "rb") as fh:
+            blob = fh.read()
+        if blob.startswith(_ENCRYPTED_MAGIC):
+            if session is None:
+                return []
+            raw = session.decrypt(blob[len(_ENCRYPTED_MAGIC):])
+        else:
+            raw = blob
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except Exception:                              # noqa: BLE001
+        return []
+
+
+def save_documents(docs: list, session: Session | None = None) -> None:
+    """يحفظ أرشيف المستندات (مشفّراً إن وُجدت جلسة) — كتابة ذرّية."""
+    path = documents_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(docs, ensure_ascii=False).encode("utf-8")
+    blob = (_ENCRYPTED_MAGIC + session.encrypt(text)) if session else text
+    temp = path.with_suffix(".tmp")
+    with open(temp, "wb") as fh:
+        fh.write(blob)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(temp, path)
+
+
 # ----------------------------------------------- نسخ احتياطية مؤرّخة (لقطات)
 def backups_dir() -> Path:
     """مجلد النسخ الاحتياطية المؤرّخة، بجوار ملف البيانات."""

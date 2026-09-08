@@ -496,6 +496,7 @@ def doc_manual_pdf(kind):
     settings = storage.load_settings()
     co = settings.get("company") if isinstance(settings, dict) else None
     data = request.get_json(force=True, silent=True) or {}
+    _archive_doc(kind, data, idx=None, name="يدوي بلا اسم")   # أرشفة تلقائية
     return _pdf_response(
         lambda p: _doc_export(kind, PassportData(), co, data, p),
         f"{kind}-manual.pdf")
@@ -610,8 +611,15 @@ def record_docs(idx):
     rec = records[idx]
     name = getattr(rec, "full_name_ar", "") or getattr(
         rec, "full_name_en", "") or "—"
+    saved = []                                     # مستندات هذا الشخص المؤرشفة
+    for d in reversed(storage.load_documents(session=_sess())):
+        if d.get("idx") == idx or (name != "—" and d.get("name") == name):
+            saved.append({"id": d.get("id"),
+                          "ts": (d.get("ts") or "").replace("T", "  "),
+                          "title": d.get("title") or d.get("kind"),
+                          "number": d.get("number") or "—"})
     return render_template("record_docs.html", active="hujjaj", idx=idx,
-                           name=name, docs=_RECORD_DOCS,
+                           name=name, docs=_RECORD_DOCS, saved=saved,
                            noun_singular=_noun_singular(), **_ctx())
 
 
@@ -1349,6 +1357,98 @@ def _doc_export(kind, rec, co, data, path):
                                                   data=data)
 
 
+def _archive_doc(kind, data, *, idx=None, name=None):
+    """أرشفة تلقائية للمستند المُنشأ (بياناته فقط — يُعاد توليد PDF لاحقاً).
+
+    لا يرفع استثناءً كي لا يُعطّل توليد المستند إن تعذّرت الأرشفة.
+    """
+    try:
+        import secrets as _secrets
+        from datetime import datetime as _dt
+        docs = storage.load_documents(session=_sess())
+        docs.append({
+            "id": _secrets.token_hex(6),
+            "ts": _dt.now().replace(microsecond=0).isoformat(),
+            "kind": kind,
+            "title": _DOC_TITLES.get(kind, (kind, ""))[0],
+            "number": str((data or {}).get("number", "") or ""),
+            "name": name or "",
+            "idx": idx,
+            "data": data or {},
+        })
+        if len(docs) > 5000:                       # حدّ أمان لعدم تضخّم الملف
+            docs = docs[-5000:]
+        storage.save_documents(docs, session=_sess())
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+@app.get("/archive")
+def archive():
+    """أرشيف المستندات المُنشأة تلقائياً — بحث وفلترة وإعادة طباعة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    docs = storage.load_documents(session=_sess())
+    q = (request.args.get("q") or "").strip()
+    ql = q.lower()
+    kind = request.args.get("kind", "") or ""
+    rows = []
+    for d in reversed(docs):
+        if kind and d.get("kind") != kind:
+            continue
+        if ql and ql not in " ".join(str(d.get(k, "")) for k in
+                                     ("title", "number", "name")).lower():
+            continue
+        rows.append({"id": d.get("id"),
+                     "ts": (d.get("ts") or "").replace("T", "  "),
+                     "title": d.get("title") or d.get("kind"),
+                     "number": d.get("number") or "—",
+                     "name": d.get("name") or "—"})
+    kinds = [(k, v[0]) for k, v in _DOC_TITLES.items()]
+    return render_template("archive.html", active="archive", rows=rows,
+                           q=q, kind=kind, kinds=kinds, total=len(docs), **_ctx())
+
+
+@app.get("/archive/<doc_id>.pdf")
+def archive_pdf(doc_id):
+    """يعيد توليد PDF لمستند مؤرشف من بياناته المحفوظة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app.mrz import PassportData
+    docs = storage.load_documents(session=_sess())
+    entry = next((d for d in docs if d.get("id") == doc_id), None)
+    if not entry or entry.get("kind") not in _DOC_TITLES:
+        return redirect(url_for("archive"))
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    kind = entry["kind"]
+    data = entry.get("data") or {}
+    rec = PassportData()                            # data تكفي لإعادة التوليد
+    idx = entry.get("idx")
+    if isinstance(idx, int):
+        recs = _load_records()
+        if 0 <= idx < len(recs):
+            rec = recs[idx]
+    title = _DOC_TITLES[kind][0]
+    return _pdf_response(lambda p: _doc_export(kind, rec, co, data, p),
+                         f"{title}-{entry.get('number','') or ''}.pdf")
+
+
+@app.post("/archive/<doc_id>/delete")
+def archive_delete(doc_id):
+    """حذف مستند من الأرشيف (للمحرّرين)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if _sess().can_edit:
+        docs = storage.load_documents(session=_sess())
+        docs = [d for d in docs if d.get("id") != doc_id]
+        try:
+            storage.save_documents(docs, session=_sess())
+        except Exception:
+            pass
+    return redirect(url_for("archive"))
+
+
 @app.get("/doc/<int:idx>/<kind>")
 def doc_edit(idx, kind):
     if _sess() is None:
@@ -1383,6 +1483,9 @@ def doc_pdf(idx, kind):
     co = settings.get("company") if isinstance(settings, dict) else None
     data = request.get_json(force=True, silent=True) or {}
     title = _DOC_TITLES[kind][0]
+    _name = getattr(records[idx], "full_name_ar", "") or getattr(
+        records[idx], "full_name_en", "") or ""
+    _archive_doc(kind, data, idx=idx, name=_name)   # أرشفة تلقائية
     return _pdf_response(
         lambda p: _doc_export(kind, records[idx], co, data, p),
         f"{title}-{data.get('number','') or ''}.pdf")
