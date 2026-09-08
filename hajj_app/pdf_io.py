@@ -1004,6 +1004,92 @@ def export_umrah_rooming_pdf(records: list, path: str | Path, *,
     return path
 
 
+def export_rooming_cards_pdf(records: list, path: str | Path, *,
+                             title: str = "تسكين الغرف",
+                             campaign: str = "", season: str = "") -> Path:
+    """كشف تسكين الغرف كبطاقات (٣ بالصفّ): رقم الغرفة + النوع، ثم جدول
+    السكّان بأعمدة (م / الإسم / العائلة / المواصلات) — كالنموذج المطبوع."""
+    from reportlab.lib.styles import ParagraphStyle
+    from .rooming import group_records_by_room
+    _register_fonts()
+    path = Path(path)
+    doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=9 * mm,
+                            leftMargin=9 * mm, topMargin=13 * mm,
+                            bottomMargin=14 * mm, title=title, author="المصطفى")
+    st = _styles()
+    story = []
+    logo = _logo_flowable()
+    if logo is not None:
+        story += [logo, Spacer(1, 2)]
+    story.append(Paragraph(ar(title), st["title"]))
+    subp = [x for x in (campaign, (f"موسم {ltr(season)}" if season else "")) if x]
+    if subp:
+        story.append(Paragraph(ar("  •  ".join(subp)), st["subtitle"]))
+    story.append(Spacer(1, 6))
+
+    rooms, unplaced = group_records_by_room(records)
+    capname = {1: "مفردة", 2: "ثنائية", 3: "ثلاثية", 4: "رباعية",
+               5: "خماسية", 6: "سداسية"}
+    GUT = 5
+    cardw = doc.width / 3.0 - GUT
+    inner = [cardw * 0.11, cardw * 0.43, cardw * 0.22, cardw * 0.24]
+    PAD = 2
+    avail = [w - 2 * PAD - 1 for w in inner]
+    heads = ["م", "الإسم", "العائلة", "المواصلات"]
+    hdr_style = ParagraphStyle("rcHdr", fontName=_FONT_BOLD, fontSize=9.5,
+                               alignment=1, textColor=_INK)
+    YELLOW = colors.HexColor("#F4D03F")
+
+    def card(cap, number, occ):
+        head = f"{ltr(number)}   {capname.get(cap, str(cap))}   ({ltr(len(occ))})"
+        data = [[Paragraph(ar(head), hdr_style), "", "", ""]]
+        data.append(_ar_cells(list(reversed(heads)), st["head"], avail))
+        for i, r in enumerate(occ, 1):
+            vals = [str(i), r.full_name_ar or r.full_name_en or "",
+                    str(r.family_number or ""),
+                    str(getattr(r, "transport", "") or "")]
+            data.append(_ar_cells(list(reversed(vals)), st["cell"], avail))
+        t = Table(data, colWidths=inner)
+        t.hAlign = "CENTER"
+        t.setStyle(TableStyle([
+            ("SPAN", (0, 0), (-1, 0)),
+            ("BACKGROUND", (0, 0), (-1, 0), YELLOW),
+            ("BACKGROUND", (0, 1), (-1, 1), _ACCENT),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 2), (-1, -1), [colors.white, _ALT_ROW]),
+            ("LEFTPADDING", (0, 0), (-1, -1), PAD),
+            ("RIGHTPADDING", (0, 0), (-1, -1), PAD),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]))
+        return t
+
+    cards = [card(cap, number, occ) for _hotel, cap, number, occ in rooms]
+    if unplaced:
+        cards.append(card(0, "بلا غرفة", unplaced))
+    for k in range(0, len(cards), 3):               # شبكة ٣ أعمدة (RTL)
+        rowcards = cards[k:k + 3]
+        while len(rowcards) < 3:
+            rowcards.append("")
+        grid = Table([list(reversed(rowcards))], colWidths=[doc.width / 3.0] * 3)
+        grid.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+        ]))
+        story.append(grid)
+    if not cards:
+        story.append(Paragraph(ar("لا توجد غرف مسكّنة."), st["subtitle"]))
+
+    doc.build(story,
+              onFirstPage=lambda c, d: _footer_portrait(c, d, "تسكين الغرف"),
+              onLaterPages=lambda c, d: _footer_portrait(c, d, "تسكين الغرف"))
+    return path
+
+
 def export_umrah_transport_pdf(records: list, path: str | Path, *,
                                program_name: str = "",
                                transport_pnr: str = "") -> Path:

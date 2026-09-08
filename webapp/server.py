@@ -2066,6 +2066,22 @@ def rooming_pdf():
         "rooming.pdf")
 
 
+@app.get("/occupancy/rooming-cards.pdf")
+def rooming_cards_pdf():
+    """طباعة تسكين الغرف كبطاقات (٣ بالصفّ) — كالنموذج المطبوع."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    campaign = pdf_io.company_info(co)["name_ar"]
+    return _pdf_response(
+        lambda p: pdf_io.export_rooming_cards_pdf(
+            _load_records(), p, title=f"تسكين الغرف — {_noun()}",
+            campaign=campaign, season=f"{_season()}{_season_suffix()}"),
+        "rooming-cards.pdf")
+
+
 # ==================== مخيمات منى وعرفة =====================================
 # خرائط ASCII للمخيمات — نتفادى العربية في مسار الرابط (بعض خوادم WSGI تخنقها)
 _CAMP_SLUGS = {"mina": "منى", "arafat": "عرفة"}
