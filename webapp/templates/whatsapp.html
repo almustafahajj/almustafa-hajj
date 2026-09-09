@@ -27,7 +27,12 @@
 
 {% if rows is not none %}
 <div class="panel" style="margin-top:14px">
-<table class="data">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <strong>الظاهرون: <span id="wacount">{{ rows|length }}</span> من {{ rows|length }}</strong>
+    <input id="wasearch" type="search" oninput="waFilter()" placeholder="🔎 بحث بالاسم أو الرقم…"
+           style="max-width:300px;padding:7px 10px;border:1px solid #d8cfc2;border-radius:8px;font-size:14px">
+  </div>
+<table class="data" id="watable">
   <thead><tr><th>الحاج</th><th>الرقم</th><th>واتساب</th></tr></thead>
   <tbody>
     {% for r in rows %}
@@ -40,6 +45,21 @@
     {% endfor %}
   </tbody>
 </table>
+  <p id="wanone" class="muted" hidden style="margin-top:10px">لا نتائج مطابقة للبحث.</p>
 </div>
+<script>
+function waFilter() {
+  var q = (document.getElementById('wasearch').value || '').trim().toLowerCase();
+  var rows = document.querySelectorAll('#watable tbody tr');
+  var n = 0;
+  rows.forEach(function (tr) {
+    var show = !q || tr.textContent.toLowerCase().indexOf(q) >= 0;
+    tr.hidden = !show;
+    if (show) n++;
+  });
+  document.getElementById('wacount').textContent = n;
+  document.getElementById('wanone').hidden = n !== 0;
+}
+</script>
 {% endif %}
 {% endblock %}
