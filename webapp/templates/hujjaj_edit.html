@@ -36,8 +36,11 @@
   <div class="docbtns">
     <a class="btn primary" href="{{ url_for('record_docs', idx=idx) }}">
       📄 فتح قائمة مستندات {{ noun_singular }}</a>
+    <a class="btn ghost" href="{{ url_for('record_images', idx=idx) }}">
+      🖼 صور ومستندات {{ noun_singular }} (جواز/شخصية/هوية/تصريح)</a>
   </div>
-  <p class="hint-note">سند/فاتورة/عقد/فاوتشر/طلب مواصلات + حزمة المستندات — في صفحة مستقلة.</p>
+  <p class="hint-note">سند/فاتورة/عقد/فاوتشر/طلب مواصلات + حزمة المستندات — في صفحة مستقلة.
+    وإرفاق صور الجواز والصورة الشخصية والهوية والتصريح للحاج.</p>
 </fieldset>
 {% endif %}
 {% endblock %}

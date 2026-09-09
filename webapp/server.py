@@ -800,6 +800,138 @@ def record_docs(idx):
                            noun_singular=_noun_singular(), **_ctx())
 
 
+def _image_kinds():
+    """أنواع مستندات السجلّ حسب الوضع (العمرة: الجواز فقط كما في سطح المكتب)."""
+    from hajj_app import images as imgmod
+    return (imgmod.PASSPORT,) if _mode() == app_mode.UMRAH else imgmod.KINDS
+
+
+def _rec_name(rec) -> str:
+    return (getattr(rec, "full_name_ar", "") or getattr(rec, "full_name_en", "")
+            or getattr(rec, "passport_number", "") or "")
+
+
+@app.get("/hujjaj/<int:idx>/images")
+def record_images(idx):
+    """صفحة إرفاق مستندات السجلّ (جواز/شخصية/هوية/تصريح): عرض/رفع/حذف."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import images as imgmod
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    rec = records[idx]
+    iid = getattr(rec, "image_id", "")
+    items = []
+    for kind in _image_kinds():
+        present = bool(iid) and imgmod.has_image(iid, kind)
+        is_pdf = False
+        if present:                                    # نفكّ التشفير لمعرفة النوع
+            blob = imgmod.load_image(iid, kind, _sess())
+            present = bool(blob)
+            is_pdf = present and imgmod.is_pdf(blob)
+        items.append({"kind": kind, "label": imgmod.KIND_LABELS.get(kind, kind),
+                      "present": present, "is_pdf": is_pdf})
+    return render_template("record_images.html", active="hujjaj", idx=idx,
+                           name=_rec_name(rec) or "—", items=items,
+                           saved=request.args.get("saved"),
+                           err=request.args.get("err"),
+                           noun_singular=_noun_singular(), **_ctx())
+
+
+@app.post("/hujjaj/<int:idx>/images/<kind>")
+def record_image_upload(idx, kind):
+    """رفع/استبدال مستند لنوع محدّد (يُضغط ويُشفّر مع بيانات الحاج)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("hujjaj"))
+    from hajj_app import images as imgmod
+    if kind not in _image_kinds():
+        return redirect(url_for("record_images", idx=idx))
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    rec = records[idx]
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return redirect(url_for("record_images", idx=idx, err="لم يتم اختيار ملف."))
+    ext = os.path.splitext(f.filename)[1].lower() or ".jpg"
+    p = _tmp(ext)
+    f.save(p)
+    ok = False
+    try:
+        if not getattr(rec, "image_id", ""):
+            rec.image_id = imgmod.new_image_id()       # يُنشأ عند أول إرفاق
+        imgmod.save_image(rec.image_id, kind, p, _sess())
+        storage.save_records(records, session=_sess())  # يثبّت image_id على السجلّ
+        _audit("إرفاق مستند",
+               f"{imgmod.KIND_LABELS.get(kind, kind)} — {_rec_name(rec)}")
+        ok = True
+    except Exception:                                  # noqa: BLE001
+        ok = False
+    finally:
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+    if ok:
+        return redirect(url_for("record_images", idx=idx, saved="رُفع المستند."))
+    return redirect(url_for("record_images", idx=idx, err="تعذّر حفظ المستند."))
+
+
+@app.post("/hujjaj/<int:idx>/images/<kind>/delete")
+def record_image_delete(idx, kind):
+    """حذف مستند نوع محدّد للسجلّ."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("hujjaj"))
+    from hajj_app import images as imgmod
+    if kind not in _image_kinds():
+        return redirect(url_for("record_images", idx=idx))
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return redirect(url_for("hujjaj"))
+    rec = records[idx]
+    iid = getattr(rec, "image_id", "")
+    if iid:
+        try:
+            imgmod.delete_image(iid, kind)
+            _audit("حذف مستند",
+                   f"{imgmod.KIND_LABELS.get(kind, kind)} — {_rec_name(rec)}")
+        except Exception:                              # noqa: BLE001
+            pass
+    return redirect(url_for("record_images", idx=idx, saved="حُذف المستند."))
+
+
+@app.get("/hujjaj/<int:idx>/images/<kind>.file")
+def record_image_view(idx, kind):
+    """يعيد المستند المخزّن (صورة أو PDF) لعرضه/فتحه في المتصفّح."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import images as imgmod
+    if kind not in imgmod.KINDS:
+        return ("", 404)
+    records = _load_records()
+    if not (0 <= idx < len(records)):
+        return ("", 404)
+    rec = records[idx]
+    iid = getattr(rec, "image_id", "")
+    if not iid or not imgmod.has_image(iid, kind):
+        return ("", 404)
+    data = imgmod.load_image(iid, kind, _sess())
+    if not data:
+        return ("", 404)
+    import io
+    if imgmod.is_pdf(data):
+        mime, dname = "application/pdf", f"{kind}.pdf"
+    else:
+        mime, dname = "image/jpeg", f"{kind}.jpg"
+    return send_file(io.BytesIO(data), mimetype=mime, as_attachment=False,
+                     download_name=dname)
+
+
 @app.route("/hujjaj/scan", methods=["GET", "POST"])
 def hujjaj_scan():
     """قراءة جواز من صورة (OCR) وتعبئة نموذج سجلّ جديد للمراجعة.
