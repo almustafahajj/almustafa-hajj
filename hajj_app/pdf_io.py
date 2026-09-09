@@ -145,6 +145,9 @@ from .paths import resource_dir
 
 _LOGO_PATH = resource_dir() / "assets" / "logo.png"
 _NIRVANA_PATH = resource_dir() / "assets" / "nirvana.png"
+# أصول بطاقة الحاج: النقش الجانبي وصورة المرأة الثابتة (تُرفَع لاحقاً؛ يوجد بديل مرسوم)
+_CARD_PATTERN_PATH = resource_dir() / "assets" / "card_pattern.png"
+_CARD_WOMAN_PATH = resource_dir() / "assets" / "card_woman.png"
 
 
 def _logo_flowable(max_width_pt: float = 118):
@@ -5440,16 +5443,94 @@ def _draw_person_icon(c, x0, y0, w, h, *, woman: bool) -> None:
     c.restoreState()
 
 
+def _looks_ltr(text: str) -> bool:
+    """نصّ لاتيني (بلا حروف عربية) — لعرض أسماء الفنادق الإنجليزية كما هي."""
+    return not any("؀" <= ch <= "ۿ" for ch in str(text or ""))
+
+
+# موضع النقش وإطار الصورة داخل خلفية البطاقة (كسور من مقاس البطاقة، أصل سفلي)
+_CARD_PATTERN_FRAC = 0.086                              # عرض النقش الأيسر
+_CARD_PHOTO_BOX = (0.329, 0.377, 0.670, 0.624)         # (x0, y0, x1, y1)
+
+
+def _draw_card_bg(c, reader, bw, bh):
+    """خلفية البطاقة كاملةً (النقش الأيسر + بياض) من الصورة، أو بديل مرسوم."""
+    if reader is not None:
+        try:
+            c.drawImage(reader, 0, 0, bw, bh, mask="auto",
+                        preserveAspectRatio=False)
+            return
+        except Exception:                              # noqa: BLE001
+            pass
+    c.saveState()                                      # بديل: شريط أسود بخطّ ذهبي
+    w = _CARD_PATTERN_FRAC * bw
+    c.setFillColor(colors.HexColor("#111111"))
+    c.rect(0, 0, w, bh, fill=1, stroke=0)
+    c.setStrokeColor(_ACCENT)
+    c.setLineWidth(1.4)
+    c.line(w - 0.7, 0, w - 0.7, bh)
+    c.restoreState()
+
+
+def _draw_social_icons(c, cx, cy, r, gap):
+    """أربع أيقونات دائرية ذهبية: فيسبوك · إنستغرام · يوتيوب · تيك توك."""
+    gold = _ACCENT
+    white = colors.white
+    xs = [cx + (i - 1.5) * gap for i in range(4)]
+    for x in xs:                                       # الدوائر الذهبية
+        c.setFillColor(gold)
+        c.circle(x, cy, r, fill=1, stroke=0)
+    # فيسبوك: حرف f أبيض
+    c.setFillColor(white)
+    c.setFont(_FONT_BOLD, r * 1.7)
+    c.drawCentredString(xs[0], cy - r * 0.62, "f")
+    # إنستغرام: مربّع بحواف + عدسة + نقطة
+    x = xs[1]
+    c.setStrokeColor(white)
+    c.setLineWidth(max(0.5, r * 0.16))
+    c.roundRect(x - r * 0.55, cy - r * 0.55, r * 1.1, r * 1.1, r * 0.32,
+                fill=0, stroke=1)
+    c.circle(x, cy, r * 0.32, fill=0, stroke=1)
+    c.setFillColor(white)
+    c.circle(x + r * 0.34, cy + r * 0.34, r * 0.1, fill=1, stroke=0)
+    # يوتيوب: مستطيل أبيض + مثلّث تشغيل ذهبي
+    x = xs[2]
+    c.setFillColor(white)
+    c.roundRect(x - r * 0.62, cy - r * 0.42, r * 1.24, r * 0.84, r * 0.22,
+                fill=1, stroke=0)
+    c.setFillColor(gold)
+    tri = c.beginPath()
+    tri.moveTo(x - r * 0.16, cy + r * 0.26)
+    tri.lineTo(x - r * 0.16, cy - r * 0.26)
+    tri.lineTo(x + r * 0.30, cy)
+    tri.close()
+    c.drawPath(tri, fill=1, stroke=0)
+    # تيك توك: نوتة موسيقية بيضاء
+    x = xs[3]
+    c.setFillColor(white)
+    c.ellipse(x - r * 0.5, cy - r * 0.55, x - r * 0.06, cy - r * 0.16,
+              fill=1, stroke=0)
+    c.setLineWidth(max(0.6, r * 0.16))
+    c.setStrokeColor(white)
+    c.line(x - r * 0.08, cy - r * 0.35, x - r * 0.08, cy + r * 0.5)
+    p = c.beginPath()                                  # العلَم
+    p.moveTo(x - r * 0.08, cy + r * 0.5)
+    p.curveTo(x + r * 0.28, cy + r * 0.42, x + r * 0.32, cy + r * 0.14,
+              x + r * 0.16, cy + r * 0.02)
+    c.drawPath(p, fill=0, stroke=1)
+
+
 def export_badges_pdf(records: list, path: str | Path, *,
                       company: str = "المصطفى للحج والعمرة",
                       session=None, preacher: str = "", admins: str = "",
-                      emergency: str = "", title: str = "بطاقات الحجّاج") -> Path:
-    """يبني بطاقات الحجّاج بمقاس ثابت 5.2×8سم على ورق A4 **عرضي** — أكبر عدد
-    ممكن لكل ورقة (10)، والخلفية في ورقة واحدة فيها الخلفيات نفسها متطابقة.
+                      emergency: str = "", doctor: str = "",
+                      title: str = "بطاقات الحجّاج") -> Path:
+    """يبني بطاقات الحجّاج بمقاس ثابت 5.2×8سم (طولي) على ورق A4 عمودي.
 
-    الوجه: شعار الحملة + الصورة الشخصية (للرجال) أو رمز امرأة محجّبة (للنساء)
-    + الاسم (الأول والثاني والأخير) + الهاتف + الفندق.
-    الخلفية: شعار الحملة + رقم واعظ الحملة + الإداريون + رقم الطوارئ.
+    التصميم: نقش جانبي على اليسار، شعار المصطفى وأيقونات التواصل أعلى الوسط،
+    ثم الصورة (الشخصية للرجال من صورة الجواز، وصورة المرأة الثابتة للنساء)،
+    فالاسم و«فندق / …»، وشعار نيرفانا في الأسفل.
+    الخلفية: طبيب/واعظ الحملة + الإداريون + رقم الطوارئ.
     """
     from reportlab.lib.units import cm
     from reportlab.lib.utils import ImageReader
@@ -5460,16 +5541,21 @@ def export_badges_pdf(records: list, path: str | Path, *,
 
     _register_fonts()
     path = Path(path)
-    PW, PH = landscape(A4)
-    c = _canvas.Canvas(str(path), pagesize=landscape(A4), pageCompression=1)
+    PW, PH = A4                                        # عمودي — بطاقات طولية
+    c = _canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
     c.setTitle(title)
     logo_reader = ImageReader(str(_LOGO_PATH)) if _LOGO_PATH.is_file() else None
+    nirvana_reader = (ImageReader(str(_NIRVANA_PATH))
+                      if _NIRVANA_PATH.is_file() else None)
+    woman_reader = (ImageReader(str(_CARD_WOMAN_PATH))
+                    if _CARD_WOMAN_PATH.is_file() else None)
+    bg_reader = (ImageReader(str(_CARD_PATTERN_PATH))
+                 if _CARD_PATTERN_PATH.is_file() else None)
     gray = colors.HexColor("#333333")
 
-    # قياس البطاقة ثابت 5.2×8سم، وأكبر عدد يتّسع في صفحة A4 **عرضية** (5×2=10)
-    bw, bh = 5.2 * cm, 8.0 * cm
+    bw, bh = 5.2 * cm, 8.0 * cm                        # مقاس البطاقة الثابت
     s = 1.0
-    MX, MY, GX, GY = 20, 18, 6, 8
+    MX, MY, GX, GY = 22, 24, 8, 10
     COLS = max(1, int((PW - 2 * MX + GX) / (bw + GX)))
     ROWS = max(1, int((PH - 2 * MY + GY) / (bh + GY)))
     PER = COLS * ROWS
@@ -5478,104 +5564,152 @@ def export_badges_pdf(records: list, path: str | Path, *,
     off_x = (PW - grid_w) / 2
     off_top = (PH + grid_h) / 2
 
+    cl = _CARD_PATTERN_FRAC * bw                       # عرض النقش الأيسر
+    cx = bw / 2                                         # المحتوى متمركز على البطاقة كاملةً
+    avail_w = bw - 2 * cl                              # هوامش متماثلة تتجنّب النقش
+
     def cell_origin(idx):
         col, row = idx % COLS, idx // COLS
         ox = off_x + grid_w - (col + 1) * bw - col * GX   # RTL: أول بطاقة يميناً
         oy = off_top - (row + 1) * bh - row * GY
         return ox, oy
 
-    # الرسم داخل بطاقة بإحداثيات محلّية (0,0)..(bw,bh) بعد الإزاحة
     def center(text, y, font, size, color=_INK):
         c.setFillColor(color)
         c.setFont(font, size)
-        c.drawCentredString(bw / 2, y, ar(str(text)))
+        c.drawCentredString(cx, y, ar(str(text)))
 
     def right(text, y, font, size, color=_INK):
         c.setFillColor(color)
         c.setFont(font, size)
         c.drawRightString(bw - 6 * s, y, ar(str(text)))
 
-    def draw_logo(top_y, max_w, max_h):
-        if logo_reader is None:
-            return top_y - 2
-        iw, ih = logo_reader.getSize()
+    def draw_img_centered(reader, top_y, max_w, max_h):
+        """يرسم صورة (شعار) متمركزة أفقياً بأعلاها عند top_y، ويعيد أسفلها."""
+        if reader is None:
+            return top_y
+        iw, ih = reader.getSize()
         w = min(max_w, iw)
         h = w * ih / iw
         if h > max_h:
             h = max_h
             w = h * iw / ih
-        c.drawImage(logo_reader, bw / 2 - w / 2, top_y - h, w, h,
+        c.drawImage(reader, cx - w / 2, top_y - h, w, h,
                     mask="auto", preserveAspectRatio=True)
         return top_y - h
 
+    def name_lines(name, maxw, base):
+        """يعيد (الأسطر، الحجم): سطر واحد إن اتّسع، وإلا سطران بحجم مناسب."""
+        name = str(name or "").strip() or "—"
+        if pdfmetrics.stringWidth(ar(name), _FONT_BOLD, base) <= maxw:
+            return [name], base
+        words = name.split()
+        if len(words) >= 2:
+            mid = (len(words) + 1) // 2
+            lines = [" ".join(words[:mid]), " ".join(words[mid:])]
+        else:
+            lines = [name]
+        size = base
+        while size > 7 and max(pdfmetrics.stringWidth(ar(x), _FONT_BOLD, size)
+                               for x in lines) > maxw:
+            size -= 0.5
+        return lines, size
+
     def photo_reader(rec):
-        """صورة شخصية للرجل إن وُجدت، وإلا None (يُرسم الرمز)."""
-        if is_woman(rec) or not getattr(rec, "image_id", ""):
+        """صورة الرجل: الشخصية إن وُجدت، وإلا الجواز، وإلا None."""
+        iid = getattr(rec, "image_id", "")
+        if not iid:
             return None
-        blob = imgmod.load_image(rec.image_id, imgmod.PHOTO, session)
-        if not blob:
-            return None
-        pil = imgmod.to_pil_image(blob)
-        return ImageReader(pil) if pil is not None else None
+        for kind in (imgmod.PHOTO, imgmod.PASSPORT):
+            blob = imgmod.load_image(iid, kind, session)
+            if not blob:
+                continue
+            pil = imgmod.to_pil_image(blob)
+            if pil is not None:
+                return ImageReader(pil)
+        return None
+
+    def draw_frame_top():
+        """خلفية النقش + الشعار + أيقونات التواصل. يعيد y أسفل الأيقونات."""
+        _draw_card_bg(c, bg_reader, bw, bh)
+        y = draw_img_centered(logo_reader, bh - 8 * s, avail_w * 0.62, 26 * s)
+        y -= 7 * s
+        _draw_social_icons(c, cx, y - 4.2 * s, 4.2 * s, 12 * s)
+        return y - 12 * s
 
     def draw_front(rec):
-        c.setStrokeColor(_ACCENT)
-        c.setLineWidth(1)
-        c.rect(2, 2, bw - 4, bh - 4, fill=0, stroke=1)
-        y = draw_logo(bh - 6 * s, bw * 0.6, 28 * s)
-        if company:
-            y -= 11 * s
-            center(company, y, _FONT_BOLD, 8 * s, _ACCENT)
-        box_w, box_h = bw * 0.56, bh * 0.40
-        boxx, boxy = (bw - box_w) / 2, y - 7 * s - box_h
-        c.setStrokeColor(_GRID)
-        c.setLineWidth(0.8)
-        c.rect(boxx, boxy, box_w, box_h, fill=0, stroke=1)
-        pr = photo_reader(rec)
-        if pr is not None:
-            c.drawImage(pr, boxx + 1, boxy + 1, box_w - 2, box_h - 2,
-                        preserveAspectRatio=True, anchor="c", mask="auto")
-        else:
+        draw_frame_top()
+        woman = is_woman(rec)
+        fx0, fy0, fx1, fy1 = _CARD_PHOTO_BOX           # إطار الصورة كنسب من البطاقة
+        boxx, box_w = fx0 * bw, (fx1 - fx0) * bw
+        boxy, box_h = fy0 * bh, (fy1 - fy0) * bh
+        if woman and woman_reader is not None:         # صورة المرأة الثابتة (طبقة كاملة)
+            c.drawImage(woman_reader, 0, 0, bw, bh,
+                        preserveAspectRatio=False, mask="auto")
+        elif woman:
+            c.setStrokeColor(_GRID)
+            c.setLineWidth(0.8)
+            c.rect(boxx, boxy, box_w, box_h, fill=0, stroke=1)
             _draw_person_icon(c, boxx + 1, boxy + 1, box_w - 2, box_h - 2,
-                              woman=is_woman(rec))
-        ty = boxy - 15 * s
-        center(badge_name(rec) or "—", ty, _FONT_BOLD, 11 * s, _INK)
-        phone = str(rec.phone or "").strip()
-        if phone:
-            ty -= 14 * s
-            center(phone, ty, _FONT, 10 * s, gray)
+                              woman=True)
+        else:
+            pr = photo_reader(rec)
+            if pr is not None:                          # صورة الرجل الشخصية
+                c.setStrokeColor(_GRID)
+                c.setLineWidth(0.8)
+                c.rect(boxx, boxy, box_w, box_h, fill=0, stroke=1)
+                c.drawImage(pr, boxx + 1, boxy + 1, box_w - 2, box_h - 2,
+                            preserveAspectRatio=True, anchor="c", mask="auto")
+            # بلا صورة بعد: تُترك الخانة فارغة (تُرفع الصور لاحقاً)
+        # شعار نيرفانا أسفل البطاقة
+        draw_img_centered(nirvana_reader, 8 * s + 15 * s, avail_w * 0.5, 15 * s)
+        # الفندق فوق نيرفانا
         hotel = str(rec.hotel or "").strip()
+        hotel_y = 8 * s + 15 * s + 12 * s
         if hotel:
-            ty -= 13 * s
-            center(hotel, ty, _FONT, 9 * s, gray)
+            label = hotel if _looks_ltr(hotel) else "فندق / " + hotel
+            hl, hsize = name_lines(label, avail_w - 8, 9 * s)
+            yy = hotel_y + (len(hl) - 1) * (hsize + 1)
+            for ln in hl:
+                center(ln, yy, _FONT, hsize, gray)
+                yy -= hsize + 1
+            name_base_y = hotel_y + len(hl) * (hsize + 2) + 4 * s
+        else:
+            name_base_y = hotel_y + 4 * s
+        # الاسم فوق الفندق (سطر أو سطران)
+        lines, nsize = name_lines(badge_name(rec), avail_w - 6, 11.5 * s)
+        yy = name_base_y + (len(lines) - 1) * (nsize + 1.5)
+        for ln in lines:
+            center(ln, yy, _FONT_BOLD, nsize, _INK)
+            yy -= nsize + 1.5
 
     def draw_back():
-        c.setStrokeColor(_ACCENT)
-        c.setLineWidth(1)
-        c.rect(2, 2, bw - 4, bh - 4, fill=0, stroke=1)
-        y = draw_logo(bh - 6 * s, bw * 0.62, 30 * s)
-        if company:
-            y -= 12 * s
-            center(company, y, _FONT_BOLD, 9 * s, _ACCENT)
-        y -= 18 * s
-        right("واعظ الحملة:", y, _FONT_BOLD, 9 * s, _ACCENT)
-        y -= 12 * s
-        right(preacher or "................", y, _FONT, 9 * s)
-        y -= 17 * s
-        right("الإداريون:", y, _FONT_BOLD, 9 * s, _ACCENT)
-        y -= 12 * s
+        y = draw_frame_top()
+        y -= 10 * s
+        if doctor or True:
+            right("طبيب الحملة:", y, _FONT_BOLD, 8.5 * s, _ACCENT)
+            y -= 11 * s
+            right(doctor or "................", y, _FONT, 8.5 * s)
+            y -= 15 * s
+        right("واعظ الحملة:", y, _FONT_BOLD, 8.5 * s, _ACCENT)
+        y -= 11 * s
+        right(preacher or "................", y, _FONT, 8.5 * s)
+        y -= 15 * s
+        right("الإداريون:", y, _FONT_BOLD, 8.5 * s, _ACCENT)
+        y -= 11 * s
         admin_lines = [ln for ln in str(admins or "").splitlines() if ln.strip()]
         if not admin_lines:
             admin_lines = ["................", "................"]
-        for ln in admin_lines[:3]:
-            right(ln, y, _FONT, 9 * s)
-            y -= 12 * s
-        yb = 20 * s
+        for ln in admin_lines[:4]:
+            right(ln, y, _FONT, 8.5 * s)
+            y -= 11 * s
+        yb = 10 * s + 15 * s + 12 * s                  # فوق شعار نيرفانا
         c.setStrokeColor(_GRID)
         c.setLineWidth(0.6)
-        c.line(6 * s, yb + 11 * s, bw - 6 * s, yb + 11 * s)
-        right(f"للطوارئ: {emergency or '................'}", yb, _FONT_BOLD, 9.5 * s,
-              colors.HexColor("#B23A3A"))
+        c.line(cl + 6 * s, yb + 11 * s, bw - 6 * s, yb + 11 * s)
+        right(f"للطوارئ: {emergency or '................'}", yb, _FONT_BOLD,
+              9 * s, colors.HexColor("#B23A3A"))
+        draw_img_centered(nirvana_reader, 8 * s + 15 * s, avail_w * 0.5, 15 * s)
 
     def in_cell(idx, draw_fn):
         ox, oy = cell_origin(idx)
@@ -5592,15 +5726,13 @@ def export_badges_pdf(records: list, path: str | Path, *,
         c.save()
         return path
 
-    # صفحات الوجوه: 8 لكل ورقة A4
-    for i, rec in enumerate(records):
+    for i, rec in enumerate(records):                  # صفحات الوجوه
         if i and i % PER == 0:
             c.showPage()
         in_cell(i % PER, lambda r=rec: draw_front(r))
     c.showPage()
 
-    # ورقة خلفية واحدة: 8 خلفيات متطابقة (عامّة لا تخصّ فرداً)
-    for idx in range(PER):
+    for idx in range(PER):                             # ورقة خلفية واحدة موحّدة
         in_cell(idx, draw_back)
     c.showPage()
 

@@ -5576,14 +5576,16 @@ class BadgesDialog(Toplevel):
                   background=BG).pack(anchor="e")
         ttk.Label(outer, foreground=MUTED, font=(_FUI, 9), justify="right",
                   background=BG, wraplength=420,
-                  text=rtl("الوجه: الشعار + الصورة الشخصية (للرجال) أو رمز امرأة "
-                           "محجّبة (للنساء) + الاسم والهاتف والفندق.\n"
-                           "الخلفية: الشعار + المعلومات أدناه.")).pack(
+                  text=rtl("الوجه: النقش + الشعار وأيقونات التواصل + الصورة "
+                           "الشخصية (للرجال من الجواز) أو صورة المرأة (للنساء) "
+                           "+ الاسم و«فندق / …» + شعار نيرفانا.\n"
+                           "الخلفية: طبيب/واعظ الحملة + الإداريون + الطوارئ.")).pack(
             anchor="e", pady=(2, 12))
 
         form = ttk.Frame(outer)
         form.pack(fill=X)
         self._company = StringVar(value=self._DEFAULT_CAMPAIGN)
+        self._doctor = StringVar(value="")
         self._preacher = StringVar(value="")
         self._emergency = StringVar(value="")
 
@@ -5598,6 +5600,7 @@ class BadgesDialog(Toplevel):
             e.pack(side=RIGHT, fill=X, expand=True)
 
         row("اسم الحملة", self._company)
+        row("رقم طبيب الحملة", self._doctor)
         row("رقم واعظ الحملة", self._preacher)
         row("رقم الطوارئ", self._emergency)
 
@@ -5622,7 +5625,8 @@ class BadgesDialog(Toplevel):
             self,
             lambda p: export_badges_pdf(
                 self._records, p, company=self._company.get().strip(),
-                session=self._session, preacher=self._preacher.get().strip(),
+                session=self._session, doctor=self._doctor.get().strip(),
+                preacher=self._preacher.get().strip(),
                 admins=self._admins.get("1.0", "end").strip(),
                 emergency=self._emergency.get().strip()),
             f"بطاقات_الحجاج_{date.today().isoformat()}", "pdf")

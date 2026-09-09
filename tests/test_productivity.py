@@ -115,25 +115,25 @@ recs = [rec(full_name_ar=f"عبدالله محمد الشامسي {i}",
             hotel="فندق دار الصفوة") for i in range(12)]   # >10 -> صفحتا وجوه
 badges = _os.path.join(_OUTDIR, "badges.pdf")
 export_badges_pdf(recs, badges, company="المصطفى للحج والعمرة", session=None,
-                  preacher="0555000000", admins="خالد المدير\nسعيد المشرف",
-                  emergency="0509999999")
+                  doctor="0551111111", preacher="0555000000",
+                  admins="خالد المدير\nسعيد المشرف", emergency="0509999999")
 assert _os.path.getsize(badges) > 3000
 with open(badges, "rb") as fh:
     assert fh.read(5) == b"%PDF-"
 import fitz
 d = fitz.open(badges)
-# A4 عرضية: 10 بطاقات (5×2) لكل ورقة وجوه + ورقة خلفية واحدة
-PER = 10
+# A4 عمودية: 9 بطاقات (3×3) لكل ورقة وجوه + ورقة خلفية واحدة
+PER = 9
 front_pages = math.ceil(len(recs) / PER)
 assert d.page_count == front_pages + 1, d.page_count      # 12 -> 2 + 1 = 3
-# الصفحات عرضية (842×595)
+# الصفحات عمودية (595×842)
 page = d[0]
-assert page.rect.width > page.rect.height, "الصفحة يجب أن تكون عرضية"
-assert abs(page.rect.width - 842) < 3 and abs(page.rect.height - 595) < 3, page.rect
+assert page.rect.height > page.rect.width, "الصفحة يجب أن تكون عمودية"
+assert abs(page.rect.width - 595) < 3 and abs(page.rect.height - 842) < 3, page.rect
 d.close()
 # قائمة فارغة لا تتعطّل
 export_badges_pdf([], _os.path.join(_OUTDIR, "badges_empty.pdf"))
-print(f"  OK: A4 عرضية، {front_pages} ورقة وجوه (10/ورقة) + ورقة خلفية واحدة")
+print(f"  OK: A4 عمودية، {front_pages} ورقة وجوه (9/ورقة) + ورقة خلفية واحدة")
 
 print("\n=== الاستيكرات (حقائب/غرف/أظرف) ===")
 from hajj_app.pdf_io import (export_stickers_pdf, STICKER_KINDS, STICKER_LABELS,
