@@ -5643,7 +5643,6 @@ def export_badges_pdf(records: list, path: str | Path, *,
     bg_reader = (ImageReader(str(_CARD_PATTERN_PATH))
                  if _CARD_PATTERN_PATH.is_file() else None)
     gray = colors.HexColor("#333333")
-    red = colors.HexColor("#B23A3A")
     bd = resolve_badge_back(back, doctor=doctor, preacher=preacher,
                             admins=admins, emergency=emergency,
                             emergency_name=emergency_name)
@@ -5768,45 +5767,66 @@ def export_badges_pdf(records: list, path: str | Path, *,
         center(nm, name_base_y, _FONT_BOLD, nsize, _INK)
 
     def draw_back():
-        top = draw_frame_top()                         # خلفية النقش + الشعار
+        draw_frame_top()                               # النقش + شعار المصطفى (بلا نيرفانا)
         badmins = bd.get("admins") or []
-        label_x = bw - 7 * s                           # عمود التسميات/الأسماء (يمين)
-        num_x = cl + 5 * s                             # عمود الأرقام (يسار)
-        # توزيع رأسي يتّسع لعدد الإداريين
-        units = 2 + 1.5 + max(1, len(badmins)) + 2.2 + 1
-        avail = (top - 4 * s) - 44 * s                 # حيّز أسفل لشعار نيرفانا
-        lh = max(9.5, min(15 * s, avail / units))
+        label_x = bw - 9 * s                           # عمود التسميات/الأسماء (يمين)
+        num_x = cl + 6 * s                             # عمود الأرقام (يسار، بعد النقش)
+        dark = colors.HexColor("#333333")
+        col_w = label_x - num_x                        # عرض الصفّ بين العمودين
 
-        def pair(label, value, *, lab_color=_INK, lab_font=_FONT_BOLD,
-                 size=8.5 * s):
-            c.setFillColor(lab_color)
-            c.setFont(lab_font, size)
-            c.drawRightString(label_x, y[0], ar(label + " :"))
+        # قائمة الصفوف (تسمية، رقم، هل تحمل نقطتين): التسميات نعم والأسماء لا
+        rows = ([("طبيب الحملة", bd.get("doctor"), True),
+                 ("واعظ الحملة", bd.get("preacher"), True)]
+                + [(a.get("name", ""), a.get("number", ""), False) for a in badmins]
+                + [(bd.get("emergency_name") or "الطوارئ", bd.get("emergency"), True)])
+
+        def row_w(lab, val, colon, sz):                # عرض التسمية + الرقم + فجوة
+            w = pdfmetrics.stringWidth(ar(lab + (" :" if colon else "")), _FONT, sz)
+            if val:
+                w += pdfmetrics.stringWidth(str(val), _FONT, sz) + 6 * s
+            return w
+
+        psize = 9 * s                                  # حجم موحّد يتّسع لأعرض صفّ
+        while psize > 6.5 and any(row_w(l, v, cn, psize) > col_w
+                                  for l, v, cn in rows):
+            psize -= 0.5
+
+        def pair(label, value, colon=True):
+            c.setFillColor(dark)
+            c.setFont(_FONT, psize)
+            c.drawRightString(label_x, y[0], ar(label + (" :" if colon else "")))
             if value:
-                c.setFillColor(_INK)
-                c.setFont(_FONT, size)
                 c.drawString(num_x, y[0], str(value))    # رقم لاتيني كما هو (LTR)
 
-        y = [top - 4 * s]
-        pair("طبيب الحملة", bd.get("doctor"), lab_color=_ACCENT)
-        y[0] -= lh
-        pair("واعظ الحملة", bd.get("preacher"), lab_color=_ACCENT)
-        y[0] -= lh * 1.5
-        c.setFillColor(_ACCENT)                        # عنوان الإداريين
-        c.setFont(_FONT_BOLD, 9 * s)
-        c.drawCentredString(cx, y[0], ar("الإداريين :"))
-        y[0] -= lh
+        def heading(text, size):
+            c.setFillColor(dark)
+            c.setFont(_FONT_BOLD, size)
+            c.drawCentredString(cx, y[0], ar(text))
+
+        # مسافات ثابتة مطابقة للصورة (فجوة علوية كبيرة تحت الشعار)
+        top_start = 0.63 * bh
+        n = len(badmins)
+        total = 14 + 20 + 15 + n * 11.5 + 12 + 17
+        floor = 24 * s
+        scale = min(1.0, (top_start - floor) / total) if total else 1.0
+
+        def step(v):
+            return v * scale * s
+
+        y = [top_start]
+        pair("طبيب الحملة", bd.get("doctor"))
+        y[0] -= step(14)
+        pair("واعظ الحملة", bd.get("preacher"))
+        y[0] -= step(20)
+        heading("الإداريين :", 9.5 * s)
+        y[0] -= step(15)
         for a in badmins:
-            pair(a.get("name", ""), a.get("number", ""), lab_font=_FONT)
-            y[0] -= lh
-        y[0] -= lh * 0.5
-        c.setFillColor(red)                            # للطوارئ (عنوان كبير)
-        c.setFont(_FONT_BOLD, 13 * s)
-        c.drawCentredString(cx, y[0], ar("للطوارئ"))
-        y[0] -= lh * 1.2
-        pair(bd.get("emergency_name") or "الطوارئ", bd.get("emergency"),
-             lab_color=_INK, size=9 * s)
-        draw_img_centered(nirvana_reader, 8 * s + 15 * s, avail_w * 0.55, 15 * s)
+            pair(a.get("name", ""), a.get("number", ""), colon=False)
+            y[0] -= step(11.5)
+        y[0] -= step(12)
+        heading("للطوارئ", 15 * s)
+        y[0] -= step(17)
+        pair(bd.get("emergency_name") or "الطوارئ", bd.get("emergency"))
 
     def in_cell(idx, draw_fn):
         ox, oy = cell_origin(idx)
