@@ -5701,17 +5701,26 @@ def export_badges_pdf(records: list, path: str | Path, *,
         return text, size
 
     def photo_reader(rec):
-        """صورة الرجل: الشخصية إن وُجدت، وإلا الجواز، وإلا None."""
+        """صورة الرجل الشخصية: المرفوعة كما هي، وإلا الوجه مقتصّاً من الجواز/الهوية.
+
+        لا تُرفَق الوثيقة كاملةً أبداً — إن تعذّر اقتصاص الوجه تبقى الخانة فارغة.
+        """
         iid = getattr(rec, "image_id", "")
         if not iid:
             return None
-        for kind in (imgmod.PHOTO, imgmod.PASSPORT):
-            blob = imgmod.load_image(iid, kind, session)
-            if not blob:
-                continue
+        blob = imgmod.load_image(iid, imgmod.PHOTO, session)   # صورة شخصية مرفوعة
+        if blob:
             pil = imgmod.to_pil_image(blob)
             if pil is not None:
                 return ImageReader(pil)
+        from io import BytesIO
+        for kind in (imgmod.PASSPORT, imgmod.ID_CARD):         # اقتصاص الوجه فقط
+            blob = imgmod.load_image(iid, kind, session)
+            if not blob:
+                continue
+            face = imgmod.face_crop(blob)
+            if face:
+                return ImageReader(BytesIO(face))
         return None
 
     def draw_frame_top():

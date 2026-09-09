@@ -185,3 +185,118 @@ def render_pages_png(blob: bytes) -> list[bytes]:
         return pages
     except Exception:
         return []
+
+
+# ------------------------------------------ اقتصاص الوجه (الصورة الشخصية) من الجواز
+_FACE_CASCADES = None
+# نُفضّل alt/alt2 (أدقّ على صور الهوية) ثم default احتياطاً
+_CASCADE_FILES = ("haarcascade_frontalface_alt.xml",
+                  "haarcascade_frontalface_alt2.xml",
+                  "haarcascade_frontalface_default.xml")
+
+
+def _face_cascades():
+    """قائمة كواشف الوجوه Haar (المحزومة أوّلاً ثم بيانات OpenCV). تُحمَّل مرّة."""
+    global _FACE_CASCADES
+    if _FACE_CASCADES is not None:
+        return _FACE_CASCADES
+    _FACE_CASCADES = []
+    try:
+        import cv2
+    except Exception:                                  # noqa: BLE001
+        return _FACE_CASCADES
+    dirs = []
+    try:
+        from .paths import resource_dir
+        dirs.append(str(resource_dir() / "assets"))
+    except Exception:                                  # noqa: BLE001
+        pass
+    try:
+        dirs.append(cv2.data.haarcascades)
+    except Exception:                                  # noqa: BLE001
+        pass
+    for name in _CASCADE_FILES:
+        for d in dirs:
+            path = os.path.join(d, name)
+            if os.path.isfile(path):
+                clf = cv2.CascadeClassifier(path)
+                if not clf.empty():
+                    _FACE_CASCADES.append(clf)
+                    break
+    return _FACE_CASCADES
+
+
+def _detect_face(img):
+    """يعيد أكبر وجه (x, y, w, h) مكتشَف في صورة BGR، أو None.
+
+    يتدرّج: رمادي عادي ← معادلة تباين ← تكبير ٢×، عبر كواشف alt/alt2/default؛
+    ويختار أكبر وجه (صورة الهوية عادةً أكبر من الإيجابيات الكاذبة الصغيرة).
+    """
+    import cv2
+    cascades = _face_cascades()
+    if not cascades:
+        return None
+    H, W = img.shape[:2]
+    base = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ms = max(32, min(W, H) // 16)
+    variants = [(base, 1.0),
+                (cv2.equalizeHist(base), 1.0),
+                (cv2.resize(base, (W * 2, H * 2)), 2.0)]
+    for gray, scale in variants:
+        for clf in cascades:
+            found = clf.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=4,
+                minSize=(int(ms * scale), int(ms * scale)))
+            if len(found):
+                x, y, w, h = max(found, key=lambda f: int(f[2]) * int(f[3]))
+                return (x / scale, y / scale, w / scale, h / scale)
+    return None
+
+
+def face_crop(blob: bytes, *, out_quality: int = 90) -> bytes | None:
+    """يستخرج الوجه (الصورة الشخصية) من صورة جواز/هوية ويعيده JPEG.
+
+    يعيد None إن تعذّر (لا OpenCV، أو لم يُكتشف وجه) — فلا تُعرض الوثيقة كاملةً
+    بديلاً عن الصورة الشخصية أبداً. الإطار الناتج طولي (رأس وأكتاف) بنسبة ٣:٤.
+    """
+    if not blob:
+        return None
+    try:
+        import cv2
+        import numpy as np
+    except Exception:                                  # noqa: BLE001
+        return None
+    img = None
+    try:
+        if is_pdf(blob):                               # الجواز الممسوح PDF
+            pil = to_pil_image(blob)
+            if pil is None:
+                return None
+            img = cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
+        else:
+            img = cv2.imdecode(np.frombuffer(blob, np.uint8), cv2.IMREAD_COLOR)
+    except Exception:                                  # noqa: BLE001
+        img = None
+    if img is None or getattr(img, "size", 0) == 0:
+        return None
+    face = _detect_face(img)
+    if face is None:
+        return None
+    x, y, w, h = face
+    H, W = img.shape[:2]
+    cx = x + w / 2.0                                   # توسيع لإطار شخصي طولي
+    cy = y + h / 2.0 + h * 0.30                        # نزول لتضمين الذقن/الأكتاف
+    cw = w * 1.9
+    ch = cw * 4.0 / 3.0
+    x0 = int(max(0, round(cx - cw / 2)))
+    y0 = int(max(0, round(cy - ch / 2)))
+    x1 = int(min(W, round(cx + cw / 2)))
+    y1 = int(min(H, round(cy + ch / 2)))
+    if x1 - x0 < 10 or y1 - y0 < 10:
+        return None
+    try:
+        ok, buf = cv2.imencode(".jpg", img[y0:y1, x0:x1],
+                               [cv2.IMWRITE_JPEG_QUALITY, int(out_quality)])
+        return buf.tobytes() if ok else None
+    except Exception:                                  # noqa: BLE001
+        return None
