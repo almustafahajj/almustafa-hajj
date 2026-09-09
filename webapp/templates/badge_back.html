@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}تعديل خلف البطاقة — المصطفى{% endblock %}
+{% block heading %}✎ تعديل بيانات خلف بطاقة الحاج{% endblock %}
+{% block subhead %}<div class="season">
+  <a class="pill" href="{{ url_for('reports') }}">← التقارير</a>
+  · تظهر هذه البيانات على ظهر كل بطاقة عند الطباعة</div>{% endblock %}
+{% block content %}
+{% if saved %}<div class="acc-msg ok">✅ حُفظت البيانات — ستظهر على خلف البطاقات عند الطباعة.
+  <a class="btn primary" target="_blank" style="margin-inline-start:8px"
+     href="{{ url_for('rep_cards_pdf') }}">🪪 فتح البطاقات PDF</a></div>{% endif %}
+
+<form method="post" action="{{ url_for('cards_back') }}">
+  <fieldset class="editcard">
+    <legend>الحملة</legend>
+    <div class="fgrid">
+      <label class="ff"><span>رقم طبيب الحملة</span>
+        <input name="doctor" value="{{ back.doctor or '' }}" dir="ltr"></label>
+      <label class="ff"><span>رقم واعظ الحملة</span>
+        <input name="preacher" value="{{ back.preacher or '' }}" dir="ltr"></label>
+    </div>
+  </fieldset>
+
+  <fieldset class="editcard" style="margin-top:12px">
+    <legend>الإداريون</legend>
+    <table class="data" id="admins">
+      <thead><tr><th style="width:45%">الاسم</th><th style="width:45%">الرقم</th><th></th></tr></thead>
+      <tbody>
+        {% for a in back.admins %}
+        <tr>
+          <td><input name="admin_name" value="{{ a.name or '' }}"></td>
+          <td><input name="admin_number" value="{{ a.number or '' }}" dir="ltr"></td>
+          <td><button type="button" class="btn ghost sm" onclick="this.closest('tr').remove()">🗑 حذف</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="button" class="btn ghost sm" onclick="addAdmin()" style="margin-top:8px">➕ إضافة إداري</button>
+  </fieldset>
+
+  <fieldset class="editcard" style="margin-top:12px">
+    <legend>للطوارئ</legend>
+    <div class="fgrid">
+      <label class="ff"><span>الاسم</span>
+        <input name="emergency_name" value="{{ back.emergency_name or '' }}"></label>
+      <label class="ff"><span>الرقم</span>
+        <input name="emergency" value="{{ back.emergency or '' }}" dir="ltr"></label>
+    </div>
+  </fieldset>
+
+  <div class="formbar" style="margin-top:14px">
+    <button class="btn primary" type="submit">💾 حفظ</button>
+    <a class="btn ghost" target="_blank" href="{{ url_for('rep_cards_pdf') }}">🪪 معاينة البطاقات</a>
+  </div>
+</form>
+
+<p class="hint-note">الأرقام والأسماء تُحفظ لهذا الوضع (حج) وتبقى بعد إعادة التشغيل،
+  وتظهر على ظهر كل بطاقة. أضف أو احذف أي إداري ثم احفظ قبل الطباعة.</p>
+
+<script>
+function addAdmin() {
+  var tb = document.querySelector('#admins tbody');
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td><input name="admin_name"></td>' +
+                 '<td><input name="admin_number" dir="ltr"></td>' +
+                 '<td><button type="button" class="btn ghost sm" onclick="this.closest(\'tr\').remove()">🗑 حذف</button></td>';
+  tb.appendChild(tr);
+}
+</script>
+{% endblock %}

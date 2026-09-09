@@ -29,6 +29,13 @@
     <div><div class="t">بطاقات {{ noun }}</div>
       <div class="d">بطاقات بمقاس موحّد للطباعة والقصّ.</div></div>
   </a>
+  {% if mode=='hajj' and can_edit %}
+  <a class="repcard" href="{{ url_for('cards_back') }}">
+    <div class="ic" style="background:#fbf0dc;color:#B26A00">✎</div>
+    <div><div class="t">تعديل خلف البطاقة</div>
+      <div class="d">طبيب/واعظ الحملة والإداريون والطوارئ — أضف أو احذف أو عدّل.</div></div>
+  </a>
+  {% endif %}
   <a class="repcard" target="_blank" href="{{ url_for('rep_stickers_pdf') }}">
     <div class="ic" style="background:#f1e4f0;color:#8E44AD">🏷</div>
     <div><div class="t">ملصقات الحقائب</div>

@@ -5582,12 +5582,15 @@ class BadgesDialog(Toplevel):
                            "الخلفية: طبيب/واعظ الحملة + الإداريون + الطوارئ.")).pack(
             anchor="e", pady=(2, 12))
 
+        from .pdf_io import BADGE_BACK_DEFAULT
+        dflt = BADGE_BACK_DEFAULT
         form = ttk.Frame(outer)
         form.pack(fill=X)
         self._company = StringVar(value=self._DEFAULT_CAMPAIGN)
-        self._doctor = StringVar(value="")
-        self._preacher = StringVar(value="")
-        self._emergency = StringVar(value="")
+        self._doctor = StringVar(value=dflt.get("doctor", ""))
+        self._preacher = StringVar(value=dflt.get("preacher", ""))
+        self._emg_name = StringVar(value=dflt.get("emergency_name", "يوسف"))
+        self._emergency = StringVar(value=dflt.get("emergency", ""))
 
         def row(label, var):
             fr = ttk.Frame(form)
@@ -5602,13 +5605,17 @@ class BadgesDialog(Toplevel):
         row("اسم الحملة", self._company)
         row("رقم طبيب الحملة", self._doctor)
         row("رقم واعظ الحملة", self._preacher)
+        row("اسم مسؤول الطوارئ", self._emg_name)
         row("رقم الطوارئ", self._emergency)
 
-        ttk.Label(outer, text="الإداريون (اختياري — سطر لكل إداري):",
+        ttk.Label(outer, text="الإداريون (سطر لكل إداري: الاسم = الرقم):",
                   font=(_FUI, 10), foreground=TEXT, background=BG).pack(
             anchor="e", pady=(8, 2))
-        self._admins = tk.Text(outer, height=3, width=44, font=(_FUI, 10),
+        self._admins = tk.Text(outer, height=4, width=44, font=(_FUI, 10),
                                wrap="word")
+        self._admins.insert("1.0", "\n".join(
+            f"{a.get('name','')} = {a.get('number','')}"
+            for a in dflt.get("admins", [])))
         self._admins.pack(fill=X)
 
         btns = ttk.Frame(outer)
@@ -5628,6 +5635,7 @@ class BadgesDialog(Toplevel):
                 session=self._session, doctor=self._doctor.get().strip(),
                 preacher=self._preacher.get().strip(),
                 admins=self._admins.get("1.0", "end").strip(),
+                emergency_name=self._emg_name.get().strip(),
                 emergency=self._emergency.get().strip()),
             f"بطاقات_الحجاج_{date.today().isoformat()}", "pdf")
         if path is not None:

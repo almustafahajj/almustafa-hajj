@@ -148,7 +148,6 @@ _NIRVANA_PATH = resource_dir() / "assets" / "nirvana.png"
 # أصول بطاقة الحاج: النقش الجانبي وصورة المرأة الثابتة (تُرفَع لاحقاً؛ يوجد بديل مرسوم)
 _CARD_PATTERN_PATH = resource_dir() / "assets" / "card_pattern.png"
 _CARD_WOMAN_PATH = resource_dir() / "assets" / "card_woman.png"
-_CARD_BACK_PATH = resource_dir() / "assets" / "card_back.png"      # خلفية البطاقة كاملةً
 _CARD_HEADER_PATH = resource_dir() / "assets" / "card_header.png"  # شعار المصطفى + التواصل
 _CARD_NIRVANA_PATH = resource_dir() / "assets" / "card_nirvana.png"  # نيرفانا هولدينغ
 
@@ -5484,6 +5483,64 @@ def _trimmed_reader(path):
 _CARD_PATTERN_FRAC = 0.086                              # عرض النقش الأيسر
 _CARD_PHOTO_BOX = (0.329, 0.377, 0.670, 0.624)         # (x0, y0, x1, y1)
 
+# بيانات خلف البطاقة الافتراضية (قابلة للتعديل قبل الطباعة من الويب/سطح المكتب)
+BADGE_BACK_DEFAULT = {
+    "doctor": "+971 55 5852237",
+    "preacher": "+971 555 35 8851",
+    "admins": [
+        {"name": "أيمن", "number": "+971 54 996 4801"},
+        {"name": "صابر", "number": "+971 50 805 7572"},
+        {"name": "احمد شبراوي", "number": "+971 56 433 1934"},
+        {"name": "إقبال ( ام حازم)", "number": "+966 59 615 9661"},
+    ],
+    "emergency_name": "يوسف",
+    "emergency": "+966 54 702 0626",
+}
+
+
+def _parse_admins(text) -> list:
+    """يحوّل نصّ الإداريين (سطر لكل إداري: «الاسم = الرقم») إلى قائمة قواميس."""
+    out = []
+    for ln in str(text or "").splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        for sep in ("=", "|", "\t", ":"):
+            if sep in ln:
+                name, num = ln.split(sep, 1)
+                out.append({"name": name.strip(), "number": num.strip()})
+                break
+        else:
+            out.append({"name": ln, "number": ""})
+    return out
+
+
+def resolve_badge_back(back=None, *, doctor="", preacher="", admins="",
+                       emergency="", emergency_name="") -> dict:
+    """يبني بيانات خلف البطاقة النهائية من قاموس ``back`` أو الوسائط المفردة."""
+    bd = {k: (list(v) if isinstance(v, list) else v)
+          for k, v in BADGE_BACK_DEFAULT.items()}
+    if isinstance(back, dict):
+        for k in ("doctor", "preacher", "emergency", "emergency_name"):
+            if back.get(k):
+                bd[k] = back[k]
+        if isinstance(back.get("admins"), list):
+            bd["admins"] = [a for a in back["admins"]
+                            if (a.get("name") or a.get("number"))]
+    if doctor:
+        bd["doctor"] = doctor
+    if preacher:
+        bd["preacher"] = preacher
+    if emergency:
+        bd["emergency"] = emergency
+    if emergency_name:
+        bd["emergency_name"] = emergency_name
+    if admins:
+        parsed = _parse_admins(admins)
+        if parsed:
+            bd["admins"] = parsed
+    return bd
+
 
 def _draw_card_bg(c, reader, bw, bh):
     """خلفية البطاقة كاملةً (النقش الأيسر + بياض) من الصورة، أو بديل مرسوم."""
@@ -5556,6 +5613,7 @@ def export_badges_pdf(records: list, path: str | Path, *,
                       company: str = "المصطفى للحج والعمرة",
                       session=None, preacher: str = "", admins: str = "",
                       emergency: str = "", doctor: str = "",
+                      emergency_name: str = "", back: dict | None = None,
                       title: str = "بطاقات الحجّاج") -> Path:
     """يبني بطاقات الحجّاج بمقاس ثابت 5.2×8سم (طولي) على ورق A4 عمودي.
 
@@ -5584,9 +5642,11 @@ def export_badges_pdf(records: list, path: str | Path, *,
                     if _CARD_WOMAN_PATH.is_file() else None)
     bg_reader = (ImageReader(str(_CARD_PATTERN_PATH))
                  if _CARD_PATTERN_PATH.is_file() else None)
-    back_reader = (ImageReader(str(_CARD_BACK_PATH))
-                   if _CARD_BACK_PATH.is_file() else None)
     gray = colors.HexColor("#333333")
+    red = colors.HexColor("#B23A3A")
+    bd = resolve_badge_back(back, doctor=doctor, preacher=preacher,
+                            admins=admins, emergency=emergency,
+                            emergency_name=emergency_name)
 
     bw, bh = 5.2 * cm, 8.0 * cm                        # مقاس البطاقة الثابت
     s = 1.0
@@ -5705,36 +5765,45 @@ def export_badges_pdf(records: list, path: str | Path, *,
         center(nm, name_base_y, _FONT_BOLD, nsize, _INK)
 
     def draw_back():
-        if back_reader is not None:                    # الخلفية الجاهزة كاملةً
-            c.drawImage(back_reader, 0, 0, bw, bh,
-                        preserveAspectRatio=False, mask="auto")
-            return
-        y = draw_frame_top()
-        y -= 10 * s
-        if doctor or True:
-            right("طبيب الحملة:", y, _FONT_BOLD, 8.5 * s, _ACCENT)
-            y -= 11 * s
-            right(doctor or "................", y, _FONT, 8.5 * s)
-            y -= 15 * s
-        right("واعظ الحملة:", y, _FONT_BOLD, 8.5 * s, _ACCENT)
-        y -= 11 * s
-        right(preacher or "................", y, _FONT, 8.5 * s)
-        y -= 15 * s
-        right("الإداريون:", y, _FONT_BOLD, 8.5 * s, _ACCENT)
-        y -= 11 * s
-        admin_lines = [ln for ln in str(admins or "").splitlines() if ln.strip()]
-        if not admin_lines:
-            admin_lines = ["................", "................"]
-        for ln in admin_lines[:4]:
-            right(ln, y, _FONT, 8.5 * s)
-            y -= 11 * s
-        yb = 10 * s + 15 * s + 12 * s                  # فوق شعار نيرفانا
-        c.setStrokeColor(_GRID)
-        c.setLineWidth(0.6)
-        c.line(cl + 6 * s, yb + 11 * s, bw - 6 * s, yb + 11 * s)
-        right(f"للطوارئ: {emergency or '................'}", yb, _FONT_BOLD,
-              9 * s, colors.HexColor("#B23A3A"))
-        draw_img_centered(nirvana_reader, 8 * s + 15 * s, avail_w * 0.5, 15 * s)
+        top = draw_frame_top()                         # خلفية النقش + الشعار
+        badmins = bd.get("admins") or []
+        label_x = bw - 7 * s                           # عمود التسميات/الأسماء (يمين)
+        num_x = cl + 5 * s                             # عمود الأرقام (يسار)
+        # توزيع رأسي يتّسع لعدد الإداريين
+        units = 2 + 1.5 + max(1, len(badmins)) + 2.2 + 1
+        avail = (top - 4 * s) - 44 * s                 # حيّز أسفل لشعار نيرفانا
+        lh = max(9.5, min(15 * s, avail / units))
+
+        def pair(label, value, *, lab_color=_INK, lab_font=_FONT_BOLD,
+                 size=8.5 * s):
+            c.setFillColor(lab_color)
+            c.setFont(lab_font, size)
+            c.drawRightString(label_x, y[0], ar(label + " :"))
+            if value:
+                c.setFillColor(_INK)
+                c.setFont(_FONT, size)
+                c.drawString(num_x, y[0], str(value))    # رقم لاتيني كما هو (LTR)
+
+        y = [top - 4 * s]
+        pair("طبيب الحملة", bd.get("doctor"), lab_color=_ACCENT)
+        y[0] -= lh
+        pair("واعظ الحملة", bd.get("preacher"), lab_color=_ACCENT)
+        y[0] -= lh * 1.5
+        c.setFillColor(_ACCENT)                        # عنوان الإداريين
+        c.setFont(_FONT_BOLD, 9 * s)
+        c.drawCentredString(cx, y[0], ar("الإداريين :"))
+        y[0] -= lh
+        for a in badmins:
+            pair(a.get("name", ""), a.get("number", ""), lab_font=_FONT)
+            y[0] -= lh
+        y[0] -= lh * 0.5
+        c.setFillColor(red)                            # للطوارئ (عنوان كبير)
+        c.setFont(_FONT_BOLD, 13 * s)
+        c.drawCentredString(cx, y[0], ar("للطوارئ"))
+        y[0] -= lh * 1.2
+        pair(bd.get("emergency_name") or "الطوارئ", bd.get("emergency"),
+             lab_color=_INK, size=9 * s)
+        draw_img_centered(nirvana_reader, 8 * s + 15 * s, avail_w * 0.55, 15 * s)
 
     def in_cell(idx, draw_fn):
         ox, oy = cell_origin(idx)

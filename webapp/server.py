@@ -928,6 +928,53 @@ def rep_airline_pdf():
                      download_name="airline.pdf")
 
 
+def _load_badge_back() -> dict:
+    """بيانات خلف بطاقة الحاج (محلولة مع الافتراضيات) — لكل وضع من الإعدادات."""
+    from hajj_app import pdf_io
+    settings = storage.load_settings()
+    data = settings.get("badge_back") if isinstance(settings, dict) else None
+    return pdf_io.resolve_badge_back(data if isinstance(data, dict) else None)
+
+
+def _save_badge_back(data: dict) -> None:
+    settings = storage.load_settings()
+    settings["badge_back"] = data
+    storage.save_settings(settings)
+
+
+@app.route("/cards/back", methods=["GET", "POST"])
+def cards_back():
+    """تحرير بيانات خلف بطاقة الحاج (الأطباء/الواعظ/الإداريين/الطوارئ) قبل الطباعة."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:               # البطاقات ذات الخلف خاصّة بالحج
+        return redirect(url_for("reports"))
+    app_mode.set_mode(_mode())
+    if request.method == "POST" and s.can_edit:
+        names = request.form.getlist("admin_name")
+        nums = request.form.getlist("admin_number")
+        admins = []
+        for i, nm in enumerate(names):
+            num = (nums[i] if i < len(nums) else "").strip()
+            nm = nm.strip()
+            if nm or num:
+                admins.append({"name": nm, "number": num})
+        data = {
+            "doctor": (request.form.get("doctor") or "").strip(),
+            "preacher": (request.form.get("preacher") or "").strip(),
+            "admins": admins,
+            "emergency_name": (request.form.get("emergency_name") or "").strip(),
+            "emergency": (request.form.get("emergency") or "").strip(),
+        }
+        _save_badge_back(data)
+        _audit("تعديل بيانات خلف البطاقة", f"{len(admins)} إداري")
+        return redirect(url_for("cards_back", saved=1))
+    return render_template("badge_back.html", active="reports",
+                           back=_load_badge_back(),
+                           saved=request.args.get("saved"), **_ctx())
+
+
 @app.get("/reports/cards.pdf")
 def rep_cards_pdf():
     if _sess() is None:
@@ -942,7 +989,7 @@ def rep_cards_pdf():
     else:
         c = pdf_io.company_info(co)
         pdf_io.export_badges_pdf(records, p, company=c["name_ar"],
-                                 session=_sess())
+                                 session=_sess(), back=_load_badge_back())
     return send_file(p, mimetype="application/pdf", as_attachment=False,
                      download_name="cards.pdf")
 
