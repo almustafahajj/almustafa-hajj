@@ -2188,9 +2188,18 @@ def camps_page():
     from hajj_app.camps import CAMPS, MEN, WOMEN
     slug_of = {v: k for k, v in _CAMP_SLUGS.items()}
     camps = [{"slug": slug_of.get(name, name), "name": name} for name in CAMPS]
+    saved = _load_camps()                          # الخيام المحفوظة (دائمة) لكل مخيّم
+    saved_camps = []
+    for c in camps:
+        st = saved.get(c["slug"])
+        tents = _tents_view(st) if isinstance(st, dict) else []
+        if tents:
+            saved_camps.append({"slug": c["slug"], "name": c["name"],
+                                "tents": tents,
+                                "assigned": len((st or {}).get("assigned", []))})
     return render_template("camps.html", active="camps", camps=camps,
                            classes=[("", "الكل"), (MEN, MEN), (WOMEN, WOMEN)],
-                           count=len(_load_records()),
+                           count=len(_load_records()), saved_camps=saved_camps,
                            reset=request.args.get("reset"), **_ctx())
 
 

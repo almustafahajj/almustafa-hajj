@@ -34,6 +34,34 @@
   </fieldset>
 </form>
 
+{% if saved_camps %}
+<div class="panel" style="margin-top:14px">
+  <strong>🏕 الخيام المحفوظة (تظهر تلقائياً — لا تزول بإعادة التشغيل)</strong>
+  {% for sc in saved_camps %}
+  <div style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <span>مخيّم <strong>{{ sc.name }}</strong> — {{ sc.tents|length }} خيمة · {{ sc.assigned }} مسكّن</span>
+      <a class="btn primary sm" target="_blank"
+         href="{{ url_for('camp_tents_all_pdf', camp=sc.slug) }}">📄 تصدير الكل (كل خيمة بصفحة)</a>
+    </div>
+    <table class="data">
+      <thead><tr><th>#</th><th>رقم الخيمة</th><th>التصنيف</th><th>القطاع</th><th>العدد</th><th></th></tr></thead>
+      <tbody>
+        {% for t in sc.tents %}
+        <tr>
+          <td>{{ loop.index }}</td><td>{{ t.number }}</td><td>{{ t.cls }}</td>
+          <td>{{ t.sector or '—' }}</td><td>{{ t.count }}</td>
+          <td><a class="btn ghost sm" target="_blank"
+                 href="{{ url_for('camp_tent_pdf', n=t.n, camp=sc.slug) }}">📄 فتح/طباعة</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if can_edit %}
 <form method="post" action="{{ url_for('camps_reset') }}"
       onsubmit="return confirm('إعادة تعيين تسكين المخيمات؟ سيُمسح تقدّم «خيمة بخيمة» وتبدأ من جديد.');"
