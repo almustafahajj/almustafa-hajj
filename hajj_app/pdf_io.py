@@ -5155,31 +5155,114 @@ def _sticker_items(records, kind: str, company: str) -> list[dict]:
                 "lines": lines,
                 "footer": "المحتويات: الجواز • التذكرة • التصريح",
             })
-    else:  # bag
+    else:  # bag — استيكر بخمسة حقول: الاسم/الفندق/الغرفة/موبايل/الطيران
+        from .rooming import room_number_in_type
         for rec in records:
-            lines = []
-            if rec.phone:
-                lines.append(f"هاتف: {rec.phone}")
-            loc = rec.hotel or ""
-            if rec.room_number:
-                loc += (f" - غرفة {rec.room_number}" if loc
-                        else f"غرفة {rec.room_number}")
-            if loc:
-                lines.append(loc)
-            trip = []
+            room = (str(rec.room_number or "").strip()
+                    or room_number_in_type(str(rec.room_type or "")))
+            air = str(rec.airline or "").strip()
             if rec.flight_number:
-                trip.append(f"رحلة {rec.flight_number}")
-            if rec.transport:
-                trip.append(f"باص {rec.transport}")
-            if trip:
-                lines.append(" • ".join(trip))
+                air = (f"{air} {rec.flight_number}".strip() if air
+                       else str(rec.flight_number).strip())
             items.append({
-                "header": company,
-                "big": rec.full_name_ar or rec.full_name_en or "—",
-                "lines": lines,
-                "footer": None,
+                "name": rec.full_name_ar or rec.full_name_en or "",
+                "hotel": str(rec.hotel or "").strip(),
+                "room": room,
+                "mobile": str(rec.phone or "").strip(),
+                "airline": air,
             })
     return items
+
+
+def _draw_bag_icon(c, key, cx, cy, hs, color):
+    """أيقونة ذهبية صغيرة لكل حقل في استيكر الحقيبة (رسم متجهي)."""
+    c.saveState()
+    c.setStrokeColor(color)
+    c.setFillColor(color)
+    c.setLineWidth(max(0.8, hs * 0.16))
+    if key == "name":                                  # شخص
+        c.circle(cx, cy + hs * 0.34, hs * 0.34, fill=1, stroke=0)
+        p = c.beginPath()
+        p.moveTo(cx - hs * 0.72, cy - hs * 0.55)
+        p.curveTo(cx - hs * 0.72, cy + hs * 0.02,
+                  cx + hs * 0.72, cy + hs * 0.02, cx + hs * 0.72, cy - hs * 0.55)
+        c.drawPath(p, fill=0, stroke=1)
+    elif key == "hotel":                               # مبنى فندق
+        c.rect(cx - hs * 0.62, cy - hs * 0.72, hs * 1.24, hs * 1.44,
+               fill=0, stroke=1)
+        for ix in (-0.36, 0.14):
+            for iy in (0.34, 0.02, -0.30):
+                c.rect(cx + hs * ix, cy + hs * iy, hs * 0.22, hs * 0.18,
+                       fill=1, stroke=0)
+    elif key == "room":                                # باب غرفة
+        p = c.beginPath()
+        p.moveTo(cx - hs * 0.5, cy - hs * 0.72)
+        p.lineTo(cx - hs * 0.5, cy + hs * 0.36)
+        p.curveTo(cx - hs * 0.5, cy + hs * 0.78,
+                  cx + hs * 0.5, cy + hs * 0.78, cx + hs * 0.5, cy + hs * 0.36)
+        p.lineTo(cx + hs * 0.5, cy - hs * 0.72)
+        p.close()
+        c.drawPath(p, fill=0, stroke=1)
+        c.circle(cx + hs * 0.26, cy - hs * 0.06, hs * 0.1, fill=1, stroke=0)
+    elif key == "mobile":                              # هاتف
+        c.roundRect(cx - hs * 0.44, cy - hs * 0.74, hs * 0.88, hs * 1.48,
+                    hs * 0.16, fill=0, stroke=1)
+        c.setLineWidth(max(0.8, hs * 0.13))
+        c.line(cx - hs * 0.14, cy + hs * 0.54, cx + hs * 0.14, cy + hs * 0.54)
+        c.circle(cx, cy - hs * 0.52, hs * 0.08, fill=1, stroke=0)
+    elif key == "airline":                             # طائرة (منظر علوي)
+        pts = [(0.0, 0.95), (0.10, 0.28), (0.10, 0.14), (0.78, -0.10),
+               (0.10, -0.22), (0.10, -0.58), (0.34, -0.82), (0.10, -0.70),
+               (0.10, -0.95), (-0.10, -0.95), (-0.10, -0.70), (-0.34, -0.82),
+               (-0.10, -0.58), (-0.10, -0.22), (-0.78, -0.10), (-0.10, 0.14),
+               (-0.10, 0.28)]
+        p = c.beginPath()
+        p.moveTo(cx + pts[0][0] * hs, cy + pts[0][1] * hs)
+        for dx, dy in pts[1:]:
+            p.lineTo(cx + dx * hs, cy + dy * hs)
+        p.close()
+        c.drawPath(p, fill=1, stroke=0)
+    c.restoreState()
+
+
+_BAG_ROWS = (("name", "الإسم"), ("hotel", "الفندق"), ("room", "الغرفة"),
+             ("mobile", "موبايل"), ("airline", "الطيران"))
+
+
+def _draw_bag_sticker(c, ox, oy, W, H, item):
+    """استيكر حقيبة بمقاس ٨٫٢٦×٧٫٩سم: ٥ صفوف (تسمية ذهبية + أيقونة يميناً،
+    والقيمة يساراً)، بمحاذاة النقطتين رأسياً كما في التصميم المعتمد."""
+    c.setStrokeColor(colors.HexColor("#CFCFCF"))       # حدّ قصّ خفيف
+    c.setLineWidth(0.6)
+    c.rect(ox, oy, W, H, fill=0, stroke=1)
+    pad = H * 0.07
+    band = (H - 2 * pad) / 5.0
+    colon_x = ox + W * 0.58                             # موضع «:» الموحّد
+    icon_cx = ox + W * 0.90                             # عمود الأيقونات (يمين)
+    val_maxw = colon_x - ox - 10
+
+    def fit(text, font, base, maxw, floor=7.0):
+        size = base
+        while size > floor and pdfmetrics.stringWidth(ar(text), font,
+                                                      size) > maxw:
+            size -= 0.5
+        return size
+
+    for i, (key, label) in enumerate(_BAG_ROWS):
+        yc = oy + H - pad - (i + 0.5) * band
+        lsz = 15
+        base = yc - lsz * 0.34
+        c.setFillColor(_ACCENT)                        # التسمية الذهبية + «:»
+        c.setFont(_FONT_BOLD, lsz)
+        c.drawString(colon_x, base, ar(label + " :"))
+        _draw_bag_icon(c, key, icon_cx, yc, band * 0.30, _ACCENT)
+        val = str(item.get(key, "") or "").strip()
+        if val:                                        # القيمة يسار «:»
+            vsz = fit(val, _FONT, 13, val_maxw, 7)
+            c.setFillColor(_INK)
+            c.setFont(_FONT, vsz)
+            c.drawRightString(colon_x - 8, yc - vsz * 0.34,
+                              val if _looks_ltr(val) else ar(val))
 
 
 def export_stickers_pdf(records: list, path: str | Path, *, kind: str = "bag",
@@ -5203,6 +5286,34 @@ def export_stickers_pdf(records: list, path: str | Path, *, kind: str = "bag",
     c.setTitle(title)
     logo_reader = ImageReader(str(_LOGO_PATH)) if _LOGO_PATH.is_file() else None
     gray = colors.HexColor("#555555")
+
+    if kind == "bag":                                  # التصميم الجديد بمقاس ثابت
+        BAG_W, BAG_H = 82.6 * mm, 79 * mm
+        MX, MY, GX, GY = 20, 24, 14, 14
+        COLS = max(1, int((PW - 2 * MX + GX) / (BAG_W + GX)))
+        ROWS = max(1, int((PH - 2 * MY + GY) / (BAG_H + GY)))
+        PER = COLS * ROWS
+        gridw = COLS * BAG_W + (COLS - 1) * GX
+        offx = (PW - gridw) / 2
+        offtop = PH - MY
+        if not items:
+            c.setFont(_FONT, 13)
+            c.setFillColor(_INK)
+            c.drawCentredString(PW / 2, PH / 2, ar("لا توجد بيانات للاستيكرات"))
+            c.showPage()
+            c.save()
+            return path
+        for i, item in enumerate(items):
+            if i > 0 and i % PER == 0:
+                c.showPage()
+            idx = i % PER
+            col, row = idx % COLS, idx // COLS
+            ox = offx + gridw - (col + 1) * BAG_W - col * GX   # RTL: أوّل استيكر يميناً
+            oy = offtop - (row + 1) * BAG_H - row * GY
+            _draw_bag_sticker(c, ox, oy, BAG_W, BAG_H, item)
+        c.showPage()
+        c.save()
+        return path
 
     COLS, ROWS = _STICKER_GRID[kind]
     PER = COLS * ROWS
