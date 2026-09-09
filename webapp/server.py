@@ -2527,6 +2527,8 @@ def camp_tents_export():
         nxt = number
     st["number"] = nxt
     _save_camps(camps)
+    _audit("تثبيت خيمة (تلقائي)",
+           f"{camp} — خيمة {number} — {cls} — {len(indices)} شخصاً")
     return redirect(url_for(
         "camp_tents", number=nxt,
         msg=f"تُثبّتت الخيمة {number} ({cls}): {len(indices)} شخصاً. "
@@ -2546,6 +2548,7 @@ def camp_tents_reset():
     st["last"] = None
     st["tents"] = []
     _save_camps(camps)
+    _audit("إعادة ضبط بناء الخيام", _CAMP_SLUGS.get(camp_slug, camp_slug))
     return redirect(url_for("camp_tents", camp=camp_slug, msg="أُعيد الضبط."))
 
 
