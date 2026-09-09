@@ -5661,6 +5661,8 @@ def export_badges_pdf(records: list, path: str | Path, *,
     cl = _CARD_PATTERN_FRAC * bw                       # عرض النقش الأيسر
     cx = (cl + bw) / 2                                 # مركز المنطقة البيضاء (يمين النقش)
     avail_w = bw - cl - 6 * s                          # عرض المنطقة البيضاء بهامش بسيط
+    _fx0, _fy0, _fx1, _fy1 = _CARD_PHOTO_BOX           # نسبة إطار الصورة (عرض/ارتفاع)
+    box_aspect = ((_fx1 - _fx0) * bw) / ((_fy1 - _fy0) * bh)
 
     def cell_origin(idx):
         col, row = idx % COLS, idx // COLS
@@ -5705,6 +5707,21 @@ def export_badges_pdf(records: list, path: str | Path, *,
 
         لا تُرفَق الوثيقة كاملةً أبداً — إن تعذّر اقتصاص الوجه تبقى الخانة فارغة.
         """
+        def _cover(pil):                               # قصّ لملء الإطار بنسبته
+            try:
+                w, h = pil.size
+                if not w or not h:
+                    return pil
+                if w / h > box_aspect:
+                    nw = max(1, int(round(h * box_aspect)))
+                    x = (w - nw) // 2
+                    return pil.crop((x, 0, x + nw, h))
+                nh = max(1, int(round(w / box_aspect)))
+                y = (h - nh) // 2
+                return pil.crop((0, y, w, y + nh))
+            except Exception:                          # noqa: BLE001
+                return pil
+
         iid = getattr(rec, "image_id", "")
         if not iid:
             return None
@@ -5712,13 +5729,13 @@ def export_badges_pdf(records: list, path: str | Path, *,
         if blob:
             pil = imgmod.to_pil_image(blob)
             if pil is not None:
-                return ImageReader(pil)
+                return ImageReader(_cover(pil))
         from io import BytesIO
         for kind in (imgmod.PASSPORT, imgmod.ID_CARD):         # اقتصاص الوجه فقط
             blob = imgmod.load_image(iid, kind, session)
             if not blob:
                 continue
-            face = imgmod.face_crop(blob)
+            face = imgmod.face_crop(blob, target_aspect=box_aspect)
             if face:
                 return ImageReader(BytesIO(face))
         return None
@@ -5754,12 +5771,12 @@ def export_badges_pdf(records: list, path: str | Path, *,
                               woman=True)
         else:
             pr = photo_reader(rec)
-            if pr is not None:                          # صورة الرجل الشخصية
+            if pr is not None:                          # صورة الرجل تملأ الإطار
+                c.drawImage(pr, boxx, boxy, box_w, box_h,
+                            preserveAspectRatio=False, mask="auto")
                 c.setStrokeColor(_GRID)
                 c.setLineWidth(0.8)
                 c.rect(boxx, boxy, box_w, box_h, fill=0, stroke=1)
-                c.drawImage(pr, boxx + 1, boxy + 1, box_w - 2, box_h - 2,
-                            preserveAspectRatio=True, anchor="c", mask="auto")
             # بلا صورة بعد: تُترك الخانة فارغة (تُرفع الصور لاحقاً)
         # شعار نيرفانا هولدينغ أسفل البطاقة
         draw_img_centered(nirvana_reader, 8 * s + 16 * s, avail_w * 0.62, 16 * s)
