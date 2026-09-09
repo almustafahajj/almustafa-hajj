@@ -148,6 +148,9 @@ _NIRVANA_PATH = resource_dir() / "assets" / "nirvana.png"
 # أصول بطاقة الحاج: النقش الجانبي وصورة المرأة الثابتة (تُرفَع لاحقاً؛ يوجد بديل مرسوم)
 _CARD_PATTERN_PATH = resource_dir() / "assets" / "card_pattern.png"
 _CARD_WOMAN_PATH = resource_dir() / "assets" / "card_woman.png"
+_CARD_BACK_PATH = resource_dir() / "assets" / "card_back.png"      # خلفية البطاقة كاملةً
+_CARD_HEADER_PATH = resource_dir() / "assets" / "card_header.png"  # شعار المصطفى + التواصل
+_CARD_NIRVANA_PATH = resource_dir() / "assets" / "card_nirvana.png"  # نيرفانا هولدينغ
 
 
 def _logo_flowable(max_width_pt: float = 118):
@@ -5448,6 +5451,35 @@ def _looks_ltr(text: str) -> bool:
     return not any("؀" <= ch <= "ۿ" for ch in str(text or ""))
 
 
+def _trimmed_reader(path):
+    """ImageReader لصورة مقصوصة عند حدود محتواها (إزالة الهوامش البيضاء/الشفافة)."""
+    from reportlab.lib.utils import ImageReader
+    p = Path(path)
+    if not p.is_file():
+        return None
+    try:
+        from PIL import Image as _PImg
+        im = _PImg.open(str(p)).convert("RGBA")
+        px = im.load()
+        W, H = im.size
+        step = max(1, min(W, H) // 500)                # تعيين خفيف للصور الكبيرة
+        minx, miny, maxx, maxy = W, H, -1, -1
+        for yy in range(0, H, step):
+            for xx in range(0, W, step):
+                r, g, b, a = px[xx, yy]
+                if a > 20 and (r < 245 or g < 245 or b < 245):
+                    minx = min(minx, xx); miny = min(miny, yy)
+                    maxx = max(maxx, xx); maxy = max(maxy, yy)
+        if maxx <= minx or maxy <= miny:
+            return ImageReader(str(p))
+        pad = 2
+        box = (max(0, minx - pad), max(0, miny - pad),
+               min(W, maxx + pad + 1), min(H, maxy + pad + 1))
+        return ImageReader(im.crop(box))
+    except Exception:                                  # noqa: BLE001
+        return ImageReader(str(p))
+
+
 # موضع النقش وإطار الصورة داخل خلفية البطاقة (كسور من مقاس البطاقة، أصل سفلي)
 _CARD_PATTERN_FRAC = 0.086                              # عرض النقش الأيسر
 _CARD_PHOTO_BOX = (0.329, 0.377, 0.670, 0.624)         # (x0, y0, x1, y1)
@@ -5545,12 +5577,15 @@ def export_badges_pdf(records: list, path: str | Path, *,
     c = _canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
     c.setTitle(title)
     logo_reader = ImageReader(str(_LOGO_PATH)) if _LOGO_PATH.is_file() else None
-    nirvana_reader = (ImageReader(str(_NIRVANA_PATH))
-                      if _NIRVANA_PATH.is_file() else None)
+    header_reader = _trimmed_reader(_CARD_HEADER_PATH)   # شعار المصطفى + التواصل
+    nirvana_reader = (_trimmed_reader(_CARD_NIRVANA_PATH)
+                      or _trimmed_reader(_NIRVANA_PATH))
     woman_reader = (ImageReader(str(_CARD_WOMAN_PATH))
                     if _CARD_WOMAN_PATH.is_file() else None)
     bg_reader = (ImageReader(str(_CARD_PATTERN_PATH))
                  if _CARD_PATTERN_PATH.is_file() else None)
+    back_reader = (ImageReader(str(_CARD_BACK_PATH))
+                   if _CARD_BACK_PATH.is_file() else None)
     gray = colors.HexColor("#333333")
 
     bw, bh = 5.2 * cm, 8.0 * cm                        # مقاس البطاقة الثابت
@@ -5598,22 +5633,13 @@ def export_badges_pdf(records: list, path: str | Path, *,
                     mask="auto", preserveAspectRatio=True)
         return top_y - h
 
-    def name_lines(name, maxw, base):
-        """يعيد (الأسطر، الحجم): سطر واحد إن اتّسع، وإلا سطران بحجم مناسب."""
-        name = str(name or "").strip() or "—"
-        if pdfmetrics.stringWidth(ar(name), _FONT_BOLD, base) <= maxw:
-            return [name], base
-        words = name.split()
-        if len(words) >= 2:
-            mid = (len(words) + 1) // 2
-            lines = [" ".join(words[:mid]), " ".join(words[mid:])]
-        else:
-            lines = [name]
+    def fit_single(text, maxw, base, floor, font):
+        """سطر واحد يُصغَّر خطّه حتى يتّسع في العرض المتاح (بلا التفاف)."""
+        text = str(text or "").strip() or "—"
         size = base
-        while size > 7 and max(pdfmetrics.stringWidth(ar(x), _FONT_BOLD, size)
-                               for x in lines) > maxw:
+        while size > floor and pdfmetrics.stringWidth(ar(text), font, size) > maxw:
             size -= 0.5
-        return lines, size
+        return text, size
 
     def photo_reader(rec):
         """صورة الرجل: الشخصية إن وُجدت، وإلا الجواز، وإلا None."""
@@ -5630,8 +5656,11 @@ def export_badges_pdf(records: list, path: str | Path, *,
         return None
 
     def draw_frame_top():
-        """خلفية النقش + الشعار + أيقونات التواصل. يعيد y أسفل الأيقونات."""
+        """خلفية النقش + شعار المصطفى وأيقونات التواصل. يعيد y أسفل الشعار."""
         _draw_card_bg(c, bg_reader, bw, bh)
+        if header_reader is not None:                  # الشعار الجاهز (بالأيقونات)
+            return draw_img_centered(header_reader, bh - 6 * s,
+                                     avail_w * 0.98, 42 * s) - 6 * s
         y = draw_img_centered(logo_reader, bh - 8 * s, avail_w * 0.62, 26 * s)
         y -= 7 * s
         _draw_social_icons(c, cx, y - 4.2 * s, 4.2 * s, 12 * s)
@@ -5661,29 +5690,25 @@ def export_badges_pdf(records: list, path: str | Path, *,
                 c.drawImage(pr, boxx + 1, boxy + 1, box_w - 2, box_h - 2,
                             preserveAspectRatio=True, anchor="c", mask="auto")
             # بلا صورة بعد: تُترك الخانة فارغة (تُرفع الصور لاحقاً)
-        # شعار نيرفانا أسفل البطاقة
-        draw_img_centered(nirvana_reader, 8 * s + 15 * s, avail_w * 0.5, 15 * s)
-        # الفندق فوق نيرفانا
+        # شعار نيرفانا هولدينغ أسفل البطاقة
+        draw_img_centered(nirvana_reader, 8 * s + 16 * s, avail_w * 0.62, 16 * s)
+        # الفندق فوق نيرفانا (سطر واحد)
         hotel = str(rec.hotel or "").strip()
-        hotel_y = 8 * s + 15 * s + 12 * s
+        hotel_y = 8 * s + 16 * s + 13 * s
         if hotel:
             label = hotel if _looks_ltr(hotel) else "فندق / " + hotel
-            hl, hsize = name_lines(label, avail_w - 8, 9 * s)
-            yy = hotel_y + (len(hl) - 1) * (hsize + 1)
-            for ln in hl:
-                center(ln, yy, _FONT, hsize, gray)
-                yy -= hsize + 1
-            name_base_y = hotel_y + len(hl) * (hsize + 2) + 4 * s
-        else:
-            name_base_y = hotel_y + 4 * s
-        # الاسم فوق الفندق (سطر أو سطران)
-        lines, nsize = name_lines(badge_name(rec), avail_w - 6, 11.5 * s)
-        yy = name_base_y + (len(lines) - 1) * (nsize + 1.5)
-        for ln in lines:
-            center(ln, yy, _FONT_BOLD, nsize, _INK)
-            yy -= nsize + 1.5
+            txt, hsize = fit_single(label, avail_w - 6, 9 * s, 6, _FONT)
+            center(txt, hotel_y, _FONT, hsize, gray)
+        # الاسم فوق الفندق — سطر واحد دائماً، يُصغَّر الخط إن طال
+        name_base_y = hotel_y + 17 * s
+        nm, nsize = fit_single(badge_name(rec), avail_w - 4, 12 * s, 6.5, _FONT_BOLD)
+        center(nm, name_base_y, _FONT_BOLD, nsize, _INK)
 
     def draw_back():
+        if back_reader is not None:                    # الخلفية الجاهزة كاملةً
+            c.drawImage(back_reader, 0, 0, bw, bh,
+                        preserveAspectRatio=False, mask="auto")
+            return
         y = draw_frame_top()
         y -= 10 * s
         if doctor or True:
@@ -5716,6 +5741,9 @@ def export_badges_pdf(records: list, path: str | Path, *,
         c.saveState()
         c.translate(ox, oy)
         draw_fn()
+        c.setStrokeColor(colors.HexColor("#BFBFBF"))   # حدّ قصّ خفيف لكل بطاقة
+        c.setLineWidth(0.6)
+        c.rect(0, 0, bw, bh, fill=0, stroke=1)
         c.restoreState()
 
     if not records:
