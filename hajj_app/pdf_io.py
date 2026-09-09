@@ -5660,8 +5660,8 @@ def export_badges_pdf(records: list, path: str | Path, *,
     off_top = (PH + grid_h) / 2
 
     cl = _CARD_PATTERN_FRAC * bw                       # عرض النقش الأيسر
-    cx = bw / 2                                         # المحتوى متمركز على البطاقة كاملةً
-    avail_w = bw - 2 * cl                              # هوامش متماثلة تتجنّب النقش
+    cx = (cl + bw) / 2                                 # مركز المنطقة البيضاء (يمين النقش)
+    avail_w = bw - cl - 6 * s                          # عرض المنطقة البيضاء بهامش بسيط
 
     def cell_origin(idx):
         col, row = idx % COLS, idx // COLS
@@ -5730,10 +5730,13 @@ def export_badges_pdf(records: list, path: str | Path, *,
         draw_frame_top()
         woman = is_woman(rec)
         fx0, fy0, fx1, fy1 = _CARD_PHOTO_BOX           # إطار الصورة كنسب من البطاقة
-        boxx, box_w = fx0 * bw, (fx1 - fx0) * bw
-        boxy, box_h = fy0 * bh, (fy1 - fy0) * bh
+        box_w = (fx1 - fx0) * bw
+        box_h = (fy1 - fy0) * bh
+        boxx = cx - box_w / 2                          # متمركز في المنطقة البيضاء
+        boxy = fy0 * bh
+        woff = cx - bw / 2                             # إزاحة توسيط صورة المرأة الكاملة
         if woman and woman_reader is not None:         # صورة المرأة الثابتة (طبقة كاملة)
-            c.drawImage(woman_reader, 0, 0, bw, bh,
+            c.drawImage(woman_reader, woff, 0, bw, bh,
                         preserveAspectRatio=False, mask="auto")
         elif woman:
             c.setStrokeColor(_GRID)
