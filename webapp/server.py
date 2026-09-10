@@ -327,6 +327,17 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
+_BUILD_TAG = "2026-09-10 · عرض السعر: قوائم منسدلة محدّثة + لغة كاملة + تسعير"
+
+
+@app.get("/version")
+def version():
+    """كشف النسخة الجارية فعلاً على الخادم (للتشخيص) — بلا تسجيل دخول."""
+    return (f"BUILD {_BUILD_TAG}", 200,
+            {"Content-Type": "text/plain; charset=utf-8",
+             "Cache-Control": "no-store, max-age=0"})
+
+
 @app.route("/season", methods=["GET", "POST"])
 def season_page():
     """تحديد موسم الحج/العمرة (السنة الهجرية) — مستقلّ لكل وضع، للمحرّرين."""

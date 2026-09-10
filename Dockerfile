@@ -6,9 +6,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr t
 
 WORKDIR /app
 
-# التبعيات أولاً (طبقة مخبّأة) — الويب + قراءة الجوازات
+# التبعيات أولاً (طبقة مخبّأة) — الويب أساسي، وقراءة الجوازات اختيارية
 COPY requirements-web.txt requirements-web-ocr.txt ./
-RUN pip install --no-cache-dir -r requirements-web.txt -r requirements-web-ocr.txt
+# الويب إلزامي: فشله يوقف البناء (وهذا صحيح)
+RUN pip install --no-cache-dir -r requirements-web.txt
+# OCR/OpenCV اختياري: فشله لا يُسقِط نشر الويب (تبقى الميزات الأساسية تعمل)
+RUN pip install --no-cache-dir -r requirements-web-ocr.txt \
+    || echo "[warn] تعذّر تثبيت مكتبات OCR/OpenCV — تُعطَّل قراءة الجواز واقتصاص الوجه فقط"
 
 # ثم الشيفرة
 COPY . .
