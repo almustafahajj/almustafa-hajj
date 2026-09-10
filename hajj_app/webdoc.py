@@ -179,12 +179,21 @@ function field(f){
     if(val!=null && val!=='' && !opts.includes(val)) opts = [val,...opts];
     opts.forEach(o=>{const op=el('option',{value:o},txt(o));
       if(o===val)op.setAttribute('selected',''); inp.append(op);});
+  } else if(type==='combo'){
+    inp = el('input',{id:'f_'+key, list:'dl_'+key, autocomplete:'off',
+      value:(val==null?'':val)});
+    if(ro) inp.setAttribute('readonly','');
   } else {
     inp = el('input',{id:'f_'+key, type:(type==='date'?'date':'text'),
       value:(val==null?'':val)});
     if(ro) inp.setAttribute('readonly','');
   }
   const lab = el('label',{class:'row'},[el('span',{},txt(f.label)), inp]);
+  if(type==='combo'){                         // قائمة منسدلة مع إمكانية الكتابة
+    const dl = el('datalist',{id:'dl_'+key});
+    (f.options||[]).forEach(o=>dl.append(el('option',{value:o})));
+    lab.append(dl);
+  }
   if(type==='area'||type==='lines') lab.style.alignItems='flex-start';
   return lab;
 }
@@ -196,6 +205,13 @@ function tableSection(sec){
   cols.forEach(c=>head.append(el('span',{style:'flex:1'},txt(c.label))));
   head.append(el('span',{style:'width:40px'}));
   box.append(head);
+  cols.forEach(c=>{                           // قوائم منسدلة لأعمدة الجداول
+    if((c.type||'')==='combo'){
+      const dl=el('datalist',{id:'dlc_'+sec.table+'_'+c.key});
+      (c.options||[]).forEach(o=>dl.append(el('option',{value:o})));
+      box.append(dl);
+    }
+  });
   const rowsBox = el('div',{});
   box.append(rowsBox);
   function addRow(vals){
@@ -209,6 +225,9 @@ function tableSection(sec){
         if(vals[i]!=null && vals[i]!=='' && !opts.includes(vals[i])) opts=[vals[i],...opts];
         opts.forEach(o=>{const op=el('option',{value:o},txt(o));
           if(o===vals[i])op.setAttribute('selected',''); w.append(op);});
+      } else if((c.type||'')==='combo'){
+        w = el('input',{type:'text',style:'flex:1',autocomplete:'off',
+          list:'dlc_'+sec.table+'_'+c.key,value:(vals[i]==null?'':vals[i])});
       } else if((c.type||'')==='date'){
         w = el('input',{type:'date',style:'flex:1',value:(vals[i]==null?'':vals[i])});
       } else {

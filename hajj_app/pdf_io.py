@@ -4342,14 +4342,45 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
 
 
 # مخطّط حقول عرض سعر العمرة للمحرّر الويب (بجداوله وبنوده)
+# قوائم اقتراحات عرض السعر — تُعرض منسدلةً مع إبقاء إمكانية الكتابة (combo)
+_Q_NUM = [str(i) for i in range(1, 11)]
+_Q_NIGHTS = [str(i) for i in range(1, 15)]
+_Q_CITIES = ["مكة المكرمة", "المدينة المنورة", "جدة"]
+_Q_ROOM_TYPES = ["مفردة", "ثنائية", "ثلاثية", "رباعية", "خماسية", "جناح"]
+_Q_MEALS = ["بدون", "إفطار", "إفطار وعشاء", "نصف إقامة", "إقامة كاملة"]
+_Q_FLIGHT_CLASS = ["السياحية", "الاقتصادية المميزة", "رجال الأعمال", "الأولى"]
+_Q_CARRIERS = ["طيران الإمارات", "الاتحاد للطيران", "الخطوط السعودية", "فلاي دبي",
+               "العربية للطيران", "الخطوط القطرية", "طيران ناس", "طيران أديل"]
+_Q_AIRPORTS = ["دبي (DXB)", "أبوظبي (AUH)", "الشارقة (SHJ)", "جدة (JED)",
+               "المدينة (MED)", "الرياض (RUH)"]
+_Q_HOTELS = ["كونراد جبل عمر", "فيرمونت مكة (برج الساعة)",
+             "دار التوحيد انتركونتيننتال", "هيلتون مكة", "بولمان زمزم",
+             "العنوان جبل عمر", "دار الإيمان انتركونتيننتال",
+             "أنوار المدينة موفنبيك", "ميلينيوم المدينة",
+             "دار الهجرة انتركونتيننتال"]
+_Q_CARS = ["سيارة صالون", "جيب GMC", "فان (هايس)", "باص ٢٠ راكب", "باص ٣٠ راكب",
+           "باص ٤٥ راكب", "باص ٥٠ راكب"]
+_Q_PERSON = ["بالغ", "طفل", "رضيع", "مفرد"]
+_Q_VISA = ["عمرة", "سياحة", "زيارة", "حج", "مرور"]
+_Q_CURRENCY = ["درهم", "ريال سعودي", "دولار", "ريال", "يورو"]
+_Q_TRANSFER = ["مطار جدة", "مطار المدينة", "فندق مكة", "فندق المدينة",
+               "الحرم المكي", "الحرم النبوي", "محطة قطار الحرمين"]
+_Q_TRAIN_STN = ["مكة المكرمة", "المدينة المنورة", "جدة", "الرياض"]
+_Q_TIMES = ["12:00 ظهراً", "03:00 عصراً", "06:00 مساءً", "11:59 مساءً"]
+
 UMRAH_QUOTATION_SCHEMA = [
     {"legend": "بيانات العرض", "fields": [
         {"key": "number", "label": "الرقم المرجعي", "ro": True},
         {"key": "date", "label": "التاريخ", "type": "date"},
         {"key": "lang", "label": "لغة العرض", "type": "select",
          "options": ["ar", "en"]},
-        {"key": "title", "label": "عنوان العرض"},
-        {"key": "greeting", "label": "عبارة التحية"},
+        {"key": "title", "label": "عنوان العرض", "type": "combo",
+         "options": ["عرض سعر رحلة عمرة", "عرض سعر برنامج عمرة",
+                     "عرض سعر برنامج حج", "عرض سعر إقامة فندقية"]},
+        {"key": "greeting", "label": "عبارة التحية", "type": "combo",
+         "options": ["السلام عليكم ورحمة الله وبركاته",
+                     "السلام عليكم ورحمة الله وبركاته، وبعد:",
+                     "تحية طيبة وبعد،"]},
         {"key": "addressed_title", "label": "لقب المستلِم", "type": "select",
          "options": ["السيد", "السيدة", "السادة", "الأخ", "الأخت"]},
         {"key": "addressed_to", "label": "عناية (اسم المستلِم)"},
@@ -4357,54 +4388,67 @@ UMRAH_QUOTATION_SCHEMA = [
         {"key": "period_to", "label": "الفترة إلى", "type": "date"},
     ]},
     {"legend": "الضيوف", "table": "guests", "columns": [
-        {"key": "count", "label": "العدد"}, {"key": "type", "label": "النوع"}]},
+        {"key": "count", "label": "العدد", "type": "combo", "options": _Q_NUM},
+        {"key": "type", "label": "النوع", "type": "combo",
+         "options": ["بالغ", "طفل", "رضيع"]}]},
     {"legend": "الإقامة", "table": "stays", "columns": [
-        {"key": "city", "label": "المدينة"},
-        {"key": "nights", "label": "الليالي"},
-        {"key": "hotel", "label": "الفندق"},
-        {"key": "room", "label": "نوع الغرفة"},
-        {"key": "rooms", "label": "عدد الغرف"},
-        {"key": "view", "label": "الإطلالة"},
-        {"key": "meals", "label": "الوجبات"},
+        {"key": "city", "label": "المدينة", "type": "combo", "options": _Q_CITIES},
+        {"key": "nights", "label": "الليالي", "type": "combo", "options": _Q_NIGHTS},
+        {"key": "hotel", "label": "الفندق", "type": "combo", "options": _Q_HOTELS},
+        {"key": "room", "label": "نوع الغرفة", "type": "combo",
+         "options": _Q_ROOM_TYPES},
+        {"key": "rooms", "label": "عدد الغرف", "type": "combo", "options": _Q_NUM},
+        {"key": "view", "label": "الإطلالة", "type": "select",
+         "options": list(QUOTE_VIEWS)},
+        {"key": "meals", "label": "الوجبات", "type": "combo", "options": _Q_MEALS},
         {"key": "cin", "label": "الدخول", "type": "date"},
         {"key": "cout", "label": "المغادرة", "type": "date"}]},
     {"legend": "الطيران", "fields": [
-        {"key": "flight_class", "label": "درجة الطيران"}]},
+        {"key": "flight_class", "label": "درجة الطيران", "type": "combo",
+         "options": _Q_FLIGHT_CLASS}]},
     {"legend": "جدول الطيران", "table": "flights", "columns": [
         {"key": "day", "label": "التاريخ", "type": "date"},
-        {"key": "carrier", "label": "الناقل"},
+        {"key": "carrier", "label": "الناقل", "type": "combo",
+         "options": _Q_CARRIERS},
         {"key": "depart", "label": "الإقلاع"},
-        {"key": "from", "label": "من"},
+        {"key": "from", "label": "من", "type": "combo", "options": _Q_AIRPORTS},
         {"key": "arrive", "label": "الوصول"},
-        {"key": "to", "label": "إلى"}]},
+        {"key": "to", "label": "إلى", "type": "combo", "options": _Q_AIRPORTS}]},
     {"legend": "المواصلات", "fields": [
-        {"key": "car_type", "label": "نوع السيارة"},
-        {"key": "car_model", "label": "الموديل"},
-        {"key": "car_count", "label": "العدد"}]},
+        {"key": "car_type", "label": "نوع السيارة", "type": "combo",
+         "options": _Q_CARS},
+        {"key": "car_model", "label": "الموديل", "type": "combo",
+         "options": ["2024", "2025", "2026", "حديث"]},
+        {"key": "car_count", "label": "العدد", "type": "combo", "options": _Q_NUM}]},
     {"legend": "بنود التنقّل", "table": "transport_lines", "columns": [
         {"key": "date", "label": "التاريخ", "type": "date"},
-        {"key": "from", "label": "من"},
-        {"key": "to", "label": "إلى"}]},
+        {"key": "from", "label": "من", "type": "combo", "options": _Q_TRANSFER},
+        {"key": "to", "label": "إلى", "type": "combo", "options": _Q_TRANSFER}]},
     {"legend": "قطار الحرمين (اختياري)", "table": "trains", "columns": [
-        {"key": "tickets", "label": "التذاكر"},
-        {"key": "class", "label": "الدرجة"},
-        {"key": "from", "label": "من"},
-        {"key": "to", "label": "إلى"},
+        {"key": "tickets", "label": "التذاكر", "type": "combo", "options": _Q_NUM},
+        {"key": "class", "label": "الدرجة", "type": "combo",
+         "options": ["السياحية", "الأعمال"]},
+        {"key": "from", "label": "من", "type": "combo", "options": _Q_TRAIN_STN},
+        {"key": "to", "label": "إلى", "type": "combo", "options": _Q_TRAIN_STN},
         {"key": "date", "label": "التاريخ", "type": "date"},
         {"key": "depart", "label": "الإقلاع"},
         {"key": "arrive", "label": "الوصول"}]},
     {"legend": "التأشيرات", "fields": [
-        {"key": "visa_count", "label": "العدد"},
-        {"key": "visa_type", "label": "النوع"}]},
+        {"key": "visa_count", "label": "العدد", "type": "combo", "options": _Q_NUM},
+        {"key": "visa_type", "label": "النوع", "type": "combo", "options": _Q_VISA}]},
     {"legend": "التسعير", "table": "pricing", "columns": [
-        {"key": "person", "label": "نوع الشخص"},
-        {"key": "room", "label": "نوع الغرفة"},
-        {"key": "count", "label": "العدد"},
+        {"key": "person", "label": "نوع الشخص", "type": "combo",
+         "options": _Q_PERSON},
+        {"key": "room", "label": "نوع الغرفة", "type": "combo",
+         "options": _Q_ROOM_TYPES},
+        {"key": "count", "label": "العدد", "type": "combo", "options": _Q_NUM},
         {"key": "price", "label": "سعر الفرد"}]},
     {"legend": "الصلاحية والملاحظات والختام", "fields": [
-        {"key": "currency", "label": "العملة"},
+        {"key": "currency", "label": "العملة", "type": "select",
+         "options": _Q_CURRENCY},
         {"key": "validity", "label": "صلاحية العرض حتى", "type": "date"},
-        {"key": "validity_time", "label": "وقت انتهاء الصلاحية"},
+        {"key": "validity_time", "label": "وقت انتهاء الصلاحية", "type": "combo",
+         "options": _Q_TIMES},
         {"key": "note", "label": "ملاحظة", "type": "area"},
         {"key": "closing", "label": "عبارة الختام", "type": "area"}]},
     {"legend": "إظهار / إخفاء بنود العرض", "fields": [
@@ -4413,7 +4457,8 @@ UMRAH_QUOTATION_SCHEMA = [
         {"key": "show_transport", "label": "إظهار المواصلات", "type": "bool"},
         {"key": "show_costs", "label": "إظهار التكلفة", "type": "bool"}]},
     {"legend": "التوقيع (المدير العام)", "fields": [
-        {"key": "gm_title", "label": "الصفة"},
+        {"key": "gm_title", "label": "الصفة", "type": "combo",
+         "options": ["المدير العام", "المدير التنفيذي", "مدير المبيعات"]},
         {"key": "gm_name", "label": "الاسم"},
         {"key": "gm_phone", "label": "الهاتف"}]},
 ]
