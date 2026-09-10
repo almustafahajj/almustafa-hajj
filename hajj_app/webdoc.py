@@ -73,26 +73,39 @@ def serve_doc_editor(data: dict, schema: list, doc_title: str = "مستند",
 
 _BACK_LINK = ('<a href="__URL__" style="color:#fff;background:#0003;'
               'padding:7px 14px;border-radius:9px;text-decoration:none;'
-              'font-weight:700">↩ رجوع</a>')
+              'font-weight:700">__BACKTXT__</a>')
 
 
 def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
               submit_action: str | None = None,
-              back_url: str | None = None) -> str:
+              back_url: str | None = None, lang: str = "ar",
+              lang_reload: str | None = None) -> str:
+    en = str(lang) == "en"
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     sch = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
-    back = _BACK_LINK.replace("__URL__", back_url) if back_url else ""
+    back_txt = "↩ Back" if en else "↩ رجوع"
+    back = (_BACK_LINK.replace("__URL__", back_url).replace("__BACKTXT__",
+            back_txt) if back_url else "")
     return (_TEMPLATE.replace("__DATA__", payload)
             .replace("__SCHEMA__", sch)
             .replace("__TITLE__", doc_title)
             .replace("__ICON__", header_icon)
+            .replace("__LANG__", "en" if en else "ar")
+            .replace("__DIR__", "ltr" if en else "rtl")
+            .replace("__SAVE__", "💾 Save & preview PDF" if en
+                     else "💾 حفظ ومعاينة PDF")
+            .replace("__HINT__", "Fill freely — Arabic & English supported."
+                     if en else "اكتب بحرّية — العربية تعمل هنا تماماً.")
+            .replace("__NUMLBL__", "No." if en else "الرقم")
+            .replace("__LANG_RELOAD__",
+                     json.dumps(lang_reload or "", ensure_ascii=False))
             .replace("__SUBMIT_ACTION__",
                      submit_action or _SUBMIT_ACTION_DESKTOP)
             .replace("__BACK__", back))
 
 
 _TEMPLATE = r"""<!doctype html>
-<html lang="ar" dir="rtl"><head>
+<html lang="__LANG__" dir="__DIR__"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
@@ -147,8 +160,8 @@ _TEMPLATE = r"""<!doctype html>
 </header>
 <div class="wrap" id="form"></div>
 <footer>
-  <button class="btn save" onclick="submitForm()">💾 حفظ ومعاينة PDF</button>
-  <small class="hint">اكتب بحرّية — العربية تعمل هنا بشكل صحيح تماماً.</small>
+  <button class="btn save" onclick="submitForm()">__SAVE__</button>
+  <small class="hint">__HINT__</small>
 </footer>
 <script>
 const D = __DATA__;
@@ -248,7 +261,7 @@ function tableSection(sec){
 }
 
 const root=document.getElementById('form');
-document.getElementById('hnum').textContent = D.number ? ('الرقم: '+D.number) : '';
+document.getElementById('hnum').textContent = D.number ? ('__NUMLBL__: '+D.number) : '';
 const _tables=[];
 SCHEMA.forEach(sec=>{
   const kids=[];
@@ -260,22 +273,15 @@ SCHEMA.forEach(sec=>{
   root.append(el('fieldset',{},[el('legend',{},txt(sec.legend)), ...kids]));
 });
 
-// تبديل العبارات الافتراضية عند تغيير لغة العرض (ar⇄en) دون المساس بما عدّله المستخدم
+// تغيير لغة العرض يعيد بناء الطلب كاملاً باللغة المختارة (تسميات + قوائم + قيَم)
 (function(){
-  const map={};
-  SCHEMA.forEach(sec=>(sec.fields||[]).forEach(f=>{ if(f.i18n) map[f.key]=f.i18n; }));
-  const langEl=document.getElementById('f_lang');
-  if(!langEl || !Object.keys(map).length) return;
-  let cur = (D.lang==='en')?1:0;
-  langEl.addEventListener('change',()=>{
-    const nl=(langEl.value==='en')?1:0;
-    if(nl===cur) return;
-    for(const k in map){
-      const e=document.getElementById('f_'+k); if(!e) continue;
-      const v=String(e.value||'').trim();
-      if(v==='' || v===String(map[k][cur]).trim()) e.value=map[k][nl];
-    }
-    cur=nl;
+  const RELOAD = __LANG_RELOAD__;
+  const langEl = document.getElementById('f_lang');
+  if(!langEl || !RELOAD) return;
+  langEl.addEventListener('change', ()=>{
+    const u = RELOAD + (RELOAD.indexOf('?')>=0?'&':'?') + 'lang=' +
+              encodeURIComponent(langEl.value);
+    window.location.href = u;
   });
 })();
 

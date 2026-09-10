@@ -1319,13 +1319,16 @@ def quote_new():
         storage.save_settings(settings)
     except Exception:
         pass
+    lang = "en" if request.args.get("lang") == "en" else "ar"
     co = settings.get("company") if isinstance(settings, dict) else None
     data = pdf_io.build_quotation_data(PassportData(), trip=None, company=co,
-                                       number=number)
+                                       number=number, lang=lang)
+    title = "Umrah Trip Quotation" if lang == "en" else "عرض سعر رحلة عمرة"
     return webdoc._doc_html(
-        data, pdf_io.UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
+        data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
-        back_url=url_for("offers"))
+        back_url=url_for("offers"), lang=lang,
+        lang_reload=url_for("quote_new"))
 
 
 @app.get("/quotes/<code>/<num>")
@@ -1338,10 +1341,18 @@ def quote_edit(code, num):
               if str(x.get("number")) == str(num)), None)
     if q is None:
         return redirect(url_for("quotes"))
+    data = dict(q)
+    lang = request.args.get("lang")
+    if lang in ("ar", "en"):                       # تبديل لغة النموذج عند الطلب
+        data["lang"] = lang
+    else:
+        lang = data.get("lang") or "ar"
+    title = "Umrah Trip Quotation" if lang == "en" else "عرض سعر رحلة عمرة"
     return webdoc._doc_html(
-        dict(q), pdf_io.UMRAH_QUOTATION_SCHEMA, "عرض سعر رحلة عمرة", "💲",
+        data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
-        back_url=url_for("quotes"))
+        back_url=url_for("quotes"), lang=lang,
+        lang_reload=url_for("quote_edit", code=code, num=num))
 
 
 @app.post("/quotes/pdf")
