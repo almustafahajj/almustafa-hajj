@@ -4003,6 +4003,18 @@ QUOTE_HOTELS = ("جميرا مكة جبل عمر", "فيرمونت مكة", "ه�
 QUOTE_GREETING = "السلام عليكم ورحمة الله وبركاته،"
 QUOTE_CLOSING = ("آملين أن تنال برامجنا رضاكم وكريم استحسانكم، وبانتظار "
                  "ردّكم الكريم.")
+QUOTE_TITLE_DEFAULT = "عرض سعر رحلة عمرة"
+_QUOTE_CLOSING_EN = ("We hope our programs meet your satisfaction; "
+                     "awaiting your kind reply.")
+# أزواج العبارات الافتراضية (عربي، إنجليزي) — تُبدَّل تلقائياً حسب لغة العرض
+_QUOTE_DEF_I18N = {
+    "title": (QUOTE_TITLE_DEFAULT, "Umrah Trip Quotation"),
+    "greeting": (QUOTE_GREETING, "Greetings,"),
+    "closing": (QUOTE_CLOSING, _QUOTE_CLOSING_EN),
+    "currency": ("درهم", "AED"),
+}
+_QUOTE_ADDR_TITLE_I18N = {"السيد": "Mr.", "السيدة": "Mrs.", "السادة": "Messrs.",
+                          "الآنسة": "Ms.", "الأخ": "Br.", "الأخت": "Sr."}
 # بنود مختصرة تُذيَّل بها عروض الأسعار (ثابتة، تُعرض بلغة العرض)
 QUOTE_TERMS = (
     "الأسعار قابلة للتغيّر حسب توفّر الغرف والمقاعد وقت تأكيد الحجز.",
@@ -4375,9 +4387,11 @@ UMRAH_QUOTATION_SCHEMA = [
         {"key": "lang", "label": "لغة العرض", "type": "select",
          "options": ["ar", "en"]},
         {"key": "title", "label": "عنوان العرض", "type": "combo",
+         "i18n": [QUOTE_TITLE_DEFAULT, "Umrah Trip Quotation"],
          "options": ["عرض سعر رحلة عمرة", "عرض سعر برنامج عمرة",
                      "عرض سعر برنامج حج", "عرض سعر إقامة فندقية"]},
         {"key": "greeting", "label": "عبارة التحية", "type": "combo",
+         "i18n": [QUOTE_GREETING, "Greetings,"],
          "options": ["السلام عليكم ورحمة الله وبركاته",
                      "السلام عليكم ورحمة الله وبركاته، وبعد:",
                      "تحية طيبة وبعد،"]},
@@ -4450,7 +4464,8 @@ UMRAH_QUOTATION_SCHEMA = [
         {"key": "validity_time", "label": "وقت انتهاء الصلاحية", "type": "combo",
          "options": _Q_TIMES},
         {"key": "note", "label": "ملاحظة", "type": "area"},
-        {"key": "closing", "label": "عبارة الختام", "type": "area"}]},
+        {"key": "closing", "label": "عبارة الختام", "type": "area",
+         "i18n": [QUOTE_CLOSING, _QUOTE_CLOSING_EN]}]},
     {"legend": "إظهار / إخفاء بنود العرض", "fields": [
         {"key": "show_stays", "label": "إظهار الإقامة", "type": "bool"},
         {"key": "show_flights", "label": "إظهار الطيران", "type": "bool"},
@@ -4490,6 +4505,14 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
     def rev(seq):
         return list(seq) if L else list(reversed(seq))
+
+    if L:                          # الإنجليزية: بدّل العبارات الافتراضية غير المعدَّلة
+        for _k, (_a, _e) in _QUOTE_DEF_I18N.items():
+            if str(data.get(_k, "") or "").strip() == str(_a).strip():
+                data[_k] = _e
+        _at = str(data.get("addressed_title", "") or "").strip()
+        if _at in _QUOTE_ADDR_TITLE_I18N:
+            data["addressed_title"] = _QUOTE_ADDR_TITLE_I18N[_at]
 
     co = company_info(company)
     doc = SimpleDocTemplate(

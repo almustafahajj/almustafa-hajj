@@ -260,6 +260,25 @@ SCHEMA.forEach(sec=>{
   root.append(el('fieldset',{},[el('legend',{},txt(sec.legend)), ...kids]));
 });
 
+// تبديل العبارات الافتراضية عند تغيير لغة العرض (ar⇄en) دون المساس بما عدّله المستخدم
+(function(){
+  const map={};
+  SCHEMA.forEach(sec=>(sec.fields||[]).forEach(f=>{ if(f.i18n) map[f.key]=f.i18n; }));
+  const langEl=document.getElementById('f_lang');
+  if(!langEl || !Object.keys(map).length) return;
+  let cur = (D.lang==='en')?1:0;
+  langEl.addEventListener('change',()=>{
+    const nl=(langEl.value==='en')?1:0;
+    if(nl===cur) return;
+    for(const k in map){
+      const e=document.getElementById('f_'+k); if(!e) continue;
+      const v=String(e.value||'').trim();
+      if(v==='' || v===String(map[k][cur]).trim()) e.value=map[k][nl];
+    }
+    cur=nl;
+  });
+})();
+
 function submitForm(){
   const out = Object.assign({}, D);
   SCHEMA.forEach(sec=>{
