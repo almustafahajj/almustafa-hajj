@@ -3984,7 +3984,8 @@ QUOTE_NIGHTS = tuple(str(i) for i in range(1, 11))
 QUOTE_ROOM_TYPES = ("مفرد", "ثنائي", "ثلاثي", "رباعي", "جناح غرفة وصالة",
                     "جناح غرفتين وصالة", "جناح 3 غرف وصالة", "جناح 4 غرف وصالة")
 QUOTE_ROOM_COUNTS = tuple(str(i) for i in range(1, 11))
-QUOTE_VIEWS = ("غير مطلّة", "مطلّة مدينة", "مطلّة حرم", "مطلّة كعبة")
+QUOTE_VIEWS = ("غير مطلّة", "مطلّة مدينة", "مطلّة حرم", "مطلّة جزئية حرم",
+               "مطلّة كعبة", "مطلّة جزئية كعبة")
 QUOTE_MEALS = ("إفطار", "غداء", "عشاء", "وجبات كاملة", "غداء وعشاء")
 QUOTE_FLIGHT_CLASSES = ("سياحية", "رجال أعمال", "درجة أولى")
 QUOTE_CARRIERS = ("السعودية", "الاتحاد", "الإمارات", "فلاي دبي", "فلاي ناس",
@@ -4367,62 +4368,82 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
         return list(e_list) if en else list(a_list)
 
     NUM = [str(i) for i in range(1, 11)]
-    NIGHTS = [str(i) for i in range(1, 15)]
+    NIGHTS = [str(i) for i in range(1, 11)]
     cities = O(["مكة المكرمة", "المدينة المنورة", "جدة"],
                ["Makkah", "Madinah", "Jeddah"])
-    rooms = O(["مفردة", "ثنائية", "ثلاثية", "رباعية", "خماسية", "جناح"],
-              ["Single", "Double", "Triple", "Quad", "Quint", "Suite"])
+    rooms = O(["مفرد", "ثنائي", "ثلاثي", "رباعي", "جناح غرفة وصالة",
+               "جناح غرفتين وصالة"],
+              ["Single", "Double", "Triple", "Quad", "One-Bedroom Suite",
+               "Two-Bedroom Suite"])
     meals = O(["بدون", "إفطار", "إفطار وعشاء", "نصف إقامة", "إقامة كاملة"],
               ["None", "Breakfast", "Breakfast & Dinner", "Half Board",
                "Full Board"])
-    fclass = O(["السياحية", "الاقتصادية المميزة", "رجال الأعمال", "الأولى"],
-               ["Economy", "Premium Economy", "Business", "First"])
+    fclass = O(["سياحية", "رجال أعمال", "درجة أولى"],
+               ["Economy", "Business", "First"])
     carriers = O(["طيران الإمارات", "الاتحاد للطيران", "الخطوط السعودية",
                   "فلاي دبي", "العربية للطيران", "الخطوط القطرية", "طيران ناس",
                   "طيران أديل"],
                  ["Emirates", "Etihad Airways", "Saudia", "flydubai",
                   "Air Arabia", "Qatar Airways", "flynas", "flyadeal"])
     airports = O(["دبي (DXB)", "أبوظبي (AUH)", "الشارقة (SHJ)", "جدة (JED)",
-                  "المدينة (MED)", "الرياض (RUH)"],
+                  "المدينة (MED)", "الطائف (TIF)", "الرياض (RUH)"],
                  ["Dubai (DXB)", "Abu Dhabi (AUH)", "Sharjah (SHJ)",
-                  "Jeddah (JED)", "Madinah (MED)", "Riyadh (RUH)"])
-    hotels = O(["كونراد جبل عمر", "فيرمونت مكة (برج الساعة)",
-                "دار التوحيد انتركونتيننتال", "هيلتون مكة", "بولمان زمزم",
-                "العنوان جبل عمر", "دار الإيمان انتركونتيننتال",
-                "أنوار المدينة موفنبيك", "ميلينيوم المدينة",
-                "دار الهجرة انتركونتيننتال"],
-               ["Conrad Jabal Omar", "Fairmont Makkah (Clock Tower)",
-                "Dar Al Tawhid InterContinental", "Hilton Makkah",
-                "Pullman ZamZam", "Address Jabal Omar",
-                "Dar Al Eiman InterContinental", "Anwar Al Madinah Mövenpick",
-                "Millennium Madinah", "Dar Al Hijra InterContinental"])
-    cars = O(["سيارة صالون", "جيب GMC", "فان (هايس)", "باص ٢٠ راكب",
-              "باص ٣٠ راكب", "باص ٤٥ راكب", "باص ٥٠ راكب"],
-             ["Sedan", "GMC", "Van (Hiace)", "20-seat bus", "30-seat bus",
-              "45-seat bus", "50-seat bus"])
+                  "Jeddah (JED)", "Madinah (MED)", "Taif (TIF)",
+                  "Riyadh (RUH)"])
+    # جميع فنادق الخمس نجوم في مكة والمدينة (قابلة للكتابة لإضافة غيرها)
+    hotels = O(["فيرمونت مكة (برج الساعة)", "رافلز مكة بالاس", "سويس أوتيل مكة",
+                "سويس أوتيل المقام مكة", "بولمان زمزم مكة", "كونراد مكة",
+                "هيلتون مكة", "دبل تري باي هيلتون جبل عمر", "حياة ريجنسي مكة",
+                "العنوان جبل عمر", "جميرا جبل عمر مكة", "ماريوت جبل عمر مكة",
+                "دار التوحيد انتركونتيننتال", "لو ميريديان مكة", "أنجم مكة",
+                "المروة رياحين روتانا", "مكارم أجياد مكة", "إيلاف كندة مكة",
+                "فوكو مكة", "ميلينيوم مكة النسيم",
+                "أنوار المدينة موفنبيك", "الأوبروي المدينة", "دار التقوى المدينة",
+                "بولمان زمزم المدينة", "دار الإيمان انتركونتيننتال",
+                "دار الهجرة انتركونتيننتال", "كراون بلازا المدينة",
+                "هيلتون المدينة", "ميلينيوم العقيق المدينة", "ميلينيوم طيبة",
+                "فرونتيل الحارثية", "شذا المدينة", "إيلاف طيبة المدينة",
+                "ساجا المدينة"],
+               ["Fairmont Makkah (Clock Tower)", "Raffles Makkah Palace",
+                "Swissôtel Makkah", "Swissôtel Al Maqam Makkah",
+                "Pullman ZamZam Makkah", "Conrad Makkah", "Hilton Makkah",
+                "DoubleTree by Hilton Jabal Omar", "Hyatt Regency Makkah",
+                "Address Jabal Omar", "Jumeirah Jabal Omar Makkah",
+                "Marriott Jabal Omar Makkah", "Dar Al Tawhid InterContinental",
+                "Le Méridien Makkah", "Anjum Makkah", "Al Marwa Rayhaan by Rotana",
+                "Makarem Ajyad Makkah", "Elaf Kinda Makkah", "voco Makkah",
+                "Millennium Makkah Al Naseem", "Anwar Al Madinah Mövenpick",
+                "The Oberoi Madinah", "Dar Al Taqwa Madinah",
+                "Pullman ZamZam Madinah", "InterContinental Dar Al Iman",
+                "Dar Al Hijrah InterContinental", "Crowne Plaza Madinah",
+                "Hilton Madinah", "Millennium Al Aqeeq Madinah",
+                "Millennium Taiba", "Frontel Al Harithia", "Shaza Al Madinah",
+                "Elaf Taiba Madinah", "Saja Al Madinah"])
+    cars = O(["GMC", "FORD", "MERCEDES", "BMW"],
+             ["GMC", "FORD", "MERCEDES", "BMW"])
     person = O(["بالغ", "طفل", "رضيع", "مفرد"],
                ["Adult", "Child", "Infant", "Single"])
-    guest_t = O(["بالغ", "طفل", "رضيع"], ["Adult", "Child", "Infant"])
-    visa = O(["عمرة", "سياحة", "زيارة", "حج", "مرور"],
-             ["Umrah", "Tourist", "Visit", "Hajj", "Transit"])
+    guest_t = O(["كبير", "طفل", "رضيع"], ["Adult", "Child", "Infant"])
+    visa = O(["سياحية", "عمرة"], ["Tourist", "Umrah"])
     currency = O(["درهم", "ريال سعودي", "دولار", "ريال", "يورو"],
                  ["AED", "SAR", "USD", "QAR", "EUR"])
-    transfer = O(["مطار جدة", "مطار المدينة", "فندق مكة", "فندق المدينة",
-                  "الحرم المكي", "الحرم النبوي", "محطة قطار الحرمين"],
-                 ["Jeddah Airport", "Madinah Airport", "Makkah Hotel",
-                  "Madinah Hotel", "The Grand Mosque", "The Prophet's Mosque",
-                  "Haramain Train Station"])
+    transfer = O(["مطار جدة", "مطار المدينة", "مطار الطائف", "الفندق في مكة",
+                  "الفندق في المدينة", "محطة قطار مكة", "محطة قطار المدينة"],
+                 ["Jeddah Airport", "Madinah Airport", "Taif Airport",
+                  "Makkah Hotel", "Madinah Hotel", "Makkah Train Station",
+                  "Madinah Train Station"])
     train_stn = O(["مكة المكرمة", "المدينة المنورة", "جدة", "الرياض"],
                   ["Makkah", "Madinah", "Jeddah", "Riyadh"])
     times = O(["12:00 ظهراً", "03:00 عصراً", "06:00 مساءً", "11:59 مساءً"],
               ["12:00 PM", "03:00 PM", "06:00 PM", "11:59 PM"])
     views = O(list(QUOTE_VIEWS),
-              ["No View", "Madinah View", "Haram View", "Kaaba View"])
+              ["No View", "Madinah View", "Haram View", "Partial Haram View",
+               "Kaaba View", "Partial Kaaba View"])
     addr_t = O(["السيد", "السيدة", "السادة", "الأخ", "الأخت"],
                ["Mr.", "Mrs.", "Messrs.", "Br.", "Sr."])
     train_cls = O(["السياحية", "الأعمال"], ["Economy", "Business"])
-    car_model = O(["2024", "2025", "2026", "حديث"],
-                  ["2024", "2025", "2026", "Latest"])
+    car_model = O(["2025", "2026", "2027", "2028"],
+                  ["2025", "2026", "2027", "2028"])
     gm_title = O(["المدير العام", "المدير التنفيذي", "مدير المبيعات"],
                  ["General Manager", "CEO", "Sales Manager"])
     title_opts = O(["عرض سعر رحلة عمرة", "عرض سعر برنامج عمرة",
