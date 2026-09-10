@@ -1324,11 +1324,12 @@ def quote_new():
     data = pdf_io.build_quotation_data(PassportData(), trip=None, company=co,
                                        number=number, lang=lang)
     title = "Umrah Trip Quotation" if lang == "en" else "عرض سعر رحلة عمرة"
-    return webdoc._doc_html(
+    html = webdoc._doc_html(
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
         back_url=url_for("offers"), lang=lang,
         lang_reload=url_for("quote_new"))
+    return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
 @app.get("/quotes/<code>/<num>")
@@ -1348,11 +1349,12 @@ def quote_edit(code, num):
     else:
         lang = data.get("lang") or "ar"
     title = "Umrah Trip Quotation" if lang == "en" else "عرض سعر رحلة عمرة"
-    return webdoc._doc_html(
+    html = webdoc._doc_html(
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
         back_url=url_for("quotes"), lang=lang,
         lang_reload=url_for("quote_edit", code=code, num=num))
+    return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
 @app.post("/quotes/pdf")

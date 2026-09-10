@@ -4051,12 +4051,15 @@ _QTR = {
               "جناح غرفتين وصالة": "2-BR Suite",
               "جناح 3 غرف وصالة": "3-BR Suite",
               "جناح 4 غرف وصالة": "4-BR Suite"},
-    "views": {"غير مطلّة": "No View", "مطلّة مدينة": "City View",
-              "مطلّة كعبة": "Kaaba View"},
+    "views": {"غير مطلّة": "No View", "مطلّة مدينة": "Madinah View",
+              "مطلّة حرم": "Haram View", "مطلّة جزئية حرم": "Partial Haram View",
+              "مطلّة كعبة": "Kaaba View",
+              "مطلّة جزئية كعبة": "Partial Kaaba View"},
     "meals": {"إفطار": "Breakfast", "غداء": "Lunch", "عشاء": "Dinner",
               "وجبات كاملة": "Full Board", "غداء وعشاء": "Lunch & Dinner"},
     "persons": {"كبار": "Adults", "صغار": "Minors", "أطفال": "Children",
-                "رضّع": "Infants"},
+                "رضّع": "Infants", "كبير": "Adult", "طفل": "Child",
+                "رضيع": "Infant", "مفرد": "Single", "بالغ": "Adult"},
     "classes": {"سياحية": "Economy", "رجال أعمال": "Business",
                 "درجة أولى": "First"},
     "carriers": {"السعودية": "Saudia", "الإتحاد": "Etihad",
@@ -4070,6 +4073,8 @@ _QTR = {
                  "الدمام": "Dammam", "مكة": "Makkah"},
     "locations": {"مطار جدة": "Jeddah Airport", "مطار المدينة": "Madinah Airport",
                   "فندق مكة": "Makkah Hotel", "فندق المدينة": "Madinah Hotel",
+                  "الفندق في مكة": "Makkah Hotel",
+                  "الفندق في المدينة": "Madinah Hotel",
                   "محطة قطار مكة": "Makkah Train Station",
                   "محطة قطار المدينة": "Madinah Train Station",
                   "مطار الرياض": "Riyadh Airport", "مطار الطائف": "Taif Airport"},
@@ -4293,9 +4298,9 @@ def build_quotation_data(rec, *, trip=None, company=None, number: str = "",
                      "رضّع": _tprice("price_infant")}
     _def_price = (price_by_type.get("كبار") or room_price.get("ثنائي")
                   or _tprice("price_double"))
-    guests_default = [["2", _qtr("كبار", "persons", en)]]
+    guests_default = [["2", _qtr("كبير", "persons", en)]]
     # كل صفّ تسعير: [نوع الشخص، نوع الغرفة، العدد، سعر الفرد]
-    pricing = [[_qtr("كبار", "persons", en), room, "2", _def_price]]
+    pricing = [[_qtr("كبير", "persons", en), room, "2", _def_price]]
 
     return {
         "lang": lang,
@@ -4421,7 +4426,7 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
                 "Elaf Taiba Madinah", "Saja Al Madinah"])
     cars = O(["GMC", "FORD", "MERCEDES", "BMW"],
              ["GMC", "FORD", "MERCEDES", "BMW"])
-    person = O(["بالغ", "طفل", "رضيع", "مفرد"],
+    person = O(["كبير", "طفل", "رضيع", "مفرد"],
                ["Adult", "Child", "Infant", "Single"])
     guest_t = O(["كبير", "طفل", "رضيع"], ["Adult", "Child", "Infant"])
     visa = O(["سياحية", "عمرة"], ["Tourist", "Umrah"])
