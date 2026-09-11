@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-11 · عرض السعر: قوائم <select> حقيقية في كل الصفوف"
+_BUILD_TAG = "2026-09-11b · اسم حفظ PDF = الرقم المرجعي"
 
 
 @app.get("/version")
@@ -1385,10 +1385,12 @@ def quote_pdf():
     except Exception:
         pass
     co = settings.get("company") if isinstance(settings, dict) else None
+    number = str(data.get("number", "") or "").strip()
+    safe = re.sub(r'[\\/:*?"<>|]+', "-", number).strip() or "عرض-سعر"
     return _pdf_response(
         lambda p: pdf_io.export_umrah_quotation_pdf(
             PassportData(), p, trip=None, company=co, data=data),
-        f"عرض-سعر-{data.get('number','') or ''}.pdf")
+        f"{safe}.pdf")                                  # اسم الحفظ = الرقم المرجعي
 
 
 @app.get("/quotes")
