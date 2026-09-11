@@ -154,7 +154,7 @@ _TEMPLATE = r"""<!doctype html>
 <header>
   <h1>__ICON__ __TITLE__</h1>
   <div style="display:flex;align-items:center;gap:14px">
-    <span class="num" style="opacity:.7">🆕 2026-09-11</span>
+    <span class="num" style="opacity:.7">🆕 2026-09-11c</span>
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
@@ -337,3 +337,18 @@ def web_submit_action(save_url: str) -> str:
         "a.remove();}"
         "setTimeout(function(){URL.revokeObjectURL(u);},60000);})"
         ".catch(e=>alert('تعذّر إنشاء PDF: '+e));")
+
+
+def web_submit_action_url(save_url: str) -> str:
+    """حفظ البيانات ثم فتح الـ PDF من **رابط حقيقي** يعيده الخادم (JSON: pdf).
+
+    هكذا يأخذ المتصفّح اسم الحفظ من الخادم (الرقم المرجعي) بدل معرّف blob العشوائي.
+    """
+    return (
+        "fetch('" + save_url + "',{method:'POST',"
+        "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
+        ".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);"
+        "return r.json();})"
+        ".then(function(j){if(j&&j.pdf){window.open(j.pdf,'_blank');}"
+        "else{throw new Error('no pdf');}})"
+        ".catch(function(e){alert('تعذّر الحفظ: '+e);});")

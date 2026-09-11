@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-11b · اسم حفظ PDF = الرقم المرجعي"
+_BUILD_TAG = "2026-09-11c · اسم حفظ PDF من رابط حقيقي = الرقم المرجعي"
 
 
 @app.get("/version")
@@ -1337,7 +1337,7 @@ def quote_new():
     title = "Umrah Trip Quotation" if lang == "en" else "عرض سعر رحلة عمرة"
     html = webdoc._doc_html(
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
-        submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
+        submit_action=webdoc.web_submit_action_url(url_for("quote_pdf")),
         back_url=url_for("offers"), lang=lang,
         lang_reload=url_for("quote_new"))
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
@@ -1362,7 +1362,7 @@ def quote_edit(code, num):
     title = "Umrah Trip Quotation" if lang == "en" else "عرض سعر رحلة عمرة"
     html = webdoc._doc_html(
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
-        submit_action=webdoc.web_submit_action(url_for("quote_pdf")),
+        submit_action=webdoc.web_submit_action_url(url_for("quote_pdf")),
         back_url=url_for("quotes"), lang=lang,
         lang_reload=url_for("quote_edit", code=code, num=num))
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
@@ -1374,23 +1374,41 @@ def quote_pdf():
         return ("", 401)
     if not _sess().can_edit:
         return ("forbidden", 403)
-    from hajj_app import umrah, pdf_io
-    from hajj_app.mrz import PassportData
+    from hajj_app import umrah
     data = request.get_json(force=True, silent=True) or {}
     settings = storage.load_settings()
+    code = str(data.get("code") or "").strip()
+    number = str(data.get("number", "") or "").strip()
     try:
-        umrah.save_quote(settings, data.get("code") or "", data)
+        umrah.save_quote(settings, code, data)
         storage.save_settings(settings)
-        _audit("حفظ عرض سعر", str(data.get("number", "") or ""))
+        _audit("حفظ عرض سعر", number)
     except Exception:
         pass
+    # يُفتح الـ PDF من رابط حقيقي ليكون اسم الحفظ = الرقم المرجعي (لا معرّف blob)
+    return {"pdf": url_for("quote_pdf_get", code=(code or "_manual"),
+                           num=(number or "0"))}
+
+
+@app.get("/quotes/<code>/<num>/pdf")
+def quote_pdf_get(code, num):
+    """يعيد PDF عرض سعر محفوظ inline باسم حفظ = الرقم المرجعي للعرض."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, pdf_io
+    from hajj_app.mrz import PassportData
+    settings = storage.load_settings()
+    q = next((x for x in umrah.load_quotes(settings, code)
+              if str(x.get("number")) == str(num)), None)
+    if q is None:
+        return ("العرض غير موجود", 404)
     co = settings.get("company") if isinstance(settings, dict) else None
-    number = str(data.get("number", "") or "").strip()
-    safe = re.sub(r'[\\/:*?"<>|]+', "-", number).strip() or "عرض-سعر"
-    return _pdf_response(
-        lambda p: pdf_io.export_umrah_quotation_pdf(
-            PassportData(), p, trip=None, company=co, data=data),
-        f"{safe}.pdf")                                  # اسم الحفظ = الرقم المرجعي
+    safe = re.sub(r'[\\/:*?"<>|]+', "-", str(num)).strip() or "عرض-سعر"
+    p = _tmp(".pdf")
+    pdf_io.export_umrah_quotation_pdf(PassportData(), p, trip=None,
+                                      company=co, data=dict(q))
+    return send_file(p, mimetype="application/pdf", as_attachment=False,
+                     download_name=f"{safe}.pdf")
 
 
 @app.get("/quotes")
