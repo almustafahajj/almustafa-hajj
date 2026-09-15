@@ -190,9 +190,16 @@ def ltr(text) -> str:
 
 
 def _dt(s, en: bool = False) -> str:
-    """تاريخ DD/MM/YYYY كجزيرة LTR ثابتة (أرقامه لا تُعكس في أيّ اتجاه)."""
-    d = _dmy(s)
-    return ltr(d) if d else ""
+    """تاريخ يُقرأ صحيحاً حسب اللغة:
+    - الإنجليزي: DD/MM/YYYY (يسار→يمين).
+    - العربي: يوم/شهر/سنة تُقرأ يمين→يسار — تُعرض بصرياً ‏YYYY/MM/DD‏ فيقع اليوم
+      على اليمين والسنة على اليسار. أرقام كل حقل تبقى سليمة (جزيرة LTR ثابتة)."""
+    m = _re_iso.match(str(s or "").strip())
+    if m:
+        y, mo, d = m.group(1), m.group(2), m.group(3)
+        return ltr(f"{d}/{mo}/{y}") if en else ltr(f"{y}/{mo}/{d}")
+    v = str(s or "").strip()
+    return ltr(v) if v else ""
 
 
 def _ar_para(text, style, maxw: float) -> "Paragraph":
@@ -4670,7 +4677,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
     # رقم العرض (يسار) والتاريخ (يمين) على الطرفين — التاريخ بصيغة يوم/شهر/سنة
     date_lbl = T("التاريخ", "Date")
     meta = Table([[_ar_para(ltr(number), val_l, W * 0.5 - 6),
-                   _ar_para(f"{date_lbl}: {ltr(_dmy(date_str))}", val_r,
+                   _ar_para(f"{date_lbl}: {_dt(date_str, L)}", val_r,
                             W * 0.5 - 6)]],
                  colWidths=[W * 0.5, W * 0.5])
     meta.setStyle(TableStyle([
@@ -4790,8 +4797,8 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         info_lines.append(qpara(f"{T('الضيوف', 'Guests')}: {guests_txt}",
                                 info_st, W - 24))
     if pf or pt:
-        ptxt = (f"Period: from {ltr(_dmy(pf))} to {ltr(_dmy(pt))}" if L
-                else f"الفترة: من {ltr(_dmy(pf))} إلى {ltr(_dmy(pt))}")
+        ptxt = (f"Period: from {_dt(pf, L)} to {_dt(pt, L)}" if L
+                else f"الفترة: من {_dt(pf, L)} إلى {_dt(pt, L)}")
         info_lines.append(qpara(ptxt, info_st, W - 24))
     if info_lines:
         card = Table([[info_lines]], colWidths=[W])
@@ -4821,7 +4828,11 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
 
         def _sh(iso):
             d = _pd(iso)
-            return f"{d.day:02d}/{d.month:02d}" if d else ""      # يوم/شهر
+            if not d:
+                return ""
+            # الإنجليزي يوم/شهر، والعربي شهر/يوم بصرياً ليقع اليومُ على اليمين
+            return (f"{d.day:02d}/{d.month:02d}" if L
+                    else f"{d.month:02d}/{d.day:02d}")
 
         disp = []
         for row in stays_raw:

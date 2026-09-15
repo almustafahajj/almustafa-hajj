@@ -154,7 +154,7 @@ _TEMPLATE = r"""<!doctype html>
 <header>
   <h1>__ICON__ __TITLE__</h1>
   <div style="display:flex;align-items:center;gap:14px">
-    <span class="num" style="opacity:.7">🆕 2026-09-15b</span>
+    <span class="num" style="opacity:.7">🆕 2026-09-15c</span>
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
