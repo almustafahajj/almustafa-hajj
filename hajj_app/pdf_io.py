@@ -189,6 +189,12 @@ def ltr(text) -> str:
     return f"‎{text}‎" if text else ""
 
 
+def _dt(s, en: bool = False) -> str:
+    """تاريخ DD/MM/YYYY كجزيرة LTR ثابتة (أرقامه لا تُعكس في أيّ اتجاه)."""
+    d = _dmy(s)
+    return ltr(d) if d else ""
+
+
 def _ar_para(text, style, maxw: float) -> "Paragraph":
     """فقرة عربية بلفٍّ يدوي يحافظ على ترتيب الأسطر رأسياً.
 
@@ -4832,8 +4838,9 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
             # المدى «الدخول – المغادرة» بصيغة يوم/شهر: الدخول أولاً في النصّ
             # فيظهر في جهة بداية القراءة (يمين العربي/يسار الإنجليزي)
             if cin or cout:
-                core = f"{_sh(cin)} – {_sh(cout)}"
-                rng = ltr(core) if L else core
+                a, b = _sh(cin), _sh(cout)               # a=الدخول(من) b=المغادرة(إلى)
+                # العربي يُقرأ يمين→يسار: نضع «من» أخيراً ليظهر على اليمين
+                rng = ltr(f"{a} – {b}") if L else ltr(f"{b} – {a}")
             else:
                 rng = ""
             nxt = _pd(cout)
@@ -4868,7 +4875,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 continue
             day, carrier, dep_t, frm, arr_t, to = (list(r)[:6] +
                                                    [""] * (6 - len(r)))[:6]
-            flights.append([ltr(_dmy(day)), _qtr(carrier, "carriers", L),
+            flights.append([_dt(day, L), _qtr(carrier, "carriers", L),
                             ltr(dep_t), _qtr(frm, "airports", L), ltr(arr_t),
                             _qtr(to, "airports", L)])
         story.append(data_table(fheads, [70, 70, 50, 60, 50, 60], flights))
@@ -4931,7 +4938,7 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 [str(x or "").strip() for x in list(tr)[:7]] + [""] * 7)[:7]
             trows.append([tk_n, _qtr(tc, "classes", L),
                           _qtr(tf, "airports", L), _qtr(tt, "airports", L),
-                          ltr(_dmy(tdate)), ltr(tdep), ltr(tarr)])
+                          _dt(tdate, L), ltr(tdep), ltr(tarr)])
         story.append(data_table(theads, [40, 58, 54, 54, 60, 48, 48], trows))
         story.append(Spacer(1, 8))
 

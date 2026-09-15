@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-15 · التسعير: نوع الغرفة قابل للكتابة اليدوية"
+_BUILD_TAG = "2026-09-15b · تواريخ العرض العربي من اليمين لليسار"
 
 
 @app.get("/version")
