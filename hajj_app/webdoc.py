@@ -154,7 +154,7 @@ _TEMPLATE = r"""<!doctype html>
 <header>
   <h1>__ICON__ __TITLE__</h1>
   <div style="display:flex;align-items:center;gap:14px">
-    <span class="num" style="opacity:.7">🆕 2026-09-11c</span>
+    <span class="num" style="opacity:.7">🆕 2026-09-15</span>
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
@@ -242,6 +242,25 @@ function tableSection(sec){
       } else if((c.type||'')==='combo'){
         w = el('input',{type:'text',style:'flex:1',autocomplete:'off',
           list:'dlc_'+sec.table+'_'+c.key,value:(vals[i]==null?'':vals[i])});
+      } else if((c.type||'')==='selectfree'){
+        // قائمة منسدلة قابلة للتحرير: كل الخيارات + «كتابة يدوية…»
+        var wrap=el('span',{style:'flex:1;display:flex;gap:4px'});
+        var sel=el('select',{style:'flex:1'});
+        var OTHER='__free__';
+        var inp=el('input',{type:'text',style:'flex:1',autocomplete:'off',
+          placeholder:(c.label||'')});
+        (c.options||[]).forEach(o=>sel.append(el('option',{value:o},txt(o))));
+        sel.append(el('option',{value:OTHER},txt('✎ كتابة يدوية…')));
+        var cur=(vals[i]==null?'':vals[i]);
+        if(cur && !(c.options||[]).includes(cur)){
+          sel.value=OTHER; inp.value=cur;
+        } else { sel.value=cur; inp.style.display='none'; }
+        sel.onchange=function(){ if(sel.value===OTHER){inp.style.display='';
+          inp.focus();} else {inp.style.display='none';} };
+        wrap.append(sel,inp);
+        Object.defineProperty(wrap,'value',{get:function(){
+          return sel.value===OTHER?inp.value.trim():sel.value;}});
+        w=wrap;
       } else if((c.type||'')==='date'){
         w = el('input',{type:'date',style:'flex:1',value:(vals[i]==null?'':vals[i])});
       } else {

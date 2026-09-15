@@ -4551,7 +4551,7 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
             {"key": "person", "label": L("نوع الشخص", "Person"), "type": "select",
              "options": person},
             {"key": "room", "label": L("نوع الغرفة", "Room Type"),
-             "type": "select", "options": rooms},
+             "type": "selectfree", "options": rooms},
             {"key": "count", "label": L("العدد", "Count"), "type": "select",
              "options": NUM},
             {"key": "price", "label": L("سعر الفرد", "Unit Price")}]},
