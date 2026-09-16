@@ -164,6 +164,13 @@ _TEMPLATE = r"""<!doctype html>
       <label class="row"><span>وجبات مكة (للفرد)</span>
         <input id="makkah_meals" type="number" min="0"></label>
     </div>
+    <small class="hint" style="display:block;margin-top:6px">سعر غرفة مكة/ليلة حسب النوع (اختياري — يعلو السعر العام أعلاه):</small>
+    <div class="grid">
+      <label class="row"><span>مفرد</span><input id="mk_rate_single" type="number" min="0"></label>
+      <label class="row"><span>ثنائي</span><input id="mk_rate_double" type="number" min="0"></label>
+      <label class="row"><span>ثلاثي</span><input id="mk_rate_triple" type="number" min="0"></label>
+      <label class="row"><span>رباعي</span><input id="mk_rate_quad" type="number" min="0"></label>
+    </div>
     <label class="row" style="margin-top:8px"><span>تضمين المدينة</span>
       <input id="include_madinah" type="checkbox"></label>
     <div class="grid">
@@ -175,6 +182,13 @@ _TEMPLATE = r"""<!doctype html>
         <input id="madinah_rate" type="number" min="0"></label>
       <label class="row"><span>وجبات المدينة (للفرد)</span>
         <input id="madinah_meals" type="number" min="0"></label>
+    </div>
+    <small class="hint" style="display:block;margin-top:6px">سعر غرفة المدينة/ليلة حسب النوع (اختياري — يعلو السعر العام أعلاه):</small>
+    <div class="grid">
+      <label class="row"><span>مفرد</span><input id="md_rate_single" type="number" min="0"></label>
+      <label class="row"><span>ثنائي</span><input id="md_rate_double" type="number" min="0"></label>
+      <label class="row"><span>ثلاثي</span><input id="md_rate_triple" type="number" min="0"></label>
+      <label class="row"><span>رباعي</span><input id="md_rate_quad" type="number" min="0"></label>
     </div>
   </fieldset>
 
@@ -226,10 +240,13 @@ const Q = __DATA__;
 const ROOM_TYPES = [["مفرد",1],["ثنائي",2],["ثلاثي",3],["رباعي",4],["طفل",0]];
 const PROFIT_KEYS = {"مفرد":"profit_single","ثنائي":"profit_double",
   "ثلاثي":"profit_triple","رباعي":"profit_quad","طفل":"profit_child"};
+const RATE_SUFFIX = {"مفرد":"single","ثنائي":"double","ثلاثي":"triple","رباعي":"quad"};
 const SIMPLE = ["title","currency","period_from","period_to","makkah_hotel",
   "makkah_nights","makkah_rate","makkah_meals","madinah_hotel","madinah_nights",
   "madinah_rate","madinah_meals","profit_pct","other","profit","profit_single",
-  "profit_double","profit_triple","profit_quad","profit_child"];
+  "profit_double","profit_triple","profit_quad","profit_child",
+  "mk_rate_single","mk_rate_double","mk_rate_triple","mk_rate_quad",
+  "md_rate_single","md_rate_double","md_rate_triple","md_rate_quad"];
 const gnum = x => parseFloat(String(x==null?'':x).replace(/[,،]/g,'').trim())||0;
 const el = (t,a={},kids=[])=>{const e=document.createElement(t);
   for(const k in a){ if(k==='class')e.className=a[k]; else e.setAttribute(k,a[k]); }
@@ -288,10 +305,11 @@ function pricing(D){
   const pct=gnum(D.profit_pct), other=gnum(D.other);
   const selected = (D.room_types&&D.room_types.length)?D.room_types:null;
   const rows=[];
+  const rt=(pfx,gen,nm)=>{ const s=RATE_SUFFIX[nm]; if(s){ const v=String(D[pfx+'_rate_'+s]==null?'':D[pfx+'_rate_'+s]).trim(); if(v!=='') return gnum(v);} return gen; };
   for(const [name,occ] of ROOM_TYPES){
     if(selected && !selected.includes(name)) continue;
     let mkpp=0, mdpp=0;
-    if(occ){ mkpp=(mkR*mkN)/occ; mdpp=(mdR*mdN)/occ; }
+    if(occ){ mkpp=(rt('mk',mkR,name)*mkN)/occ; mdpp=(rt('md',mdR,name)*mdN)/occ; }
     const room = mkpp+mdpp+mkM+mdM;
     const net = room+services;
     const raw = String(D[PROFIT_KEYS[name]]||'').trim();

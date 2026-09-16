@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-16b · كتابة مباشرة في كل بند (combobox)"
+_BUILD_TAG = "2026-09-16c · مسعّر المجموعات: سعر الغرفة حسب النوع"
 
 
 @app.get("/version")

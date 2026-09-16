@@ -329,6 +329,9 @@ def parse_amadeus_flights(text: str, year: int | None = None) -> list:
 # مسعّر المجموعات: أنواع الغرف وعدد الأشخاص في الغرفة (الطفل بلا سرير)
 GROUP_ROOM_TYPES = (("مفرد", 1), ("ثنائي", 2), ("ثلاثي", 3), ("رباعي", 4),
                     ("طفل", 0))
+# لاحقة حقل سعر الغرفة/الليلة لكل نوع (اختياري، يعلو السعر العام للفندق)
+_GROUP_RATE_SUFFIX = {"مفرد": "single", "ثنائي": "double", "ثلاثي": "triple",
+                      "رباعي": "quad"}
 GROUP_SERVICE_FIELDS = ("transport", "transport_air", "visa", "water", "gifts",
                         "admin", "ticket")
 # مفتاح مبلغ الربح لكل نوع غرفة
@@ -367,13 +370,22 @@ def group_pricing(data: dict) -> list:
     other = _gnum(data.get("other"))
     # اختيار أنواع الغرف المطلوب تسعيرها (فارغ/غير محدَّد = الكل)
     selected = data.get("room_types") or None
+
+    def _rate(prefix, general, rname):     # سعر النوع إن حُدِّد، وإلّا السعر العام
+        suf = _GROUP_RATE_SUFFIX.get(rname)
+        if suf:
+            v = str(data.get(f"{prefix}_rate_{suf}") or "").strip()
+            if v != "":
+                return _gnum(v)
+        return general
+
     rows = []
     for name, occ in GROUP_ROOM_TYPES:
         if selected and name not in selected:
             continue
         if occ:
-            mk_pp = (mk_rate * mk_n) / occ
-            md_pp = (md_rate * md_n) / occ
+            mk_pp = (_rate("mk", mk_rate, name) * mk_n) / occ
+            md_pp = (_rate("md", md_rate, name) * md_n) / occ
         else:                       # الطفل: بلا سرير (كلفة غرفة صفر)
             mk_pp = md_pp = 0.0
         room = mk_pp + md_pp + mk_meals + md_meals
