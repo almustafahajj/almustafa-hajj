@@ -64,11 +64,13 @@ _BACK_LINK = ('<a href="__URL__" style="color:#fff;background:#0003;'
 
 
 def _pricer_html(data: dict, doc_title: str, submit_js: str | None = None,
-                 back_url: str | None = None) -> str:
+                 back_url: str | None = None, full_period: bool = False) -> str:
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     back = _BACK_LINK.replace("__URL__", back_url) if back_url else ""
+    unit = "كامل الفترة" if full_period else "الليلة"   # الحج: للفترة، العمرة: لليلة
     return (_TEMPLATE.replace("__DATA__", payload)
             .replace("__TITLE__", doc_title)
+            .replace("__RATEUNIT__", unit)
             .replace("__SUBMIT__", submit_js or _SUBMIT_DESKTOP)
             .replace("__BACK__", back))
 
@@ -154,17 +156,18 @@ _TEMPLATE = r"""<!doctype html>
     <div class="types" id="types"></div>
   </fieldset>
 
-  <fieldset><legend>الفنادق (سعر الغرفة/الليلة + الوجبات للفرد)</legend>
+  <fieldset><legend>الفنادق (سعر الغرفة/__RATEUNIT__ + الوجبات للفرد)</legend>
+    <input id="rate_full_period" type="hidden">
     <div class="grid">
       <label class="row"><span>فندق مكة</span><input id="makkah_hotel"></label>
       <label class="row"><span>ليالي مكة</span>
         <input id="makkah_nights" type="number" min="0"></label>
-      <label class="row"><span>سعر غرفة مكة/ليلة</span>
+      <label class="row"><span>سعر غرفة مكة/__RATEUNIT__</span>
         <input id="makkah_rate" type="number" min="0"></label>
       <label class="row"><span>وجبات مكة (للفرد)</span>
         <input id="makkah_meals" type="number" min="0"></label>
     </div>
-    <small class="hint" style="display:block;margin-top:6px">سعر غرفة مكة/ليلة حسب النوع (اختياري — يعلو السعر العام أعلاه):</small>
+    <small class="hint" style="display:block;margin-top:6px">سعر غرفة مكة/__RATEUNIT__ حسب النوع (اختياري — يعلو السعر العام أعلاه):</small>
     <div class="grid">
       <label class="row"><span>مفرد</span><input id="mk_rate_single" type="number" min="0"></label>
       <label class="row"><span>ثنائي</span><input id="mk_rate_double" type="number" min="0"></label>
@@ -178,12 +181,12 @@ _TEMPLATE = r"""<!doctype html>
         <input id="madinah_hotel"></label>
       <label class="row"><span>ليالي المدينة</span>
         <input id="madinah_nights" type="number" min="0"></label>
-      <label class="row"><span>سعر غرفة المدينة/ليلة</span>
+      <label class="row"><span>سعر غرفة المدينة/__RATEUNIT__</span>
         <input id="madinah_rate" type="number" min="0"></label>
       <label class="row"><span>وجبات المدينة (للفرد)</span>
         <input id="madinah_meals" type="number" min="0"></label>
     </div>
-    <small class="hint" style="display:block;margin-top:6px">سعر غرفة المدينة/ليلة حسب النوع (اختياري — يعلو السعر العام أعلاه):</small>
+    <small class="hint" style="display:block;margin-top:6px">سعر غرفة المدينة/__RATEUNIT__ حسب النوع (اختياري — يعلو السعر العام أعلاه):</small>
     <div class="grid">
       <label class="row"><span>مفرد</span><input id="md_rate_single" type="number" min="0"></label>
       <label class="row"><span>ثنائي</span><input id="md_rate_double" type="number" min="0"></label>
@@ -246,7 +249,8 @@ const SIMPLE = ["title","currency","period_from","period_to","makkah_hotel",
   "madinah_rate","madinah_meals","profit_pct","other","profit","profit_single",
   "profit_double","profit_triple","profit_quad","profit_child",
   "mk_rate_single","mk_rate_double","mk_rate_triple","mk_rate_quad",
-  "md_rate_single","md_rate_double","md_rate_triple","md_rate_quad"];
+  "md_rate_single","md_rate_double","md_rate_triple","md_rate_quad",
+  "rate_full_period"];
 const gnum = x => parseFloat(String(x==null?'':x).replace(/[,،]/g,'').trim())||0;
 const el = (t,a={},kids=[])=>{const e=document.createElement(t);
   for(const k in a){ if(k==='class')e.className=a[k]; else e.setAttribute(k,a[k]); }
@@ -301,6 +305,7 @@ function pricing(D){
   let mkM=gnum(D.makkah_meals), mdM=gnum(D.madinah_meals);
   const inc = ["","0","False","false"].includes(String(D.include_madinah==null?"1":D.include_madinah).trim()) ? false : true;
   if(!inc){ mdR=mdN=mdM=0; }
+  const full = ["1","true","True","yes"].includes(String(D.rate_full_period==null?"":D.rate_full_period).trim());
   const services = (D.items||[]).reduce((s,it)=> s+gnum((it||[])[1]), 0);
   const pct=gnum(D.profit_pct), other=gnum(D.other);
   const selected = (D.room_types&&D.room_types.length)?D.room_types:null;
@@ -309,7 +314,11 @@ function pricing(D){
   for(const [name,occ] of ROOM_TYPES){
     if(selected && !selected.includes(name)) continue;
     let mkpp=0, mdpp=0;
-    if(occ){ mkpp=(rt('mk',mkR,name)*mkN)/occ; mdpp=(rt('md',mdR,name)*mdN)/occ; }
+    if(occ){
+      const mkr=rt('mk',mkR,name), mdr=rt('md',mdR,name);
+      mkpp = full ? mkr/occ : (mkr*mkN)/occ;
+      mdpp = !inc ? 0 : (full ? mdr/occ : (mdr*mdN)/occ);
+    }
     const room = mkpp+mdpp+mkM+mdM;
     const net = room+services;
     const raw = String(D[PROFIT_KEYS[name]]||'').trim();

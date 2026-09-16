@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-16c · مسعّر المجموعات: سعر الغرفة حسب النوع"
+_BUILD_TAG = "2026-09-16d · مسعّر الحج: سعر الغرفة للفترة كاملة"
 
 
 @app.get("/version")
@@ -1249,12 +1249,14 @@ def pricer():
         pass
     defaults = (_PRICER_HAJJ_ITEMS if _mode() == app_mode.HAJJ
                 else _PRICER_DEFAULT_ITEMS)
+    hajj = _mode() == app_mode.HAJJ
     data = {"number": number, "currency": "درهم", "include_madinah": "1",
             "room_types": [n for n, _ in umrah.GROUP_ROOM_TYPES],
+            "rate_full_period": "1" if hajj else "",   # الحج: سعر الغرفة للفترة كاملة
             "items": [[n, ""] for n in defaults]}
     return webpricer._pricer_html(data, "مسعّر المجموعات",
                                   submit_js=webpricer._SUBMIT_WEB,
-                                  back_url=url_for("offers"))
+                                  back_url=url_for("offers"), full_period=hajj)
 
 
 @app.post("/pricer/pdf")
@@ -1266,6 +1268,7 @@ def pricer_pdf():
     import io
     from hajj_app import umrah, pdf_io
     data = request.get_json(force=True, silent=True) or {}
+    data["rate_full_period"] = "1" if _mode() == app_mode.HAJJ else ""  # حسب الوضع
     settings = storage.load_settings()
     try:                                           # حفظ في «التسعيرات المحفوظة»
         umrah.save_pricing(settings, data)
@@ -1471,9 +1474,12 @@ def pricing_edit(num):
               if str(x.get("number")) == str(num)), None)
     if p is None:
         return redirect(url_for("pricings"))
-    return webpricer._pricer_html(dict(p), "مسعّر المجموعات",
+    hajj = _mode() == app_mode.HAJJ
+    data = dict(p)
+    data["rate_full_period"] = "1" if hajj else ""   # الوضع يحدّد: للفترة/لليلة
+    return webpricer._pricer_html(data, "مسعّر المجموعات",
                                   submit_js=webpricer._SUBMIT_WEB,
-                                  back_url=url_for("pricings"))
+                                  back_url=url_for("pricings"), full_period=hajj)
 
 
 @app.post("/pricings/<num>/delete")

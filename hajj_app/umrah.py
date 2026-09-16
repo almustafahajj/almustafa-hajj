@@ -358,8 +358,13 @@ def group_pricing(data: dict) -> list:
     mk_meals = _gnum(data.get("makkah_meals"))
     md_meals = _gnum(data.get("madinah_meals"))
     # تضمين المدينة المنوّرة (يمكن حذفها لمجموعات مكة فقط)؛ غياب المفتاح = مُضمّنة
-    if str(data.get("include_madinah", "1")).strip() in ("", "0", "False", "false"):
+    inc_md = str(data.get("include_madinah", "1")).strip() not in (
+        "", "0", "False", "false")
+    if not inc_md:
         md_rate = md_n = md_meals = 0.0
+    # سعر الغرفة للفترة كاملة (الحج) بدل لكل ليلة (العمرة): لا يُضرب بعدد الليالي
+    full = str(data.get("rate_full_period", "")).strip() in (
+        "1", "true", "True", "yes")
     # الخدمات: بنود ديناميكية [الاسم، المبلغ] إن وُجدت، وإلّا الحقول الثابتة
     items = data.get("items")
     if items is not None:
@@ -384,8 +389,13 @@ def group_pricing(data: dict) -> list:
         if selected and name not in selected:
             continue
         if occ:
-            mk_pp = (_rate("mk", mk_rate, name) * mk_n) / occ
-            md_pp = (_rate("md", md_rate, name) * md_n) / occ
+            mk_r = _rate("mk", mk_rate, name)
+            mk_pp = (mk_r / occ) if full else (mk_r * mk_n / occ)
+            if inc_md:
+                md_r = _rate("md", md_rate, name)
+                md_pp = (md_r / occ) if full else (md_r * md_n / occ)
+            else:
+                md_pp = 0.0
         else:                       # الطفل: بلا سرير (كلفة غرفة صفر)
             mk_pp = md_pp = 0.0
         room = mk_pp + md_pp + mk_meals + md_meals
