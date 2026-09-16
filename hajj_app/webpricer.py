@@ -141,6 +141,8 @@ _TEMPLATE = r"""<!doctype html>
     <div class="grid">
       <label class="row"><span>الرقم المرجعي</span>
         <input id="number" readonly></label>
+      <label class="row"><span>تاريخ التسعير</span>
+        <input id="date" type="date"></label>
       <label class="row"><span>عنوان التسعير</span><input id="title"></label>
       <label class="row"><span>الفترة من</span>
         <input id="period_from" type="date"></label>
@@ -244,7 +246,7 @@ const ROOM_TYPES = [["مفرد",1],["ثنائي",2],["ثلاثي",3],["رباع�
 const PROFIT_KEYS = {"مفرد":"profit_single","ثنائي":"profit_double",
   "ثلاثي":"profit_triple","رباعي":"profit_quad","طفل":"profit_child"};
 const RATE_SUFFIX = {"مفرد":"single","ثنائي":"double","ثلاثي":"triple","رباعي":"quad"};
-const SIMPLE = ["title","currency","period_from","period_to","makkah_hotel",
+const SIMPLE = ["title","date","currency","period_from","period_to","makkah_hotel",
   "makkah_nights","makkah_rate","makkah_meals","madinah_hotel","madinah_nights",
   "madinah_rate","madinah_meals","profit_pct","other","profit","profit_single",
   "profit_double","profit_triple","profit_quad","profit_child",

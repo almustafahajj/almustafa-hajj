@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-16e · معاينة المسعّر في تبويب جديد"
+_BUILD_TAG = "2026-09-16f · مسعّر المجموعات: تاريخ التسعير"
 
 
 @app.get("/version")
@@ -1249,8 +1249,10 @@ def pricer():
         pass
     defaults = (_PRICER_HAJJ_ITEMS if _mode() == app_mode.HAJJ
                 else _PRICER_DEFAULT_ITEMS)
+    from datetime import date as _date
     hajj = _mode() == app_mode.HAJJ
-    data = {"number": number, "currency": "درهم", "include_madinah": "1",
+    data = {"number": number, "date": _date.today().isoformat(),
+            "currency": "درهم", "include_madinah": "1",
             "room_types": [n for n, _ in umrah.GROUP_ROOM_TYPES],
             "rate_full_period": "1" if hajj else "",   # الحج: سعر الغرفة للفترة كاملة
             "items": [[n, ""] for n in defaults]}

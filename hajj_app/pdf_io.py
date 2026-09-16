@@ -5224,6 +5224,21 @@ def export_group_pricing_pdf(data: dict, path: str | Path, *,
             _FONT_BOLD if bold else _FONT))
         return _ar_para("• " + text, s, W - 16)
 
+    # الرقم المرجعي وتاريخ التسعير (التاريخ يوم/شهر/سنة يمين→يسار)
+    _num = str(data.get("number") or "").strip()
+    _dts = str(data.get("date") or "").strip()
+    _meta = []
+    if _num:
+        _meta.append(f"الرقم: {ltr(_num)}")
+    if _dts:
+        _meta.append(f"التاريخ: {_dt(_dts, False)}")
+    if _meta:
+        story.append(_ar_para(
+            "   ·   ".join(_meta),
+            ParagraphStyle("gmeta", parent=val, fontName=_FONT_BOLD,
+                           textColor=_DEEP), W - 8))
+        story.append(Spacer(1, 3))
+
     pf, pt = str(data.get("period_from") or ""), str(data.get("period_to") or "")
     if pf or pt:
         story.append(line(f"الفترة: من {ltr(pf)} إلى {ltr(pt)}", bold=True))
