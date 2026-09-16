@@ -149,12 +149,17 @@ _TEMPLATE = r"""<!doctype html>
              padding:11px 26px; }
   .btn.save:hover{ background:var(--deep); }
   small.hint{ color:var(--muted); }
+  .cbx-menu{ position:fixed; z-index:9999; background:#fff;
+    border:1px solid var(--border); border-radius:8px; max-height:230px;
+    overflow-y:auto; box-shadow:0 8px 24px #0003; display:none; }
+  .cbx-item{ padding:8px 12px; cursor:pointer; font-size:14px; }
+  .cbx-item:hover{ background:#EDE4D5; }
 </style></head>
 <body>
 <header>
   <h1>__ICON__ __TITLE__</h1>
   <div style="display:flex;align-items:center;gap:14px">
-    <span class="num" style="opacity:.7">🆕 2026-09-16</span>
+    <span class="num" style="opacity:.7">🆕 2026-09-16b</span>
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
@@ -172,6 +177,35 @@ const el = (t,a={},kids=[])=>{const e=document.createElement(t);
   for(const k in a){ if(k==='class')e.className=a[k];
     else if(k==='html')e.innerHTML=a[k]; else e.setAttribute(k,a[k]); }
   (Array.isArray(kids)?kids:[kids]).forEach(c=>c&&e.append(c)); return e;};
+
+// صندوق تحرير: اكتب مباشرةً في الحقل، وعند التركيز تظهر كل الخيارات أسفله للاختيار
+const CBX_MENU = el('div',{class:'cbx-menu'});
+document.body.appendChild(CBX_MENU);
+let CBX_INP = null;
+function cbxHide(){ CBX_MENU.style.display='none'; CBX_INP=null; }
+function cbxOpen(inp, options, filter){
+  CBX_INP = inp; CBX_MENU.innerHTML='';
+  const f = String(filter||'').trim().toLowerCase();
+  const list = (options||[]).filter(o=> !f || String(o).toLowerCase().indexOf(f)>=0);
+  if(!list.length){ cbxHide(); return; }
+  list.forEach(o=>{ const it=el('div',{class:'cbx-item'}, txt(o));
+    it.onmousedown=(e)=>{ e.preventDefault(); inp.value=o; cbxHide(); }; CBX_MENU.append(it); });
+  const r = inp.getBoundingClientRect();
+  CBX_MENU.style.left=r.left+'px'; CBX_MENU.style.top=(r.bottom+2)+'px';
+  CBX_MENU.style.width=Math.max(r.width,120)+'px'; CBX_MENU.style.display='block';
+}
+window.addEventListener('scroll', ()=>{ if(CBX_INP) cbxHide(); }, true);
+function combobox(options, value, placeholder){
+  const wrap = el('span',{style:'flex:1;display:flex;min-width:0'});
+  const inp = el('input',{type:'text',autocomplete:'off',style:'flex:1;min-width:0',
+    value:(value==null?'':value), placeholder:(placeholder||'')});
+  inp.addEventListener('focus', ()=>cbxOpen(inp, options, ''));   // كل الخيارات
+  inp.addEventListener('input', ()=>cbxOpen(inp, options, inp.value));
+  inp.addEventListener('blur', ()=>setTimeout(()=>{ if(CBX_INP===inp) cbxHide(); },150));
+  wrap.append(inp);
+  Object.defineProperty(wrap,'value',{get:()=>inp.value, set:v=>{ inp.value=v; }});
+  return wrap;
+}
 
 function field(f){
   const key=f.key, type=f.type||'text', ro=!!f.ro;
@@ -197,21 +231,9 @@ function field(f){
     inp = el('input',{id:'f_'+key, list:'dl_'+key, autocomplete:'off',
       value:(val==null?'':val)});
     if(ro) inp.setAttribute('readonly','');
-  } else if(type==='selectfree'){             // قائمة منسدلة + كتابة يدوية
-    const sel = el('select',{});
-    const OTHER='__free__';
-    const inp2 = el('input',{type:'text',autocomplete:'off',
-      placeholder:(f.label||''),style:'flex:1'});
-    (f.options||[]).forEach(o=>sel.append(el('option',{value:o},txt(o))));
-    sel.append(el('option',{value:OTHER},txt('✎ كتابة يدوية…')));
-    if(val!=null && val!=='' && !(f.options||[]).includes(val)){
-      sel.value=OTHER; inp2.value=val;
-    } else { sel.value=(val==null?'':val); inp2.style.display='none'; }
-    sel.onchange=()=>{ if(sel.value===OTHER){inp2.style.display='';inp2.focus();}
-      else {inp2.style.display='none';} };
-    inp = el('span',{id:'f_'+key,style:'flex:1;display:flex;gap:6px'},[sel,inp2]);
-    Object.defineProperty(inp,'value',{get:()=>
-      sel.value===OTHER?inp2.value.trim():sel.value});
+  } else if(type==='selectfree'){             // كتابة مباشرة + قائمة خيارات
+    inp = combobox(f.options, val, f.label);
+    inp.id = 'f_'+key;
   } else {
     inp = el('input',{id:'f_'+key, type:(type==='date'?'date':'text'),
       value:(val==null?'':val)});
@@ -258,24 +280,7 @@ function tableSection(sec){
         w = el('input',{type:'text',style:'flex:1',autocomplete:'off',
           list:'dlc_'+sec.table+'_'+c.key,value:(vals[i]==null?'':vals[i])});
       } else if((c.type||'')==='selectfree'){
-        // قائمة منسدلة قابلة للتحرير: كل الخيارات + «كتابة يدوية…»
-        var wrap=el('span',{style:'flex:1;display:flex;gap:4px'});
-        var sel=el('select',{style:'flex:1'});
-        var OTHER='__free__';
-        var inp=el('input',{type:'text',style:'flex:1',autocomplete:'off',
-          placeholder:(c.label||'')});
-        (c.options||[]).forEach(o=>sel.append(el('option',{value:o},txt(o))));
-        sel.append(el('option',{value:OTHER},txt('✎ كتابة يدوية…')));
-        var cur=(vals[i]==null?'':vals[i]);
-        if(cur && !(c.options||[]).includes(cur)){
-          sel.value=OTHER; inp.value=cur;
-        } else { sel.value=cur; inp.style.display='none'; }
-        sel.onchange=function(){ if(sel.value===OTHER){inp.style.display='';
-          inp.focus();} else {inp.style.display='none';} };
-        wrap.append(sel,inp);
-        Object.defineProperty(wrap,'value',{get:function(){
-          return sel.value===OTHER?inp.value.trim():sel.value;}});
-        w=wrap;
+        w = combobox(c.options, vals[i], c.label);   // كتابة مباشرة + خيارات
       } else if((c.type||'')==='date'){
         w = el('input',{type:'date',style:'flex:1',value:(vals[i]==null?'':vals[i])});
       } else {
