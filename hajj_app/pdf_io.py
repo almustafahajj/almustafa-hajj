@@ -4471,7 +4471,7 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
     greet_opts = O(["السلام عليكم ورحمة الله وبركاته",
                     "السلام عليكم ورحمة الله وبركاته، وبعد:", "تحية طيبة وبعد،"],
                    ["Greetings,", "Dear Sir/Madam,", "Peace be upon you,"])
-    return [
+    _schema = [
         {"legend": L("بيانات العرض", "Offer Details"), "fields": [
             {"key": "number", "label": L("الرقم المرجعي", "Reference No."),
              "ro": True},
@@ -4597,6 +4597,16 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
             {"key": "gm_name", "label": L("الاسم", "Name")},
             {"key": "gm_phone", "label": L("الهاتف", "Phone")}]},
     ]
+    # الكتابة اليدوية متاحة في كل الفقرات: كل قائمة منسدلة تصبح قابلة للتحرير
+    # (تُظهر الخيارات + «✎ كتابة يدوية…») عدا لغة العرض التي تبقى ar/en فقط.
+    for _sec in _schema:
+        for _f in _sec.get("fields", []):
+            if _f.get("type") in ("select", "combo") and _f.get("key") != "lang":
+                _f["type"] = "selectfree"
+        for _c in _sec.get("columns", []):
+            if _c.get("type") in ("select", "combo"):
+                _c["type"] = "selectfree"
+    return _schema
 
 
 UMRAH_QUOTATION_SCHEMA = umrah_quotation_schema("ar")

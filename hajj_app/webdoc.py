@@ -154,7 +154,7 @@ _TEMPLATE = r"""<!doctype html>
 <header>
   <h1>__ICON__ __TITLE__</h1>
   <div style="display:flex;align-items:center;gap:14px">
-    <span class="num" style="opacity:.7">🆕 2026-09-15c</span>
+    <span class="num" style="opacity:.7">🆕 2026-09-16</span>
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
@@ -197,6 +197,21 @@ function field(f){
     inp = el('input',{id:'f_'+key, list:'dl_'+key, autocomplete:'off',
       value:(val==null?'':val)});
     if(ro) inp.setAttribute('readonly','');
+  } else if(type==='selectfree'){             // قائمة منسدلة + كتابة يدوية
+    const sel = el('select',{});
+    const OTHER='__free__';
+    const inp2 = el('input',{type:'text',autocomplete:'off',
+      placeholder:(f.label||''),style:'flex:1'});
+    (f.options||[]).forEach(o=>sel.append(el('option',{value:o},txt(o))));
+    sel.append(el('option',{value:OTHER},txt('✎ كتابة يدوية…')));
+    if(val!=null && val!=='' && !(f.options||[]).includes(val)){
+      sel.value=OTHER; inp2.value=val;
+    } else { sel.value=(val==null?'':val); inp2.style.display='none'; }
+    sel.onchange=()=>{ if(sel.value===OTHER){inp2.style.display='';inp2.focus();}
+      else {inp2.style.display='none';} };
+    inp = el('span',{id:'f_'+key,style:'flex:1;display:flex;gap:6px'},[sel,inp2]);
+    Object.defineProperty(inp,'value',{get:()=>
+      sel.value===OTHER?inp2.value.trim():sel.value});
   } else {
     inp = el('input',{id:'f_'+key, type:(type==='date'?'date':'text'),
       value:(val==null?'':val)});
