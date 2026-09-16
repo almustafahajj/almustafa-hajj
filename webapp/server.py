@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-16d · مسعّر الحج: سعر الغرفة للفترة كاملة"
+_BUILD_TAG = "2026-09-16e · معاينة المسعّر في تبويب جديد"
 
 
 @app.get("/version")
@@ -1276,18 +1276,28 @@ def pricer_pdf():
         _audit("حفظ تسعير مجموعات", str(data.get("number", "") or ""))
     except Exception:
         pass
+    # يُفتح الـ PDF من رابط حقيقي في تبويب جديد (فلا يختفي البرنامج، واسم الحفظ = الرقم)
+    number = str(data.get("number", "") or "").strip()
+    return {"pdf": url_for("pricing_pdf_get", num=(number or "0"))}
+
+
+@app.get("/pricings/<num>/pdf")
+def pricing_pdf_get(num):
+    """يعيد PDF تسعير مجموعات محفوظ inline (يُفتح في تبويب جديد باسم الرقم)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah, pdf_io
+    settings = storage.load_settings()
+    p = next((x for x in umrah.load_pricings(settings)
+              if str(x.get("number")) == str(num)), None)
+    if p is None:
+        return ("التسعير غير موجود", 404)
     co = settings.get("company") if isinstance(settings, dict) else None
-    p = _tmp(".pdf")
-    pdf_io.export_group_pricing_pdf(data, p, company=co)
-    with open(p, "rb") as f:
-        buf = io.BytesIO(f.read())
-    try:
-        os.unlink(p)
-    except OSError:
-        pass
-    buf.seek(0)
-    return send_file(buf, mimetype="application/pdf", as_attachment=False,
-                     download_name=f"تسعير-{data.get('number','') or ''}.pdf")
+    safe = re.sub(r'[\\/:*?"<>|]+', "-", str(num)).strip() or "تسعير"
+    out = _tmp(".pdf")
+    pdf_io.export_group_pricing_pdf(dict(p), out, company=co)
+    return send_file(out, mimetype="application/pdf", as_attachment=False,
+                     download_name=f"{safe}.pdf")
 
 
 def _pdf_response(gen, fname):

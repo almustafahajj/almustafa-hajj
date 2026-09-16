@@ -370,7 +370,9 @@ _SUBMIT_DESKTOP = r"""function submitForm(){
 # سلوك زرّ الحفظ في نسخة الويب: يرسل البيانات فيعيد الخادم ملفّ PDF يُفتح مباشرةً.
 _SUBMIT_WEB = r"""function submitForm(){
   fetch('/pricer/pdf',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(collect())}).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status);
-    return r.blob(); }).then(b=>{ window.location = URL.createObjectURL(b); })
-    .catch(e=>alert('تعذّر إنشاء PDF: '+e));
+    body:JSON.stringify(collect())})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(j){ if(j&&j.pdf){ window.open(j.pdf,'_blank'); }
+      else{ throw new Error('no pdf'); } })
+    .catch(function(e){ alert('تعذّر إنشاء PDF: '+e); });
 }"""
