@@ -441,6 +441,45 @@ def save_quote(settings: dict, code: str, quote: dict) -> None:
     lst.append(dict(quote))
 
 
+def _quote_seq(text) -> int | None:
+    """الرقم التسلسلي في رقم عرض مرجعي («MA-Q0007» أو «q7» أو «7» ← 7)."""
+    m = re.fullmatch(r"(?:MA)?-?Q?-?0*(\d+)",
+                     re.sub(r"\s+", "", str(text or "")).upper())
+    return int(m.group(1)) if m else None
+
+
+def find_quotes(settings: dict, number: str) -> list:
+    """كل عروض الأسعار المحفوظة المطابقة لرقم مرجعي، في كل البرامج والعروض
+    اليدوية: ``[(رمز البرنامج، العرض), …]``.
+
+    يقبل الرقم كاملاً (MA-Q0007) أو مختصراً (Q7 / 7) بلا حساسية لحالة الأحرف؛
+    المطابقة التامّة أولى، ولا يُلجأ للمختصر إلّا إن لم توجد. قد يتكرّر الرقم نفسه
+    تحت أكثر من برنامج (حُفظ العرض من سطح المكتب ثم من الويب) فتُعاد كلّها."""
+    want = str(number or "").strip().upper()
+    store = settings.get("umrah_quotes")
+    if not want or not isinstance(store, dict):
+        return []
+    seq = _quote_seq(want)
+    exact, loose = [], []
+    for code, lst in store.items():
+        for q in lst if isinstance(lst, list) else []:
+            if not isinstance(q, dict):
+                continue
+            num = str(q.get("number") or "").strip().upper()
+            if num == want:
+                exact.append((code, q))
+            elif seq is not None and _quote_seq(num) == seq:
+                loose.append((code, q))
+    return exact or loose
+
+
+def find_quote(settings: dict, number: str):
+    """العرض الوحيد المطابق لرقم مرجعي: ``(رمز البرنامج، العرض)``، أو
+    ``(None, None)`` إن لم يوجد أو تعدّدت المطابقات (فلا يُختار أحدها خطأً)."""
+    hits = find_quotes(settings, number)
+    return hits[0] if len(hits) == 1 else (None, None)
+
+
 def delete_quote(settings: dict, code: str, number: str) -> None:
     """يحذف عرض سعر من قائمة البرنامج بحسب رقمه."""
     store = settings.get("umrah_quotes")

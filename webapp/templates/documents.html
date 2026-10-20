@@ -12,6 +12,9 @@
       <div class="d">{{ desc }}</div>
       <div class="docbtns" style="margin-top:8px">
         <a class="btn ghost sm" href="{{ url_for('documents_pick', kind=kind) }}">👤 من سجلّ شخص</a>
+        {% if kind in ['voucher', 'treq'] %}
+        <a class="btn ghost sm" href="{{ url_for('documents_from_quote', kind=kind) }}">📋 من عرض سعر</a>
+        {% endif %}
         {% if kind != 'packet' %}
         <a class="btn primary sm" target="_blank" href="{{ url_for('doc_manual', kind=kind) }}">✍ يدوي بلا اسم</a>
         {% endif %}
@@ -21,6 +24,7 @@
   {% endfor %}
 </div>
 <p class="hint-note">«من سجلّ شخص» يعبّئ البيانات من الكشف تلقائياً. «يدوي بلا اسم»
-  يفتح المستند بحقول فارغة تملؤها بالكامل — دون ربطه بأي سجلّ. (حزمة المستندات
+  يفتح المستند بحقول فارغة تملؤها بالكامل — دون ربطه بأي سجلّ. «من عرض سعر»
+  (للفاوتشر وطلب المواصلات) يعبّئه من عرض سعر محفوظ برقمه المرجعي. (حزمة المستندات
   تحتاج سجلّاً فلا يوجد لها وضع يدوي.)</p>
 {% endblock %}

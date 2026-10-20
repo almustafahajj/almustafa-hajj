@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} من عرض سعر — المصطفى{% endblock %}
+{% block heading %}{{ icon }} {{ label }} — من عرض سعر{% endblock %}
+{% block subhead %}<div class="season">
+  <a class="pill" href="{{ url_for('documents') }}">← أنواع المستندات</a></div>{% endblock %}
+{% block content %}
+<form class="searchbar" method="get">
+  <input name="q" value="{{ q }}" placeholder="الرقم المرجعي للعرض (مثل MA-Q0007 أو 7) أو اسم الضيف أو الفندق…" autofocus>
+  <button class="btn primary" type="submit">بحث</button>
+  {% if q %}<a class="btn ghost" href="{{ url_for('documents_from_quote', kind=kind) }}">مسح</a>{% endif %}
+</form>
+
+{% if duplicate %}
+<p class="hint-note">⚠ الرقم «{{ q }}» محفوظ أكثر من مرّة — اختر العرض الصحيح
+  (حسب البرنامج والضيف والفنادق).</p>
+{% endif %}
+<div class="panel" style="margin-top:14px">
+<table class="data">
+  <thead><tr>
+    <th>الرقم المرجعي</th><th>البرنامج</th><th>عناية</th><th>الفنادق</th><th>التاريخ</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.number }}</td>
+      <td>{{ r.program }}</td>
+      <td class="prog-name">{{ r.to }}</td>
+      <td>{{ r.hotels or '—' }}</td>
+      <td class="muted">{{ r.date or '—' }}</td>
+      <td>
+        <a class="btn primary sm" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind=kind) }}">{{ icon }} إصدار {{ label }}</a>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:26px">
+      {% if q %}لا يوجد عرض بهذا الرقم أو الاسم.{% else %}لا عروض أسعار محفوظة بعد.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="hint-note">اكتب الرقم المرجعي للعرض فيُفتح {{ label }} مباشرةً معبّأً من العرض
+  (الإقامة والضيف والطيران والتنقّل)، فتراجعه وتكمل الناقص ثم تطبعه. يُحفظ في
+  أرشيف المستندات مربوطاً برقم العرض.</p>
+{% endblock %}

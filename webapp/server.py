@@ -327,7 +327,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-09-16f · مسعّر المجموعات: تاريخ التسعير"
+_BUILD_TAG = "2026-10-20a · فاوتشر/طلب مواصلات من عرض سعر"
 
 
 @app.get("/version")
@@ -1460,6 +1460,120 @@ def quote_delete(code, num):
         except Exception:
             pass
     return redirect(url_for("quotes"))
+
+
+# ---- فاوتشر فندق / طلب مواصلات من عرض سعر محفوظ (بالرقم المرجعي) ----
+_QUOTE_DOC_KINDS = ("voucher", "treq")
+
+
+def _quote_doc_data(kind, quote, settings):
+    """يبني بيانات المستند من العرض مع رقم مستند جديد (نفس عدّادات المستندات)."""
+    from hajj_app import pdf_io, umrah
+    co = settings.get("company") if isinstance(settings, dict) else None
+    if kind == "voucher":
+        num = umrah.next_voucher_number(settings)
+        data = pdf_io.voucher_data_from_quote(quote, company=co, number=num)
+        schema = pdf_io.VOUCHER_SCHEMA
+    else:
+        num = umrah.next_transport_number(settings)
+        data = pdf_io.transport_request_data_from_quote(quote, company=co,
+                                                        number=num)
+        schema = pdf_io.TREQ_SCHEMA
+    try:
+        storage.save_settings(settings)
+    except Exception:
+        pass
+    return data, schema
+
+
+@app.get("/quotes/<code>/<num>/doc/<kind>")
+def quote_doc(code, num, kind):
+    """يفتح محرّر فاوتشر/طلب مواصلات معبّأً من عرض السعر المحفوظ."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if kind not in _QUOTE_DOC_KINDS:
+        return redirect(url_for("quotes"))
+    from hajj_app import umrah, webdoc
+    settings = storage.load_settings()
+    q = next((x for x in umrah.load_quotes(settings, code)
+              if str(x.get("number")) == str(num)), None)
+    if q is None:
+        return redirect(url_for("quotes"))
+    data, schema = _quote_doc_data(kind, q, settings)
+    title, icon = _DOC_TITLES[kind]
+    html = webdoc._doc_html(
+        data, schema, f"{title} — من العرض {num}", icon,
+        submit_action=webdoc.web_submit_action(
+            url_for("quote_doc_pdf", code=code, num=num, kind=kind)),
+        back_url=url_for("quotes"))
+    return html, 200, {"Cache-Control": "no-store, max-age=0"}
+
+
+@app.post("/quotes/<code>/<num>/doc/<kind>/pdf")
+def quote_doc_pdf(code, num, kind):
+    """يولّد PDF الفاوتشر/الطلب المُحرَّر ويؤرشفه مربوطاً برقم العرض."""
+    if _sess() is None:
+        return ("", 401)
+    if kind not in _QUOTE_DOC_KINDS:
+        return ("", 404)
+    from hajj_app.mrz import PassportData
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data = request.get_json(force=True, silent=True) or {}
+    data["quote_ref"] = str(num)
+    guest = str(data.get("guest_ar") or data.get("guest_en") or "").strip()
+    name = f"{guest or 'بلا اسم'} — عرض {num}"
+    _archive_doc(kind, data, idx=None, name=name)   # أرشفة تلقائية
+    _audit("إصدار مستند من عرض سعر", f"{_DOC_TITLES[kind][0]} — {name}")
+    return _pdf_response(
+        lambda p: _doc_export(kind, PassportData(), co, data, p),
+        f"{data.get('number', '') or kind}.pdf")
+
+
+@app.get("/documents/<kind>/from-quote")
+def documents_from_quote(kind):
+    """اختيار عرض السعر لإصدار فاوتشر/طلب مواصلات منه: بكتابة رقمه المرجعي
+    (ينتقل للمحرّر مباشرةً عند التطابق) أو بالبحث في العروض المحفوظة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if kind not in _QUOTE_DOC_KINDS:
+        return redirect(url_for("documents"))
+    from hajj_app import umrah
+    settings = storage.load_settings()
+    q = (request.args.get("q") or "").strip()
+    hits = umrah.find_quotes(settings, q) if q else []
+    if len(hits) == 1:                             # رقم مرجعي مطابق لعرض واحد
+        code, hit = hits[0]
+        return redirect(url_for("quote_doc", code=code,
+                                num=hit.get("number"), kind=kind))
+
+    def _row(code, x):
+        return {"code": code, "number": str(x.get("number")),
+                "program": "يدوي" if code == "_manual" else code,
+                "to": x.get("addressed_to", "") or "—",
+                "title": x.get("title", "") or "عرض سعر",
+                "date": x.get("date", ""),
+                "hotels": " / ".join(str(s[2]) for s in x.get("stays") or []
+                                     if isinstance(s, list) and len(s) > 2
+                                     and s[2])}
+
+    if hits:                    # الرقم نفسه محفوظ أكثر من مرّة → يختار المستخدم
+        rows = [_row(code, x) for code, x in hits]
+    else:
+        rows = []
+        for code, lst in (settings.get("umrah_quotes") or {}).items():
+            for x in lst if isinstance(lst, list) else []:
+                if not isinstance(x, dict) or not x.get("number"):
+                    continue
+                row = _row(code, x)
+                hay = " ".join(str(v) for v in row.values()).lower()
+                if not q or q.lower() in hay:
+                    rows.append(row)
+    rows.sort(key=lambda r: r["number"], reverse=True)
+    return render_template("documents_quotes.html", active="documents",
+                           kind=kind, label=_DOC_TITLES[kind][0],
+                           icon=_DOC_TITLES[kind][1], rows=rows, q=q,
+                           duplicate=len(hits) > 1, **_ctx())
 
 
 @app.get("/pricings")

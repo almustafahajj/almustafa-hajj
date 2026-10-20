@@ -4612,6 +4612,203 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
 UMRAH_QUOTATION_SCHEMA = umrah_quotation_schema("ar")
 
 
+# ---- إصدار فاوتشر/طلب مواصلات من عرض سعر محفوظ (بالرقم المرجعي) ----
+def _blank_rec():
+    """سجلّ فارغ يكفي لبُناة المستندات (لا معتمر مرتبط بالعرض)."""
+    from types import SimpleNamespace
+    return SimpleNamespace(full_name_ar="", full_name_en="", room_type="",
+                           vehicle="", nationality_ar="", phone="")
+
+
+def _row(r, n: int) -> list:
+    """صفّ جدول نصّي بطول ثابت ``n`` (يُكمَّل بخانات فارغة)."""
+    r = [str(x if x is not None else "").strip() for x in list(r or [])]
+    return (r + [""] * n)[:n]
+
+
+def _quote_stays_dated(stays, period_from: str) -> list:
+    """صفوف إقامة العرض بتواريخ مكتملة كما يطبعها PDF العرض: الدخول الفارغ =
+    مغادرة الإقامة السابقة (والأولى = «الفترة من»)، والمغادرة = الدخول + الليالي،
+    والليالي من الفرق إن غابت. يعيد صفوفاً بطول ٩ (الصفوف الفارغة تُسقط)."""
+    from datetime import timedelta
+
+    from .umrah import _parse_date
+    cur = _parse_date(period_from)
+    out = []
+    for r in stays or []:
+        row = _row(r, 9)
+        if not any(row):
+            continue
+        city, nights, hotel, room, rooms, view, meals, cin, cout = row
+        try:
+            n = int(float(nights)) if nights else 0
+        except ValueError:
+            n = 0
+        if not cin and cur:
+            cin = cur.isoformat()
+        d_in, d_out = _parse_date(cin), _parse_date(cout)
+        if not d_out and d_in and n > 0:
+            d_out = d_in + timedelta(days=n)
+            cout = d_out.isoformat()
+        if not n and d_in and d_out and d_out > d_in:
+            nights = str((d_out - d_in).days)
+        cur = d_out or (cur + timedelta(days=n) if (cur and n) else cur)
+        out.append([city, nights, hotel, room, rooms, view, meals, cin, cout])
+    return out
+
+
+def _quote_value_maps() -> dict:
+    """خرائط قيَم القوائم بين لغتَي محرّر العرض: {(القسم، العمود): (←ع، ←E)}.
+
+    خيارات المخطّطين العربي والإنجليزي مبنيّة متوازيةً، فتُطابَق بالموضع — هكذا
+    تُترجم قيَم الويب (مثل «Jeddah (JED)» و«One-Bedroom Suite») التي لا يعرفها
+    قاموس ``_QTR`` المكتوب لمفردات سطح المكتب."""
+    maps = {}
+    for sa, se in zip(umrah_quotation_schema("ar"), umrah_quotation_schema("en")):
+        sec = sa.get("table")
+        for fa, fe in (list(zip(sa.get("columns", []), se.get("columns", [])))
+                       + list(zip(sa.get("fields", []), se.get("fields", [])))):
+            oa, oe = fa.get("options") or [], fe.get("options") or []
+            if oa and len(oa) == len(oe) and fa.get("key") != "lang":
+                maps[(sec, fa["key"])] = (dict(zip(oe, oa)), dict(zip(oa, oe)))
+    return maps
+
+
+_QUOTE_TABLE_COLS = {"stays": 9, "flights": 6, "transport_lines": 3, "guests": 2}
+
+
+def _quote_in_lang(quote: dict, lang: str) -> dict:
+    """نسخة من العرض بقيَم جداوله وحقوله باللغة ``lang`` أيّاً كان علَم لغته
+    (العرض الذي بُدّلت لغته في المحرّر يبقى بقيَمه الأصلية)."""
+    q = dict(quote or {})
+    for key, n in _QUOTE_TABLE_COLS.items():           # تطبيع الجداول
+        q[key] = [_row(r, n) for r in (q.get(key) or [])
+                  if isinstance(r, (list, tuple))]
+    q = translate_quotation_data(q, lang)           # مفردات سطح المكتب (_QTR)
+    pick = 1 if lang == "en" else 0
+    sections = {sa.get("table"): sa for sa in umrah_quotation_schema("ar")}
+    for (sec, col), pair in _quote_value_maps().items():
+        m = pair[pick]
+        if sec is None:
+            if q.get(col) in m:
+                q[col] = m[q[col]]
+            continue
+        cols = [c.get("key") for c in sections.get(sec, {}).get("columns", [])]
+        if col not in cols or sec not in _QUOTE_TABLE_COLS:
+            continue
+        i = cols.index(col)
+        for r in q.get(sec) or []:
+            if i < len(r) and r[i] in m:
+                r[i] = m[r[i]]
+    return q
+
+
+_ARABIC_CHAR = re.compile(r"[؀-ۿ]")
+# أسماء أماكن قديمة في عروض الأسعار ← صيغة خطوط السير في طلب المواصلات
+_TREQ_PLACE = {"فندق مكة": "الفندق في مكة", "فندق المدينة": "الفندق في المدينة"}
+
+
+def voucher_data_from_quote(quote: dict, *, company=None, number: str = "",
+                            date_str: str = "") -> dict:
+    """يبني بيانات فاوتشر فندق من عرض سعر محفوظ (بلغة العرض نفسها).
+
+    تُنقل الإقامات (المدينة/الفندق/نوع الغرفة وعددها/الإطلالة/الدخول والمغادرة/
+    الليالي/الوجبات) واسم الضيف وخطة التنقّل، وتُستكمل الشروط وجهات التواصل من
+    القيَم الافتراضية للفاوتشر. يُحفظ رقم العرض في ``quote_ref`` للتتبّع."""
+    lang = "en" if str((quote or {}).get("lang") or "ar") == "en" else "ar"
+    en = lang == "en"
+    q = _quote_in_lang(quote, lang)
+    data = build_voucher_data(_blank_rec(), company=company, number=number,
+                              date_str=date_str, lang=lang)
+
+    name = str(q.get("addressed_to") or "").strip()
+    if _ARABIC_CHAR.search(name):
+        data["guest_ar"] = name
+    elif name:
+        data["guest_en"] = name.upper()
+
+    stays = []
+    for (city, nights, hotel, room, rooms, view, meals, cin,
+         cout) in _quote_stays_dated(q["stays"], q.get("period_from")):
+        if not (city or hotel):
+            continue
+        # ترتيب الفاوتشر: [المدينة، الفندق، نوع الغرفة، عدد الغرف، الإطلالة،
+        #                  الدخول، المغادرة، الليالي، الوجبات]
+        stays.append([city, hotel, room, rooms or "1", view, cin, cout, nights,
+                      meals])
+    data["stays"] = stays
+
+    # خطة النقل في صفّ واحد (السيارة مرّة والتنقّلات متتابعة) كفاوتشر السجلّ —
+    # صفّ لكل تنقّل يدفع الشروط إلى صفحة ثانية
+    car, model = (str(q.get("car_type") or "").strip(),
+                  str(q.get("car_model") or "").strip())
+    legs = [(f"From {frm} to {to}" if en else f"من {frm} إلى {to}")
+            for _d, frm, to in q["transport_lines"] if frm or to]
+    if legs:
+        rows = [[car, model, ("; " if en else "؛ ").join(legs)]]
+    elif car:                           # سيارة بلا بنود تنقّل → وجهة عامّة
+        rows = [[car, model, data["transport_rows"][0][2]]]
+    else:
+        rows = []
+    data["transport_rows"] = rows if q.get("show_transport", True) else []
+
+    data["program"] = ""
+    data["quote_ref"] = str(q.get("number") or "")
+    return data
+
+
+def transport_request_data_from_quote(quote: dict, *, company=None,
+                                      number: str = "",
+                                      date_str: str = "") -> dict:
+    """يبني بيانات طلب حجز مواصلات من عرض سعر محفوظ.
+
+    الطلب خطاب عربي لشركة النقل، فتُحوَّل قيَم العرض إلى العربية أولاً (أيّاً كانت
+    لغته). تُنقل الحجوزات والطيران وبنود التنقّل (خط السير/العدد/نوع السيارة/
+    الموديل) واسم الضيف ولقبه وعدد الأشخاص. يُحفظ رقم العرض في ``quote_ref``."""
+    q = _quote_in_lang(quote, "ar")
+    data = build_transport_request_data(_blank_rec(), company=company,
+                                        number=number, date_str=date_str)
+
+    hon = str(q.get("addressed_title") or "").strip()
+    rev_titles = {v: k for k, v in _QUOTE_ADDR_TITLE_I18N.items()}
+    data["honorific"] = rev_titles.get(hon, hon) or "السيد"
+    data["guest_ar"] = str(q.get("addressed_to") or "").strip()
+
+    persons = 0
+    for g in q["guests"]:
+        try:
+            persons += int(float(g[0] or 0))
+        except ValueError:
+            pass
+    data["persons"] = str(persons) if persons else ""
+
+    data["bookings"] = [[city, hotel, room, view] for city, _n, hotel, room,
+                        _rooms, view, _m, _ci, _co in q["stays"]
+                        if city or hotel]
+    # الطيران: العرض [اليوم، الناقل، الإقلاع، من، الوصول، إلى] ← الطلب يضيف
+    # «رقم الرحلة» بعد الناقل (يُملأ يدوياً)
+    data["flights"] = [[day, carrier, "", dep, frm, arr, to]
+                       for day, carrier, dep, frm, arr, to in q["flights"]
+                       if any((day, carrier, dep, frm, arr, to))]
+
+    car = str(q.get("car_type") or "").strip()
+    model = str(q.get("car_model") or "").strip()
+    count = str(q.get("car_count") or "").strip() or "1"
+    moves = []
+    for day, frm, to in q["transport_lines"]:
+        if not (frm or to):
+            continue
+        frm, to = _TREQ_PLACE.get(frm, frm), _TREQ_PLACE.get(to, to)
+        moves.append([day, f"من {frm} الى {to}", count, car, model, ""])
+    if moves:
+        data["movements"] = moves
+    elif car or model:                  # بلا بنود تنقّل: القالب بسيارة العرض
+        data["movements"] = [[m[0], m[1], count, car or m[3], model or m[4],
+                              m[5]] for m in data["movements"]]
+    data["quote_ref"] = str((quote or {}).get("number") or "")
+    return data
+
+
 def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None,
                                number: str = "", date_str: str = "",
                                pax: str = "", lang: str = "ar",

@@ -18,6 +18,8 @@
       <td class="muted">{{ r.date or '—' }}</td>
       <td>
         <a class="acc-btn add" href="{{ url_for('quote_edit', code=r.code, num=r.number) }}">فتح / تعديل</a>
+        <a class="acc-btn" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind='voucher') }}">🏨 فاوتشر فندق</a>
+        <a class="acc-btn" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind='treq') }}">🚖 طلب مواصلات</a>
         {% if can_edit %}
         <form method="post" class="inline"
               action="{{ url_for('quote_delete', code=r.code, num=r.number) }}"
@@ -30,6 +32,8 @@
   {% endfor %}
   </tbody>
 </table>
-<p class="hint-note">«فتح / تعديل» يفتح المحرّر — عدّل ثم اضغط «حفظ ومعاينة PDF».</p>
+<p class="hint-note">«فتح / تعديل» يفتح المحرّر — عدّل ثم اضغط «حفظ ومعاينة PDF».
+  «فاوتشر فندق» و«طلب مواصلات» يُصدران المستند معبّأً من بيانات العرض المحفوظة
+  (احفظ تعديلات العرض أولاً).</p>
 {% endif %}
 {% endblock %}

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import threading
 import webbrowser
+from html import escape as _esc
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -88,7 +89,7 @@ def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
             back_txt) if back_url else "")
     return (_TEMPLATE.replace("__DATA__", payload)
             .replace("__SCHEMA__", sch)
-            .replace("__TITLE__", doc_title)
+            .replace("__TITLE__", _esc(doc_title, quote=False))   # قد يحوي رقماً من المستخدم
             .replace("__ICON__", header_icon)
             .replace("__LANG__", "en" if en else "ar")
             .replace("__DIR__", "ltr" if en else "rtl")
@@ -358,6 +359,11 @@ _SUBMIT_ACTION_DESKTOP = r"""fetch('/save',{method:'POST',headers:{'Content-Type
       document.close(); }).catch(e=>alert('تعذّر الحفظ: '+e));"""
 
 
+def _js_str(s: str) -> str:
+    """نصّ JS مقتبَس بأمان (الرابط قد يحوي رمز برنامج/رقم عرض فيه ' أو </)."""
+    return json.dumps(str(s), ensure_ascii=False).replace("</", "<\\/")
+
+
 def web_submit_action(save_url: str) -> str:
     """سلوك الحفظ في الويب: يرسل البيانات فيعيد الخادم PDF يُفتح في تبويب جديد.
 
@@ -366,7 +372,7 @@ def web_submit_action(save_url: str) -> str:
     فيظهر ERR_FILE_NOT_FOUND.
     """
     return (
-        "fetch('" + save_url + "',{method:'POST',"
+        "fetch(" + _js_str(save_url) + ",{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
         ".then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();})"
         ".then(b=>{var u=URL.createObjectURL(b);"
@@ -384,7 +390,7 @@ def web_submit_action_url(save_url: str) -> str:
     هكذا يأخذ المتصفّح اسم الحفظ من الخادم (الرقم المرجعي) بدل معرّف blob العشوائي.
     """
     return (
-        "fetch('" + save_url + "',{method:'POST',"
+        "fetch(" + _js_str(save_url) + ",{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
         ".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);"
         "return r.json();})"
