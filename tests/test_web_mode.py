@@ -96,6 +96,9 @@ assert "--other:#8A6E4B" in dash and "التبديل إلى 🕋 الحج" in da
 # صفحات المحرّر من البورتال بلون العمرة
 q = c.get("/quotes/new").get_data(as_text=True)
 assert f"--bronze:{GREEN}" in q and "🌙 نظام العمرة" in q
+# رقم النسخة الجارية فعلاً في رأس المحرّر (لا تاريخ ثابت قديم)
+assert f"🆕 {server._BUILD_ID}" in q and "2026-09-16b" not in q
+assert "🆕" not in webdoc._doc_html({}, [], "م", "📄")      # سطح المكتب بلا علامة
 p = c.get("/pricer").get_data(as_text=True)
 assert f"--bronze:{GREEN}" in p and "🌙 نظام العمرة" in p
 

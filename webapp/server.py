@@ -342,7 +342,8 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-21a · قوائم منسدلة في الفاوتشر وطلب المواصلات"
+_BUILD_TAG = "2026-10-21b · رقم النسخة الحقيقي في رأس المحرّر"
+_BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
 @app.get("/version")
@@ -680,7 +681,8 @@ def doc_manual(kind):
         data, schema, f"{title} (يدوي)", icon,
         submit_action=webdoc.web_submit_action(
             url_for("doc_manual_pdf", kind=kind)),
-        back_url=url_for("documents"), mode=_mode())
+        back_url=url_for("documents"), mode=_mode(),
+        build=_BUILD_ID)
 
 
 @app.post("/documents/<kind>/manual/pdf")
@@ -1370,7 +1372,8 @@ def quote_new():
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action_url(url_for("quote_pdf")),
         back_url=url_for("offers"), lang=lang,
-        lang_reload=url_for("quote_new"), mode=_mode())
+        lang_reload=url_for("quote_new"), mode=_mode(),
+        build=_BUILD_ID)
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
@@ -1395,7 +1398,8 @@ def quote_edit(code, num):
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action_url(url_for("quote_pdf")),
         back_url=url_for("quotes"), lang=lang,
-        lang_reload=url_for("quote_edit", code=code, num=num), mode=_mode())
+        lang_reload=url_for("quote_edit", code=code, num=num), mode=_mode(),
+        build=_BUILD_ID)
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
@@ -1521,7 +1525,8 @@ def quote_doc(code, num, kind):
         data, schema, f"{title} — من العرض {num}", icon,
         submit_action=webdoc.web_submit_action(
             url_for("quote_doc_pdf", code=code, num=num, kind=kind)),
-        back_url=url_for("quotes"), mode=_mode())
+        back_url=url_for("quotes"), mode=_mode(),
+        build=_BUILD_ID)
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
@@ -2026,7 +2031,8 @@ def doc_edit(idx, kind):
         data, schema, title, icon,
         submit_action=webdoc.web_submit_action(
             url_for("doc_pdf", idx=idx, kind=kind)),
-        back_url=url_for("hujjaj_edit", idx=idx), mode=_mode())
+        back_url=url_for("hujjaj_edit", idx=idx), mode=_mode(),
+        build=_BUILD_ID)
 
 
 @app.post("/doc/<int:idx>/<kind>/pdf")
@@ -2213,7 +2219,8 @@ def travel_edit(idx):
     return webdoc._doc_html(
         data, travel.web_schema(), f"مواعيد وتعليمات السفر — {name}", "🧳",
         submit_action=webdoc.web_submit_action(url_for("travel_pdf", idx=idx)),
-        back_url=url_for("travel_list"), mode=_mode())
+        back_url=url_for("travel_list"), mode=_mode(),
+        build=_BUILD_ID)
 
 
 @app.post("/travel/<int:idx>/pdf")

@@ -98,7 +98,7 @@ def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
               submit_action: str | None = None,
               back_url: str | None = None, lang: str = "ar",
               lang_reload: str | None = None,
-              mode: str | None = None) -> str:
+              mode: str | None = None, build: str | None = None) -> str:
     en = str(lang) == "en"
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     sch = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
@@ -106,10 +106,14 @@ def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
     back = (_BACK_LINK.replace("__URL__", back_url).replace("__BACKTXT__",
             back_txt) if back_url else "")
     m_icon, m_css, m_chip = mode_bits(mode)
+    # علامة النسخة الجارية فعلاً (من الخادم) — تُخفى في سطح المكتب
+    ver = (f'<span class="num ver" style="opacity:.7">🆕 {_esc(build)}</span>'
+           if build else "")
     # علامات الوضع قبل إدراج البيانات كي لا تطابق نصّاً كتبه المستخدم
     return (_TEMPLATE.replace("__MODE_ICON__", m_icon)
             .replace("__MODE_CSS__", m_css)
             .replace("__MODE_CHIP__", m_chip)
+            .replace("__BUILD__", ver)
             .replace("__DATA__", payload)
             .replace("__SCHEMA__", sch)
             .replace("__TITLE__", _esc(doc_title, quote=False))   # قد يحوي رقماً من المستخدم
@@ -196,7 +200,7 @@ __MODE_ICON__
   <h1>__ICON__ __TITLE__</h1>
   <div class="tools">
     __MODE_CHIP__
-    <span class="num ver" style="opacity:.7">🆕 2026-09-16b</span>
+    __BUILD__
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
