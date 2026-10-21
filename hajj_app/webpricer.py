@@ -60,15 +60,21 @@ def serve_pricer(data: dict, doc_title: str = "مسعّر المجموعات",
 
 _BACK_LINK = ('<a href="__URL__" style="color:#fff;background:#0003;'
               'padding:7px 14px;border-radius:9px;text-decoration:none;'
-              'font-weight:700">↩ رجوع</a>')
+              'font-weight:700;white-space:nowrap">↩ رجوع</a>')
 
 
 def _pricer_html(data: dict, doc_title: str, submit_js: str | None = None,
-                 back_url: str | None = None, full_period: bool = False) -> str:
+                 back_url: str | None = None, full_period: bool = False,
+                 mode: str | None = None) -> str:
+    from .webdoc import mode_bits
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     back = _BACK_LINK.replace("__URL__", back_url) if back_url else ""
     unit = "كامل الفترة" if full_period else "الليلة"   # الحج: للفترة، العمرة: لليلة
-    return (_TEMPLATE.replace("__DATA__", payload)
+    m_icon, m_css, m_chip = mode_bits(mode)       # لون الوضع وشارته (الويب)
+    return (_TEMPLATE.replace("__MODE_ICON__", m_icon)
+            .replace("__MODE_CSS__", m_css)
+            .replace("__MODE_CHIP__", m_chip)
+            .replace("__DATA__", payload)
             .replace("__TITLE__", doc_title)
             .replace("__RATEUNIT__", unit)
             .replace("__SUBMIT__", submit_js or _SUBMIT_DESKTOP)
@@ -80,16 +86,28 @@ _TEMPLATE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
+__MODE_ICON__
 <style>
   :root{ --bronze:#8A6E4B; --deep:#6E543A; --bg:#F4F1EC; --panel:#fff;
          --border:#E2DACE; --ink:#2C2318; --muted:#8A7E68; --green:#2E6B45; }
+  __MODE_CSS__
   *{ box-sizing:border-box; }
   body{ font-family:"Segoe UI",Tahoma,"Traditional Arabic",sans-serif;
         background:var(--bg); color:var(--ink); margin:0; padding:0 0 96px; }
   header{ background:var(--bronze); color:#fff; padding:16px 22px;
           position:sticky; top:0; z-index:5; box-shadow:0 2px 8px #0002;
-          display:flex; justify-content:space-between; align-items:center; }
+          display:flex; justify-content:space-between; align-items:center;
+          flex-wrap:wrap; gap:8px 14px; }
   header h1{ font-size:19px; margin:0; }
+  header .tools{ display:flex; align-items:center; gap:10px 14px;
+          flex-wrap:wrap; justify-content:flex-end; margin-inline-start:auto; }
+  /* الهاتف: الرأس يلتفّ بدل أن يدفع زرّ الرجوع خارج الشاشة */
+  @media (max-width:600px){
+    header{ padding:12px 14px; }
+    header h1{ font-size:17px; }
+    header .ver{ display:none; }
+    .mode-chip{ font-size:12.5px; padding:3px 10px; }
+  }
   header .num{ font-size:14px; opacity:.9; }
   .wrap{ max-width:940px; margin:18px auto; padding:0 16px; }
   fieldset{ background:var(--panel); border:1px solid var(--border);
@@ -131,7 +149,8 @@ _TEMPLATE = r"""<!doctype html>
 <body>
 <header>
   <h1>🧮 مسعّر المجموعات</h1>
-  <div style="display:flex;align-items:center;gap:14px">
+  <div class="tools">
+    __MODE_CHIP__
     <span class="num" id="hnum"></span>
     __BACK__
   </div>

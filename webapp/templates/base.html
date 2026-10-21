@@ -2,14 +2,16 @@
 <html lang="ar" dir="rtl"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}المصطفى للحج والعمرة{% endblock %}</title>
+<title>{{ theme.icon }} {{ theme.noun }} · {% block title %}المصطفى للحج والعمرة{% endblock %}</title>
+<link rel="icon" href="{{ favicon }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <script>(function(){try{if(localStorage.getItem('navc')==='1')
   document.documentElement.classList.add('nav-collapsed');}catch(e){}})();</script>
-</head><body>
+</head><body class="mode-{{ mode }}">
 <div class="shell">
   <aside class="sidebar">
     <div class="logo"><img class="logo-img" src="{{ url_for('static', filename='logo.png') }}" alt="المصطفى للحج والعمرة"></div>
+    <div class="mode-band"><small>النظام الحالي</small>{{ theme.icon }} {{ theme.noun }}</div>
     <nav class="nav">
       <a class="navlink toplink {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">
         <span class="ng-ic" style="background:#8A6E4B"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="6" height="6" rx="1.4"/><rect x="11" y="3" width="6" height="6" rx="1.4"/><rect x="3" y="11" width="6" height="6" rx="1.4"/><rect x="11" y="11" width="6" height="6" rx="1.4"/></svg></span> لوحة التحكم</a>
@@ -76,8 +78,9 @@
         </div>
       </div>
       <div class="actions">
+        <span class="mode-badge" title="أنت الآن في نظام {{ theme.noun }}">{{ theme.icon }} نظام {{ theme.noun }}</span>
         <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}{{ season_suffix }}</a>
-        <a class="pill" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_label }}</a>
+        <a class="pill mode-switch" style="--other:{{ other_theme.accent }}" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_theme.icon }} {{ other_label }}</a>
       </div>
     </div>
     <div class="content">{% block content %}{% endblock %}</div>

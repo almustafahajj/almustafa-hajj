@@ -88,7 +88,20 @@ def _sess():
 
 
 def _mode() -> str:
-    return session.get("mode", app_mode.HAJJ)
+    """وضع الجلسة؛ الافتراضي (وأيّ قيمة غير معروفة) هو العمرة."""
+    m = session.get("mode")
+    return m if m in app_mode.MODES else app_mode.UMRAH
+
+
+# خيارات الوضع في شاشتَي الدخول والاسترداد — العمرة أولاً وهي الافتراضية
+_MODE_CHOICES = [(m, app_mode.theme(m)["noun"], app_mode.theme(m)["icon"])
+                 for m in (app_mode.UMRAH, app_mode.HAJJ)]
+
+
+def _form_mode() -> str:
+    """الوضع المختار في نموذج الدخول (العمرة إن لم يُختر أو كان غير معروف)."""
+    m = request.form.get("mode")
+    return m if m in app_mode.MODES else app_mode.UMRAH
 
 
 def _noun() -> str:
@@ -147,7 +160,7 @@ def setup():
                 sid = secrets.token_hex(16)
                 _SESSIONS[sid] = sess
                 session["sid"] = sid
-                session["mode"] = app_mode.HAJJ
+                session["mode"] = app_mode.UMRAH      # الدخول الافتراضي: العمرة
                 session["username"] = username
                 session["role"] = sess.role_label
                 session["acc_key"] = key           # يُعرض مرّة في صفحة الحسابات
@@ -164,10 +177,11 @@ def login():
     if not auth.is_configured():           # نشر جديد بلا حسابات → تهيئة المالك
         return redirect(url_for("setup"))
     error = ""
+    mode = app_mode.UMRAH                  # الدخول الافتراضي: العمرة
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        mode = request.form.get("mode") or app_mode.HAJJ
+        mode = _form_mode()
         try:
             app_mode.set_mode(mode)
             hs = auth.login(username, password)
@@ -181,9 +195,8 @@ def login():
             return redirect(url_for("dashboard"))
         except Exception:
             error = "اسم المستخدم أو كلمة المرور غير صحيحة."
-    return render_template("login.html", error=error,
-                           modes=[(app_mode.HAJJ, "الحج"),
-                                  (app_mode.UMRAH, "العمرة")])
+    return render_template("login.html", error=error, modes=_MODE_CHOICES,
+                           selected_mode=mode)
 
 
 @app.route("/recover", methods=["GET", "POST"])
@@ -192,11 +205,12 @@ def recover():
     if not auth.is_configured():
         return redirect(url_for("setup"))
     error = ""
+    mode = app_mode.UMRAH                  # الدخول الافتراضي: العمرة
     if request.method == "POST":
         rk = (request.form.get("recovery") or "").strip()
         pw = request.form.get("password") or ""
         confirm = request.form.get("confirm") or ""
-        mode = request.form.get("mode") or app_mode.HAJJ
+        mode = _form_mode()
         if pw != confirm:
             error = "كلمتا المرور غير متطابقتين."
         else:
@@ -214,9 +228,8 @@ def recover():
                 return redirect(url_for("dashboard"))
             except Exception as exc:
                 error = str(exc)
-    return render_template("recover.html", error=error,
-                           modes=[(app_mode.HAJJ, "الحج"),
-                                  (app_mode.UMRAH, "العمرة")])
+    return render_template("recover.html", error=error, modes=_MODE_CHOICES,
+                           selected_mode=mode)
 
 
 @app.get("/logout")
@@ -318,16 +331,18 @@ def _season() -> str:
 def _ctx() -> dict:
     """سياق مشترك للقوالب (الوضع/النوع/زر التبديل/الصلاحيات/الموسم)."""
     s = _sess()
+    other = app_mode.UMRAH if _mode() == app_mode.HAJJ else app_mode.HAJJ
     return dict(
         noun=_noun(), mode=_mode(),
-        other=(app_mode.UMRAH if _mode() == app_mode.HAJJ else app_mode.HAJJ),
-        other_label=("العمرة" if _mode() == app_mode.HAJJ else "الحج"),
+        other=other, other_label=app_mode.theme(other)["noun"],
+        theme=app_mode.theme(_mode()), other_theme=app_mode.theme(other),
+        favicon=app_mode.favicon_href(_mode()),
         season=_season(), season_suffix=_season_suffix(),
         is_admin=bool(s is not None and s.is_admin),
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-20a · فاوتشر/طلب مواصلات من عرض سعر"
+_BUILD_TAG = "2026-10-20b · العمرة افتراضياً + لون مميّز لكل وضع"
 
 
 @app.get("/version")
@@ -665,7 +680,7 @@ def doc_manual(kind):
         data, schema, f"{title} (يدوي)", icon,
         submit_action=webdoc.web_submit_action(
             url_for("doc_manual_pdf", kind=kind)),
-        back_url=url_for("documents"))
+        back_url=url_for("documents"), mode=_mode())
 
 
 @app.post("/documents/<kind>/manual/pdf")
@@ -1258,7 +1273,8 @@ def pricer():
             "items": [[n, ""] for n in defaults]}
     return webpricer._pricer_html(data, "مسعّر المجموعات",
                                   submit_js=webpricer._SUBMIT_WEB,
-                                  back_url=url_for("offers"), full_period=hajj)
+                                  back_url=url_for("offers"), full_period=hajj,
+                                  mode=_mode())
 
 
 @app.post("/pricer/pdf")
@@ -1354,7 +1370,7 @@ def quote_new():
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action_url(url_for("quote_pdf")),
         back_url=url_for("offers"), lang=lang,
-        lang_reload=url_for("quote_new"))
+        lang_reload=url_for("quote_new"), mode=_mode())
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
@@ -1379,7 +1395,7 @@ def quote_edit(code, num):
         data, pdf_io.umrah_quotation_schema(lang), title, "💲",
         submit_action=webdoc.web_submit_action_url(url_for("quote_pdf")),
         back_url=url_for("quotes"), lang=lang,
-        lang_reload=url_for("quote_edit", code=code, num=num))
+        lang_reload=url_for("quote_edit", code=code, num=num), mode=_mode())
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
@@ -1505,7 +1521,7 @@ def quote_doc(code, num, kind):
         data, schema, f"{title} — من العرض {num}", icon,
         submit_action=webdoc.web_submit_action(
             url_for("quote_doc_pdf", code=code, num=num, kind=kind)),
-        back_url=url_for("quotes"))
+        back_url=url_for("quotes"), mode=_mode())
     return html, 200, {"Cache-Control": "no-store, max-age=0"}
 
 
@@ -1605,7 +1621,8 @@ def pricing_edit(num):
     data["rate_full_period"] = "1" if hajj else ""   # الوضع يحدّد: للفترة/لليلة
     return webpricer._pricer_html(data, "مسعّر المجموعات",
                                   submit_js=webpricer._SUBMIT_WEB,
-                                  back_url=url_for("pricings"), full_period=hajj)
+                                  back_url=url_for("pricings"), full_period=hajj,
+                                  mode=_mode())
 
 
 @app.post("/pricings/<num>/delete")
@@ -2009,7 +2026,7 @@ def doc_edit(idx, kind):
         data, schema, title, icon,
         submit_action=webdoc.web_submit_action(
             url_for("doc_pdf", idx=idx, kind=kind)),
-        back_url=url_for("hujjaj_edit", idx=idx))
+        back_url=url_for("hujjaj_edit", idx=idx), mode=_mode())
 
 
 @app.post("/doc/<int:idx>/<kind>/pdf")
@@ -2196,7 +2213,7 @@ def travel_edit(idx):
     return webdoc._doc_html(
         data, travel.web_schema(), f"مواعيد وتعليمات السفر — {name}", "🧳",
         submit_action=webdoc.web_submit_action(url_for("travel_pdf", idx=idx)),
-        back_url=url_for("travel_list"))
+        back_url=url_for("travel_list"), mode=_mode())
 
 
 @app.post("/travel/<int:idx>/pdf")

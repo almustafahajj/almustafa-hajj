@@ -4,19 +4,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>الدخول — المصطفى للحج والعمرة</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head><body>
+</head><body class="mode-{{ selected_mode }}">
 <div class="login-wrap">
   <form class="login-card" method="post" autocomplete="on">
-    <div class="brand-dot">🕋</div>
+    <div class="brand-dot" id="modeIcon">{% for val,lbl,icon in modes %}{% if val == selected_mode %}{{ icon }}{% endif %}{% endfor %}</div>
     <h1>المصطفى للحج والعمرة</h1>
     <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
-    <div class="field">
-      <label for="mode">الوضع</label>
-      <select id="mode" name="mode">
-        {% for val,lbl in modes %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
-      </select>
-    </div>
+    {% include "_mode_pick.html" %}
     <div class="field">
       <label for="username">اسم المستخدم</label>
       <input id="username" name="username" autofocus autocomplete="username">

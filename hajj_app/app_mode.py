@@ -89,3 +89,31 @@ def label(key: str, default: str = "") -> str:
 def mode_label(mode: str) -> str:
     """الاسم المعروض لوضعٍ معيّن (لأزرار شاشة الاختيار)."""
     return _LABELS.get(mode, _LABELS[HAJJ])["noun"]
+
+
+# لون مميّز لكل وضع في واجهات الويب، ليعرف المستخدم فوراً في أيّ نظام هو:
+# الحج برونزي (لون الهوية المعتاد) والعمرة أخضر. نفس القيَم في
+# ``webapp/static/style.css`` (body.mode-…) — تُعدَّل معاً.
+_THEME = {
+    HAJJ: {"accent": "#8A6E4B", "deep": "#6E543A", "icon": "🕋", "letter": "ح"},
+    UMRAH: {"accent": "#13795B", "deep": "#0D5A43", "icon": "🌙", "letter": "ع"},
+}
+
+
+def theme(mode: str) -> dict:
+    """ألوان الوضع وأيقونته واسمه: accent/deep/icon/letter/noun."""
+    t = dict(_THEME.get(mode, _THEME[HAJJ]))
+    t["noun"] = mode_label(mode)
+    return t
+
+
+def favicon_href(mode: str) -> str:
+    """أيقونة تبويب بلون الوضع وحرفه (ع/ح) — تميّز تبويبات الحج والعمرة."""
+    from urllib.parse import quote
+    t = theme(mode)
+    svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+           f"<rect width='32' height='32' rx='8' fill='{t['accent']}'/>"
+           "<text x='16' y='23' font-size='19' font-weight='700' "
+           "text-anchor='middle' fill='white' font-family='Tahoma,sans-serif'>"
+           f"{t['letter']}</text></svg>")
+    return "data:image/svg+xml," + quote(svg, safe="/:='")

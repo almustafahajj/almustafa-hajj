@@ -2,6 +2,12 @@
   --bronze:#8A6E4B; --bronze-d:#6E543A; --bg:#F4F1EC; --panel:#fff;
   --border:#E6DFD3; --ink:#2C2318; --muted:#8A7E68; --sidebar:#2A211A;
   --sidebar-fg:#EFE7DA;
+  /* درجات مشتقّة من لون الوضع (قيَم الحج؛ العمرة تُبدّلها في body.mode-umrah) */
+  --soft:#F1ECE3; --soft-2:#F2ECE3; --soft-hover:#E7DECF; --row-hover:#FBF8F3;
+  --track:#EEE7DA; --glow:#efe6d6;
+  --side-line:#463829; --side-hover:#3C3025; --side-head:#c9b597;
+  --side-head-open:#e6d8bd; --side-dim:#8a7a5e; --side-link:#c3b295;
+  --side-foot:#b7a98e; --side-foot-link:#e0b25e;
 }
 *{ box-sizing:border-box; }
 html,body{ margin:0; padding:0; }
@@ -14,7 +20,7 @@ a{ color:inherit; text-decoration:none; }
 /* ---- login ---- */
 .login-wrap{ min-height:100vh; display:flex; align-items:center;
   justify-content:center; background:
-  radial-gradient(1200px 600px at 70% -10%, #efe6d6 0%, var(--bg) 60%); }
+  radial-gradient(1200px 600px at 70% -10%, var(--glow) 0%, var(--bg) 60%); }
 .login-card{ background:var(--panel); border:1px solid var(--border);
   border-radius:20px; padding:34px 30px; width:min(400px,92vw);
   box-shadow:0 18px 50px #6e543a22; }
@@ -41,18 +47,18 @@ a{ color:inherit; text-decoration:none; }
 .sidebar{ width:230px; background:var(--sidebar); color:var(--sidebar-fg);
   flex:none; display:flex; flex-direction:column; padding:18px 12px; }
 .sidebar .logo{ text-align:center; font-weight:800; font-size:18px;
-  padding:6px 0 14px; border-bottom:1px solid #463829; margin-bottom:12px; }
+  padding:6px 0 14px; border-bottom:1px solid var(--side-line); margin-bottom:12px; }
 .nav{ display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
 .nav a.navlink{ display:flex; align-items:center; gap:10px; padding:10px 12px;
   border-radius:10px; color:var(--sidebar-fg); font-weight:600; margin:1px 0;
   font-size:14px; }
-.nav a.navlink:hover{ background:#3C3025; }
+.nav a.navlink:hover{ background:var(--side-hover); }
 .nav a.navlink.active{ background:var(--bronze); color:#fff; }
 /* مجموعات القائمة القابلة للطيّ */
 .nav-group{ margin:3px 0; }
 .nav-group > summary{ list-style:none; cursor:pointer; display:flex;
   align-items:center; gap:9px; padding:10px 12px; border-radius:10px;
-  font-weight:700; font-size:12.5px; color:#c9b597; letter-spacing:.2px;
+  font-weight:700; font-size:12.5px; color:var(--side-head); letter-spacing:.2px;
   user-select:none; }
 .nav-group > summary::-webkit-details-marker{ display:none; }
 .ng-ic{ width:32px; height:32px; border-radius:10px; display:inline-flex;
@@ -60,23 +66,23 @@ a{ color:inherit; text-decoration:none; }
   box-shadow:0 2px 6px #0003; }
 .nav a.toplink{ font-weight:700; font-size:14.5px; }
 .nav-group > summary::after{ content:"⌄"; margin-inline-start:auto;
-  font-size:15px; color:#8a7a5e; transition:transform .18s; transform:translateY(-2px); }
+  font-size:15px; color:var(--side-dim); transition:transform .18s; transform:translateY(-2px); }
 .nav-group:not([open]) > summary::after{ transform:rotate(90deg); }
-.nav-group > summary:hover{ background:#3C3025; color:#fff; }
-.nav-group[open] > summary{ color:#e6d8bd; }
+.nav-group > summary:hover{ background:var(--side-hover); color:#fff; }
+.nav-group[open] > summary{ color:var(--side-head-open); }
 .nav-group .navlink{ padding-inline-start:34px; font-size:13.5px; font-weight:500;
-  color:#c3b295; }
+  color:var(--side-link); }
 .nav-group .navlink:hover{ color:#fff; }
 .nav-group .navlink.active{ color:#fff; font-weight:700; }
-.sidebar .foot{ margin-top:auto; font-size:13px; color:#b7a98e;
-  border-top:1px solid #463829; padding-top:12px; }
-.sidebar .foot a{ color:#e0b25e; }
+.sidebar .foot{ margin-top:auto; font-size:13px; color:var(--side-foot);
+  border-top:1px solid var(--side-line); padding-top:12px; }
+.sidebar .foot a{ color:var(--side-foot-link); }
 .main{ flex:1; min-width:0; }
 .topbar{ background:var(--panel); border-bottom:1px solid var(--border);
   padding:14px 22px; display:flex; align-items:center; justify-content:space-between; }
 .topbar h2{ margin:0; font-size:20px; }
 .topbar .actions{ display:flex; gap:10px; }
-.pill{ background:#F1ECE3; border:1px solid var(--border); border-radius:20px;
+.pill{ background:var(--soft); border:1px solid var(--border); border-radius:20px;
   padding:8px 14px; font-weight:600; font-size:14px; color:var(--ink); }
 .content{ padding:22px; }
 
@@ -94,12 +100,12 @@ a{ color:inherit; text-decoration:none; }
   font-size:16px; }
 table.data{ width:100%; border-collapse:collapse; background:var(--panel);
   border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-table.data th{ background:#F2ECE3; color:var(--bronze); font-weight:700;
+table.data th{ background:var(--soft-2); color:var(--bronze); font-weight:700;
   padding:12px 14px; text-align:right; font-size:14px; }
 table.data td{ padding:11px 14px; border-top:1px solid var(--border);
   font-size:14px; }
-table.data tr:hover td{ background:#FBF8F3; }
-.bar{ height:8px; background:#EEE7DA; border-radius:5px; overflow:hidden;
+table.data tr:hover td{ background:var(--row-hover); }
+.bar{ height:8px; background:var(--track); border-radius:5px; overflow:hidden;
   min-width:90px; }
 .bar > i{ display:block; height:100%; background:var(--bronze); }
 
@@ -107,8 +113,8 @@ table.data tr:hover td{ background:#FBF8F3; }
 .searchbar{ display:flex; gap:10px; align-items:center; }
 .searchbar input{ flex:1; font:inherit; font-size:15px; border:1px solid var(--border);
   border-radius:11px; padding:11px 14px; background:#fff; color:var(--ink); }
-.btn.ghost{ background:#F1ECE3; border:1px solid var(--border); color:var(--ink); }
-.btn.ghost:hover{ background:#E7DECF; }
+.btn.ghost{ background:var(--soft); border:1px solid var(--border); color:var(--ink); }
+.btn.ghost:hover{ background:var(--soft-hover); }
 .btn.sm{ padding:6px 12px; font-size:13px; }
 .st{ font-size:12px; font-weight:800; padding:3px 10px; border-radius:999px;
   background:#F1ECE3; color:var(--muted); }
@@ -235,10 +241,10 @@ table.data tr.rpart td{ background:#fbf0dc; }
 
 /* ---- زر طيّ القائمة + السلوك ---- */
 .tb-left{ display:flex; align-items:center; gap:14px; min-width:0; }
-.menu-toggle{ background:#F1ECE3; border:1px solid var(--border); border-radius:10px;
+.menu-toggle{ background:var(--soft); border:1px solid var(--border); border-radius:10px;
   width:42px; height:42px; font-size:20px; line-height:1; cursor:pointer;
   color:var(--ink); flex:none; transition:background .15s; }
-.menu-toggle:hover{ background:#E7DECF; }
+.menu-toggle:hover{ background:var(--soft-hover); }
 .sidebar{ transition:width .18s ease, padding .18s ease; overflow:hidden; }
 html.nav-collapsed .sidebar{ width:0; padding-inline:0; border:0; }
 html.nav-collapsed .sidebar > *{ opacity:0; visibility:hidden; }
@@ -290,3 +296,58 @@ details.filterpanel > summary::after{ content:"⌄"; margin-inline-start:auto;
   font-size:16px; color:#8a7a5e; transition:transform .18s; }
 details.filterpanel:not([open]) > summary::after{ transform:rotate(90deg); }
 details.filterpanel[open] > summary{ margin-bottom:12px; }
+
+/* ======================================================================
+   تمييز النظام: الحج برونزي (الافتراضي أعلاه) والعمرة أخضر — لونٌ واضح لكلٍّ
+   منهما في القائمة والشريط العلوي والأزرار والجداول. نفس لونَي
+   hajj_app/app_mode.py (_THEME) — يُعدَّلان معاً.
+   ====================================================================== */
+body.mode-umrah{
+  --bronze:#13795B; --bronze-d:#0D5A43; --bg:#EEF5F1; --border:#D4E5DC;
+  --muted:#5E776D; --sidebar:#0E2A22; --sidebar-fg:#E3F1EA;
+  --soft:#E3F0EA; --soft-2:#E1EEE7; --soft-hover:#D3E7DD; --row-hover:#F4FAF7;
+  --track:#DCEBE3; --glow:#d6ece1;
+  --side-line:#21473C; --side-hover:#1B3D33; --side-head:#A9CDBE;
+  --side-head-open:#D2EADF; --side-dim:#6F988A; --side-link:#B1D2C5;
+  --side-foot:#93B8AA; --side-foot-link:#7FD8B2;
+}
+/* شارة النظام: في الشريط العلوي وتحت الشعار */
+.mode-badge{ display:inline-flex; align-items:center; gap:7px;
+  background:var(--bronze); color:#fff; border-radius:20px; padding:8px 16px;
+  font-weight:800; font-size:14.5px; white-space:nowrap;
+  box-shadow:0 2px 8px #0002; }
+.mode-band{ background:var(--bronze); color:#fff; text-align:center;
+  font-weight:800; font-size:17px; border-radius:14px; padding:7px 8px 9px;
+  margin:0 6px 14px; letter-spacing:.3px; border:2px dashed #fff8;
+  box-shadow:0 3px 10px #0004; cursor:default; user-select:none; }
+.mode-band small{ display:block; font-size:11px; font-weight:600;
+  opacity:.85; letter-spacing:0; margin-bottom:1px; }
+.topbar{ box-shadow:inset 0 4px 0 var(--bronze); flex-wrap:wrap; gap:10px; }
+.topbar .actions{ flex-wrap:wrap; align-items:center; }
+/* زر التبديل بلون النظام الآخر — يوضّح أنك ستنتقل إلى عالمٍ بلونٍ مختلف */
+.pill.mode-switch{ background:#fff; border:1.5px solid var(--other,#8A6E4B);
+  color:var(--other,#8A6E4B); }
+.pill.mode-switch:hover{ background:var(--other,#8A6E4B); color:#fff; }
+/* اختيار النظام في شاشة الدخول: زرّان ملوّنان (العمرة افتراضياً) */
+.mode-pick{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.mode-opt{ position:relative; cursor:pointer; display:block; }
+.mode-pick .mode-opt{ margin:0; }      /* يتجاوز .field label */
+.mode-opt.mode-umrah{ --c:#13795B; }
+.mode-opt.mode-hajj{ --c:#8A6E4B; }
+.mode-opt input{ position:absolute; inset:0; opacity:0; margin:0;
+  cursor:pointer; }
+.mode-opt span{ display:flex; align-items:center; justify-content:center;
+  gap:8px; padding:12px 10px; border:2px solid var(--c); color:var(--c);
+  background:#fff; border-radius:12px; font-weight:800; font-size:16px;
+  transition:background .15s, color .15s, box-shadow .15s; }
+.mode-opt input:checked + span{ background:var(--c); color:#fff;
+  box-shadow:0 4px 14px #0003; }
+.mode-opt input:focus-visible + span{ outline:3px solid var(--c);
+  outline-offset:2px; }
+/* علامة ✓ على المختار — إشارة لا تعتمد على اللون وحده */
+.mode-opt input:checked + span::before{ content:"✓"; font-weight:900; }
+/* التباين العالي في ويندوز يُلغي الألوان: إطار بلون التمييز للمختار */
+@media (forced-colors:active){
+  .mode-opt input:checked + span{ outline:3px solid Highlight;
+    outline-offset:2px; border-width:3px; }
+}

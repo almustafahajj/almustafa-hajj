@@ -74,20 +74,43 @@ def serve_doc_editor(data: dict, schema: list, doc_title: str = "مستند",
 
 _BACK_LINK = ('<a href="__URL__" style="color:#fff;background:#0003;'
               'padding:7px 14px;border-radius:9px;text-decoration:none;'
-              'font-weight:700">__BACKTXT__</a>')
+              'font-weight:700;white-space:nowrap">__BACKTXT__</a>')
+
+
+def mode_bits(mode: str | None) -> tuple[str, str, str]:
+    """تمييز صفحة مستقلّة بوضعها (حج/عمرة) كما في البورتال:
+    ``(وسم أيقونة التبويب، تجاوز ألوان CSS، شارة الرأس)``. بلا وضع (سطح المكتب)
+    تعود فارغة فيبقى الشكل البرونزي المعتاد."""
+    from . import app_mode
+    if mode not in app_mode.MODES:
+        return "", "", ""
+    t = app_mode.theme(mode)
+    icon = f'<link rel="icon" href="{_esc(app_mode.favicon_href(mode))}">'
+    css = (f":root{{ --bronze:{t['accent']}; --deep:{t['deep']}; }}"
+           " .mode-chip{ background:#fff; color:var(--bronze); font-weight:800;"
+           " border-radius:999px; padding:5px 14px; font-size:14px;"
+           " white-space:nowrap; box-shadow:0 1px 4px #0003; }")
+    chip = f'<span class="mode-chip">{t["icon"]} نظام {t["noun"]}</span>'
+    return icon, css, chip
 
 
 def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
               submit_action: str | None = None,
               back_url: str | None = None, lang: str = "ar",
-              lang_reload: str | None = None) -> str:
+              lang_reload: str | None = None,
+              mode: str | None = None) -> str:
     en = str(lang) == "en"
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     sch = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
     back_txt = "↩ Back" if en else "↩ رجوع"
     back = (_BACK_LINK.replace("__URL__", back_url).replace("__BACKTXT__",
             back_txt) if back_url else "")
-    return (_TEMPLATE.replace("__DATA__", payload)
+    m_icon, m_css, m_chip = mode_bits(mode)
+    # علامات الوضع قبل إدراج البيانات كي لا تطابق نصّاً كتبه المستخدم
+    return (_TEMPLATE.replace("__MODE_ICON__", m_icon)
+            .replace("__MODE_CSS__", m_css)
+            .replace("__MODE_CHIP__", m_chip)
+            .replace("__DATA__", payload)
             .replace("__SCHEMA__", sch)
             .replace("__TITLE__", _esc(doc_title, quote=False))   # قد يحوي رقماً من المستخدم
             .replace("__ICON__", header_icon)
@@ -110,16 +133,28 @@ _TEMPLATE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
+__MODE_ICON__
 <style>
   :root{ --bronze:#8A6E4B; --deep:#6E543A; --bg:#F4F1EC; --panel:#fff;
          --border:#E2DACE; --ink:#2C2318; --muted:#8A7E68; }
+  __MODE_CSS__
   *{ box-sizing:border-box; }
   body{ font-family:"Segoe UI",Tahoma,"Traditional Arabic",sans-serif;
         background:var(--bg); color:var(--ink); margin:0; padding:0 0 90px; }
   header{ background:var(--bronze); color:#fff; padding:16px 22px;
           position:sticky; top:0; z-index:5; box-shadow:0 2px 8px #0002;
-          display:flex; justify-content:space-between; align-items:center; }
+          display:flex; justify-content:space-between; align-items:center;
+          flex-wrap:wrap; gap:8px 14px; }
   header h1{ font-size:19px; margin:0; }
+  header .tools{ display:flex; align-items:center; gap:10px 14px;
+          flex-wrap:wrap; justify-content:flex-end; margin-inline-start:auto; }
+  /* الهاتف: الرأس يلتفّ بدل أن يدفع زرّ الرجوع خارج الشاشة */
+  @media (max-width:600px){
+    header{ padding:12px 14px; }
+    header h1{ font-size:17px; }
+    header .ver{ display:none; }
+    .mode-chip{ font-size:12.5px; padding:3px 10px; }
+  }
   header .num{ font-size:14px; opacity:.9; }
   .wrap{ max-width:900px; margin:18px auto; padding:0 16px; }
   fieldset{ background:var(--panel); border:1px solid var(--border);
@@ -159,8 +194,9 @@ _TEMPLATE = r"""<!doctype html>
 <body>
 <header>
   <h1>__ICON__ __TITLE__</h1>
-  <div style="display:flex;align-items:center;gap:14px">
-    <span class="num" style="opacity:.7">🆕 2026-09-16b</span>
+  <div class="tools">
+    __MODE_CHIP__
+    <span class="num ver" style="opacity:.7">🆕 2026-09-16b</span>
     <span class="num" id="hnum"></span>
     __BACK__
   </div>
