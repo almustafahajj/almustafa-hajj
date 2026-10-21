@@ -188,6 +188,51 @@ for name, data in (("t_ar", t), ("t_en", te)):
     assert os.path.getsize(p) > 1000
 print("[ok] توليد PDF للفاوتشر والطلب")
 
+
+# ---- قوائم منسدلة في الفاوتشر والطلب كما في عرض السعر ----
+def _cols(schema, table):
+    return {c["key"]: c for s in schema if s.get("table") == table
+            for c in s["columns"]}
+
+
+def _fields(schema):
+    return {f["key"]: f for s in schema for f in s.get("fields", [])}
+
+
+qa = {(s.get("table"), c["key"]): c.get("options")
+      for s in pdf_io.umrah_quotation_schema("ar")
+      for c in s.get("columns", []) + s.get("fields", [])}
+vs_ar = _cols(pdf_io.voucher_schema("ar"), "stays")
+for k in ("city", "hotel", "room", "rooms", "view", "nights", "meals"):
+    assert vs_ar[k]["type"] == "selectfree", k
+    assert vs_ar[k]["options"] == qa[("stays", k)], k      # نفس خيارات العرض
+assert vs_ar["cin"]["type"] == "date"                     # التواريخ تبقى تقويماً
+vt = _cols(pdf_io.voucher_schema("ar"), "transport_rows")
+assert vt["car"]["options"] == qa[(None, "car_type")]
+assert vt["model"]["options"] == qa[(None, "car_model")]
+assert "من مطار جدة إلى الفندق في مكة" in vt["dest"]["options"]
+vf = _fields(pdf_io.voucher_schema("ar"))
+assert vf["lang"]["type"] == "select"                     # اللغة تبقى صارمة
+assert vf["status"]["type"] == "selectfree" and v["status"] in vf["status"]["options"]
+vs_en = _cols(pdf_io.voucher_schema("en"), "stays")
+assert "Makkah" in vs_en["city"]["options"] and "Haram View" in vs_en["view"]["options"]
+assert ve["status"] in _fields(pdf_io.voucher_schema("en"))["status"]["options"]
+assert pdf_io.VOUCHER_SCHEMA == pdf_io.voucher_schema("ar")
+tb = _cols(pdf_io.TREQ_SCHEMA, "bookings")
+assert tb["hotel"]["options"] == qa[("stays", "hotel")]
+tfl = _cols(pdf_io.TREQ_SCHEMA, "flights")
+assert tfl["carrier"]["options"] == qa[("flights", "carrier")]
+assert tfl["from"]["type"] == "selectfree" and tfl["date"]["type"] == "date"
+tm_ = _cols(pdf_io.TREQ_SCHEMA, "movements")
+for m in t["movements"]:                    # خطوط السير المعبّأة من العرض ضمن الخيارات
+    assert m[1] in tm_["route"]["options"], m[1]
+assert tm_["car"]["options"] == qa[(None, "car_type")]
+assert tm_["count"]["type"] == "selectfree"
+tf_ = _fields(pdf_io.TREQ_SCHEMA)
+assert tf_["honorific"]["type"] == "selectfree" and tf_["persons"]["type"] == "selectfree"
+assert "+971 الإمارات" in tf_["phone_code"]["options"]
+print("[ok] القوائم المنسدلة في الفاوتشر والطلب = خيارات عرض السعر")
+
 # ---- 7) مسارات الويب ----
 try:
     from webapp import server
@@ -245,8 +290,16 @@ assert r.status_code == 200
 page = r.get_data(as_text=True)
 assert "فيرمونت مكة" in page and "MA-Q0007" in page and "MA0001" in page
 assert storage.load_settings().get("voucher_seq") == 1
+assert '"type": "selectfree"' in page and "رافلز مكة بالاس" in page   # قوائم
+# فاوتشر إنجليزي ← قوائم إنجليزية؛ الفاوتشر اليدوي بقوائم كذلك
+page_en = client.get("/quotes/_manual/MA-Q0012/doc/voucher").get_data(as_text=True)
+assert "Raffles Makkah Palace" in page_en
+man = client.get("/documents/voucher/manual").get_data(as_text=True)
+assert '"type": "selectfree"' in man and "رافلز مكة بالاس" in man
 r = client.get("/quotes/U1/MA-Q0007/doc/treq")
 assert r.status_code == 200 and "MA-T0001" in r.get_data(as_text=True)
+man = client.get("/documents/treq/manual").get_data(as_text=True)
+assert "من الفندق في مكة الى الفندق في المدينة" in man
 assert client.get("/quotes/U1/MA-Q0999/doc/voucher").status_code == 302
 assert client.get("/quotes/U1/MA-Q0007/doc/invoice").status_code == 302
 

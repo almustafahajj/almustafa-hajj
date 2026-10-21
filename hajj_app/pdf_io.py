@@ -4612,6 +4612,103 @@ def umrah_quotation_schema(lang: str = "ar") -> list:
 UMRAH_QUOTATION_SCHEMA = umrah_quotation_schema("ar")
 
 
+# ---- قوائم منسدلة للفاوتشر وطلب المواصلات (نفس خيارات عرض السعر) ----
+# أزواج التنقّل الشائعة (عربي من، عربي إلى، إنجليزي من، إنجليزي إلى)
+_TRANSFER_PAIRS = (
+    ("مطار جدة", "الفندق في مكة", "Jeddah Airport", "Makkah Hotel"),
+    ("الفندق في مكة", "الفندق في المدينة", "Makkah Hotel", "Madinah Hotel"),
+    ("الفندق في المدينة", "الفندق في مكة", "Madinah Hotel", "Makkah Hotel"),
+    ("الفندق في مكة", "مطار جدة", "Makkah Hotel", "Jeddah Airport"),
+    ("الفندق في المدينة", "مطار المدينة", "Madinah Hotel", "Madinah Airport"),
+    ("مطار المدينة", "الفندق في المدينة", "Madinah Airport", "Madinah Hotel"),
+    ("الفندق في مكة", "محطة قطار مكة", "Makkah Hotel", "Makkah Train Station"),
+    ("محطة قطار مكة", "الفندق في مكة", "Makkah Train Station", "Makkah Hotel"),
+    ("الفندق في المدينة", "محطة قطار المدينة", "Madinah Hotel",
+     "Madinah Train Station"),
+    ("محطة قطار المدينة", "الفندق في المدينة", "Madinah Train Station",
+     "Madinah Hotel"),
+)
+_VOUCHER_STATUS = {"ar": ["مؤكّد / CONFIRMED", "قيد التأكيد / ON REQUEST",
+                          "ملغى / CANCELLED"],
+                   "en": ["CONFIRMED", "ON REQUEST", "CANCELLED"]}
+
+
+def _quote_opts(lang: str) -> dict:
+    """خيارات قوائم محرّر عرض السعر: {(القسم أو None، المفتاح): [الخيارات]}."""
+    out = {}
+    for sec in umrah_quotation_schema(lang):
+        for f in list(sec.get("columns", [])) + list(sec.get("fields", [])):
+            if f.get("options"):
+                out[(sec.get("table"), f["key"])] = list(f["options"])
+    return out
+
+
+def _with_options(schema: list, picks: dict) -> list:
+    """نسخة من مخطّط تصير فيها الحقول/الأعمدة المذكورة قوائم قابلة للكتابة
+    (selectfree) كما في عرض السعر؛ وكل select آخر (عدا اللغة) كذلك."""
+    import copy
+    out = copy.deepcopy(schema)
+    for sec in out:
+        for f in list(sec.get("columns", [])) + list(sec.get("fields", [])):
+            opts = picks.get((sec.get("table"), f["key"]))
+            if opts:
+                f["type"], f["options"] = "selectfree", list(opts)
+            elif f.get("type") == "select" and f["key"] != "lang":
+                f["type"] = "selectfree"
+    return out
+
+
+def voucher_schema(lang: str = "ar") -> list:
+    """مخطّط فاوتشر الفندق بقوائم منسدلة بلغة الفاوتشر (المدن/الفنادق/الغرف/
+    الإطلالات/الوجبات/السيارات/خطوط التنقّل/الحالة) — نفس خيارات عرض السعر."""
+    en = str(lang) == "en"
+    q = _quote_opts("en" if en else "ar")
+    legs = [f"From {c} to {d}" if en else f"من {a} إلى {b}"
+            for a, b, c, d in _TRANSFER_PAIRS]
+    general = (["Airport pickup at Jeddah, transfers between the two holy mosques "
+                "and the hotels, then drop-off at the departure airport"] if en
+               else ["استقبال من مطار جدة والتنقّل بين الحرمين والفنادق ثم "
+                     "التوصيل إلى مطار المغادرة"])
+    picks = {(("stays", k)): q[("stays", k)]
+             for k in ("city", "hotel", "room", "rooms", "view", "nights",
+                       "meals")}
+    picks.update({
+        ("transport_rows", "car"): q[(None, "car_type")],
+        ("transport_rows", "model"): q[(None, "car_model")],
+        ("transport_rows", "dest"): general + legs,
+        (None, "status"): _VOUCHER_STATUS["en" if en else "ar"],
+    })
+    return _with_options(_VOUCHER_SCHEMA_BASE, picks)
+
+
+def treq_schema() -> list:
+    """مخطّط طلب حجز المواصلات بقوائم منسدلة (عربي) — نفس خيارات عرض السعر."""
+    q = _quote_opts("ar")
+    routes = list(TREQ_ROUTE_OPTIONS) + [
+        r for r in (f"من {a} الى {b}" for a, b, _c, _d in _TRANSFER_PAIRS)
+        if r not in TREQ_ROUTE_OPTIONS]
+    picks = {
+        ("bookings", "city"): q[("stays", "city")],
+        ("bookings", "hotel"): q[("stays", "hotel")],
+        ("bookings", "room"): q[("stays", "room")],
+        ("bookings", "view"): q[("stays", "view")],
+        ("flights", "carrier"): q[("flights", "carrier")],
+        ("flights", "from"): q[("flights", "from")],
+        ("flights", "to"): q[("flights", "to")],
+        ("movements", "route"): routes,
+        ("movements", "count"): q[(None, "car_count")],
+        ("movements", "car"): q[(None, "car_type")],
+        ("movements", "model"): q[(None, "car_model")],
+        (None, "persons"): [str(i) for i in range(1, 21)],
+    }
+    return _with_options(_TREQ_SCHEMA_BASE, picks)
+
+
+_VOUCHER_SCHEMA_BASE, _TREQ_SCHEMA_BASE = VOUCHER_SCHEMA, TREQ_SCHEMA
+VOUCHER_SCHEMA = voucher_schema("ar")     # سطح المكتب والويب: بقوائم منسدلة
+TREQ_SCHEMA = treq_schema()
+
+
 # ---- إصدار فاوتشر/طلب مواصلات من عرض سعر محفوظ (بالرقم المرجعي) ----
 def _blank_rec():
     """سجلّ فارغ يكفي لبُناة المستندات (لا معتمر مرتبط بالعرض)."""

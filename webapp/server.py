@@ -342,7 +342,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-20b · العمرة افتراضياً + لون مميّز لكل وضع"
+_BUILD_TAG = "2026-10-21a · قوائم منسدلة في الفاوتشر وطلب المواصلات"
 
 
 @app.get("/version")
@@ -1489,7 +1489,7 @@ def _quote_doc_data(kind, quote, settings):
     if kind == "voucher":
         num = umrah.next_voucher_number(settings)
         data = pdf_io.voucher_data_from_quote(quote, company=co, number=num)
-        schema = pdf_io.VOUCHER_SCHEMA
+        schema = pdf_io.voucher_schema(data.get("lang"))   # قوائم بلغة الفاوتشر
     else:
         num = umrah.next_transport_number(settings)
         data = pdf_io.transport_request_data_from_quote(quote, company=co,
