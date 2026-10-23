@@ -73,4 +73,43 @@ u2 = next(r for r in rows if "<td>U2</td>" in r)
 u2c = [re.sub(r"<[^>]+>", " ", x).split() for x in re.findall(r"<td>(.*?)</td>", u2, re.S)]
 assert u2c[heads.index("الطيران")] == ["—"] and u2c[heads.index("الغرف المتبقّية")] == ["—"]
 print("[ok] صفحة البرامج: الطيران قبل السعة والمتبقّي + الغرف المتبقّية")
+
+# ---- 3) الباقات ----
+c.post("/programs/packages/add", data={"name": "برامج ديسمبر"})
+c.post("/programs/packages/add", data={"name": "  برامج   رمضان "})   # تُنظَّف المسافات
+assert "msg=" in c.post("/programs/packages/add",
+                        data={"name": "برامج ديسمبر"}).headers["Location"]  # مكرّرة
+app_mode.set_mode(app_mode.UMRAH)
+assert umrah.load_packages(storage.load_settings()) == ["برامج ديسمبر", "برامج رمضان"]
+# برنامج جديد من زرّ الباقة يأتي بها مختارة، والباقات الأخرى في القائمة
+new = c.get("/programs/new", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
+assert 'name="package" value="برامج رمضان"' in new and '<option value="برامج ديسمبر">' in new
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="U3", name="رمضان الأولى", package="برامج رمضان")
+c.post("/programs/save", data=form)
+form.update(code="U1", orig="U1", name="رمضان", package="برامج ديسمبر",
+            airline="الاتحاد", capacity="20", makkah_rooms="10", madinah_rooms="2",
+            flight_out="EY611", flight_ret="EY612")
+c.post("/programs/save", data=form)
+html = c.get("/programs").get_data(as_text=True)
+order = re.findall(r"📦 ([^<]+)</b>", html)
+assert order == ["برامج ديسمبر", "برامج رمضان", "بدون باقة"], order
+dec = html.split("📦 برامج ديسمبر")[1].split("📦 برامج رمضان")[0]
+ram = html.split("📦 برامج رمضان")[1].split("📦 بدون باقة")[0]
+loose = html.split("📦 بدون باقة")[1]
+assert "<td>U1</td>" in dec and "<td>U3</td>" in ram and "<td>U2</td>" in loose
+# حذف باقة فيها برامج يُرفض، والفارغة تُحذف
+assert "msg=" in c.post("/programs/packages/delete",
+                        data={"name": "برامج رمضان"}).headers["Location"]
+c.post("/programs/packages/add", data={"name": "فارغة"})
+assert "🗑 حذف الباقة" in c.get("/programs").get_data(as_text=True)
+c.post("/programs/packages/delete", data={"name": "فارغة"})
+app_mode.set_mode(app_mode.UMRAH)
+assert "فارغة" not in umrah.load_packages(storage.load_settings())
+# باقة تُكتب يدوياً في نموذج البرنامج تُسجَّل
+form.update(code="U2", orig="U2", name="شعبان", package="برامج شعبان")
+c.post("/programs/save", data=form)
+app_mode.set_mode(app_mode.UMRAH)
+assert umrah.load_packages(storage.load_settings())[-1] == "برامج شعبان"
+print("[ok] الباقات: إضافة/تجميع/برنامج داخل باقة/حذف الفارغة فقط")
 print("ALL OK")

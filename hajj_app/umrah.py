@@ -102,6 +102,7 @@ class UmrahTrip:
 
     code: str = ""                 # رمز البرنامج (فريد) — يربط المعتمرين به
     name: str = ""                 # اسم البرنامج
+    package: str = ""              # الباقة التي ينتمي إليها (مثل «برامج رمضان»)
     manager: str = ""              # الشخص المسؤول عن البرنامج
     depart_date: str = ""
     return_date: str = ""
@@ -178,6 +179,24 @@ def load_trips(settings: dict) -> list[UmrahTrip]:
 def save_trips(settings: dict, trips: list[UmrahTrip]) -> None:
     """يحفظ برامج العمرة في الإعدادات."""
     settings["umrah_trips"] = [t.to_dict() for t in trips]
+
+
+def load_packages(settings: dict) -> list:
+    """أسماء باقات البرامج بترتيب إضافتها (المحفوظة + أي باقة في برنامج)."""
+    raw = settings.get("umrah_packages")
+    names = [str(n).strip() for n in raw if str(n).strip()] \
+        if isinstance(raw, list) else []
+    for t in load_trips(settings):
+        p = str(t.package or "").strip()
+        if p and p not in names:
+            names.append(p)
+    return list(dict.fromkeys(names))
+
+
+def save_packages(settings: dict, names: list) -> None:
+    """يحفظ قائمة الباقات (بلا تكرار أو فراغ)."""
+    settings["umrah_packages"] = list(dict.fromkeys(
+        str(n).strip() for n in names if str(n).strip()))
 
 
 def next_voucher_number(settings: dict) -> str:

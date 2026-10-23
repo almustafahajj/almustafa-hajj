@@ -372,7 +372,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-24a · برامج العمرة: الطيران والغرف المتبقّية"
+_BUILD_TAG = "2026-10-24b · باقات برامج العمرة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1902,7 +1902,8 @@ def pricing_delete(num):
 
 # ============================ برامج العمرة =================================
 _PROG_GROUPS = [
-    ("البيانات الأساسية", [("name", "اسم البرنامج", ""),
+    ("البيانات الأساسية", [("package", "الباقة", "package"),
+                           ("name", "اسم البرنامج", ""),
                            ("manager", "المسؤول", ""),
                            ("capacity", "السعة (المقاعد)", "number"),
                            ("notes", "ملاحظات", "")]),
@@ -1971,7 +1972,64 @@ def programs():
                      "count": n, "capacity": cap or "—",
                      "remaining": (cap - n) if cap else "—",
                      "over": bool(cap and n > cap), "full": bool(cap and n == cap)})
-    return render_template("programs.html", active="programs", rows=rows, **_ctx())
+    # التجميع حسب الباقة (بترتيب الباقات، ثم «بدون باقة» أخيراً)
+    pkgs = umrah.load_packages(settings)
+    pkg_of = {t.code: str(t.package or "").strip() for t in trips}
+    sections = [{"name": p, "rows": [r for r in rows if pkg_of.get(r["code"]) == p]}
+                for p in pkgs]
+    loose = [r for r in rows if pkg_of.get(r["code"], "") not in pkgs]
+    if loose:
+        sections.append({"name": "", "rows": loose})
+    return render_template("programs.html", active="programs", rows=rows,
+                           sections=sections, msg=request.args.get("msg", ""),
+                           **_ctx())
+
+
+@app.post("/programs/packages/add")
+def program_package_add():
+    """إضافة باقة برامج جديدة (مثل «برامج رمضان»)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("programs"))
+    from hajj_app import umrah
+    name = " ".join((request.form.get("name") or "").split())[:80]
+    if not name:
+        return redirect(url_for("programs"))
+    settings = storage.load_settings()
+    pkgs = umrah.load_packages(settings)
+    if name in pkgs:
+        return redirect(url_for("programs", msg=f"الباقة «{name}» موجودة."))
+    umrah.save_packages(settings, pkgs + [name])
+    try:
+        storage.save_settings(settings)
+        _audit("إضافة باقة برامج", name)
+    except Exception:
+        pass
+    return redirect(url_for("programs"))
+
+
+@app.post("/programs/packages/delete")
+def program_package_delete():
+    """حذف باقة فارغة (لا تُحذف باقة فيها برامج)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:
+        return redirect(url_for("programs"))
+    from hajj_app import umrah
+    name = (request.form.get("name") or "").strip()
+    settings = storage.load_settings()
+    if any(str(t.package or "").strip() == name for t in umrah.load_trips(settings)):
+        return redirect(url_for("programs", msg=f"لا تُحذف «{name}»: فيها برامج — "
+                                "انقلها لباقة أخرى أولاً."))
+    umrah.save_packages(settings, [p for p in umrah.load_packages(settings)
+                                   if p != name])
+    try:
+        storage.save_settings(settings)
+        _audit("حذف باقة برامج", name)
+    except Exception:
+        pass
+    return redirect(url_for("programs"))
 
 
 @app.get("/programs/new")
@@ -1982,9 +2040,11 @@ def program_new():
         return redirect(url_for("programs"))
     from hajj_app import umrah
     settings = storage.load_settings()
-    trip = umrah.UmrahTrip(code=umrah.next_code(umrah.load_trips(settings)))
+    trip = umrah.UmrahTrip(code=umrah.next_code(umrah.load_trips(settings)),
+                           package=(request.args.get("package") or "").strip())
     return render_template("program_edit.html", active="programs", is_new=True,
                            code=trip.code, orig="", groups=_prog_groups(trip),
+                           packages=umrah.load_packages(settings),
                            services=[], **_ctx())
 
 
@@ -2000,6 +2060,7 @@ def program_edit(code):
     return render_template("program_edit.html", active="programs", is_new=False,
                            code=trip.code, orig=trip.code,
                            groups=_prog_groups(trip),
+                           packages=umrah.load_packages(settings),
                            services=trip.services or [], **_ctx())
 
 
@@ -2025,6 +2086,8 @@ def program_save():
     trips = [t for t in trips if t.code != key and t.code != trip.code]
     trips.append(trip)
     umrah.save_trips(settings, trips)
+    if trip.package:                               # باقة كُتبت يدوياً تُسجَّل
+        umrah.save_packages(settings, umrah.load_packages(settings))
     try:
         storage.save_settings(settings)
         _audit("حفظ برنامج عمرة", f"{trip.code} — {getattr(trip,'name','') or ''}")

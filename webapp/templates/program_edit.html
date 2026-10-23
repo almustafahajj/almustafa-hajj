@@ -14,8 +14,13 @@
     <div class="fgrid">
       {% for f in group.fields %}
       <label class="ff"><span>{{ f.label }}</span>
+        {% if f.type == 'package' %}
+        <input name="{{ f.key }}" value="{{ f.value }}" list="pkglist"
+               placeholder="اختر باقة أو اكتب اسم باقة جديدة">
+        <datalist id="pkglist">{% for p in packages %}<option value="{{ p }}">{% endfor %}</datalist>
+        {% else %}
         <input name="{{ f.key }}" value="{{ f.value }}"
-               {% if f.type %}type="{{ f.type }}"{% endif %}></label>
+               {% if f.type %}type="{{ f.type }}"{% endif %}>{% endif %}</label>
       {% endfor %}
     </div>
   </fieldset>

@@ -3,12 +3,32 @@
 {% block heading %}🗂 برامج العمرة{% endblock %}
 {% block subhead %}{% if can_edit %}<a class="pill" href="{{ url_for('program_new') }}">➕ برنامج جديد</a>{% endif %}{% endblock %}
 {% block content %}
+{% if msg %}<div class="acc-msg err">{{ msg }}</div>{% endif %}
+{% if can_edit %}
+<form method="post" action="{{ url_for('program_package_add') }}" class="searchbar" style="margin-bottom:14px">
+  <input name="name" placeholder="اسم باقة جديدة، مثل: برامج رمضان" required maxlength="80">
+  <button class="btn primary" type="submit" style="width:auto">➕ إضافة باقة</button>
+</form>
+{% endif %}
 <table class="data">
   <thead><tr><th>الرمز</th><th>الاسم</th><th>المغادرة</th><th>العودة</th>
     <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th><th>الطيران</th>
     <th>السعة</th><th>المتبقّي</th><th>الغرف المتبقّية</th><th>إجراءات</th></tr></thead>
+  {% for sec in sections %}
   <tbody>
-  {% for r in rows %}
+    <tr class="pkg-head"><td colspan="12">
+      <b>📦 {{ sec.name or 'بدون باقة' }}</b>
+      <span class="muted">({{ sec.rows|length }} برنامج)</span>
+      {% if can_edit and sec.name %}
+      <a class="acc-btn add" style="margin-inline-start:10px" href="{{ url_for('program_new', package=sec.name) }}">➕ برنامج في هذه الباقة</a>
+      {% if not sec.rows %}
+      <form method="post" class="inline" action="{{ url_for('program_package_delete') }}"
+            data-msg="حذف الباقة «{{ sec.name }}»؟" onsubmit="return confirm(this.getAttribute('data-msg'));">
+        <input type="hidden" name="name" value="{{ sec.name }}">
+        <button class="acc-btn del" type="submit">🗑 حذف الباقة</button></form>
+      {% endif %}{% endif %}
+    </td></tr>
+  {% for r in sec.rows %}
     <tr class="{{ 'rover' if r.over else ('rfull' if r.full else '') }}">
       <td>{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.depart }}</td>
       <td>{{ r['return'] }}</td><td>{{ r.makkah }}</td><td>{{ r.madinah }}</td>
@@ -29,9 +49,13 @@
     </tr>
   {% else %}
     <tr><td colspan="12" style="text-align:center;color:var(--muted)">
-      لا برامج بعد. أنشئ أوّل برنامج من «➕ برنامج جديد».</td></tr>
+      لا برامج في هذه الباقة بعد.</td></tr>
   {% endfor %}
   </tbody>
+  {% else %}
+  <tbody><tr><td colspan="12" style="text-align:center;color:var(--muted)">
+    لا برامج بعد. أضف باقة ثم «➕ برنامج في هذه الباقة»، أو «➕ برنامج جديد».</td></tr></tbody>
+  {% endfor %}
 </table>
 <p class="hint-note">🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
