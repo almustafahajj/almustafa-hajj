@@ -372,7 +372,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-23d · قوائم الموظف والمواصلات + حذف سجلّ"
+_BUILD_TAG = "2026-10-24a · برامج العمرة: الطيران والغرف المتبقّية"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1961,9 +1961,13 @@ def programs():
             cap = int(float(str(t.capacity or "").strip() or 0))
         except ValueError:
             cap = 0
+        flights = " / ".join(f for f in (t.flight_out, t.flight_ret) if f)
         rows.append({"code": t.code, "name": t.name or "—",
                      "depart": t.depart_date or "—", "return": t.return_date or "—",
                      "makkah": t.makkah_hotel or "—", "madinah": t.madinah_hotel or "—",
+                     "airline": t.airline or "—", "flights": flights,
+                     # الغرف المتبقّية لكل فندق: [(المدينة، المتاح، المشغول، المتبقّي)]
+                     "rooms": umrah.trip_rooms_left(t, records),
                      "count": n, "capacity": cap or "—",
                      "remaining": (cap - n) if cap else "—",
                      "over": bool(cap and n > cap), "full": bool(cap and n == cap)})

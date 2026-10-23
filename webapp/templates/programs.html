@@ -5,14 +5,18 @@
 {% block content %}
 <table class="data">
   <thead><tr><th>الرمز</th><th>الاسم</th><th>المغادرة</th><th>العودة</th>
-    <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th><th>السعة</th>
-    <th>المتبقّي</th><th>إجراءات</th></tr></thead>
+    <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th><th>الطيران</th>
+    <th>السعة</th><th>المتبقّي</th><th>الغرف المتبقّية</th><th>إجراءات</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr class="{{ 'rover' if r.over else ('rfull' if r.full else '') }}">
       <td>{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.depart }}</td>
       <td>{{ r['return'] }}</td><td>{{ r.makkah }}</td><td>{{ r.madinah }}</td>
-      <td>{{ r.count }}</td><td>{{ r.capacity }}</td><td>{{ r.remaining }}</td>
+      <td>{{ r.count }}</td>
+      <td>{{ r.airline }}{% if r.flights %}<br><span class="muted" dir="ltr" style="font-size:12px">{{ r.flights }}</span>{% endif %}</td>
+      <td>{{ r.capacity }}</td><td>{{ r.remaining }}</td>
+      <td>{% for city, avail, used, left in r.rooms %}<span title="المتاح {{ avail }} − المشغول {{ used }}"
+            style="white-space:nowrap{% if left < 0 %};color:#C0392B;font-weight:700{% endif %}">{{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}{{ left }}{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</td>
       <td>
         <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">تعديل</a>
         {% if can_edit %}
@@ -24,11 +28,14 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="10" style="text-align:center;color:var(--muted)">
+    <tr><td colspan="12" style="text-align:center;color:var(--muted)">
       لا برامج بعد. أنشئ أوّل برنامج من «➕ برنامج جديد».</td></tr>
   {% endfor %}
   </tbody>
 </table>
 <p class="hint-note">🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
-  عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.</p>
+  عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
+  «الغرف المتبقّية» = عدد غرف الفندق في البرنامج − الغرف المشغولة حسب أنواع غرف
+  المعتمرين (كل شخصين «ثنائي» غرفة، وكل ثلاثة «ثلاثي» غرفة… والطفل والرضيع بلا
+  غرفة). يظهر بالأحمر إن تجاوز الحجز عدد الغرف.</p>
 {% endblock %}

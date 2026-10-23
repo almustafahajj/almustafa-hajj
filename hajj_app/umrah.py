@@ -733,6 +733,43 @@ def room_capacity_of(room_type: str) -> int:
     return _ROOM_CAP.get(str(room_type or "").strip(), 0)
 
 
+def rooms_needed(records: list) -> int:
+    """عدد الغرف التي يشغلها معتمرو البرنامج حسب أنواع غرفهم: كل نوع يُقسَم
+    على سعته مع التقريب للأعلى (٥ في «ثنائي» = ٣ غرف). الطفل بلا سرير والرضيع
+    بلا غرفة؛ والنوع غير المعروف (كالأجنحة) يُحسب غرفةً لكل شخص احتياطاً."""
+    from collections import Counter
+    counts = Counter(str(getattr(r, "room_type", "") or "").strip()
+                     for r in records)
+    total = 0
+    for rtype, n in counts.items():
+        if not rtype:
+            continue
+        if rtype in _ROOM_CAP:
+            cap = _ROOM_CAP[rtype]
+        elif rtype.startswith("طفل") or rtype.startswith("رضيع"):
+            cap = 0
+        else:
+            cap = 1
+        if cap:
+            total += -(-n // cap)
+    return total
+
+
+def trip_rooms_left(trip: UmrahTrip, records: list) -> list:
+    """الغرف المتبقّية في فندقَي البرنامج: ``[(المدينة، المتاح، المشغول، المتبقّي)]``
+    للفنادق التي حُدّد عدد غرفها فقط (الغرف المشغولة واحدة في المدينتين)."""
+    used = rooms_needed(trip_pilgrims(records, trip.code))
+    out = []
+    for label, field in (("مكة", "makkah_rooms"), ("المدينة", "madinah_rooms")):
+        try:
+            avail = int(float(str(getattr(trip, field, "") or "").strip() or 0))
+        except ValueError:
+            avail = 0
+        if avail:
+            out.append((label, avail, used, avail - used))
+    return out
+
+
 def auto_assign_rooms(records: list, room_field: str, max_rooms: int = 0):
     """يوزّع المعتمرين على غرف حسب نوع الغرفة (يملؤها حتى السعة) ويرقّمها.
 
