@@ -342,7 +342,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-21b · رقم النسخة الحقيقي في رأس المحرّر"
+_BUILD_TAG = "2026-10-22a · نوع الغرفة من البرنامج وملء السعر تلقائياً"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -722,6 +722,7 @@ def hujjaj_new():
                     setattr(rec, k, request.form.get(k, "").strip())
         if _mode() == app_mode.UMRAH and "trip" in request.form:
             rec.trip = request.form.get("trip", "").strip()
+            _umrah_fill_price(rec)
         records.append(rec)
         try:
             storage.save_records(records, session=_sess())
@@ -746,6 +747,8 @@ def hujjaj_edit(idx):
     if request.method == "POST" and not _sess().can_edit:   # المطّلع لا يعدّل
         return redirect(url_for("hujjaj"))
     if request.method == "POST":
+        before = (str(getattr(rec, "trip", "") or ""),
+                  str(getattr(rec, "room_type", "") or ""))
         for _title, keys in _GROUPS:
             for k in keys:
                 if k in drop or k not in BY_KEY or not BY_KEY[k].editable:
@@ -754,6 +757,7 @@ def hujjaj_edit(idx):
                     setattr(rec, k, request.form.get(k, "").strip())
         if _mode() == app_mode.UMRAH and "trip" in request.form:
             rec.trip = request.form.get("trip", "").strip()
+            _umrah_fill_price(rec, changed=(rec.trip, rec.room_type) != before)
         try:
             storage.save_records(records, session=_sess())
             saved = True
@@ -764,7 +768,29 @@ def hujjaj_edit(idx):
     return _render_edit(rec, saved=saved, idx=idx)
 
 
+def _umrah_fill_price(rec, changed: bool = True) -> None:
+    """يزامن سعر الغرفة مع البرنامج المختار كما في سطح المكتب:
+    ``room_value`` = سعر الفرد لنوع الغرفة (أساس يُضاف إليه سعر الخدمات)، و«قيمة
+    البرنامج» الفارغة = سعر الغرفة + الخدمات (احتياط إن لم يعمل ملء الصفحة).
+    القيمة المُدخلة يدوياً لا تُمسّ، و``room_value`` لا يتغيّر إلّا إذا تغيّر
+    البرنامج أو نوع الغرفة (``changed``) فلا يُلغى أساسٌ عُدّل عمداً."""
+    from hajj_app import umrah
+    from hajj_app.fields import format_amount, parse_amount
+    price = umrah.trip_room_price(umrah.load_trips(storage.load_settings()),
+                                  getattr(rec, "trip", ""),
+                                  getattr(rec, "room_type", ""))
+    if not price:
+        return
+    base = parse_amount(price) or 0.0
+    if changed or not str(getattr(rec, "room_value", "") or "").strip():
+        rec.room_value = format_amount(base)
+    if not str(getattr(rec, "program_value", "") or "").strip():
+        svc = umrah.record_services_total(rec)
+        rec.program_value = format_amount(base + svc) if svc else price
+
+
 def _render_edit(rec, saved=False, is_new=False, idx=None):
+    from hajj_app import umrah
     drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
     groups = []
     for title, keys in _GROUPS:
@@ -778,18 +804,39 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
                        "type": ("date" if k in _DATE_FIELDS else "")})
         if fs:
             groups.append({"title": title.format(n=_noun()), "fields": fs})
+    room_prices = None
     if _mode() == app_mode.UMRAH:            # ربط المعتمر ببرنامج عمرة
-        from hajj_app import umrah
-        codes = [t.code for t in umrah.load_trips(storage.load_settings())]
+        trips = umrah.load_trips(storage.load_settings())
         groups.insert(0, {"title": "البرنامج", "fields": [{
             "key": "trip", "label": "البرنامج (الرحلة)",
             "value": str(getattr(rec, "trip", "") or ""),
-            "choices": [""] + codes, "type": ""}]})
+            "choices": [["", ""]] + [[t.code, f"{t.code} — {t.name}" if t.name
+                                      else t.code] for t in trips],
+            "type": ""}]})
+        # نوع الغرفة: قائمة من أسعار البرنامج المختار، والسعر يملأ قيمة البرنامج
+        room_prices = {t.code: umrah.trip_room_prices(t) for t in trips}
+        cur_trip = str(getattr(rec, "trip", "") or "")
+        rooms = room_prices.get(cur_trip) or [(n, "") for _k, n, _c in
+                                             umrah.ROOM_TYPES]
+        cur_room = str(getattr(rec, "room_type", "") or "")
+        choices = [["", ""]] + [[n, f"{n} — {p}" if p else n] for n, p in rooms]
+        if cur_room and cur_room not in [n for n, _p in rooms]:
+            choices.insert(1, [cur_room, cur_room])   # قيمة قديمة تبقى ظاهرة
+        for g in groups:
+            for f in g["fields"]:
+                if f["key"] == "room_type":
+                    f["choices"] = choices
+                elif f["key"] == "program_value":
+                    f["hint"] = ("يُملأ تلقائياً بسعر الفرد من البرنامج حسب نوع "
+                                 "الغرفة — ويمكن تعديله.")
     has_docs = idx is not None            # للسجلّ القائم فقط
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
         has_docs=has_docs,
-        is_new=is_new, idx=idx,
+        is_new=is_new, idx=idx, room_prices=room_prices,
+        svc_total=umrah.record_services_total(rec),   # خدمات المعتمر
+        cur_trip=str(getattr(rec, "trip", "") or ""),
+        room_names=[n for _k, n, _c in umrah.ROOM_TYPES],
         name=getattr(rec, "full_name_ar", "") or getattr(
             rec, "full_name_en", "") or "",
         number=getattr(rec, "reference_number", "") or "",

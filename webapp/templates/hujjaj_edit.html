@@ -13,12 +13,13 @@
       <label class="ff">
         <span>{{ f.label }}</span>
         {% if f.choices %}
-          <select name="{{ f.key }}">
-            {% for c in f.choices %}<option value="{{ c }}" {{ 'selected' if c==f.value }}>{{ c or '—' }}</option>{% endfor %}
+          <select name="{{ f.key }}" id="f_{{ f.key }}">
+            {% for c in f.choices %}{% set v = c if c is string else c[0] %}{% set t = c if c is string else c[1] %}<option value="{{ v }}" {{ 'selected' if v==f.value }}>{{ t or '—' }}</option>{% endfor %}
           </select>
         {% else %}
-          <input name="{{ f.key }}" value="{{ f.value }}" {% if f.type %}type="{{ f.type }}"{% endif %}>
+          <input name="{{ f.key }}" id="f_{{ f.key }}" value="{{ f.value }}" {% if f.type %}type="{{ f.type }}"{% endif %}>
         {% endif %}
+        {% if f.hint %}<small class="pw-hint">{{ f.hint }}</small>{% endif %}
       </label>
       {% endfor %}
     </div>
@@ -29,6 +30,59 @@
     <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع للقائمة</a>
   </div>
 </form>
+{% if room_prices is not none %}
+<script>
+/* العمرة: أنواع الغرف من أسعار البرنامج المختار، واختيار الغرفة يملأ قيمة البرنامج */
+(function(){
+  var P = {{ room_prices|tojson }}, ALL = {{ room_names|tojson }};
+  var SVC = {{ svc_total|tojson }};      // خدمات المعتمر: السعر = الغرفة + الخدمات
+  var built = {{ cur_trip|tojson }};     // البرنامج الذي بُنيت له قائمة الغرف
+  var trip = document.getElementById('f_trip'),
+      room = document.getElementById('f_room_type'),
+      val = document.getElementById('f_program_value');
+  if (!trip || !room) return;
+  function rooms(){
+    var r = P[trip.value];
+    return (r && r.length) ? r : ALL.map(function(n){ return [n, '']; });
+  }
+  function opt(v, t){ var o = document.createElement('option');
+    o.value = v; o.textContent = t || '—'; return o; }
+  var auto = null;            // آخر سعر ملأته الصفحة (لا نمسح ما كتبه المستخدم)
+  function rebuild(){         // عند تغيير البرنامج: نوعٌ غير موجود فيه يُلغى
+    var cur = room.value, list = rooms(), names = list.map(function(r){ return r[0]; });
+    if (names.indexOf(cur) < 0) cur = '';
+    room.innerHTML = '';
+    room.appendChild(opt('', ''));
+    list.forEach(function(r){ room.appendChild(opt(r[0], r[1] ? r[0] + ' — ' + r[1] : r[0])); });
+    room.value = cur;
+    built = trip.value;
+  }
+  function total(p){                     // سعر الغرفة + الخدمات (إن وُجدت)
+    if (!SVC) return p;
+    var n = parseFloat(String(p).replace(/[٠-٩]/g, function(d){
+      return d.charCodeAt(0) - 1632; }).replace(/[^\d.]/g, ''));
+    return isNaN(n) ? p : (n + SVC).toLocaleString('en-US', {maximumFractionDigits: 2});
+  }
+  function price(){
+    var hit = rooms().filter(function(r){ return r[0] === room.value; })[0];
+    if (!val) return;
+    if (hit && hit[1]) {
+      val.value = auto = total(hit[1]);
+      val.style.transition = 'background .6s'; val.style.background = '#fff6d6';
+      setTimeout(function(){ val.style.background = ''; }, 700);
+    } else if (auto !== null && val.value === auto) {
+      val.value = ''; auto = null;          // سعر برنامج سابق لم يعد صالحاً
+    }
+  }
+  trip.addEventListener('change', function(){ rebuild(); price(); });
+  room.addEventListener('change', price);
+  // الرجوع بالمتصفّح قد يستعيد برنامجاً غير الذي بُنيت له القائمة → إعادة البناء
+  function sync(){ if (trip.value !== built) rebuild(); }
+  sync();
+  window.addEventListener('pageshow', sync);
+})();
+</script>
+{% endif %}
 
 {% if has_docs %}
 <fieldset class="editcard">

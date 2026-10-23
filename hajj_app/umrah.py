@@ -670,6 +670,25 @@ def room_price(trip: UmrahTrip, key: str) -> float:
     return _num(getattr(trip, key, ""))
 
 
+def trip_room_prices(trip: UmrahTrip) -> list:
+    """أنواع الغرف المسعّرة في البرنامج: ``[(نوع الغرفة، سعر الفرد)]`` بترتيبها
+    (مفرد/ثنائي/ثلاثي/رباعي/طفل/رضيع) — لقائمة نوع الغرفة عند إضافة معتمر."""
+    out = []
+    for key, name, _cap in ROOM_TYPES:
+        price = str(getattr(trip, key, "") or "").strip()
+        if price:
+            out.append((name, price))
+    return out
+
+
+def trip_room_price(trips: list, code: str, room_type: str) -> str:
+    """سعر الفرد لنوع غرفة في برنامجٍ (بالرمز)، أو "" إن لم يُسعَّر."""
+    trip = next((t for t in trips if t.code == str(code or "").strip()), None)
+    if trip is None:
+        return ""
+    return dict(trip_room_prices(trip)).get(str(room_type or "").strip(), "")
+
+
 def services_map(trip: UmrahTrip) -> dict:
     """قاموس اسم الخدمة ← سعرها (رقماً) للبرنامج."""
     return {s.get("name", ""): _num(s.get("price", ""))
