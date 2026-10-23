@@ -132,6 +132,23 @@ def _clean_services(value) -> list:
     return out
 
 
+def ensure_uids(records: list[PassportData]) -> bool:
+    """يمنح كل سجلّ بلا معرّف (أو بمعرّف مكرّر) معرّفاً ثابتاً فريداً (``uid``).
+
+    يُعدَّل السجلّ نفسه في الذاكرة، فيحتفظ به البرنامج (سطح المكتب أو الويب)
+    في الحفظ التالي ولا يتبدّل. يعيد True إن مُنح أيّ معرّف جديد."""
+    import uuid
+    seen, changed = set(), False
+    for r in records:
+        u = str(getattr(r, "uid", "") or "")
+        if not u or u in seen:
+            u = uuid.uuid4().hex
+            r.uid = u
+            changed = True
+        seen.add(u)
+    return changed
+
+
 def save_records(
     records: list[PassportData],
     path: str | Path | None = None,
@@ -145,6 +162,7 @@ def save_records(
     path = Path(path) if path else default_data_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    ensure_uids(records)
     blob = _encode_records(records, session)
 
     # نسخة احتياطية من آخر حالة سليمة قبل الاستبدال

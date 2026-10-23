@@ -414,14 +414,15 @@ def web_submit_action(save_url: str) -> str:
     return (
         "fetch(" + _js_str(save_url) + ",{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
-        ".then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();})"
+        ".then(r=>{if(!r.ok)return r.text().then(t=>{throw new Error("
+        "(t&&t.length<300?t:'')||('HTTP '+r.status));});return r.blob();})"
         ".then(b=>{var u=URL.createObjectURL(b);"
         "var w=window.open(u,'_blank');"
         "if(!w){var a=document.createElement('a');a.href=u;a.target='_blank';"
         "a.download='document.pdf';document.body.appendChild(a);a.click();"
         "a.remove();}"
         "setTimeout(function(){URL.revokeObjectURL(u);},60000);})"
-        ".catch(e=>alert('تعذّر إنشاء PDF: '+e));")
+        ".catch(e=>alert('تعذّر إنشاء PDF: '+(e&&e.message?e.message:e)));")
 
 
 def web_submit_action_url(save_url: str) -> str:

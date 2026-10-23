@@ -3,6 +3,10 @@
 {% block heading %}🪪 {{ noun }}{% endblock %}
 {% block subhead %}<div class="season">{{ total }} سجلّ{% if q %} · نتائج البحث عن «{{ q }}»{% endif %}</div>{% endblock %}
 {% block content %}
+{% set _m = request.args.get('msg') %}
+{% if _m == 'deleted' %}<div class="ok-banner">🗑 تم حذف السجلّ «{{ request.args.get('name') or '—' }}».</div>
+{% elif _m == 'stale' %}<div class="acc-msg err">تغيّر الكشف منذ فتحت الصفحة (حُذف أو عُدّل سجلّ) فلم يُحفظ شيء حتى لا يُكتب على شخصٍ آخر — افتح الصفحة من جديد وأعد المحاولة.</div>
+{% elif _m in ['notfound', 'error'] %}<div class="acc-msg err">تعذّر الحذف: تغيّر الكشف أو تعذّر الحفظ — افتح السجلّ من جديد وحاول مرّة أخرى.</div>{% endif %}
 <form method="get">
   <div class="searchbar">
     <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>

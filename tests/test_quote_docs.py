@@ -77,6 +77,9 @@ assert v["transport_rows"] == [
     ["GMC", "2026", "من مطار جدة إلى الفندق في مكة؛ "
                     "من فندق مكة إلى فندق المدينة"]], v["transport_rows"]
 assert v["terms"] and v["contacts"]                    # من القيَم الافتراضية
+assert ["عمليات المدينة", "عبد العزيز", "+966 55 910 3216"] in v["contacts"]
+assert ["Madinah Operations", "عبد العزيز", "+966 55 910 3216"] in (
+    pdf_io.voucher_data_from_quote(QUOTE_EN)["contacts"])
 assert all(len(r) == 9 for r in v["stays"])
 print("[ok] فاوتشر من عرض عربي")
 

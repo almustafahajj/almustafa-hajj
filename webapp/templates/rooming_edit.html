@@ -6,6 +6,7 @@
   · عدّل الفندق ونوع الغرفة ورقمها لكل شخص ثم احفظ</div>{% endblock %}
 {% block content %}
 {% if saved is not none %}<div class="acc-msg ok">✅ حُفظ التسكين ({{ saved }} سجلّ مُعدّل).</div>{% endif %}
+{% if skipped and skipped != '0' %}<div class="acc-msg err">تُخطّي {{ skipped }} سجلّ تغيّر منذ فتحت الصفحة (حُذف أو عُدّل) — افتح الصفحة من جديد لتعديله.</div>{% endif %}
 
 <form method="get" class="searchbar" style="margin-bottom:12px">
   <span style="align-self:center">ترتيب حسب:</span>
@@ -41,7 +42,7 @@
           <td class="prog-name">{{ r.name }}</td>
           <td dir="ltr">{{ r.fam or '—' }}</td>
           <td>{{ r.bus or '—' }}</td>
-          <td><input name="hotel_{{ r.idx }}" value="{{ r.hotel }}" list="hotels" style="width:100%"></td>
+          <td><input type="hidden" name="fp_{{ r.idx }}" value="{{ r.fp }}"><input name="hotel_{{ r.idx }}" value="{{ r.hotel }}" list="hotels" style="width:100%"></td>
           <td><input name="rtype_{{ r.idx }}" value="{{ r.rtype }}" list="rtypes" style="width:100%"></td>
           <td><input name="rnum_{{ r.idx }}" value="{{ r.rnum }}" dir="ltr" style="width:100%;text-align:center"></td>
         </tr>

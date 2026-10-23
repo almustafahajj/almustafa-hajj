@@ -3,6 +3,7 @@
 {% block heading %}💰 المالية والتحصيل{% endblock %}
 {% block subhead %}<a class="pill" href="{{ url_for('rep_financial_pdf') }}">📄 تقرير مالي PDF</a>{% endblock %}
 {% block content %}
+{% if request.args.get('msg') == 'stale' %}<div class="acc-msg err">تغيّر الكشف منذ فتحت الصفحة (حُذف أو عُدّل سجلّ) فلم يُحفظ شيء حتى لا يُكتب على شخصٍ آخر — افتح الصفحة من جديد وأعد المحاولة.</div>{% endif %}
 <div class="kpis">
   {% for k in cards %}
   <div class="card">
@@ -48,6 +49,7 @@
       <td>
         <form method="post" action="{{ url_for('finance_pay', idx=a.idx) }}"
               style="display:flex;gap:6px;align-items:center">
+          <input type="hidden" name="fp" value="{{ a.fp }}">
           <input name="amount" type="number" step="0.01" min="0" placeholder="المبلغ"
                  style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:8px" required>
           <button class="acc-btn add" type="submit" style="padding:7px 12px">💵 سجّل</button>

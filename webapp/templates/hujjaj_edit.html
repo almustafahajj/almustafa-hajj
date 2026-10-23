@@ -4,7 +4,8 @@
 {% block subhead %}<div class="season">{% if is_new %}سجلّ جديد{% else %}{{ name or '—' }}{% if number %} · {{ number }}{% endif %}{% endif %}</div>{% endblock %}
 {% block content %}
 {% if saved %}<div class="ok-banner">✅ تم حفظ التعديلات بنجاح.</div>{% endif %}
-<form method="post" {% if is_new %}action="{{ url_for('hujjaj_new') }}"{% endif %}>
+<form method="post" action="{{ url_for('hujjaj_new') if is_new else url_for('hujjaj_edit', idx=idx) }}">
+  {% if not is_new %}<input type="hidden" name="fp" value="{{ fp }}">{% endif %}
   {% for group in groups %}
   <fieldset class="editcard">
     <legend>{{ group.title }}</legend>
@@ -84,13 +85,26 @@
 </script>
 {% endif %}
 
+{% if not is_new and can_edit %}
+<fieldset class="editcard danger-zone">
+  <legend>🗑 حذف السجلّ</legend>
+  <form method="post" action="{{ url_for('hujjaj_delete', idx=idx) }}"
+        data-msg="حذف سجلّ «{{ name or '—' }}» نهائياً؟ تُحذف معه صوره المرفقة (الجواز/الهوية)، ولا يمكن التراجع."
+        onsubmit="return confirm(this.getAttribute('data-msg'));">
+    <input type="hidden" name="fp" value="{{ fp }}">
+    <button class="btn danger" type="submit">🗑 حذف هذا السجلّ</button>
+    <span class="hint-note" style="margin:0 10px">المستندات المؤرشفة له (السندات/الفواتير…) تبقى في أرشيف المستندات.</span>
+  </form>
+</fieldset>
+{% endif %}
+
 {% if has_docs %}
 <fieldset class="editcard">
   <legend>📄 المستندات</legend>
   <div class="docbtns">
-    <a class="btn primary" href="{{ url_for('record_docs', idx=idx) }}">
+    <a class="btn primary" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">
       📄 فتح قائمة مستندات {{ noun_singular }}</a>
-    <a class="btn ghost" href="{{ url_for('record_images', idx=idx) }}">
+    <a class="btn ghost" href="{{ url_for('record_images', idx=idx, fp=fp) }}">
       🖼 صور ومستندات {{ noun_singular }} (جواز/شخصية/هوية/تصريح)</a>
   </div>
   <p class="hint-note">سند/فاتورة/عقد/فاوتشر/طلب مواصلات + حزمة المستندات — في صفحة مستقلة.

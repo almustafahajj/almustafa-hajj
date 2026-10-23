@@ -351,3 +351,9 @@ body.mode-umrah{
   .mode-opt input:checked + span{ outline:3px solid Highlight;
     outline-offset:2px; border-width:3px; }
 }
+
+/* ---- حذف سجلّ (منطقة خطِرة في صفحة التعديل) ---- */
+fieldset.danger-zone{ border-color:#f0c4bc; }
+fieldset.danger-zone legend{ color:#C0392B; }
+.btn.danger{ background:#C0392B; color:#fff; }
+.btn.danger:hover{ background:#a93226; }

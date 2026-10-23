@@ -3084,7 +3084,9 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
                        office_manager: str = "أيمن الشهابي",
                        office_phone: str = "+971 54 996 4801",
                        makkah_ops: str = "خالد",
-                       makkah_phone: str = "+966 54 300 3388") -> dict:
+                       makkah_phone: str = "+966 54 300 3388",
+                       madinah_ops: str = "عبد العزيز",
+                       madinah_phone: str = "+966 55 910 3216") -> dict:
     """يبني بيانات فاوتشر الفندق (قاموس قابل للتعديل) من بيانات المعتمر والبرنامج.
     يُستخدم كقيَم افتراضية في محرّر الفاوتشر، ثم يُمرَّر إلى
     :func:`export_umrah_voucher_pdf` عبر الوسيط ``data``.
@@ -3144,10 +3146,12 @@ def build_voucher_data(rec, *, trip=None, program_name: str = "", company=None,
     terms = [t.format(company=cname) for t in terms_src]
 
     contacts = ([["Office Manager", office_manager, office_phone],
-                 ["Makkah Operations Manager", makkah_ops, makkah_phone]]
+                 ["Makkah Operations Manager", makkah_ops, makkah_phone],
+                 ["Madinah Operations", madinah_ops, madinah_phone]]
                 if en else
                 [["مدير المكتب", office_manager, office_phone],
-                 ["مدير العمليات في مكة", makkah_ops, makkah_phone]])
+                 ["مدير العمليات في مكة", makkah_ops, makkah_phone],
+                 ["عمليات المدينة", madinah_ops, madinah_phone]])
 
     return {
         "lang": lang,

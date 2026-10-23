@@ -2,9 +2,9 @@
 {% block title %}صور ومستندات — {{ name }}{% endblock %}
 {% block heading %}🖼 صور ومستندات {{ noun_singular }}{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('hujjaj_edit', idx=idx) }}">← تعديل السجلّ</a>
+  <a class="pill" href="{{ url_for('hujjaj_edit', idx=idx, fp=fp) }}">← تعديل السجلّ</a>
   · {{ name }}
-  · <a class="pill" href="{{ url_for('record_docs', idx=idx) }}">📄 سندات/فواتير</a></div>{% endblock %}
+  · <a class="pill" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">📄 سندات/فواتير</a></div>{% endblock %}
 {% block content %}
 {% if saved %}<div class="acc-msg ok">✅ {{ saved }}</div>{% endif %}
 {% if err %}<div class="acc-msg err">⚠ {{ err }}</div>{% endif %}
@@ -16,10 +16,10 @@
     <div class="imgprev">
       {% if it.present and it.is_pdf %}
         <a class="pdfbox" target="_blank"
-           href="{{ url_for('record_image_view', idx=idx, kind=it.kind) }}">📄 ملف PDF — فتح</a>
+           href="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}">📄 ملف PDF — فتح</a>
       {% elif it.present %}
-        <a target="_blank" href="{{ url_for('record_image_view', idx=idx, kind=it.kind) }}">
-          <img src="{{ url_for('record_image_view', idx=idx, kind=it.kind) }}" alt="{{ it.label }}"></a>
+        <a target="_blank" href="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}">
+          <img src="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}" alt="{{ it.label }}"></a>
       {% else %}
         <div class="noimg">لا توجد صورة</div>
       {% endif %}
@@ -27,6 +27,7 @@
     {% if can_edit %}
     <form method="post" enctype="multipart/form-data"
           action="{{ url_for('record_image_upload', idx=idx, kind=it.kind) }}">
+      <input type="hidden" name="fp" value="{{ fp }}">
       <input type="file" name="file" accept="image/*,application/pdf" required>
       <div class="formbar" style="margin-top:6px">
         <button class="btn primary sm" type="submit">⬆ {{ 'استبدال' if it.present else 'اختيار' }}</button>

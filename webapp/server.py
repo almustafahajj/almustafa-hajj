@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import re
 import tempfile
+import threading
 
 from flask import (Flask, redirect, render_template, request, send_file,
                    session, url_for)
@@ -22,6 +24,12 @@ _PAGE = 50
 _STATUS_CLS = {"نشط": "good", "ملغى": "crit", "قائمة انتظار": "warn"}
 _CHOICES = {"status": ["", "نشط", "ملغى", "قائمة انتظار"],
             "sex": ["", "ذكر", "أنثى"], "wheelchair": ["", "نعم"]}
+# قوائم خاصّة بالعمرة (في الحج «المواصلات» رقم الباص فتبقى نصّاً حرّاً)
+_UMRAH_CHOICES = {
+    "staff": ["", "أيمن الشهابي", "أحمد الشبراوي", "علاء بريخان",   # الموظف المسؤول
+              "رامي الشلبي", "مريم الحوسني", "محمد صابر"],
+    "transport": ["", "GMC", "FORD"],                              # المواصلات
+}
 _DATE_FIELDS = {"birth_date", "expiry_date", "arrival_date", "departure_date"}
 _UMRAH_DROP = {"program", "group", "hady", "executive_service", "wheelchair",
                "airline", "flight_number", "travel_class", "pnr",
@@ -43,6 +51,9 @@ _GROUPS = [
 ]
 
 app = Flask(__name__)
+# صفحة تعديل التسكين ترسل كل الصفوف (مع رمز كل سجلّ): نرفع حدّ النموذج
+# الافتراضي (500KB) كي لا يُرفض حفظ كشفٍ كبير (~2000 شخص)
+app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
 
 
 def _session_secret() -> str:
@@ -112,12 +123,31 @@ def _group_attr() -> str:
     return "program" if _mode() == app_mode.HAJJ else "trip"
 
 
+def _ensure_uids(records) -> bool:
+    """يمنح كل سجلّ بلا معرّف (أو بمعرّف مكرّر) معرّفاً ثابتاً فريداً."""
+    return storage.ensure_uids(records)
+
+
+_UID_LOCK = threading.Lock()
+
+
 def _load_records():
     app_mode.set_mode(_mode())
     try:
         records, _note = storage.load_records(session=_sess())
     except Exception:
-        records = []
+        return []
+    uids = [str(getattr(r, "uid", "") or "") for r in records]
+    if not all(uids) or len(set(uids)) != len(uids):
+        # ترحيل لمرّة واحدة: إعادة التحميل تحت القفل كي لا يمنح طلبان متزامنان
+        # معرّفات مختلفة للسجلّ نفسه
+        with _UID_LOCK:
+            try:
+                records, _note = storage.load_records(session=_sess())
+                if _ensure_uids(records):
+                    storage.save_records(records, session=_sess())
+            except Exception:                      # noqa: BLE001
+                pass
     return records
 
 
@@ -342,7 +372,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-22a · نوع الغرفة من البرنامج وملء السعر تلقائياً"
+_BUILD_TAG = "2026-10-23d · قوائم الموظف والمواصلات + حذف سجلّ"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -712,7 +742,8 @@ def hujjaj_new():
         return redirect(url_for("hujjaj"))
     records = _load_records()
     if request.method == "POST":
-        rec = PassportData(source_file="إدخال ويب")
+        import uuid
+        rec = PassportData(source_file="إدخال ويب", uid=uuid.uuid4().hex)
         drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
         for _title, keys in _GROUPS:
             for k in keys:
@@ -739,13 +770,22 @@ def hujjaj_edit(idx):
     if _sess() is None:
         return redirect(url_for("login"))
     records = _load_records()
+    if request.method == "POST":
+        if not _sess().can_edit:                   # المطّلع لا يعدّل
+            return redirect(url_for("hujjaj"))
+        j = _resolve_idx(records, idx, request.form.get("fp", ""), strict=True)
+        if j is None:                              # تغيّر الكشف منذ فتح الصفحة
+            return redirect(url_for("hujjaj", msg="stale"))
+        idx = j
+    else:
+        moved = _follow(records, idx, "hujjaj_edit")
+        if moved:
+            return moved
     if not (0 <= idx < len(records)):
         return redirect(url_for("hujjaj"))
     rec = records[idx]
     drop = _UMRAH_DROP if _mode() == app_mode.UMRAH else set()
     saved = False
-    if request.method == "POST" and not _sess().can_edit:   # المطّلع لا يعدّل
-        return redirect(url_for("hujjaj"))
     if request.method == "POST":
         before = (str(getattr(rec, "trip", "") or ""),
                   str(getattr(rec, "room_type", "") or ""))
@@ -766,6 +806,153 @@ def hujjaj_edit(idx):
         except Exception:
             saved = False
     return _render_edit(rec, saved=saved, idx=idx)
+
+
+def _rec_fp(rec) -> str:
+    """بصمة سجلّ تُرسَل مع زرّ الحذف: الموضع وحده قد يشير لشخص آخر إن غيّر
+    مستخدمٌ آخر الكشف في الأثناء، فلا يُحذف إلّا السجلّ المقصود."""
+    return "|".join(str(getattr(rec, k, "") or "").strip() for k in
+                    ("passport_number", "full_name_ar", "full_name_en",
+                     "reference_number"))
+
+
+def _rec_token(rec) -> str:
+    """رمز السجلّ في النماذج: الوضع + معرّفه الثابت + خلاصة بياناته (لا يطابق
+    سجلّاً في الوضع الآخر، ولا نسخةً مكرّرة، ويكشف تعديل غيرك له في الأثناء).
+    كلّه حروف لاتينية وأرقام فيعبر النماذج كما هو (بلا أسطر أو رموز)."""
+    dig = hashlib.sha1(_rec_fp(rec).encode("utf-8")).hexdigest()[:12]
+    return f"{_mode()}#{getattr(rec, 'uid', '') or ''}#{dig}"
+
+
+def _resolve_idx(records, idx, token, strict: bool = False):
+    """الموضع الحالي للسجلّ الذي فُتحت له الصفحة، أو None إن لم يعد موجوداً
+    (حُذف، أو تبدّل الوضع في تبويب آخر) — فلا يُكتب على شخصٍ آخر أبداً. المواضع
+    تتقدّم بعد حذف سجلّ، فلا يُعتمد على الموضع وحده. ``strict`` (نموذج التعديل)
+    يرفض أيضاً إن عدّل غيرك اسمه/جوازه في الأثناء كي لا تُلغى تعديلاته."""
+    parts = str(token or "").split("#")
+    if len(parts) != 3 or parts[0] != _mode() or not parts[1]:
+        return None
+    uid = parts[1]
+    if 0 <= idx < len(records) and getattr(records[idx], "uid", "") == uid:
+        j = idx
+    else:
+        hits = [i for i, r in enumerate(records)
+                if getattr(r, "uid", "") == uid]
+        if len(hits) != 1:                         # حُذف (أو التبس) → رفض
+            return None
+        j = hits[0]
+    if strict and _rec_token(records[j]) != token:     # عدّله غيرك في الأثناء
+        return None
+    return j
+
+
+def _follow(records, idx, endpoint, **kw):
+    """رابط من صفحة قديمة يحمل رمز السجلّ (fp): يُوجَّه إلى موضعه الحالي، أو
+    إلى القائمة إن لم يعد موجوداً — فلا تُفتح صفحة شخصٍ آخر بالموضع القديم."""
+    tok = request.args.get("fp")
+    if not tok:
+        return None
+    j = _resolve_idx(records, idx, tok)
+    if j is None:
+        return redirect(url_for("hujjaj", msg="stale"))
+    if j != idx:
+        return redirect(url_for(endpoint, idx=j, fp=tok, **kw))
+    return None
+
+
+def _shift_idx(i, gone):
+    """موضع سجلّ بعد حذف الموضع ``gone``: None للمحذوف، وما بعده يتقدّم واحداً."""
+    if not isinstance(i, int) or isinstance(i, bool):
+        return i
+    if i == gone:
+        return None
+    return i - 1 if i > gone else i
+
+
+def _reindex_after_delete(gone: int) -> None:
+    """يُصلح الإشارات بموضع السجلّ بعد حذفه: أرشيف المستندات (idx) وتسكين
+    مخيمات الحج (assigned/indices) — كي لا تُنسب لشخصٍ آخر بعد التقدّم."""
+    try:
+        docs = storage.load_documents(session=_sess())
+        changed = False
+        for d in docs:
+            i = d.get("idx")
+            if isinstance(i, int) and not isinstance(i, bool) and i >= gone:
+                d["idx"] = _shift_idx(i, gone)     # المحذوف: يبقى بالاسم فقط
+                changed = True
+        if changed:
+            storage.save_documents(docs, session=_sess())
+    except Exception:                              # noqa: BLE001
+        pass
+    try:
+        camps = _load_camps()
+        changed = False
+
+        def _fix(lst):
+            return [j for j in (_shift_idx(i, gone) for i in (lst or []))
+                    if j is not None]
+
+        for st in camps.values():
+            if not isinstance(st, dict):
+                continue
+            old = (st.get("assigned"), [t.get("indices") for t in
+                                        st.get("tents") or []],
+                   (st.get("last") or {}).get("indices")
+                   if isinstance(st.get("last"), dict) else None)
+            if "assigned" in st:
+                st["assigned"] = _fix(st["assigned"])
+            tents = []
+            for t in st.get("tents") or []:
+                if isinstance(t, dict):
+                    t["indices"] = _fix(t.get("indices"))
+                    if t["indices"]:               # خيمة فرغت تُحذف
+                        tents.append(t)
+            if "tents" in st:
+                st["tents"] = tents
+            if isinstance(st.get("last"), dict):
+                st["last"]["indices"] = _fix(st["last"].get("indices"))
+                if not st["last"]["indices"]:
+                    st["last"] = None
+            new = (st.get("assigned"), [t.get("indices") for t in
+                                        st.get("tents") or []],
+                   (st.get("last") or {}).get("indices")
+                   if isinstance(st.get("last"), dict) else None)
+            changed = changed or new != old
+        if changed:
+            _save_camps(camps)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+@app.post("/hujjaj/<int:idx>/delete")
+def hujjaj_delete(idx):
+    """حذف سجلّ (للمحرّرين) بعد التحقّق من بصمته، مع صوره المشفّرة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    if not _sess().can_edit:                       # المطّلع لا يحذف
+        return redirect(url_for("hujjaj"))
+    records = _load_records()
+    j = _resolve_idx(records, idx, request.form.get("fp", ""))
+    if j is None:                                  # تغيّر الكشف ولا تطابق مؤكّد
+        return redirect(url_for("hujjaj", msg="notfound"))
+    idx = j
+    rec = records.pop(idx)
+    name = (getattr(rec, "full_name_ar", "") or getattr(rec, "full_name_en", "")
+            or getattr(rec, "passport_number", "") or "—")
+    try:
+        storage.save_records(records, session=_sess())
+    except Exception:                              # noqa: BLE001
+        return redirect(url_for("hujjaj", msg="error"))
+    image_id = str(getattr(rec, "image_id", "") or "").strip()
+    if image_id:                                   # صور الجواز/الهوية المشفّرة
+        try:
+            from hajj_app import images as imgmod
+            imgmod.delete_all(image_id)
+        except Exception:                          # noqa: BLE001
+            pass
+    _reindex_after_delete(idx)
+    _audit("حذف سجلّ", name)
+    return redirect(url_for("hujjaj", msg="deleted", name=name))
 
 
 def _umrah_fill_price(rec, changed: bool = True) -> None:
@@ -798,9 +985,15 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
         for k in keys:
             if k in drop or k not in BY_KEY:
                 continue
+            val = str(getattr(rec, k, "") or "")
+            cmap = ({**_CHOICES, **_UMRAH_CHOICES}
+                    if _mode() == app_mode.UMRAH else _CHOICES)
+            choices = list(cmap[k]) if k in cmap else None
+            if choices is not None and val and val not in choices:
+                choices.insert(1, val)          # قيمة قديمة خارج القائمة تبقى ظاهرة
             fs.append({"key": k, "label": _label(k),
-                       "value": str(getattr(rec, k, "") or ""),
-                       "choices": _CHOICES.get(k),
+                       "value": val,
+                       "choices": choices,
                        "type": ("date" if k in _DATE_FIELDS else "")})
         if fs:
             groups.append({"title": title.format(n=_noun()), "fields": fs})
@@ -834,6 +1027,7 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
         has_docs=has_docs,
         is_new=is_new, idx=idx, room_prices=room_prices,
+        fp=_rec_token(rec) if idx is not None else "",
         svc_total=umrah.record_services_total(rec),   # خدمات المعتمر
         cur_trip=str(getattr(rec, "trip", "") or ""),
         room_names=[n for _k, n, _c in umrah.ROOM_TYPES],
@@ -858,6 +1052,9 @@ def record_docs(idx):
     if _sess() is None:
         return redirect(url_for("login"))
     records = _load_records()
+    moved = _follow(records, idx, "record_docs")
+    if moved:
+        return moved
     if not (0 <= idx < len(records)):
         return redirect(url_for("hujjaj"))
     rec = records[idx]
@@ -871,6 +1068,7 @@ def record_docs(idx):
                           "title": d.get("title") or d.get("kind"),
                           "number": d.get("number") or "—"})
     return render_template("record_docs.html", active="hujjaj", idx=idx,
+                           fp=_rec_token(rec),
                            name=name, docs=_RECORD_DOCS, saved=saved,
                            noun_singular=_noun_singular(), **_ctx())
 
@@ -893,6 +1091,9 @@ def record_images(idx):
         return redirect(url_for("login"))
     from hajj_app import images as imgmod
     records = _load_records()
+    moved = _follow(records, idx, "record_images")
+    if moved:
+        return moved
     if not (0 <= idx < len(records)):
         return redirect(url_for("hujjaj"))
     rec = records[idx]
@@ -909,6 +1110,7 @@ def record_images(idx):
                       "present": present, "is_pdf": is_pdf})
     return render_template("record_images.html", active="hujjaj", idx=idx,
                            name=_rec_name(rec) or "—", items=items,
+                           fp=_rec_token(rec),
                            saved=request.args.get("saved"),
                            err=request.args.get("err"),
                            noun_singular=_noun_singular(), **_ctx())
@@ -925,8 +1127,10 @@ def record_image_upload(idx, kind):
     if kind not in _image_kinds():
         return redirect(url_for("record_images", idx=idx))
     records = _load_records()
-    if not (0 <= idx < len(records)):
-        return redirect(url_for("hujjaj"))
+    j = _resolve_idx(records, idx, request.form.get("fp", ""))
+    if j is None:                                  # تغيّر الكشف منذ فتح الصفحة
+        return redirect(url_for("hujjaj", msg="stale"))
+    idx = j
     rec = records[idx]
     f = request.files.get("file")
     if not f or not f.filename:
@@ -966,8 +1170,10 @@ def record_image_delete(idx, kind):
     if kind not in _image_kinds():
         return redirect(url_for("record_images", idx=idx))
     records = _load_records()
-    if not (0 <= idx < len(records)):
-        return redirect(url_for("hujjaj"))
+    j = _resolve_idx(records, idx, request.form.get("fp", ""))
+    if j is None:                                  # تغيّر الكشف منذ فتح الصفحة
+        return redirect(url_for("hujjaj", msg="stale"))
+    idx = j
     rec = records[idx]
     iid = getattr(rec, "image_id", "")
     if iid:
@@ -989,9 +1195,10 @@ def record_image_view(idx, kind):
     if kind not in imgmod.KINDS:
         return ("", 404)
     records = _load_records()
-    if not (0 <= idx < len(records)):
+    j = _resolve_idx(records, idx, request.args.get("fp", ""))
+    if j is None:                                  # صفحة قديمة: لا نعرض صورة غيره
         return ("", 404)
-    rec = records[idx]
+    rec = records[j]
     iid = getattr(rec, "image_id", "")
     if not iid or not imgmod.has_image(iid, kind):
         return ("", 404)
@@ -2067,12 +2274,16 @@ def doc_edit(idx, kind):
     if kind not in _DOC_TITLES:
         return redirect(url_for("hujjaj"))
     records = _load_records()
+    moved = _follow(records, idx, "doc_edit", kind=kind)
+    if moved:
+        return moved
     if not (0 <= idx < len(records)):
         return redirect(url_for("hujjaj"))
     from hajj_app import webdoc
     settings = storage.load_settings()
     co = settings.get("company") if isinstance(settings, dict) else None
     data, schema = _doc_build(kind, records[idx], co, settings)
+    data["_rec"] = _rec_token(records[idx])        # يتحقّق منه الحفظ (الموضع قد يتغيّر)
     title, icon = _DOC_TITLES[kind]
     return webdoc._doc_html(
         data, schema, title, icon,
@@ -2089,11 +2300,13 @@ def doc_pdf(idx, kind):
     if kind not in _DOC_TITLES:
         return ("", 404)
     records = _load_records()
-    if not (0 <= idx < len(records)):
-        return ("", 404)
+    data = request.get_json(force=True, silent=True) or {}
+    j = _resolve_idx(records, idx, str(data.pop("_rec", "") or ""))
+    if j is None:                                  # تغيّر الكشف منذ فتح المحرّر
+        return ("تغيّر الكشف منذ فتح المستند — أعد فتحه من صفحة السجلّ.", 409)
+    idx = j
     settings = storage.load_settings()
     co = settings.get("company") if isinstance(settings, dict) else None
-    data = request.get_json(force=True, silent=True) or {}
     title = _DOC_TITLES[kind][0]
     _name = getattr(records[idx], "full_name_ar", "") or getattr(
         records[idx], "full_name_en", "") or ""
@@ -2110,6 +2323,9 @@ def pilgrim_packet(idx):
     if _sess() is None:
         return redirect(url_for("login"))
     records = _load_records()
+    moved = _follow(records, idx, "pilgrim_packet")
+    if moved:
+        return moved
     if not (0 <= idx < len(records)):
         return redirect(url_for("hujjaj"))
     rec = records[idx]
@@ -2518,8 +2734,17 @@ def rooming_edit():
         return redirect(url_for("occupancy"))
     records = _load_records()
     if request.method == "POST":
-        n = 0
-        for i, r in enumerate(records):
+        n = skipped = 0
+        # كل صفّ يحمل بصمة سجلّه: يُطبَّق على صاحبه حتى لو تغيّر موضعه،
+        # ويُتخطّى إن لم يُعرف (حُذف/عُدّل في الأثناء) — لا يُنقل لشخص آخر
+        rows_i = sorted({int(k[3:]) for k in request.form
+                         if k.startswith("fp_") and k[3:].isdigit()})
+        for i in rows_i:
+            j = _resolve_idx(records, i, request.form.get(f"fp_{i}", ""))
+            if j is None:
+                skipped += 1
+                continue
+            r = records[j]
             changed = False
             for attr, fld in (("hotel", "hotel"), ("room_type", "rtype"),
                               ("room_number", "rnum")):
@@ -2536,7 +2761,7 @@ def rooming_edit():
             _audit("تعديل التسكين يدوياً", f"{n} سجلّ")
         except Exception:
             pass
-        return redirect(url_for("rooming_edit", saved=n))
+        return redirect(url_for("rooming_edit", saved=n, skipped=skipped))
 
     def _distinct(attr):
         return sorted({str(getattr(r, attr, "") or "").strip() for r in records
@@ -2556,7 +2781,7 @@ def rooming_edit():
         attrs = sortmap[sort]
         items.sort(key=lambda t: [_natkey(getattr(t[1], a, "")) for a in attrs])
     rows = [{"idx": i, "name": (getattr(r, "full_name_ar", "") or getattr(
-                 r, "full_name_en", "") or "—"),
+                 r, "full_name_en", "") or "—"), "fp": _rec_token(r),
              "hotel": str(getattr(r, "hotel", "") or ""),
              "rtype": str(getattr(r, "room_type", "") or ""),
              "rnum": str(getattr(r, "room_number", "") or ""),
@@ -2565,7 +2790,8 @@ def rooming_edit():
             for i, r in items]
     return render_template("rooming_edit.html", active="occupancy", rows=rows,
                            hotels=_distinct("hotel"), rtypes=_distinct("room_type"),
-                           sort=sort, saved=request.args.get("saved"), **_ctx())
+                           sort=sort, saved=request.args.get("saved"),
+                           skipped=request.args.get("skipped"), **_ctx())
 
 
 # ==================== مخيمات منى وعرفة =====================================
@@ -2902,7 +3128,7 @@ def camp_tents_manual():
             continue
         room = (str(getattr(rec, "room_number", "") or "").strip()
                 or room_number_in_type(str(getattr(rec, "room_type", "") or "")))
-        rows.append({"idx": i,
+        rows.append({"idx": i, "fp": _rec_token(rec),
                      "name": getattr(rec, "full_name_ar", "") or getattr(
                          rec, "full_name_en", "") or "—",
                      "fam": str(getattr(rec, "family_number", "") or "").strip(),
@@ -2939,17 +3165,21 @@ def camp_tents_manual_assign():
     sector = (request.form.get("sector", "") or "").strip()
     label = (request.form.get("label", "") or "مختار").strip() or "مختار"
     campaign = (request.form.get("campaign", "") or _DEFAULT_CAMPAIGN).strip()
-    picks = []
+    picks, skipped = [], 0
     for v in request.form.getlist("pick"):
         try:
             i = int(v)
         except ValueError:
             continue
-        if 0 <= i < len(records) and i not in assigned:
-            picks.append(i)
+        j = _resolve_idx(records, i, request.form.get(f"fp_{i}", ""))
+        if j is None:                              # حُذف/عُدّل منذ فتح الصفحة
+            skipped += 1
+        elif j not in assigned and j not in picks:
+            picks.append(j)
     if not picks:
         return redirect(url_for("camp_tents_manual", camp=camp_slug,
-                                msg="لم تختر أي حاجّ لهذه الخيمة."))
+                                msg=("تغيّر الكشف منذ فتح الصفحة — أعد التحديد."
+                                     if skipped else "لم تختر أي حاجّ لهذه الخيمة.")))
     assigned |= set(picks)
     st["assigned"] = sorted(assigned)
     tent = {"indices": picks, "camp": camp, "sector": sector,
@@ -2965,7 +3195,8 @@ def camp_tents_manual_assign():
     _audit("تسكين خيمة يدوياً", f"{camp} — خيمة {number} — {len(picks)} شخصاً")
     return redirect(url_for(
         "camp_tents_manual", camp=camp_slug,
-        msg=f"ثُبّتت الخيمة {number}: {len(picks)} شخصاً. افتح كشفها من الزر أدناه."))
+        msg=(f"ثُبّتت الخيمة {number}: {len(picks)} شخصاً. افتح كشفها من الزر أدناه."
+             + (f" (تُخطّي {skipped} تغيّر سجلّه منذ فتح الصفحة)" if skipped else ""))))
 
 
 # ==================== المصروفات والمحاسبة ==================================
@@ -3051,7 +3282,7 @@ def finance():
     arrears = []
     for r, amt in stats.outstanding(records):
         arrears.append({
-            "idx": idx_of[id(r)],
+            "idx": idx_of[id(r)], "fp": _rec_token(r),
             "name": getattr(r, "full_name_ar", "") or getattr(
                 r, "full_name_en", "") or "—",
             "program": str(getattr(r, _group_attr(), "") or "") or "—",
@@ -3072,6 +3303,10 @@ def finance_pay(idx):
     from datetime import date as _date
     from hajj_app.fields import parse_amount, format_amount as _fmt, sync_paid_amount
     records = _load_records()
+    j = _resolve_idx(records, idx, request.form.get("fp", ""))
+    if j is None:                                  # تغيّر الكشف منذ فتح الصفحة
+        return redirect(url_for("finance", msg="stale"))
+    idx = j
     if 0 <= idx < len(records):
         amt = parse_amount(request.form.get("amount"))
         if amt and amt > 0:

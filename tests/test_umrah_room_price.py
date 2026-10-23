@@ -46,6 +46,13 @@ c = server.app.test_client()
 c.post("/login", data={"username": "owner", "password": "Passw0rd!x"})
 
 
+def edit(i, data):
+    """حفظ صفحة التعديل كما يفعل المتصفّح: مع بصمة السجلّ المعروض."""
+    page = c.get(f"/hujjaj/{i}").get_data(as_text=True)
+    fp = re.search(r'name="fp" value="([^"]*)"', page).group(1)
+    return c.post(f"/hujjaj/{i}", data=dict(data, fp=fp))
+
+
 def select_opts(html, key):
     m = re.search(r'<select name="%s" id="f_%s">(.*?)</select>' % (key, key),
                   html, re.S)
@@ -93,7 +100,7 @@ assert ("ثلاثي", "", "ثلاثي") not in room_opts                 # غي�
 assert [v for v, _s, _t in room_opts] == ["", "مفرد", "ثنائي", "رباعي",
                                           "طفل (بدون سرير)"]
 # قيمة قديمة ليست في أسعار البرنامج تبقى ظاهرة ومختارة
-c.post(f"/hujjaj/{idx}", data={"full_name_ar": "معتمر أول", "trip": "U1",
+edit(idx, {"full_name_ar": "معتمر أول", "trip": "U1",
                                "room_type": "جناح", "program_value": "5000"})
 room_opts = select_opts(c.get(f"/hujjaj/{idx}").get_data(as_text=True),
                         "room_type")
@@ -113,7 +120,7 @@ sidx = len(recs) - 1
 html = c.get(f"/hujjaj/{sidx}").get_data(as_text=True)
 assert "var SVC = 1200" in html and 'var built = "U1"' in html
 # تعديل حقل آخر فقط: لا يتغيّر الأساس ولا القيمة
-c.post(f"/hujjaj/{sidx}", data={"full_name_ar": "معتمر بخدمات", "trip": "U1",
+edit(sidx, {"full_name_ar": "معتمر بخدمات", "trip": "U1",
                                 "room_type": "ثنائي", "program_value": "6200",
                                 "phone": "0501112233"})
 app_mode.set_mode(app_mode.UMRAH)
@@ -121,7 +128,7 @@ r = storage.load_records(session=_sess)[0][sidx]
 assert (r.room_value, r.program_value) == ("5000", "6200"), (r.room_value,
                                                               r.program_value)
 # تغيير الغرفة مع ترك القيمة فارغة: الأساس = سعر المفرد، والقيمة = الغرفة + الخدمات
-c.post(f"/hujjaj/{sidx}", data={"full_name_ar": "معتمر بخدمات", "trip": "U1",
+edit(sidx, {"full_name_ar": "معتمر بخدمات", "trip": "U1",
                                 "room_type": "مفرد", "program_value": ""})
 app_mode.set_mode(app_mode.UMRAH)
 r = storage.load_records(session=_sess)[0][sidx]
@@ -130,10 +137,34 @@ assert (r.room_value, r.program_value) == ("7,500", "8,700"), (r.room_value,
 assert r.umrah_services == [{"name": "تأمين طبّي", "price": "1200"}]
 print("[ok] السعر = الغرفة + الخدمات، وأساس الغرفة يتبع البرنامج")
 
+# ---- 4c) الموظف المسؤول: قائمة موظفي المكتب ----
+STAFF = ["", "أيمن الشهابي", "أحمد الشبراوي", "علاء بريخان", "رامي الشلبي",
+         "مريم الحوسني", "محمد صابر"]
+assert [v for v, _s, _t in select_opts(c.get("/hujjaj/new").get_data(
+    as_text=True), "staff")] == STAFF
+edit(sidx, {"full_name_ar": "معتمر بخدمات", "trip": "U1",
+                                "room_type": "مفرد", "program_value": "8,700",
+                                "staff": "مريم الحوسني"})
+opts = select_opts(c.get(f"/hujjaj/{sidx}").get_data(as_text=True), "staff")
+assert ("مريم الحوسني", "selected", "مريم الحوسني") in opts
+# اسم قديم خارج القائمة يبقى ظاهراً ومختاراً (لا يضيع عند الحفظ)
+edit(sidx, {"full_name_ar": "معتمر بخدمات", "staff": "موظف سابق"})
+opts = select_opts(c.get(f"/hujjaj/{sidx}").get_data(as_text=True), "staff")
+assert ("موظف سابق", "selected", "موظف سابق") in opts and len(opts) == 8
+# المواصلات: GMC / FORD
+assert [v for v, _s, _t in select_opts(c.get("/hujjaj/new").get_data(
+    as_text=True), "transport")] == ["", "GMC", "FORD"]
+edit(sidx, {"full_name_ar": "معتمر بخدمات", "transport": "FORD"})
+opts = select_opts(c.get(f"/hujjaj/{sidx}").get_data(as_text=True), "transport")
+assert ("FORD", "selected", "FORD") in opts
+print("[ok] الموظف المسؤول والمواصلات قائمتان منسدلتان")
+
 # ---- 5) الحج كما هو: نوع الغرفة حقل نصّي بلا سكربت أسعار ----
 c.get("/switch/hajj")
 html = c.get("/hujjaj/new").get_data(as_text=True)
 assert '<input name="room_type" id="f_room_type"' in html
+assert '<input name="transport" id="f_transport"' in html    # الحج: رقم الباص نصّ حرّ
+assert '<input name="staff" id="f_staff"' in html
 assert "room_type" not in "".join(re.findall(r"<select[^>]*>", html))
 assert "var P = " not in html
 print("[ok] نوع الغرفة من البرنامج + ملء قيمة البرنامج تلقائياً")

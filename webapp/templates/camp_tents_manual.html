@@ -37,7 +37,7 @@
       <tbody>
         {% for r in rows %}
         <tr>
-          <td><input type="checkbox" name="pick" value="{{ r.idx }}"></td>
+          <td><input type="checkbox" name="pick" value="{{ r.idx }}"><input type="hidden" name="fp_{{ r.idx }}" value="{{ r.fp }}"></td>
           <td>{{ r.name }}</td><td>{{ r.fam }}</td><td>{{ r.hotel }}</td>
           <td dir="ltr">{{ r.room }}</td><td>{{ r.sex }}</td>
         </tr>
