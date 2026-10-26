@@ -376,3 +376,8 @@ table.data tr.pg-head .pg-meta{ font-size:13.5px; margin-inline-end:16px; white-
   opacity:.95; }
 table.data tr.pg-gap td, table.data tr.pg-gap:hover td{ background:var(--bg, #fff);
   border:none; padding:7px; }
+table.data tr.pg-head .pg-move{ float:left; display:flex; gap:6px; }
+table.data tr.pg-head .pg-move button{ background:rgba(255,255,255,.18); color:#fff;
+  border:1px solid rgba(255,255,255,.7); border-radius:6px; padding:1px 10px; font-size:14px;
+  cursor:pointer; line-height:1.5; }
+table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }

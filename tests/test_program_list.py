@@ -249,11 +249,13 @@ pl = umrah.room_pools(big)
 assert time.perf_counter() - t0 < 1.0 and [t.code for t in pl["P5"]] == ["P3", "P4", "P5"]
 print("[ok] غرف فندق مشتركة بين برامج الطيران")
 
-# ---- 5) لون لكل برنامج في الباقة (المتقاسمة غرف فندق بلون واحد) ----
-for code, share in (("R1", ""), ("R2", "R1"), ("R3", ""), ("R4", ""), ("R5", "")):
+# ---- 5) لكل برنامج (كل طيران) رقم ولون في الباقة، وترتيب يدوي ▲▼ ----
+progs5 = (("R1", "", "السعودي", "من أبوظبي"), ("R2", "R1", "السعودي", "من دبي"),
+          ("R3", "R1", "فلاي دبي", ""), ("R4", "R1", "الاتحاد", ""), ("R5", "", "", "الوداع"))
+for code, share, air, name in progs5:
     form = {k: "" for k in server._PROG_KEYS}
-    form.update(code=code, package="برامج رمضان", makkah_rooms="5" if not share else "",
-                room_share=share)
+    form.update(code=code, package="برامج رمضان", airline=air, name=name,
+                makkah_rooms="5" if not share else "", room_share=share)
     c.post("/programs/save", data=form)
 
 
@@ -262,26 +264,86 @@ def colors(page):
         r'<tr class="pcol[^"]*" style="--pc:([^;]+);--pt:[^"]+">\s*<td>(\w+)</td>', page))
 
 
-ram = colors(c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True))
+def pkg_page():
+    return c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
+
+
+def order(page):
+    body = page.split("<tbody>")[1]
+    return sorted(("R1", "R2", "R3", "R4", "R5"), key=lambda x: body.index(f"<td>{x}</td>"))
+
+
+ram = colors(pkg_page())
 assert set(ram) == {"R1", "R2", "R3", "R4", "R5"}, ram
-assert ram["R1"] == ram["R2"]                                   # نفس التاريخ/الفندق
-assert len({ram["R1"], ram["R3"], ram["R4"], ram["R5"]}) == 4, ram   # الأول/الثاني/…
-assert ram["R1"] == server._PROG_COLORS[0][0] and ram["R3"] == server._PROG_COLORS[1][0]
+# حتى المتقاسمة غرف الفندق: لكلٍّ لونه (الأول أزرق، الثاني بنفسجي…)
+assert [ram[x] for x in ("R1", "R2", "R3", "R4", "R5")] == [c for c, _t in server._PROG_COLORS[:5]]
 allp = colors(c.get("/programs").get_data(as_text=True))
 assert all(allp[k] == v for k, v in ram.items())                # نفس اللون في الصفحتين
-# شريط عنوان ملوّن فوق كل برنامج، والترتيب بتاريخ المغادرة
+page = pkg_page()
+titles = re.findall(r'<span class="pg-title">([^<]+)</span>', page)
+assert titles[:3] == ["البرنامج الأول · ✈️ السعودي — من أبوظبي",
+                      "البرنامج الثاني · ✈️ السعودي — من دبي",
+                      "البرنامج الثالث · ✈️ فلاي دبي"], titles
+assert titles[4] == "البرنامج الخامس · الوداع"
+assert page.count('class="pg-head"') == 5 and page.count('class="pg-gap"') == 4
+assert page.count('name="dir" value="up"') == 4 and page.count('name="dir" value="down"') == 4
+assert "🔗 غرف مشتركة مع R1" in page
+# الترتيب الافتراضي بتاريخ المغادرة، وتعديل برنامج لا يغيّر مكانه
 form = {k: "" for k in server._PROG_KEYS}
 form.update(code="R5", orig="R5", package="برامج رمضان", name="الوداع",
             depart_date="2027-01-01", makkah_rooms="5")
 c.post("/programs/save", data=form)
-page = c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
-heads = re.findall(r'<tr class="pg-head" style="--pc:([^"]+)">\s*<td colspan="12">\s*'
-                   r'<span class="pg-title">([^<]+)</span>', page)
-assert [t for _c, t in heads][:2] == ["البرنامج الأول · الوداع", "البرنامج الثاني · —"], heads
-assert len(heads) == 4 and heads[0][0] == server._PROG_COLORS[0][0]
-assert page.count('class="pg-gap"') == 3
-body = page.split("<tbody>")[1]
-assert body.index("<td>R5</td>") < body.index("<td>R1</td>") < body.index("<td>R2</td>") \
-    < body.index("<td>R3</td>")                                   # R2 تحت R1 في شريطه
-print("[ok] لون لكل برنامج في الباقة")
+form.update(code="R1", orig="R1", name="من أبوظبي", airline="السعودي", depart_date="",
+            makkah_rooms="5")
+c.post("/programs/save", data=form)
+assert order(pkg_page()) == ["R5", "R1", "R2", "R3", "R4"]
+# الترتيب اليدوي: R5 إلى الأخير بالسهم ▼ مرّات، ثم R4 قبل R3 بالسهم ▲
+for _ in range(5):                                   # الزائد عند الطرف لا يضرّ
+    c.post("/programs/packages/move", data={"name": "برامج رمضان", "code": "R5", "dir": "down"})
+c.post("/programs/packages/move", data={"name": "برامج رمضان", "code": "R4", "dir": "up"})
+page = pkg_page()
+assert order(page) == ["R1", "R2", "R4", "R3", "R5"], order(page)
+ram = colors(page)
+assert [ram[x] for x in ("R1", "R2", "R4", "R3")] == [c for c, _t in server._PROG_COLORS[:4]]
+assert re.findall(r'<span class="pg-title">([^<]+)</span>', page)[2] ==     "البرنامج الثالث · ✈️ الاتحاد"
+# الترتيب محفوظ: يبقى بعد تعديل برنامج أو تغيير تاريخه
+form.update(code="R3", orig="R3", name="", airline="فلاي دبي", depart_date="2026-01-01",
+            room_share="R1", makkah_rooms="")
+c.post("/programs/save", data=form)
+assert order(pkg_page()) == ["R1", "R2", "R4", "R3", "R5"]
+# برنامج جديد في الباقة يأتي بعد المرتّبة
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="R6", package="برامج رمضان", depart_date="2020-01-01")
+c.post("/programs/save", data=form)
+body = pkg_page().split("<tbody>")[1]
+assert body.index("<td>R5</td>") < body.index("<td>R6</td>")
+# لا يُرتّب إلا المحرّر، ولا باقة مجهولة
+assert c.post("/programs/packages/move",
+              data={"name": "مجهولة", "code": "R1", "dir": "up"}).status_code == 302
+
+
+def saved_order():
+    app_mode.set_mode(app_mode.UMRAH)
+    return server._pkg_orders(storage.load_settings()).get("برامج رمضان", [])
+
+
+# حذف برنامج مرتّب ثم إنشاء برنامج جديد بنفس رمزه: لا يرث مكانه بل يأتي آخراً
+c.post("/programs/packages/move", data={"name": "برامج رمضان", "code": "R6", "dir": "up"})
+assert order(pkg_page())[0] == "R1" and "R1" in saved_order()
+c.post("/programs/R1/delete")
+assert "R1" not in saved_order()
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="R1", package="برامج رمضان", airline="جديد")
+c.post("/programs/save", data=form)
+body = pkg_page().split("<tbody>")[1]
+assert all(body.index(f"<td>{x}</td>") < body.index("<td>R1</td>") for x in ("R2", "R5", "R6"))
+# إخراج برنامج من الباقة يحذفه من ترتيبها؛ وتغيير الرمز يُبقي مكانه
+c.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "R2"})
+assert "R2" not in saved_order()
+before = saved_order()
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="R4X", orig="R4", package="برامج رمضان", airline="الاتحاد")
+c.post("/programs/save", data=form)
+assert saved_order() == [("R4X" if x == "R4" else x) for x in before], (saved_order(), before)
+print("[ok] لكل برنامج رقم ولون في الباقة + ترتيب يدوي")
 print("ALL OK")

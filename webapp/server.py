@@ -384,7 +384,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-26e · البرنامج الرابع بني غامق"
+_BUILD_TAG = "2026-10-26f · ترتيب البرامج يدوياً في الباقة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1960,42 +1960,60 @@ _ORDINALS = ("الأول", "الثاني", "الثالث", "الرابع", "ال
              "السابع", "الثامن", "التاسع", "العاشر")
 
 
-def _color_rows(rows, dates: dict = None) -> None:
-    """يرقّم البرامج داخل كل باقة (الأول، الثاني…) حسب تاريخ المغادرة ويعطي
-    كلاً لونه. البرامج المتقاسمة غرف فندق واحدة (طيران آخر بنفس التاريخ)
-    برنامج واحد بلون واحد، واللون نفسه في صفحة الباقة وفي قائمة كل البرامج."""
-    dates = dates or {}
-    first: dict = {}
-    for i, r in enumerate(rows):
-        first.setdefault((r["package"], r["pool"]), i)
+def _pkg_orders(settings) -> dict:
+    """الترتيب اليدوي للبرامج في كل باقة: {الباقة: [رموز البرامج بالترتيب]}."""
+    raw = settings.get("umrah_package_order") if isinstance(settings, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): [str(c) for c in v] for k, v in raw.items()
+            if isinstance(v, list)}
+
+
+def _order_fix(settings, code: str, keep: str = None, new: str = None) -> None:
+    """ينظّف الترتيب اليدوي المحفوظ من رمز برنامج: يُحذف من كل الباقات عدا
+    ``keep``، أو يُستبدل بـ ``new`` عند تغيير الرمز — كي لا يرث برنامج جديد
+    يأخذ رمزاً محذوفاً مكانَ البرنامج القديم."""
+    orders = _pkg_orders(settings)
+    changed = False
+    for pkg, codes in orders.items():
+        if code not in codes:
+            continue
+        if new:
+            codes[:] = [new if c == code else c for c in codes]
+        elif pkg != keep:
+            codes[:] = [c for c in codes if c != code]
+        changed = True
+    if changed:
+        settings["umrah_package_order"] = orders
+
+
+def _color_rows(rows, dates: dict = None, orders: dict = None) -> None:
+    """يرقّم البرامج داخل كل باقة (الأول، الثاني…) ويعطي كلاً لونه: بالترتيب
+    اليدوي المحفوظ أولاً، ثم بتاريخ المغادرة وترتيب الإضافة. لكل برنامج (كل
+    طيران) رقمه ولونه، واللون نفسه في صفحة الباقة وفي قائمة كل البرامج."""
+    dates, orders = dates or {}, orders or {}
     by_pkg: dict = {}
-    for (pkg, pool), i in first.items():
-        by_pkg.setdefault(pkg, []).append((dates.get(pool) or "9999", i, pool))
-    num = {(pkg, pool): n for pkg, lst in by_pkg.items()
-           for n, (_d, _i, pool) in enumerate(sorted(lst))}
-    for r in rows:
-        n = num[(r["package"], r["pool"])]
-        r["gnum"] = n + 1
-        r["color"], r["tint"] = _PROG_COLORS[n % len(_PROG_COLORS)]
+    for i, r in enumerate(rows):
+        by_pkg.setdefault(r["package"], []).append((i, r))
+    for pkg, lst in by_pkg.items():
+        pos = {c: k for k, c in enumerate(orders.get(pkg) or [])}
+        lst.sort(key=lambda ir: (pos.get(ir[1]["code"], len(pos)),
+                                 dates.get(ir[1]["code"]) or "9999", ir[0]))
+        for n, (_i, r) in enumerate(lst):
+            r["gnum"] = n + 1
+            r["color"], r["tint"] = _PROG_COLORS[n % len(_PROG_COLORS)]
 
 
 def _program_groups(rows) -> list:
-    """صفوف صفحة الباقة مجمّعة: لكل برنامج شريط عنوان ثم صفوف طيرانه."""
-    rows.sort(key=lambda r: (r["gnum"], r["pool"] != r["code"]))
-    groups: list = []
-    for r in rows:
-        if not groups or groups[-1]["num"] != r["gnum"]:
-            n = r["gnum"]
-            groups.append({"num": n, "color": r["color"], "rows": [],
-                           "ordinal": _ORDINALS[n - 1] if n <= len(_ORDINALS)
-                           else f"رقم {n}"})
-        groups[-1]["rows"].append(r)
-    for g in groups:
-        head = g["rows"][0]
-        g.update(name=head["name"], depart=head["depart"], ret=head["return"],
-                 makkah=head["makkah"], rooms=head["rooms"],
-                 airlines=[(r["airline"], r["code"]) for r in g["rows"]])
-    return groups
+    """صفحة الباقة: لكل برنامج شريط عنوان بلونه ورقمه (الأول، الثاني…)."""
+    rows.sort(key=lambda r: r["gnum"])
+    return [{"num": r["gnum"], "color": r["color"], "row": r,
+             "ordinal": _ORDINALS[r["gnum"] - 1] if r["gnum"] <= len(_ORDINALS)
+             else f"رقم {r['gnum']}"} for r in rows]
+
+
+def _trip_dates(trips) -> dict:
+    return {t.code: str(t.depart_date or "").strip() for t in trips}
 
 
 def _share_choices(trip, trips) -> list:
@@ -2053,7 +2071,7 @@ def programs():
     for r in rows:
         r["package"] = pkg_of.get(r["code"], "")
         r["pool"] = pools[r["code"]][0].code
-    _color_rows(rows, {t.code: str(t.depart_date or "").strip() for t in trips})
+    _color_rows(rows, _trip_dates(trips), _pkg_orders(settings))
     # صفحة باقة مستقلّة (?package=): برامجها فقط + إضافة برامج مسجّلة إليها
     package = (request.args.get("package") or "").strip()
     others = []
@@ -2067,6 +2085,40 @@ def programs():
     return render_template("programs.html", active="programs", rows=rows,
                            package=package, others=others, groups=groups,
                            msg=request.args.get("msg", ""), **_ctx())
+
+
+@app.post("/programs/packages/move")
+def program_package_move():
+    """تقديم/تأخير برنامج داخل باقته (▲▼) — يُحفظ الترتيب في الإعدادات."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import umrah
+    name = (request.form.get("name") or "").strip()
+    if not _sess().can_edit:
+        return redirect(url_for("programs", package=name))
+    settings = storage.load_settings()
+    if name not in umrah.load_packages(settings):
+        return redirect(url_for("programs"))
+    trips = umrah.load_trips(settings)
+    rows = [{"code": t.code, "package": name} for t in trips
+            if str(t.package or "").strip() == name]
+    orders = _pkg_orders(settings)
+    _color_rows(rows, _trip_dates(trips), orders)
+    codes = [r["code"] for r in sorted(rows, key=lambda r: r["gnum"])]
+    code = (request.form.get("code") or "").strip()
+    if code in codes:
+        i = codes.index(code)
+        j = i - 1 if request.form.get("dir") == "up" else i + 1
+        if 0 <= j < len(codes):
+            codes[i], codes[j] = codes[j], codes[i]
+            orders[name] = codes
+            settings["umrah_package_order"] = orders
+            try:
+                storage.save_settings(settings)
+                _audit("ترتيب برامج باقة", f"{name} — {'، '.join(codes)}")
+            except Exception:
+                pass
+    return redirect(url_for("programs", package=name))
 
 
 @app.post("/programs/packages/assign")
@@ -2090,6 +2142,7 @@ def program_package_assign():
             t.package, n = name, n + 1
         elif remove and t.code == remove and t.package == name:
             t.package, n = "", n + 1
+            _order_fix(settings, remove)
     if n:
         umrah.save_trips(settings, trips)
         try:
@@ -2139,6 +2192,9 @@ def program_package_delete():
                                 "انقلها لباقة أخرى أولاً."))
     umrah.save_packages(settings, [p for p in umrah.load_packages(settings)
                                    if p != name])
+    orders = _pkg_orders(settings)
+    if orders.pop(name, None) is not None:
+        settings["umrah_package_order"] = orders
     try:
         storage.save_settings(settings)
         _audit("حذف باقة برامج", name)
@@ -2221,9 +2277,21 @@ def program_save():
         trip.package = old_pkg
         msg = msg + (" " if msg else "") + (f"البرنامج «{trip.code}» تابع لباقة «{old_pkg}» ولا يُضاف إلى باقة أخرى"
                " — أخرِجه منها أوّلاً (↩ إخراج). حُفظت بقية التعديلات.")
+    # مكان البرنامج في القائمة بعد إزالة القديم (وأي برنامج بنفس الرمز الجديد)
+    at = next((sum(1 for u in trips[:i] if u.code not in (key, trip.code))
+               for i, t in enumerate(trips) if t.code == key), None)
+    if old is None:
+        _order_fix(settings, trip.code)            # برنامج جديد: بلا مكان موروث
+    else:
+        if key != trip.code:
+            _order_fix(settings, key, new=trip.code)
+        _order_fix(settings, trip.code, keep=trip.package or None)
     trips = [t for t in trips if t.code != key and t.code != trip.code]
     umrah.rename_share(trips, key, trip.code)
-    trips.append(trip)
+    if at is not None and at <= len(trips):
+        trips.insert(at, trip)                      # التعديل يُبقي مكانه
+    else:
+        trips.append(trip)
     umrah.sync_pool_hotels(trips, trip.code)        # فندق واحد للبرامج المشتركة
     umrah.save_trips(settings, trips)
     if trip.package:                               # باقة كُتبت يدوياً تُسجَّل
@@ -2246,6 +2314,7 @@ def program_delete(code):
         # من كان يشارك غرف المحذوف: أوّلهم يصبح الأساسي ويأخذ عدد الغرف
         trips = umrah.detach_trip(umrah.load_trips(settings), code)
         umrah.save_trips(settings, trips)
+        _order_fix(settings, code)                 # لا يرث برنامج جديد مكانه
         try:
             storage.save_settings(settings)
             _audit("حذف برنامج عمرة", str(code))
