@@ -10,6 +10,27 @@
   <a class="btn ghost" target="_blank" href="{{ url_for('rooming_pdf') }}">📄 كشف مجمّع (PDF)</a>
   {% if can_edit %}<a class="btn ghost" href="{{ url_for('rooming_edit') }}">✏️ تعديل التسكين يدوياً</a>{% endif %}
 </div>
+{% if pools %}
+<div class="panel" style="margin-bottom:14px">
+<h3 style="margin:0 0 8px">🏨 الغرف المتبقّية حسب البرامج</h3>
+<table class="data">
+  <thead><tr><th>البرامج</th><th>المغادرة</th><th>المدينة</th><th>الفندق</th>
+    <th>المتاح</th><th>المشغول</th><th>المتبقّي</th></tr></thead>
+  <tbody>
+  {% for g in pools %}{% for city, avail, used, left in g.rooms %}
+    <tr class="{{ 'rover' if left < 0 else ('rfull' if left == 0 else '') }}">
+      <td>{% for code, air in g.programs %}{{ code }}{% if air %} <span class="muted">({{ air }})</span>{% endif %}{% if not loop.last %} 🔗 {% endif %}{% endfor %}</td>
+      <td>{{ g.depart }}</td><td>{{ city }}</td><td>{{ g.hotels[city] }}</td>
+      <td>{{ avail }}</td><td>{{ used }}</td>
+      <td>{% if left < 0 %}⚠ زيادة {{ -left }}{% else %}{{ left }}{% endif %}</td>
+    </tr>
+  {% endfor %}{% endfor %}
+  </tbody>
+</table>
+<p class="hint-note">🔗 برامج تتقاسم غرف فندق واحدة (أكثر من طيران بنفس التاريخ): المتاح
+  من البرنامج الأساسي، والمشغول مجموع غرف معتمريها جميعاً.</p>
+</div>
+{% endif %}
 {% if not rows %}
 <div class="acc-msg">لا توجد غرف مسكّنة بعد (لا نوع غرفة/رقم في السجلات).</div>
 {% else %}

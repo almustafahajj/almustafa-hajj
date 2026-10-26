@@ -14,7 +14,11 @@
     <div class="fgrid">
       {% for f in group.fields %}
       <label class="ff"><span>{{ f.label }}</span>
-        {% if f.type == 'package' %}
+        {% if f.type == 'share' %}
+        <select name="{{ f.key }}">
+          {% for v, t in share_opts %}<option value="{{ v }}" {{ 'selected' if v==f.value }}>{{ t }}</option>{% endfor %}
+        </select>
+        {% elif f.type == 'package' %}
         <input name="{{ f.key }}" value="{{ f.value }}" list="pkglist"
                placeholder="اختر باقة أو اكتب اسم باقة جديدة">
         <datalist id="pkglist">{% for p in packages %}<option value="{{ p }}">{% endfor %}</datalist>
@@ -23,6 +27,14 @@
                {% if f.type %}type="{{ f.type }}"{% endif %}>{% endif %}</label>
       {% endfor %}
     </div>
+    {% if group.fields[0].key == 'room_share' %}
+    <p class="hint-note">للتاريخ الواحد بأكثر من طيران في نفس الفندق: اجعل لكل طيران
+      برنامجاً، واختر هنا البرنامج الأساسي. يُؤخذ عدد الغرف منه، وتُخصم غرف معتمري
+      كل البرامج المشتركة من نفس العدد (المقاعد تبقى لكل طيران على حدة)،
+      ويأخذ البرنامج المشارك اسم فندق الأساسي تلقائياً.
+      {% if pool %}<br>🔗 يتقاسم غرف الفندق مع: <b>{{ pool|join('، ') }}</b>
+      {% if room_src != code %} — عدد الغرف يُؤخذ من «{{ room_src }}» (عدد الغرف هنا لا يُحتسب).{% endif %}{% endif %}</p>
+    {% endif %}
   </fieldset>
   {% endfor %}
   <fieldset class="editcard"><legend>الخدمات (اسم + سعر للفرد)</legend>

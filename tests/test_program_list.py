@@ -140,4 +140,112 @@ c.post("/programs/save", data=form)
 app_mode.set_mode(app_mode.UMRAH)
 assert umrah.load_packages(storage.load_settings())[-1] == "برامج شعبان"
 print("[ok] الباقات: إضافة/تجميع/برنامج داخل باقة/حذف الفارغة فقط")
+
+# ---- 4) غرف فندق مشتركة بين برامج الطيران بنفس التاريخ ----
+A = umrah.UmrahTrip(code="A", makkah_rooms="30", madinah_rooms="20")
+B = umrah.UmrahTrip(code="B", room_share="A", makkah_rooms="99")   # عدده لا يُحتسب
+C = umrah.UmrahTrip(code="C", room_share="B")                      # سلسلة → A
+ts = [A, B, C]
+assert umrah.room_base(C, ts).code == "A"
+assert [t.code for t in umrah.room_pool(B, ts)] == ["A", "B", "C"]
+rs = [P("ثنائي", "A")] * 3 + [P("ثنائي", "B")] * 1 + [P("رباعي", "C")] * 4
+# المشغول مجموع غرف كل برنامج: A=2، B=1، C=1 → 4
+assert umrah.trip_rooms_left(B, rs, ts) == [("مكة", 30, 4, 26), ("المدينة", 20, 4, 16)]
+assert umrah.trip_rooms_left(A, rs, ts) == umrah.trip_rooms_left(C, rs, ts)
+assert umrah.trip_rooms_left(A, rs) == [("مكة", 30, 2, 28), ("المدينة", 20, 2, 18)]
+# حلقة أو رمز محذوف لا يعلّق الحساب
+L1 = umrah.UmrahTrip(code="L1", room_share="L2", makkah_rooms="5")
+L2 = umrah.UmrahTrip(code="L2", room_share="L1")
+assert umrah.room_base(L1, [L1, L2]).code in ("L1", "L2")
+assert umrah.room_base(umrah.UmrahTrip(code="X", room_share="محذوف"), ts).code == "X"
+
+# عبر الويب: U5 الاتحاد (أساسي، 10 غرف مكة) + U6 فلاي دبي يشاركه
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="U5", name="رمضان 1", airline="الاتحاد", capacity="40",
+            makkah_hotel="فندق مكة", madinah_hotel="فندق المدينة", makkah_rooms="10")
+c.post("/programs/save", data=form)
+new = c.get("/programs/new").get_data(as_text=True)
+assert 'name="room_share"' in new and '<option value="U5"' in new
+form.update(code="U6", name="رمضان 1", airline="فلاي دبي", capacity="25",
+            makkah_hotel="", madinah_hotel="", makkah_rooms="", room_share="U5")
+c.post("/programs/save", data=form)
+app_mode.set_mode(app_mode.UMRAH)
+u6 = next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U6")
+assert u6.room_share == "U5" and u6.makkah_hotel == "فندق مكة"      # نفس الفندق
+storage.save_records(recs + [P("ثنائي", "U5")] * 4 + [P("ثلاثي", "U6")] * 3,
+                     session=SESS)
+html = c.get("/programs").get_data(as_text=True)
+rows = re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)[1:]
+heads = re.findall(r"<th>([^<]*)</th>", html)
+for code, other in (("U5", "U6"), ("U6", "U5")):
+    row = next(r for r in rows if f"<td>{code}</td>" in r)
+    cl = [re.sub(r"<[^>]+>", " ", x).split()
+          for x in re.findall(r"<td>(.*?)</td>", row, re.S)]
+    # 10 − (U5: غرفتان + U6: غرفة) = 7 في البرنامجين، والمقاعد لكلٍّ وحده
+    assert cl[heads.index("الغرف المتبقّية")] == ["مكة:", "7", "🔗", "مع", other], cl
+assert "🔗" not in next(r for r in rows if "<td>U1</td>" in r)
+ed = c.get("/programs/U6").get_data(as_text=True)
+assert '<option value="U5" selected>' in ed and "يُؤخذ من «U5»" in ed
+# U5 لا يمكنه مشاركة U6 (حلقة)، ولا تظهر U6 في خياراته
+ed5 = c.get("/programs/U5").get_data(as_text=True)
+assert '<option value="U6"' not in ed5
+form.update(code="U5", orig="U5", room_share="U6", makkah_hotel="فندق مكة",
+            makkah_rooms="10", airline="الاتحاد", capacity="40")
+assert "msg=" in c.post("/programs/save", data=form).headers["Location"]
+app_mode.set_mode(app_mode.UMRAH)
+u5 = next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U5")
+assert u5.room_share == "" and u5.makkah_rooms == "10"
+# حذف الأساسي: المشارك يرث عدد الغرف ويصبح أساسياً
+c.post("/programs/U5/delete")
+app_mode.set_mode(app_mode.UMRAH)
+u6 = next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U6")
+assert u6.room_share == "" and u6.makkah_rooms == "10"
+
+# المتاح لبرنامج مشارك = غرف الأساسي − غرف البرامج الأخرى (للتطبيق المكتبي)
+assert umrah.rooms_available(B, ts, rs, "makkah_rooms") == 30 - 2 - 1
+assert umrah.rooms_available(A, ts, rs, "makkah_rooms") == 30 - 1 - 1
+assert umrah.rooms_available(A, ts, [P("مفرد", "B")] * 30, "makkah_rooms") == -1
+assert umrah.rooms_available(umrah.UmrahTrip(code="Z"), ts, rs, "makkah_rooms") == 0
+# اسم الفندق: المشارك يتبع الأساسي، وتعديل فندق الأساسي يصل إلى المشاركين
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="U7", makkah_hotel="هيلتون", makkah_rooms="12")
+c.post("/programs/save", data=form)
+form.update(code="U8", makkah_hotel="فندق آخر", makkah_rooms="", room_share="U7")
+c.post("/programs/save", data=form)
+form.update(code="U7", orig="U7", makkah_hotel="سويس أوتيل", makkah_rooms="12",
+            room_share="")
+c.post("/programs/save", data=form)
+app_mode.set_mode(app_mode.UMRAH)
+hot = {t.code: t.makkah_hotel for t in umrah.load_trips(storage.load_settings())}
+assert hot["U7"] == hot["U8"] == "سويس أوتيل", hot
+# صفحة «إشغال الغرف» تعرض العدد المشترك صفّاً واحداً
+occ = c.get("/occupancy").get_data(as_text=True)
+assert "الغرف المتبقّية حسب البرامج" in occ and "U7" in occ and "U8" in occ
+assert occ.count("سويس أوتيل") == 1
+# رمز محذوف خارج البورتال (التطبيق المكتبي) ثم أُعيد استخدامه لبرنامج جديد:
+# لا يصبح أساساً للبرامج القديمة، ولا تتكوّن حلقة
+st = storage.load_settings()
+umrah.save_trips(st, [t for t in umrah.load_trips(st) if t.code != "U7"])
+storage.save_settings(st)                          # U8 يشير إلى U7 المحذوف
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="U7", makkah_hotel="جديد", makkah_rooms="5", room_share="U8")
+c.post("/programs/save", data=form)
+app_mode.set_mode(app_mode.UMRAH)
+sh = {t.code: t.room_share for t in umrah.load_trips(storage.load_settings())}
+assert sh["U8"] == "" and sh["U7"] == "U8", sh                 # بلا حلقة
+# تغيير الرمز (orig ≠ code): المشاركون يتبعون الرمز الجديد
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="U9", orig="U8", makkah_rooms="7")
+c.post("/programs/save", data=form)
+app_mode.set_mode(app_mode.UMRAH)
+sh = {t.code: t.room_share for t in umrah.load_trips(storage.load_settings())}
+assert "U8" not in sh and sh["U7"] == "U9", sh
+# الحساب مرّة واحدة: 400 برنامج في مجموعات ثلاثية تُحسب بسرعة
+import time
+big = [umrah.UmrahTrip(code=f"P{i}", makkah_rooms="9",
+                       room_share=(f"P{i - i % 3}" if i % 3 else "")) for i in range(400)]
+t0 = time.perf_counter()
+pl = umrah.room_pools(big)
+assert time.perf_counter() - t0 < 1.0 and [t.code for t in pl["P5"]] == ["P3", "P4", "P5"]
+print("[ok] غرف فندق مشتركة بين برامج الطيران")
 print("ALL OK")

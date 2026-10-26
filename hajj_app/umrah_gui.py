@@ -1243,12 +1243,16 @@ class UmrahApp:
             messagebox.showinfo("تعديل", "اختر برنامجاً أولاً.", parent=self.root)
             return
         others = {t.code for t in self.trips if t is not trip}
-        TripEditorDialog(self.root, trip, others, self._on_trip_saved,
+        TripEditorDialog(self.root, trip, others,
+                         lambda t, old=trip.code: self._on_trip_saved(t, old),
                          title=f"تعديل البرنامج — {trip.name or trip.code}")
 
-    def _on_trip_saved(self, trip) -> None:
+    def _on_trip_saved(self, trip, old_code: str = "") -> None:
         if trip not in self.trips:
             self.trips.append(trip)
+        # تغيير الرمز: من كان يشارك غرف فندقه يتبع الرمز الجديد
+        umrah.rename_share(self.trips, old_code, trip.code)
+        umrah.clean_shares(self.trips)
         self.save_trips()
         # ابقِ البرنامج ظاهراً: انتقل إلى موسم سنته إن اختلف
         yr = umrah.trip_year(trip)
@@ -1273,7 +1277,8 @@ class UmrahApp:
                     "(لن يُحذفوا).")
         if not messagebox.askyesno("حذف البرنامج", msg, parent=self.root):
             return
-        self.trips.remove(trip)
+        # من كان يشارك غرف فندقه يرثها (كما في البورتال)
+        self.trips[:] = umrah.detach_trip(self.trips, trip.code)
         self.save_trips()
         self._reload()
 
@@ -2257,13 +2262,12 @@ class TripPilgrimsWindow(Toplevel):
         over = []
         recs = self._pilgrims()
         for _k, label, room_field, _hf, _nf, rooms_field in umrah.CITIES:
-            try:
-                avail = int(float(str(getattr(self.trip, rooms_field, "") or "")
-                                  .strip() or 0))
-            except ValueError:
-                avail = 0
+            # مع غرف فندق مشتركة: المتاح = غرف الأساسي − غرف البرامج الأخرى
+            avail = umrah.rooms_available(self.trip, self.app.trips,
+                                          self.app.records, rooms_field)
             if not avail:
                 continue
+            avail = max(avail, 0)
             used = len({str(getattr(r, room_field, "") or "").strip()
                         for r in recs
                         if str(getattr(r, room_field, "") or "").strip()})
@@ -5677,7 +5681,9 @@ class RoomingWindow(Toplevel):
              rooms_field) in umrah.CITIES:
             hotel = str(getattr(trip, hotel_field, "") or "")
             nights = str(getattr(trip, nights_field, "") or "")
-            rooms = str(getattr(trip, rooms_field, "") or "")
+            # مع غرف فندق مشتركة: المتاح لهذا البرنامج بعد غرف البرامج الأخرى
+            rooms = str(umrah.rooms_available(trip, app.trips, app.records,
+                                              rooms_field) or "")
             self._cities[key] = (label, room_field, hotel, nights, rooms)
             nb.add(self._build_tab(nb, key), text=label)
 
@@ -5749,7 +5755,8 @@ class RoomingWindow(Toplevel):
         return f
 
     def _available(self, key: str) -> int:
-        """عدد الغرف المتاحة في فندق هذه المدينة (0 = غير محدَّد)."""
+        """عدد الغرف المتاحة في فندق هذه المدينة (0 = غير محدَّد، -1 = لا غرف
+        متبقّية لأن البرامج المشتركة استهلكتها)."""
         try:
             return int(float(str(self._cities[key][4] or "").strip() or 0))
         except ValueError:
@@ -5768,7 +5775,7 @@ class RoomingWindow(Toplevel):
                 tags=("odd",) if i % 2 else ())
         rooms, un = umrah.rooming_rooms(recs, room_field)
         avail = self._available(key)
-        used = f"{len(rooms)} من {avail}" if avail else str(len(rooms))
+        used = f"{len(rooms)} من {max(avail, 0)}" if avail else str(len(rooms))
         self._sum[key].configure(
             text=f"الغرف: {used}   ·   بلا غرفة: {len(un)}   ·   "
                  f"العدد: {len(recs)}")
@@ -5776,6 +5783,11 @@ class RoomingWindow(Toplevel):
     def _auto(self, key: str) -> None:
         room_field = self._cities[key][1]
         avail = self._available(key)
+        if avail < 0:                      # البرامج المشتركة استهلكت كل الغرف
+            messagebox.showwarning(
+                "توزيع تلقائي", "⛔ لا غرف متبقّية في هذا الفندق: البرامج "
+                "المشتركة في غرفه استهلكت العدد كاملاً.", parent=self)
+            return
         n, overflow = umrah.auto_assign_rooms(self._pilgrims(), room_field,
                                               max_rooms=avail)
         self.app.save()

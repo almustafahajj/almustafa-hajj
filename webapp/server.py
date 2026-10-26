@@ -384,7 +384,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-26a · البرنامج في باقة واحدة فقط"
+_BUILD_TAG = "2026-10-26b · غرف فندق مشتركة بين برامج الطيران"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1921,6 +1921,7 @@ _PROG_GROUPS = [
                            ("notes", "ملاحظات", "")]),
     ("التواريخ", [("depart_date", "المغادرة", "date"),
                   ("return_date", "العودة", "date")]),
+    ("غرف الفندق المشتركة", [("room_share", "يشارك غرف الفندق مع البرنامج", "share")]),
     ("فندق مكة", [("makkah_hotel", "الفندق", ""),
                   ("makkah_nights", "الليالي", "number"),
                   ("makkah_rooms", "عدد الغرف", "number")]),
@@ -1949,6 +1950,19 @@ _PROG_GROUPS = [
 _PROG_KEYS = [k for _t, fs in _PROG_GROUPS for k, _l, _ty in fs]
 
 
+def _share_choices(trip, trips) -> list:
+    """خيارات «يشارك غرف الفندق مع»: البرامج الأخرى التي لا تعود إليه."""
+    from hajj_app import umrah
+    out = [("", "— لا (غرف مستقلّة لهذا البرنامج)")]
+    by_code = {t.code: t for t in trips}
+    for t in trips:
+        if t.code == trip.code or umrah.room_base(t, trips, by_code).code == trip.code:
+            continue
+        bits = [t.code, t.name, t.airline, t.depart_date]
+        out.append((t.code, " — ".join(b for b in bits if b)))
+    return out
+
+
 def _prog_groups(trip) -> list:
     groups = []
     for title, fs in _PROG_GROUPS:
@@ -1967,6 +1981,7 @@ def programs():
     settings = storage.load_settings()
     trips = umrah.load_trips(settings)
     records = _load_records()
+    pools = umrah.room_pools(trips)            # مرّة واحدة لكل القائمة
     rows = []
     for t in trips:
         n = len(umrah.trip_pilgrims(records, t.code))
@@ -1980,7 +1995,9 @@ def programs():
                      "makkah": t.makkah_hotel or "—", "madinah": t.madinah_hotel or "—",
                      "airline": t.airline or "—", "flights": flights,
                      # الغرف المتبقّية لكل فندق: [(المدينة، المتاح، المشغول، المتبقّي)]
-                     "rooms": umrah.trip_rooms_left(t, records),
+                     "rooms": umrah.trip_rooms_left(t, records, pool=pools[t.code]),
+                     # البرامج التي تتقاسم معه غرف الفندق (طيران آخر)
+                     "shared": [p.code for p in pools[t.code] if p.code != t.code],
                      "count": n, "capacity": cap or "—",
                      "remaining": (cap - n) if cap else "—",
                      "over": bool(cap and n > cap), "full": bool(cap and n == cap)})
@@ -2091,6 +2108,7 @@ def program_new():
                            package=(request.args.get("package") or "").strip())
     return render_template("program_edit.html", active="programs", is_new=True,
                            code=trip.code, orig="", groups=_prog_groups(trip),
+                           share_opts=_share_choices(trip, umrah.load_trips(settings)),
                            services=[], **_ctx())
 
 
@@ -2100,12 +2118,17 @@ def program_edit(code):
         return redirect(url_for("login"))
     from hajj_app import umrah
     settings = storage.load_settings()
-    trip = next((t for t in umrah.load_trips(settings) if t.code == code), None)
+    trips = umrah.load_trips(settings)
+    trip = next((t for t in trips if t.code == code), None)
     if trip is None:
         return redirect(url_for("programs"))
+    pool = umrah.room_pool(trip, trips)
     return render_template("program_edit.html", active="programs", is_new=False,
                            code=trip.code, orig=trip.code,
                            groups=_prog_groups(trip),
+                           share_opts=_share_choices(trip, trips),
+                           pool=[p.code for p in pool if p.code != trip.code],
+                           room_src=pool[0].code,
                            services=trip.services or [], **_ctx())
 
 
@@ -2118,6 +2141,7 @@ def program_save():
     from hajj_app import umrah
     settings = storage.load_settings()
     trips = umrah.load_trips(settings)
+    umrah.clean_shares(trips)          # إشارات لبرامج محذوفة (قبل إعادة استخدام رمزها)
     data = {k: (request.form.get(k, "") or "").strip() for k in _PROG_KEYS}
     data["code"] = (request.form.get("code", "") or "").strip()
     names = request.form.getlist("service_name")
@@ -2130,14 +2154,26 @@ def program_save():
     key = (request.form.get("orig", "") or "").strip() or trip.code
     # البرنامج المنضمّ إلى باقة لا يُنقل إلى باقة أخرى (يُخرَج منها أوّلاً)
     msg = ""
+    # مشاركة غرف الفندق: برنامج موجود غير هذا، ولا يعود إليه (منع الحلقات)
+    share = str(trip.room_share or "").strip()
+    target = next((t for t in trips if t.code == share and t.code not in
+                   (key, trip.code)), None)
+    if share and (target is None
+                  or umrah.room_base(target, trips).code in (key, trip.code)):
+        trip.room_share = ""
+        msg = f"لا يمكن مشاركة غرف الفندق مع «{share}» (غير موجود أو يشارك هذا البرنامج)."
+    elif target is not None:
+        trip.room_share = umrah.room_base(target, trips).code   # الأساسي مباشرة
     old = next((t for t in trips if t.code == key), None)
     old_pkg = str(getattr(old, "package", "") or "").strip()
     if old_pkg and trip.package and trip.package != old_pkg:
         trip.package = old_pkg
-        msg = (f"البرنامج «{trip.code}» تابع لباقة «{old_pkg}» ولا يُضاف إلى باقة أخرى"
+        msg = msg + (" " if msg else "") + (f"البرنامج «{trip.code}» تابع لباقة «{old_pkg}» ولا يُضاف إلى باقة أخرى"
                " — أخرِجه منها أوّلاً (↩ إخراج). حُفظت بقية التعديلات.")
     trips = [t for t in trips if t.code != key and t.code != trip.code]
+    umrah.rename_share(trips, key, trip.code)
     trips.append(trip)
+    umrah.sync_pool_hotels(trips, trip.code)        # فندق واحد للبرامج المشتركة
     umrah.save_trips(settings, trips)
     if trip.package:                               # باقة كُتبت يدوياً تُسجَّل
         umrah.save_packages(settings, umrah.load_packages(settings))
@@ -2156,7 +2192,8 @@ def program_delete(code):
     if _sess().can_edit:
         from hajj_app import umrah
         settings = storage.load_settings()
-        trips = [t for t in umrah.load_trips(settings) if t.code != code]
+        # من كان يشارك غرف المحذوف: أوّلهم يصبح الأساسي ويأخذ عدد الغرف
+        trips = umrah.detach_trip(umrah.load_trips(settings), code)
         umrah.save_trips(settings, trips)
         try:
             storage.save_settings(settings)
@@ -2813,7 +2850,32 @@ def occupancy():
     summary = {"rooms": len(rows), "full": full, "over": over,
                "free": free_beds, "unplaced": len(unplaced)}
     return render_template("occupancy.html", active="occupancy", rows=rows,
-                           summary=summary, **_ctx())
+                           summary=summary, pools=_occupancy_pools(records),
+                           **_ctx())
+
+
+def _occupancy_pools(records) -> list:
+    """(العمرة) الغرف المتبقّية لكل فندق برنامج — والبرامج المتقاسمة غرف فندق
+    واحدة (أكثر من طيران بنفس التاريخ) صفٌّ واحد بعدد مشترك."""
+    if _mode() != app_mode.UMRAH:
+        return []
+    from hajj_app import umrah
+    trips = umrah.load_trips(storage.load_settings())
+    pools = umrah.room_pools(trips)
+    out = []
+    for t in trips:
+        pool = pools[t.code]
+        if pool[0].code != t.code:
+            continue                       # صفّ واحد لكل مجموعة (عند الأساسي)
+        left = umrah.trip_rooms_left(t, records, pool=pool)
+        if not left:
+            continue
+        out.append({"programs": [(p.code, p.airline or "") for p in pool],
+                    "depart": t.depart_date or "—",
+                    "hotels": {"مكة": t.makkah_hotel or "—",
+                               "المدينة": t.madinah_hotel or "—"},
+                    "rooms": left})
+    return out
 
 
 @app.get("/occupancy/rooming.pdf")

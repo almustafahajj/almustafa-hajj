@@ -112,6 +112,9 @@ class UmrahTrip:
     madinah_hotel: str = ""
     madinah_nights: str = ""
     madinah_rooms: str = ""        # عدد الغرف المتاحة في فندق المدينة
+    # رمز البرنامج الأساسي الذي يشاركه غرف الفندق (طيران آخر بنفس التاريخ
+    # والفندق): عدد الغرف يُؤخذ منه، والمشغول يُجمع من كل البرامج المشتركة
+    room_share: str = ""
     airline: str = ""
     # رحلة الذهاب: رقم الرحلة ووقت المغادرة ووقت الوصول
     flight_out: str = ""
@@ -774,14 +777,129 @@ def rooms_needed(records: list) -> int:
     return total
 
 
-def trip_rooms_left(trip: UmrahTrip, records: list) -> list:
+def _share_of(trip) -> str:
+    return str(getattr(trip, "room_share", "") or "").strip()
+
+
+def room_base(trip: UmrahTrip, trips: list, by_code: dict = None) -> UmrahTrip:
+    """البرنامج الأساسي الذي يملك غرف الفندق لهذا البرنامج: يتبع «room_share»
+    حتى برنامج لا يشارك غيره (مع حماية من الحلقات والرموز المحذوفة)."""
+    if by_code is None:
+        by_code = {t.code: t for t in trips or []}
+    cur, seen = trip, {trip.code}
+    while True:
+        nxt = by_code.get(_share_of(cur))
+        if nxt is None or nxt.code in seen:
+            return cur
+        seen.add(nxt.code)
+        cur = nxt
+
+
+def room_pools(trips: list) -> dict:
+    """لكل رمز برنامج: قائمة البرامج المتقاسمة غرف فندقه (الأساسي أوّلاً).
+    تُحسب مرّة واحدة لكل القائمة (بدل حساب كل برنامج وحده)."""
+    by_code = {t.code: t for t in trips or []}
+    base_of = {t.code: room_base(t, trips, by_code).code for t in trips or []}
+    groups: dict = {}
+    for t in trips or []:
+        groups.setdefault(base_of[t.code], []).append(t)
+    for b, g in groups.items():
+        g.sort(key=lambda t, b=b: t.code != b)
+    return {t.code: groups[base_of[t.code]] for t in trips or []}
+
+
+def room_pool(trip: UmrahTrip, trips: list) -> list:
+    """كل البرامج التي تتقاسم غرف فندق واحدة مع هذا البرنامج (الأساسي أوّلاً)."""
+    pool = list(room_pools(trips).get(trip.code, []))
+    if not pool:                           # برنامج غير محفوظ بعد
+        base = room_base(trip, trips)
+        pool = [t for t in trips or [] if room_base(t, trips).code == base.code]
+        pool = sorted(pool + [trip], key=lambda t: t.code != base.code)
+    return pool
+
+
+def clean_shares(trips: list) -> int:
+    """يمسح «room_share» المشير إلى برنامج غير موجود (أو إلى نفسه)، كي لا يصبح
+    برنامج جديد يأخذ رمزاً محذوفاً أساساً لبرامج قديمة. يعيد عدد ما مُسح."""
+    codes = {t.code for t in trips}
+    n = 0
+    for t in trips:
+        s = _share_of(t)
+        if s and (s == t.code or s not in codes):
+            t.room_share, n = "", n + 1
+    return n
+
+
+def rename_share(trips: list, old: str, new: str) -> None:
+    """عند تغيير رمز برنامج: من كان يشاركه يتبع الرمز الجديد."""
+    if old and new and old != new:
+        for t in trips:
+            if _share_of(t) == old:
+                t.room_share = new
+
+
+def detach_trip(trips: list, code: str) -> list:
+    """يحذف برنامجاً من القائمة؛ ومن كان يشارك غرف فندقه يتبع أوّلَهم، فيصبح
+    الأساسي ويرث عدد الغرف (أو يتبع أساسَ المحذوف إن كان مشاركاً بدوره)."""
+    gone = next((t for t in trips if t.code == code), None)
+    rest = [t for t in trips if t.code != code]
+    heirs = [t for t in rest if _share_of(t) == code]
+    if gone is not None and heirs:
+        heir = heirs[0]
+        heir.room_share = _share_of(gone)
+        if not heir.room_share:
+            heir.makkah_rooms = gone.makkah_rooms
+            heir.madinah_rooms = gone.madinah_rooms
+        for t in heirs[1:]:
+            t.room_share = heir.code
+    return rest
+
+
+def sync_pool_hotels(trips: list, code: str) -> None:
+    """البرامج المتقاسمة غرف فندق واحدة تحمل اسم فندق الأساسي نفسه."""
+    pool = room_pools(trips).get(code, [])
+    if len(pool) < 2:
+        return
+    base = pool[0]
+    for t in pool[1:]:
+        for f in ("makkah_hotel", "madinah_hotel"):
+            v = str(getattr(base, f, "") or "").strip()
+            if v:
+                setattr(t, f, v)
+
+
+def rooms_available(trip: UmrahTrip, trips: list, records: list,
+                    field: str) -> int:
+    """الغرف المتاحة لهذا البرنامج في فندق مدينةٍ (``makkah_rooms``…): عدد غرف
+    الأساسي ناقص غرف بقية البرامج المشتركة (0 = غير محدَّد)."""
+    pool = room_pool(trip, trips) if trips else [trip]
+    try:
+        avail = int(float(str(getattr(pool[0], field, "") or "").strip() or 0))
+    except ValueError:
+        avail = 0
+    if not avail:
+        return 0
+    others = sum(rooms_needed(trip_pilgrims(records, t.code))
+                 for t in pool if t.code != trip.code)
+    return max(avail - others, 0) or -1    # -1 = لا غرف متبقّية لهذا البرنامج
+
+
+def trip_rooms_left(trip: UmrahTrip, records: list, trips: list = None,
+                    pool: list = None) -> list:
     """الغرف المتبقّية في فندقَي البرنامج: ``[(المدينة، المتاح، المشغول، المتبقّي)]``
-    للفنادق التي حُدّد عدد غرفها فقط (الغرف المشغولة واحدة في المدينتين)."""
-    used = rooms_needed(trip_pilgrims(records, trip.code))
+    للفنادق التي حُدّد عدد غرفها فقط (الغرف المشغولة واحدة في المدينتين).
+
+    إن مُرِّرت ``trips`` وكان البرنامج يشارك غرف برنامج آخر (طيران مختلف بنفس
+    الفندق)، فالمتاح من البرنامج الأساسي، والمشغول مجموع غرف كل برنامج مشترك
+    (لا يُفترض تقاسم غرفة بين ركّاب رحلتين مختلفتين)."""
+    if pool is None:
+        pool = room_pool(trip, trips) if trips else [trip]
+    src = pool[0]
+    used = sum(rooms_needed(trip_pilgrims(records, t.code)) for t in pool)
     out = []
     for label, field in (("مكة", "makkah_rooms"), ("المدينة", "madinah_rooms")):
         try:
-            avail = int(float(str(getattr(trip, field, "") or "").strip() or 0))
+            avail = int(float(str(getattr(src, field, "") or "").strip() or 0))
         except ValueError:
             avail = 0
         if avail:
