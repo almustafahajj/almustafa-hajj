@@ -18,6 +18,10 @@
         <select name="{{ f.key }}">
           {% for v, t in share_opts %}<option value="{{ v }}" {{ 'selected' if v==f.value }}>{{ t }}</option>{% endfor %}
         </select>
+        {% elif f.type in ('airline', 'city') %}
+        <input name="{{ f.key }}" value="{{ f.value }}" list="{{ f.type }}list"
+               placeholder="{{ 'اختر الناقل أو اكتبه' if f.type == 'airline' else 'أبوظبي، دبي…' }}">
+        <datalist id="{{ f.type }}list">{% for o in (airline_opts if f.type == 'airline' else city_opts) %}<option value="{{ o }}">{% endfor %}</datalist>
         {% elif f.type == 'package' %}
         <input name="{{ f.key }}" value="{{ f.value }}" list="pkglist"
                placeholder="اختر باقة أو اكتب اسم باقة جديدة">

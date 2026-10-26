@@ -17,14 +17,15 @@
     <th>السعة</th><th>المتبقّي</th><th>الغرف المتبقّية</th><th>إجراءات</th></tr></thead>
   <tbody>
   {% macro prow(r) %}
-    <tr class="pcol {{ 'rover' if r.over else ('rfull' if r.full else '') }}" style="--pc:{{ r.color }};--pt:{{ r.tint }}">
+    <tr class="pcol" style="--pc:{{ r.color }};--pt:{{ r.tint }};--pi:{{ r.ink }}">
       <td>{{ r.code }}</td><td>{{ r.name }}</td>
       {% if not package %}<td>{% if r.package %}<a href="{{ url_for('programs', package=r.package) }}">📦 {{ r.package }}</a>{% else %}—{% endif %}</td>{% endif %}
       <td>{{ r.depart }}</td>
       <td>{{ r['return'] }}</td><td>{{ r.makkah }}</td><td>{{ r.madinah }}</td>
       <td>{{ r.count }}</td>
-      <td>{{ r.airline }}{% if r.flights %}<br><span class="muted" dir="ltr" style="font-size:12px">{{ r.flights }}</span>{% endif %}</td>
-      <td>{{ r.capacity }}</td><td>{{ r.remaining }}</td>
+      <td>{{ r.airline }}{% if r.dcity %} <span class="muted" style="font-size:12px">من {{ r.dcity }}</span>{% endif %}{% if r.flights %}<br><span class="muted" dir="ltr" style="font-size:12px">{{ r.flights }}</span>{% endif %}</td>
+      <td>{{ r.capacity }}</td>
+      <td>{% if r.over %}<span class="st-over">⛔ زيادة {{ -r.remaining }}</span>{% elif r.full %}<span class="st-full">✅ مكتمل</span>{% else %}{{ r.remaining }}{% endif %}</td>
       <td>{% for city, avail, used, left in r.rooms %}<span title="المتاح {{ avail }} − المشغول {{ used }}"
             style="white-space:nowrap{% if left < 0 %};color:#C0392B;font-weight:700{% endif %}">{{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}{{ left }}{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}
         {% if r.shared %}<br><span class="muted" style="font-size:12px;white-space:nowrap" title="غرف فندق مشتركة">🔗 مع {{ r.shared|join('، ') }}</span>{% endif %}</td>
@@ -47,23 +48,28 @@
   {% if package %}
   {% for g in groups %}
     {% if not loop.first %}<tr class="pg-gap"><td colspan="12"></td></tr>{% endif %}
-    {% set r = g.row %}{% set g_first, g_last = loop.first, loop.last %}
-    <tr class="pg-head" style="--pc:{{ g.color }}"><td colspan="12">
+    {% set g_first, g_last = loop.first, loop.last %}{% set r0 = g.rows[0] %}
+    <tr class="pg-head" style="--pc:{{ g.color }};--pf:{{ g.fg }}"><td colspan="12">
       {% if can_edit and groups|length > 1 %}<span class="pg-move">
         {% for d, arrow, tip, show in [('up', '▲', 'تقديم البرنامج', not g_first), ('down', '▼', 'تأخير البرنامج', not g_last)] if show %}
         <form method="post" class="inline" action="{{ url_for('program_package_move') }}">
           <input type="hidden" name="name" value="{{ package }}">
-          <input type="hidden" name="code" value="{{ r.code }}">
+          <input type="hidden" name="group" value="{{ g.key }}">
           <input type="hidden" name="dir" value="{{ d }}">
           <button type="submit" title="{{ tip }}">{{ arrow }}</button></form>
         {% endfor %}</span>{% endif %}
-      <span class="pg-title">البرنامج {{ g.ordinal }} · {% if r.airline != '—' %}✈️ {{ r.airline }}{% if r.name != '—' %} — {% endif %}{% endif %}{% if r.name != '—' %}{{ r.name }}{% elif r.airline == '—' %}{{ r.code }}{% endif %}</span>
-      <span class="pg-meta">🛫 المغادرة <bdi dir="ltr">{{ r.depart }}</bdi>{% if r['return'] != '—' %} · 🛬 العودة <bdi dir="ltr">{{ r['return'] }}</bdi>{% endif %}</span>
-      {% if r.makkah != '—' %}<span class="pg-meta">🏨 {{ r.makkah }}</span>{% endif %}
-      {% for city, avail, used, left in r.rooms %}<span class="pg-meta">🛏 {{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}متبقّي {{ left }}{% endif %}</span>{% endfor %}
-      {% if r.shared %}<span class="pg-meta">🔗 غرف مشتركة مع {{ r.shared|join('، ') }}</span>{% endif %}
+      <span class="pg-title">البرنامج {{ g.ordinal }} · {% if g.airline %}✈️ {{ g.airline }}{% if g.city %} من {{ g.city }}{% endif %}{% else %}{{ r0.name if r0.name != '—' else r0.code }}{% endif %}</span>
+      {% if g.rows|length == 1 %}
+      {% if g.airline and r0.name != '—' %}<span class="pg-meta">{{ r0.name }}</span>{% endif %}
+      <span class="pg-meta">🛫 المغادرة <bdi dir="ltr">{{ r0.depart }}</bdi>{% if r0['return'] != '—' %} · 🛬 العودة <bdi dir="ltr">{{ r0['return'] }}</bdi>{% endif %}</span>
+      {% if r0.makkah != '—' %}<span class="pg-meta">🏨 {{ r0.makkah }}</span>{% endif %}
+      {% else %}
+      <span class="pg-meta">🗓 عدد الرحلات: {{ g.rows|length }}</span>
+      {% endif %}
+      <span class="pg-meta">👥 المعتمرون: {{ g.count }}</span>
+      {% if g.capacity %}<span class="pg-meta">🪑 المقاعد المتبقّية: {{ g.seats_left }} من {{ g.capacity }}{% if g.seats_over %} · ⛔ زيادة {{ g.seats_over }}{% endif %}</span>{% endif %}
     </td></tr>
-    {{ prow(r) }}
+    {% for r in g.rows %}{{ prow(r) }}{% endfor %}
   {% else %}
     <tr><td colspan="12" style="text-align:center;color:var(--muted)">
       لا برامج في هذه الباقة بعد — أضف من البرامج المسجّلة أدناه، أو «➕ برنامج جديد في هذه الباقة».</td></tr>
@@ -107,8 +113,9 @@
 {% endif %}
 {% endif %}
 
-<p class="hint-note">🎨 لكل برنامج رقم ولون حسب ترتيبه في باقته؛ غيّر الترتيب بالسهمين
-  ▲▼ في شريط البرنامج (الترتيب الافتراضي بتاريخ المغادرة). 🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
+<p class="hint-note">🎨 البرنامج في الباقة = خط طيران (الناقل + «المغادرة من»)، وتحته
+  كل رحلاته بتواريخها؛ لكل برنامج رقم ولون حسب ترتيبه، وغيّر الترتيب بالسهمين ▲▼ في
+  شريطه. «✅ مكتمل» / «⛔ زيادة» في خانة المتبقّي لحالة السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
   «الغرف المتبقّية» = عدد غرف الفندق في البرنامج − الغرف المشغولة حسب أنواع غرف
   المعتمرين (كل شخصين «ثنائي» غرفة، وكل ثلاثة «ثلاثي» غرفة… والطفل والرضيع بلا

@@ -249,101 +249,240 @@ pl = umrah.room_pools(big)
 assert time.perf_counter() - t0 < 1.0 and [t.code for t in pl["P5"]] == ["P3", "P4", "P5"]
 print("[ok] غرف فندق مشتركة بين برامج الطيران")
 
-# ---- 5) لكل برنامج (كل طيران) رقم ولون في الباقة، وترتيب يدوي ▲▼ ----
-progs5 = (("R1", "", "السعودي", "من أبوظبي"), ("R2", "R1", "السعودي", "من دبي"),
-          ("R3", "R1", "فلاي دبي", ""), ("R4", "R1", "الاتحاد", ""), ("R5", "", "", "الوداع"))
-for code, share, air, name in progs5:
+# ---- 5) البرنامج في الباقة = خط طيران (الناقل + المغادرة من) بلونه، وترتيب ▲▼ ----
+# أسماء الناقلين والمدن بأشكال مختلفة تُوحَّد
+assert umrah.split_airline("السعودية") == ("الطيران السعودي", "")
+assert umrah.split_airline("الطيران السعودي من أبوظبي") == ("الطيران السعودي", "أبوظبي")
+assert umrah.split_airline("Saudia - DXB") == ("الطيران السعودي", "دبي")
+assert umrah.split_airline("فلاي دبي") == ("فلاي دبي", "")          # ناقل لا مدينة
+assert umrah.split_airline("flydubai") == ("فلاي دبي", "")
+assert umrah.split_airline("طيران الإتحاد") == ("الاتحاد", "")
+assert umrah.split_airline("طيران الخليج") == ("طيران الخليج", "")
+assert umrah.find_city("رمضان من ابو ظبي") == "أبوظبي"
+assert umrah.find_city("رمضان 2") == "" and umrah.find_city("من دبي إلى أبوظبي") == ""
+assert umrah.canon_city("AUH") == "أبوظبي" and umrah.canon_city("مسقط") == "مسقط"
+T = umrah.UmrahTrip
+L = umrah.program_lines([
+    T(code="a1", airline="الطيران السعودي", depart_city="أبوظبي"),
+    T(code="a2", airline="السعودية", name="رمضان من دبي"),
+    T(code="a3", airline="السعودي من ابوظبي"),
+    T(code="b1", airline="فلاي دبي", name="رمضان"),
+    T(code="b2", airline="flydubai", name="رمضان من دبي"),
+    T(code="c1", airline="")])
+assert L["a1"][0] == L["a3"][0] != L["a2"][0]
+assert L["a1"][1:] == ("الطيران السعودي", "أبوظبي") and L["a2"][2] == "دبي"
+assert L["b1"][0] == L["b2"][0] and L["b1"][1:] == ("فلاي دبي", "")  # «من دبي» لا تتكرّر
+assert L["c1"][0] == "#c1"                                       # بلا ناقل: وحده
+# كتابات المستخدم المختلفة لنفس الناقل/المدينة (من المراجعة)
+for s_, exp in (("طيران سعودي من أبوظبي", ("الطيران السعودي", "أبوظبي")),
+                ("طيران فلاي دبي", ("فلاي دبي", "")),
+                ("فلاي دبي من دبي", ("فلاي دبي", "دبي")),
+                ("Fly Dubai - DXB", ("فلاي دبي", "دبي")),
+                ("Etihad Airlines", ("الاتحاد", "")),
+                ("Saudia (SV)", ("الطيران السعودي", "")),
+                ("الخطوط الجوية العربية السعودية", ("الطيران السعودي", "")),
+                ("العربية للطيران - الشارقة", ("العربية للطيران", "الشارقة")),
+                ("طيران الخليج من أبوظبي", ("طيران الخليج", "أبوظبي")),
+                ("السعودی", ("الطيران السعودي", "")),
+                ("أبوظبي", ("", "أبوظبي"))):
+    assert umrah.split_airline(s_) == exp, (s_, umrah.split_airline(s_))
+assert umrah.canon_city("ابوضبي") == umrah.canon_city("أبو ضبي") == "أبوظبي"
+assert umrah.canon_city(" - ") == "" and umrah.canon_city("مسقط") == "مسقط"
+assert umrah.canon_city("N/A") == umrah.canon_city("غير محدد") == ""
+# كتابتان لمدينة غير معروفة مدينةٌ واحدة (لا تقسم الناقل)
+L3 = umrah.program_lines([T(code="m1", airline="طيران عُمان", depart_city="صلالة"),
+                          T(code="m2", airline="طيران عمان", depart_city="صلاله"),
+                          T(code="m3", airline="طيران عمان", depart_city="N/A")])
+assert L3["m1"][0] == L3["m2"][0] == L3["m3"][0] and L3["m1"][2] == "صلالة", L3
+assert umrah.find_city("قرة العين", strict=True) == ""          # كلمة لا مدينة
+assert umrah.find_city("رمضان من العين", strict=True) == "العين"
+L2 = umrah.program_lines([
+    T(code="s1", airline="طيران سعودي من أبوظبي"),
+    T(code="s2", airline="الطيران السعودي", depart_city="ابوضبي"),
+    T(code="s3", airline="Saudia (SV)", depart_city="دبي"),
+    T(code="e1", airline="Etihad Airlines"), T(code="e2", airline="الاتحاد", depart_city="-"),
+    T(code="e3", airline="الاتحاد", name="قرة العين"),
+    T(code="g1", airline="طيران الخليج من أبوظبي"),
+    T(code="g2", airline="طيران الخليج", depart_city="أبوظبي"),
+    T(code="f1", airline="فلاي دبي - دبي"), T(code="f2", airline="flydubai")])
+assert L2["s1"][0] == L2["s2"][0] != L2["s3"][0]
+assert L2["s1"][1:] == ("الطيران السعودي", "أبوظبي") and L2["s3"][2] == "دبي"
+assert L2["e1"][0] == L2["e2"][0] == L2["e3"][0] and L2["e2"][1:] == ("الاتحاد", "")
+assert L2["g1"][0] == L2["g2"][0] and L2["g1"][1:] == ("طيران الخليج", "أبوظبي")
+assert L2["f1"][0] == L2["f2"][0] and L2["f1"][1:] == ("فلاي دبي", "")
+
+PK = "رمضان 2027"
+c.post("/programs/packages/add", data={"name": PK})
+# رحلتان لكل خط بتاريخين؛ الترتيب الافتراضي بأقرب تاريخ ثم ترتيب الإضافة
+trips5 = (("S1", "الطيران السعودي", "أبوظبي", "رمضان 1", "2027-02-08"),
+          ("D1", "السعودية", "", "رمضان 1 من دبي", "2027-02-08"),
+          ("F1", "فلاي دبي", "", "رمضان 1", "2027-02-08"),
+          ("E1", "الاتحاد", "", "", "2027-02-08"),
+          ("S2", "الطيران السعودي", "أبوظبي", "رمضان 2", "2027-02-20"),
+          ("E2", "طيران الاتحاد", "", "", "2027-02-20"),
+          ("F2", "flydubai", "", "", "2027-02-20"),
+          ("D2", "الطيران السعودي", "دبي", "", "2027-02-20"))
+for code, air, city, name, dep in trips5:
     form = {k: "" for k in server._PROG_KEYS}
-    form.update(code=code, package="برامج رمضان", airline=air, name=name,
-                makkah_rooms="5" if not share else "", room_share=share)
+    form.update(code=code, package=PK, airline=air, depart_city=city, name=name,
+                depart_date=dep, capacity="2")
     c.post("/programs/save", data=form)
 
 
-def colors(page):
-    return dict((code, col) for col, code in re.findall(
-        r'<tr class="pcol[^"]*" style="--pc:([^;]+);--pt:[^"]+">\s*<td>(\w+)</td>', page))
+def pk5():
+    return c.get("/programs", query_string={"package": PK}).get_data(as_text=True)
 
 
-def pkg_page():
-    return c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
+def bands(page):
+    return re.findall(r'<tr class="pg-head" style="--pc:([^;]+);--pf:[^"]+">.*?'
+                      r'<span class="pg-title">([^<]+)</span>', page, re.S)
 
 
-def order(page):
+def row_order(page):
     body = page.split("<tbody>")[1]
-    return sorted(("R1", "R2", "R3", "R4", "R5"), key=lambda x: body.index(f"<td>{x}</td>"))
+    return re.findall(r"<td>([A-Z]\d)</td>", body)
 
 
-ram = colors(pkg_page())
-assert set(ram) == {"R1", "R2", "R3", "R4", "R5"}, ram
-# حتى المتقاسمة غرف الفندق: لكلٍّ لونه (الأول أزرق، الثاني بنفسجي…)
-assert [ram[x] for x in ("R1", "R2", "R3", "R4", "R5")] == [c for c, _t in server._PROG_COLORS[:5]]
-allp = colors(c.get("/programs").get_data(as_text=True))
-assert all(allp[k] == v for k, v in ram.items())                # نفس اللون في الصفحتين
-page = pkg_page()
-titles = re.findall(r'<span class="pg-title">([^<]+)</span>', page)
-assert titles[:3] == ["البرنامج الأول · ✈️ السعودي — من أبوظبي",
-                      "البرنامج الثاني · ✈️ السعودي — من دبي",
-                      "البرنامج الثالث · ✈️ فلاي دبي"], titles
-assert titles[4] == "البرنامج الخامس · الوداع"
-assert page.count('class="pg-head"') == 5 and page.count('class="pg-gap"') == 4
-assert page.count('name="dir" value="up"') == 4 and page.count('name="dir" value="down"') == 4
-assert "🔗 غرف مشتركة مع R1" in page
-# الترتيب الافتراضي بتاريخ المغادرة، وتعديل برنامج لا يغيّر مكانه
+def row_colors(page):
+    return dict((code, col) for col, code in re.findall(
+        r'<tr class="pcol" style="--pc:([^;]+);[^"]*">\s*<td>(\w+)</td>', page))
+
+
+page = pk5()
+B = bands(page)
+assert [t for _c, t in B] == ["البرنامج الأول · ✈️ الطيران السعودي من أبوظبي",
+                              "البرنامج الثاني · ✈️ الطيران السعودي من دبي",
+                              "البرنامج الثالث · ✈️ فلاي دبي",
+                              "البرنامج الرابع · ✈️ الاتحاد"], B
+GREEN_D, GREEN_L, SKY, GOLD = (p[0] for p in server._PROG_COLORS[:4])
+assert [c_ for c_, _t in B] == [GREEN_D, GREEN_L, SKY, GOLD]
+assert row_order(page) == ["S1", "S2", "D1", "D2", "F1", "F2", "E1", "E2"]
+rc = row_colors(page)
+assert rc["S1"] == rc["S2"] == GREEN_D and rc["D2"] == GREEN_L and rc["F2"] == SKY \
+    and rc["E1"] == rc["E2"] == GOLD, rc
+assert page.count("عدد الرحلات: 2") == 4 and page.count('class="pg-gap"') == 3
+allp = row_colors(c.get("/programs").get_data(as_text=True))
+assert all(allp[k] == v for k, v in rc.items())                  # نفس اللون في الصفحتين
+# ▲▼ تنقل البرنامج كاملاً (كل رحلاته)، ويُحفظ الترتيب
+assert page.count('name="dir" value="up"') == 3 and page.count('name="dir" value="down"') == 3
+ekey = re.search(r'name="group" value="([^"]+)">\s*<input type="hidden" name="dir" '
+                 r'value="up">', page.split("البرنامج الرابع")[0].rsplit("pg-head", 1)[1]).group(1)
+for _ in range(4):                                     # الزائد عند الطرف لا يضرّ
+    c.post("/programs/packages/move", data={"name": PK, "group": ekey, "dir": "up"})
+page = pk5()
+assert [t for _c, t in bands(page)][0] == "البرنامج الأول · ✈️ الاتحاد"
+assert bands(page)[0][0] == GREEN_D and row_order(page)[:2] == ["E1", "E2"]
+app_mode.set_mode(app_mode.UMRAH)
+assert server._pkg_orders(storage.load_settings())[PK][0] == ekey
+for _ in range(3):
+    c.post("/programs/packages/move", data={"name": PK, "group": ekey, "dir": "down"})
+assert [t for _c, t in bands(pk5())][3] == "البرنامج الرابع · ✈️ الاتحاد"
+# رحلة جديدة لخط موجود تنضمّ إليه (لا برنامج جديد)، وتعديل رحلة لا يغيّر الترتيب
 form = {k: "" for k in server._PROG_KEYS}
-form.update(code="R5", orig="R5", package="برامج رمضان", name="الوداع",
-            depart_date="2027-01-01", makkah_rooms="5")
+form.update(code="E3", package=PK, airline="Etihad", depart_date="2027-03-01")
 c.post("/programs/save", data=form)
-form.update(code="R1", orig="R1", name="من أبوظبي", airline="السعودي", depart_date="",
-            makkah_rooms="5")
-c.post("/programs/save", data=form)
-assert order(pkg_page()) == ["R5", "R1", "R2", "R3", "R4"]
-# الترتيب اليدوي: R5 إلى الأخير بالسهم ▼ مرّات، ثم R4 قبل R3 بالسهم ▲
-for _ in range(5):                                   # الزائد عند الطرف لا يضرّ
-    c.post("/programs/packages/move", data={"name": "برامج رمضان", "code": "R5", "dir": "down"})
-c.post("/programs/packages/move", data={"name": "برامج رمضان", "code": "R4", "dir": "up"})
-page = pkg_page()
-assert order(page) == ["R1", "R2", "R4", "R3", "R5"], order(page)
-ram = colors(page)
-assert [ram[x] for x in ("R1", "R2", "R4", "R3")] == [c for c, _t in server._PROG_COLORS[:4]]
-assert re.findall(r'<span class="pg-title">([^<]+)</span>', page)[2] ==     "البرنامج الثالث · ✈️ الاتحاد"
-# الترتيب محفوظ: يبقى بعد تعديل برنامج أو تغيير تاريخه
-form.update(code="R3", orig="R3", name="", airline="فلاي دبي", depart_date="2026-01-01",
-            room_share="R1", makkah_rooms="")
-c.post("/programs/save", data=form)
-assert order(pkg_page()) == ["R1", "R2", "R4", "R3", "R5"]
-# برنامج جديد في الباقة يأتي بعد المرتّبة
+page = pk5()
+assert len(bands(page)) == 4 and row_order(page)[-3:] == ["E1", "E2", "E3"]
 form = {k: "" for k in server._PROG_KEYS}
-form.update(code="R6", package="برامج رمضان", depart_date="2020-01-01")
+form.update(code="S1", orig="S1", package=PK, airline="الطيران السعودي",
+            depart_city="أبوظبي", depart_date="2027-03-30", capacity="2")
 c.post("/programs/save", data=form)
-body = pkg_page().split("<tbody>")[1]
-assert body.index("<td>R5</td>") < body.index("<td>R6</td>")
-# لا يُرتّب إلا المحرّر، ولا باقة مجهولة
+assert [t for _c, t in bands(pk5())][0] == "البرنامج الأول · ✈️ الطيران السعودي من أبوظبي"
+# ترتيب قديم محفوظ برموز البرامج (قبل هذا الإصدار) يُفهم: E1 أولاً
+st = storage.load_settings()
+st["umrah_package_order"] = {PK: ["E1"]}
+storage.save_settings(st)
+assert [t for _c, t in bands(pk5())][0] == "البرنامج الأول · ✈️ الاتحاد"
+c.post("/programs/packages/move", data={"name": PK, "group": ekey, "dir": "down"})
+app_mode.set_mode(app_mode.UMRAH)
+assert "E1" not in server._pkg_orders(storage.load_settings())[PK]       # صار بالمفاتيح
+# حالة السعة بعلامة في خانة المتبقّي (الألوان للبرامج)
+storage.save_records([P("ثنائي", "F1")] * 2 + [P("ثنائي", "F2")] * 3, session=SESS)
+page = pk5()
+f1 = next(r for r in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S) if "<td>F1</td>" in r)
+f2 = next(r for r in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S) if "<td>F2</td>" in r)
+assert "✅ مكتمل" in f1 and "⛔ زيادة 1" in f2 and "rover" not in page
+assert "👥 المعتمرون: 5" in page and "🪑 المقاعد المتبقّية: 0 من 4 · ⛔ زيادة 1" in page
+# برنامج بلا ناقل: شريط وحده باسمه
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="X1", package=PK, name="عمرة خاصة")
+c.post("/programs/save", data=form)
+assert [t for _c, t in bands(pk5())][-1] == "البرنامج الخامس · عمرة خاصة"
+# خانة «المغادرة من» والقوائم في نموذج البرنامج
+new = c.get("/programs/new").get_data(as_text=True)
+assert 'name="depart_city"' in new and '<option value="أبوظبي">' in new
+assert 'list="airlinelist"' in new and '<option value="الطيران السعودي">' in new
+# الترتيب القديم بالرموز يتحوّل إلى مفاتيح الخطوط قبل الحذف، ولا يبقى للمحذوف أثر
+st = storage.load_settings()
+st["umrah_package_order"] = {PK: ["X1", "E1"]}
+storage.save_settings(st)
+c.post("/programs/X1/delete")
+app_mode.set_mode(app_mode.UMRAH)
+saved = server._pkg_orders(storage.load_settings())[PK]
+assert saved[0] == "الاتحاد|" and not {"X1", "#X1", "E1"} & set(saved), saved
 assert c.post("/programs/packages/move",
-              data={"name": "مجهولة", "code": "R1", "dir": "up"}).status_code == 302
+              data={"name": "مجهولة", "group": ekey, "dir": "up"}).status_code == 302
+# ترتيب (من المراجعة): شريط «بلا مدينة» يتحرّك بالسهم، وحذف رحلات مدينةٍ أو
+# رحلةٍ مرتّبة بالترتيب القديم لا يُضيع مكان الخط ولونه
+import html as _html
+PO = "اختبار الترتيب"
+c.post("/programs/packages/add", data={"name": PO})
 
 
-def saved_order():
-    app_mode.set_mode(app_mode.UMRAH)
-    return server._pkg_orders(storage.load_settings()).get("برامج رمضان", [])
+def save_po(code, air, city, dep):
+    form = {k: "" for k in server._PROG_KEYS}
+    form.update(code=code, package=PO, airline=air, depart_city=city, depart_date=dep)
+    c.post("/programs/save", data=form)
 
 
-# حذف برنامج مرتّب ثم إنشاء برنامج جديد بنفس رمزه: لا يرث مكانه بل يأتي آخراً
-c.post("/programs/packages/move", data={"name": "برامج رمضان", "code": "R6", "dir": "up"})
-assert order(pkg_page())[0] == "R1" and "R1" in saved_order()
-c.post("/programs/R1/delete")
-assert "R1" not in saved_order()
+def po_bands():
+    page = c.get("/programs", query_string={"package": PO}).get_data(as_text=True)
+    out = []
+    for head in re.findall(r'<tr class="pg-head".*?</tr>', page, re.S):
+        title = re.search(r'<span class="pg-title">([^<]+)</span>', head).group(1)
+        key = re.search(r'name="group" value="([^"]+)"', head)
+        out.append((title.split(" · ", 1)[1], _html.unescape(key.group(1)) if key else ""))
+    return out
+
+
+def po_move(word, d, times=1):
+    key = next(k for t, k in po_bands() if t == word)
+    for _ in range(times):
+        c.post("/programs/packages/move", data={"name": PO, "group": key, "dir": d})
+
+
+save_po("QF", "فلاي دبي", "", "2027-01-01")
+save_po("QA", "الطيران السعودي", "أبوظبي", "2027-01-02")
+save_po("QD", "الطيران السعودي", "دبي", "2027-01-03")
+save_po("QN", "الطيران السعودي", "", "2027-01-04")          # بلا مدينة: شريط وحده
+assert [t for t, _k in po_bands()] == ["✈️ فلاي دبي", "✈️ الطيران السعودي من أبوظبي",
+                                       "✈️ الطيران السعودي من دبي", "✈️ الطيران السعودي"]
+po_move("✈️ الطيران السعودي", "up")                           # كان لا يتحرّك
+assert [t for t, _k in po_bands()][2] == "✈️ الطيران السعودي"
+po_move("✈️ الطيران السعودي من أبوظبي", "up")
+assert [t for t, _k in po_bands()][0] == "✈️ الطيران السعودي من أبوظبي"
+c.post("/programs/QD/delete")
+c.post("/programs/QN/delete")                     # بقي السعودي من أبوظبي وحده
+assert [t for t, _k in po_bands()] == ["✈️ الطيران السعودي من أبوظبي", "✈️ فلاي دبي"]
+# ترتيب قديم برموز البرامج: حذف الرحلة التي حدّدت مكان الخط لا يُضيعه
+save_po("QE", "الاتحاد", "", "2027-01-05")
+save_po("QE2", "الاتحاد", "", "2027-01-09")
+st = storage.load_settings()
+st["umrah_package_order"] = {PO: ["QE", "QF", "QA"]}
+storage.save_settings(st)
+assert [t for t, _k in po_bands()][0] == "✈️ الاتحاد"
+c.post("/programs/QE/delete")
+assert [t for t, _k in po_bands()] == ["✈️ الاتحاد", "✈️ فلاي دبي",
+                                       "✈️ الطيران السعودي من أبوظبي"]
+# برنامج بلا ناقل («#رمز»): تغيير رمزه يُبقي مكانه
+save_po("QZ", "", "", "2027-01-07")
+st = storage.load_settings()
+st["umrah_package_order"] = {PO: ["#QZ"] + [k for _t, k in po_bands() if k != "#QZ"]}
+storage.save_settings(st)
+assert po_bands()[0][1] == "#QZ"
 form = {k: "" for k in server._PROG_KEYS}
-form.update(code="R1", package="برامج رمضان", airline="جديد")
+form.update(code="QZ2", orig="QZ", package=PO, depart_date="2027-01-07")
 c.post("/programs/save", data=form)
-body = pkg_page().split("<tbody>")[1]
-assert all(body.index(f"<td>{x}</td>") < body.index("<td>R1</td>") for x in ("R2", "R5", "R6"))
-# إخراج برنامج من الباقة يحذفه من ترتيبها؛ وتغيير الرمز يُبقي مكانه
-c.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "R2"})
-assert "R2" not in saved_order()
-before = saved_order()
-form = {k: "" for k in server._PROG_KEYS}
-form.update(code="R4X", orig="R4", package="برامج رمضان", airline="الاتحاد")
-c.post("/programs/save", data=form)
-assert saved_order() == [("R4X" if x == "R4" else x) for x in before], (saved_order(), before)
-print("[ok] لكل برنامج رقم ولون في الباقة + ترتيب يدوي")
+assert po_bands()[0][1] == "#QZ2"
+print("[ok] البرنامج = خط طيران بلونه في الباقة + ترتيب ▲▼")
 print("ALL OK")

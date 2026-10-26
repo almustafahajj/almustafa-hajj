@@ -116,6 +116,7 @@ class UmrahTrip:
     # والفندق): عدد الغرف يُؤخذ منه، والمشغول يُجمع من كل البرامج المشتركة
     room_share: str = ""
     airline: str = ""
+    depart_city: str = ""          # مدينة/مطار المغادرة (أبوظبي، دبي…)
     # رحلة الذهاب: رقم الرحلة ووقت المغادرة ووقت الوصول
     flight_out: str = ""
     out_depart_time: str = ""
@@ -200,6 +201,195 @@ def save_packages(settings: dict, names: list) -> None:
     """يحفظ قائمة الباقات (بلا تكرار أو فراغ)."""
     settings["umrah_packages"] = list(dict.fromkeys(
         str(n).strip() for n in names if str(n).strip()))
+
+
+# ---- «البرنامج» داخل الباقة = خط طيران: الناقل + مدينة المغادرة ----
+# (كل رحلات «الطيران السعودي من أبوظبي» بتواريخها المختلفة برنامج واحد)
+UAE_CITIES = ("أبوظبي", "دبي", "الشارقة", "رأس الخيمة", "العين", "الفجيرة")
+KNOWN_AIRLINES = ("الطيران السعودي", "فلاي دبي", "الاتحاد", "طيران الإمارات",
+                  "العربية للطيران", "طيران ناس")
+_CITY_ALIASES = {
+    "أبوظبي": ("أبوظبي", "أبو ظبي", "ابوضبي", "أبو ضبي", "abu dhabi", "abudhabi",
+               "auh"),
+    "دبي": ("دبي", "dubai", "dxb", "dwc"),
+    "الشارقة": ("الشارقة", "شارقة", "sharjah", "shj"),
+    "رأس الخيمة": ("رأس الخيمة", "ras al khaimah", "rak"),
+    "العين": ("العين", "al ain", "alain"),
+    "الفجيرة": ("الفجيرة", "fujairah", "fjr"),
+}
+# «العين» كلمة شائعة أيضاً: لا تُؤخذ من اسم البرنامج إلا بعد «من»
+_AMBIGUOUS_CITIES = {"العين"}
+# أسماء الناقلين بعد حذف الكلمات العامة («طيران/الخطوط/الجوية/Airlines…»)
+_AIRLINE_ALIASES = {
+    "الطيران السعودي": ("السعودي", "السعودية", "سعودي", "سعودية", "العربية السعودية",
+                        "saudia", "saudi", "saudi arabian", "sv"),
+    "فلاي دبي": ("فلاي دبي", "flydubai", "fly dubai", "fz"),
+    "الاتحاد": ("الاتحاد", "اتحاد", "etihad", "ey"),
+    "طيران الإمارات": ("الإمارات", "امارات", "emirates", "ek"),
+    "العربية للطيران": ("العربية", "air arabia", "arabia", "g9"),
+    "طيران ناس": ("ناس", "فلاي ناس", "flynas", "fly nas", "xy"),
+}
+_AIR_FILLER = {"طيران", "الطيران", "خطوط", "الخطوط", "الجويه", "جويه", "للطيران",
+               "airlines", "airline", "airways"}
+_FROM_WORDS = {"من", "from", "ex"}
+# ما يُكتب بدل المدينة حين لا تُعرف («N/A»، «غير محدد»…) — ليس مدينة
+_NO_CITY = {"na", "n a", "none", "nil", "null", "x", "0", "لا", "لا يوجد", "لايوجد",
+            "بدون", "غير محدد", "غير معروف"}
+
+
+def _strip_marks(text) -> str:
+    """يحذف التشكيل والتطويل والهمزات المركّبة من نصّ."""
+    import re
+    return re.sub("[ؐ-ًؚ-ٰٟۖ-ۭـ]", "",
+                  str(text or ""))
+
+
+def _norm_ar(text) -> str:
+    """توحيد نصّ للمقارنة: أ/إ/آ→ا، ى/ی→ي، ة→ه، ک→ك، بلا تشكيل ولا ترقيم،
+    وأحرف لاتينية صغيرة."""
+    import re
+    s = _strip_marks(text).lower()
+    s = s.translate(str.maketrans({"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي",
+                                   "ی": "ي", "ة": "ه", "ۀ": "ه", "ک": "ك"}))
+    s = re.sub(r"[^\w\s]|_", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _tokens(text) -> list:
+    """كلمات النصّ بلا ترقيم: [(الكلمة كما كُتبت، الكلمة موحّدة)]."""
+    import re
+    out = []
+    for w in re.split(r"[\W_]+", _strip_marks(text)):
+        n = _norm_ar(w)
+        if n:
+            out.append((w, n))
+    return out
+
+
+_AIR_ALIAS_TOKENS = sorted(
+    ((tuple(_norm_ar(a).split()), canon) for canon, al in _AIRLINE_ALIASES.items()
+     for a in al), key=lambda p: -len(p[0]))
+_AIR_WORD = {seq[0]: canon for seq, canon in _AIR_ALIAS_TOKENS if len(seq) == 1}
+_CITY_TOKENS = sorted(
+    ((tuple(_norm_ar(a).split()), city) for city, al in _CITY_ALIASES.items()
+     for a in al), key=lambda p: -len(p[0]))
+
+
+def _find_seq(norms: list, seq: tuple) -> int:
+    """أوّل موضع لتسلسل الكلمات ``seq`` في ``norms``، أو -1."""
+    for i in range(len(norms) - len(seq) + 1):
+        if tuple(norms[i:i + len(seq)]) == seq:
+            return i
+    return -1
+
+
+def _city_spans(norms: list, strict: bool = False) -> list:
+    """[(البداية، الطول، المدينة)] لكل مدينة مذكورة في كلمات موحّدة."""
+    used: set = set()
+    spans = []
+    for seq, city in _CITY_TOKENS:
+        size, i = len(seq), 0
+        while i <= len(norms) - size:
+            if (tuple(norms[i:i + size]) == seq
+                    and not used.intersection(range(i, i + size))
+                    and not (strict and city in _AMBIGUOUS_CITIES
+                             and (i == 0 or norms[i - 1] not in _FROM_WORDS))):
+                used.update(range(i, i + size))
+                spans.append((i, size, city))
+                i += size
+            else:
+                i += 1
+    return spans
+
+
+def _one_city(spans: list) -> str:
+    cities = {c for _i, _n, c in spans}
+    return cities.pop() if len(cities) == 1 else ""
+
+
+def find_city(text, strict: bool = False) -> str:
+    """مدينة مغادرة إماراتية مذكورة في نصّ (كاسم البرنامج «رمضان من أبوظبي»)،
+    أو "" إن لم تُذكر أو ذُكرت أكثر من مدينة. ``strict`` (لأسماء البرامج):
+    «العين» لا تُعدّ مدينة إلا بعد «من»."""
+    return _one_city(_city_spans([n for _w, n in _tokens(text)], strict))
+
+
+def canon_city(text) -> str:
+    """اسم مدينة المغادرة موحّداً («ابو ظبي»/«ابوضبي»/«AUH» → «أبوظبي»)؛ وغير
+    المعروفة كما كُتبت بلا ترقيم، و«-» أو الفراغ → ""."""
+    toks = _tokens(text)
+    if not toks or " ".join(n for _w, n in toks) in _NO_CITY:
+        return ""
+    return find_city(text) or " ".join(w for w, _n in toks)
+
+
+def parse_airline(text) -> tuple:
+    """(اسم الناقل للعرض، مفتاحه للتجميع، مدينة مذكورة معه).
+
+    الناقل المعروف يُعرف أينما ورد في النصّ ومهما كُتب: «طيران سعودي من أبوظبي»
+    و«Saudia (SV)» و«الخطوط الجوية العربية السعودية» كلها «الطيران السعودي»،
+    و«فلاي دبي - دبي» هي «فلاي دبي» من دبي. غير المعروف يبقى كما كُتب بعد حذف
+    المدينة و«من» منه («طيران الخليج من أبوظبي» → «طيران الخليج»، أبوظبي)."""
+    toks = _tokens(text)
+    norms = [n for _w, n in toks]
+    core = [n for n in norms if n not in _AIR_FILLER]
+    for seq, canon in _AIR_ALIAS_TOKENS:
+        i = _find_seq(core, seq)
+        if i >= 0:
+            rest = [n for k, n in enumerate(core) if not i <= k < i + len(seq)
+                    and n not in _FROM_WORDS and _AIR_WORD.get(n) != canon]
+            return canon, _norm_ar(canon), _one_city(_city_spans(rest))
+    spans = _city_spans(norms)
+    drop = {k for i, size, _c in spans for k in range(i, i + size)}
+    keep = [k for k in range(len(toks)) if k not in drop and norms[k] not in _FROM_WORDS]
+    key = " ".join(norms[k] for k in keep if norms[k] not in _AIR_FILLER)
+    if not key:                            # نصّ فيه مدينة فقط (أو فارغ)
+        return "", "", _one_city(spans)
+    return " ".join(toks[k][0] for k in keep), key, _one_city(spans)
+
+
+def split_airline(text) -> tuple:
+    """(اسم الناقل الموحّد للعرض، مدينة مذكورة معه) — انظر ``parse_airline``."""
+    disp, _key, city = parse_airline(text)
+    return disp, city
+
+
+def program_lines(trips: list) -> dict:
+    """يجمع برامج باقةٍ في «خطوط طيران» (الناقل + مدينة المغادرة).
+
+    يعيد ``{رمز البرنامج: (مفتاح الخط، اسم الناقل، المدينة للعرض)}``. المدينة من
+    خانة «المغادرة من»، وإلا من نصّ الناقل أو اسم البرنامج. لا يُقسَم الناقل حسب
+    المدينة إلا إن ظهرت له مدينتان أو أكثر في الباقة؛ والبرنامج بلا ناقل خطٌّ وحده.
+    لا تُكرَّر في العنوان مدينةٌ مذكورة في اسم الناقل («فلاي دبي»)."""
+    info = {}
+    for t in trips or []:
+        disp, akey, city_in_air = parse_airline(getattr(t, "airline", ""))
+        city = (canon_city(getattr(t, "depart_city", "")) or city_in_air
+                or find_city(getattr(t, "name", ""), strict=True))
+        info[t.code] = (disp, akey, city)
+    disp_of: dict = {}
+    cities_of: dict = {}                   # مدن كل ناقل (موحّدة الكتابة)
+    city_disp: dict = {}                   # أوّل كتابة لكل مدينة للعرض
+    for disp, akey, city in info.values():
+        if akey:
+            disp_of.setdefault(akey, disp)
+            cities_of.setdefault(akey, set()).add(_norm_ar(city))
+            if city:
+                city_disp.setdefault(_norm_ar(city), city)
+    out = {}
+    for code, (disp, akey, city) in info.items():
+        if not akey:
+            out[code] = (f"#{code}", "", city)
+            continue
+        known = sorted(c for c in cities_of[akey] if c)
+        if len(known) <= 1:                # مدينة واحدة (أو بلا مدينة): خط واحد
+            key, city = f"{akey}|", (city_disp[known[0]] if known else "")
+        else:                              # «?» لرحلات الناقل بلا مدينة (غير «akey|»)
+            key = f"{akey}|{_norm_ar(city)}" if city else f"{akey}|?"
+            city = city_disp.get(_norm_ar(city), city)
+        label = disp_of[akey]
+        out[code] = (key, label, "" if city and find_city(label) == city else city)
+    return out
 
 
 def next_voucher_number(settings: dict) -> str:
