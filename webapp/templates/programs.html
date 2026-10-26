@@ -60,13 +60,14 @@
       {% for r in others %}
       <label class="remember" style="margin:4px 0">
         <input type="checkbox" name="code" value="{{ r.code }}">
-        {{ r.code }} — {{ r.name }} <span class="muted">({{ r.depart }}{% if r.package %} · حالياً في «{{ r.package }}»{% endif %})</span>
+        {{ r.code }} — {{ r.name }} <span class="muted">({{ r.depart }})</span>
       </label>
       {% endfor %}
     </div>
     <button class="btn primary" type="submit" style="width:auto;margin-top:10px">➕ إضافة المحدَّد إلى الباقة</button>
   </form>
-  {% else %}<p class="hint-note">كل البرامج المسجّلة موجودة في هذه الباقة.</p>{% endif %}
+  <p class="hint-note">تظهر هنا البرامج غير المنضمّة إلى أيّ باقة فقط؛ البرنامج يتبع باقة واحدة.</p>
+  {% else %}<p class="hint-note">لا برامج متاحة: كل البرامج المسجّلة منضمّة إلى باقات (البرنامج يتبع باقة واحدة فقط — أخرِجه من باقته أوّلاً).</p>{% endif %}
 </fieldset>
 {% if not rows %}
 <form method="post" action="{{ url_for('program_package_delete') }}"

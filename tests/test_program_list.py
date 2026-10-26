@@ -100,11 +100,27 @@ dec = c.get("/programs", query_string={"package": "برامج ديسمبر"}).ge
 table = dec.split("<tbody>")[1].split("</tbody>")[0]
 assert "<td>U1</td>" in table and "<td>U3</td>" not in table and "<td>U2</td>" not in table
 assert 'navlink subnav active' in dec
-# ضمّ برامج مسجّلة مسبقاً إلى الباقة، ثم إخراج أحدها
+# قائمة الإضافة تعرض غير المنضمّ فقط (U3 في «برامج رمضان» لا يظهر)
+add_box = dec.split("إضافة برامج مسجّلة")[1]
+assert 'value="U2"' in add_box and 'value="U3"' not in add_box
+# ضمّ برامج مسجّلة: U3 في باقة أخرى فلا يُنقل
 c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "code": ["U2", "U3"]})
 dec = c.get("/programs", query_string={"package": "برامج ديسمبر"}).get_data(as_text=True)
 table = dec.split("<tbody>")[1].split("</tbody>")[0]
-assert all(f"<td>{x}</td>" in table for x in ("U1", "U2", "U3"))
+assert "<td>U1</td>" in table and "<td>U2</td>" in table and "<td>U3</td>" not in table
+app_mode.set_mode(app_mode.UMRAH)
+pk = {t.code: t.package for t in umrah.load_trips(storage.load_settings())}
+assert pk == {"U1": "برامج ديسمبر", "U2": "برامج ديسمبر", "U3": "برامج رمضان"}, pk
+# ولا يُنقل من نموذج التعديل أيضاً (تُحفظ بقية الحقول برسالة)
+form.update(code="U3", orig="U3", name="رمضان المعدّل", package="برامج ديسمبر")
+r = c.post("/programs/save", data=form)
+assert "msg=" in r.headers["Location"]
+app_mode.set_mode(app_mode.UMRAH)
+u3 = next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U3")
+assert u3.package == "برامج رمضان" and u3.name == "رمضان المعدّل"
+# بعد الإخراج يصبح متاحاً لباقة أخرى
+c.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "U3"})
+c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "code": ["U3"]})
 c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "remove": "U3"})
 app_mode.set_mode(app_mode.UMRAH)
 pk = {t.code: t.package for t in umrah.load_trips(storage.load_settings())}
@@ -119,7 +135,7 @@ c.post("/programs/packages/delete", data={"name": "فارغة"})
 app_mode.set_mode(app_mode.UMRAH)
 assert "فارغة" not in umrah.load_packages(storage.load_settings())
 # باقة تُكتب يدوياً في نموذج البرنامج تُسجَّل
-form.update(code="U2", orig="U2", name="شعبان", package="برامج شعبان")
+form.update(code="U3", orig="U3", name="شعبان", package="برامج شعبان")
 c.post("/programs/save", data=form)
 app_mode.set_mode(app_mode.UMRAH)
 assert umrah.load_packages(storage.load_settings())[-1] == "برامج شعبان"

@@ -384,7 +384,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-24c · الباقات قوائم مستقلّة"
+_BUILD_TAG = "2026-10-26a · البرنامج في باقة واحدة فقط"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1993,7 +1993,8 @@ def programs():
     if package:
         if package not in umrah.load_packages(settings):
             return redirect(url_for("programs"))
-        others = [r for r in rows if r["package"] != package]
+        # البرنامج يتبع باقة واحدة: لا يُعرض للإضافة إلا ما ليس في باقة
+        others = [r for r in rows if not r["package"]]
         rows = [r for r in rows if r["package"] == package]
     return render_template("programs.html", active="programs", rows=rows,
                            package=package, others=others,
@@ -2017,7 +2018,7 @@ def program_package_assign():
     trips = umrah.load_trips(settings)
     n = 0
     for t in trips:
-        if t.code in add and t.package != name:
+        if t.code in add and not str(t.package or "").strip():   # غير المنضمّ فقط
             t.package, n = name, n + 1
         elif remove and t.code == remove and t.package == name:
             t.package, n = "", n + 1
@@ -2127,6 +2128,14 @@ def program_save():
         data["code"] = umrah.next_code(trips)
     trip = umrah.trip_from_dict(data)
     key = (request.form.get("orig", "") or "").strip() or trip.code
+    # البرنامج المنضمّ إلى باقة لا يُنقل إلى باقة أخرى (يُخرَج منها أوّلاً)
+    msg = ""
+    old = next((t for t in trips if t.code == key), None)
+    old_pkg = str(getattr(old, "package", "") or "").strip()
+    if old_pkg and trip.package and trip.package != old_pkg:
+        trip.package = old_pkg
+        msg = (f"البرنامج «{trip.code}» تابع لباقة «{old_pkg}» ولا يُضاف إلى باقة أخرى"
+               " — أخرِجه منها أوّلاً (↩ إخراج). حُفظت بقية التعديلات.")
     trips = [t for t in trips if t.code != key and t.code != trip.code]
     trips.append(trip)
     umrah.save_trips(settings, trips)
@@ -2137,7 +2146,7 @@ def program_save():
         _audit("حفظ برنامج عمرة", f"{trip.code} — {getattr(trip,'name','') or ''}")
     except Exception:
         pass
-    return redirect(url_for("programs"))
+    return redirect(url_for("programs", msg=msg) if msg else url_for("programs"))
 
 
 @app.post("/programs/<code>/delete")
