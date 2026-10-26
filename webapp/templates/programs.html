@@ -17,7 +17,7 @@
     <th>السعة</th><th>المتبقّي</th><th>الغرف المتبقّية</th><th>إجراءات</th></tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr class="{{ 'rover' if r.over else ('rfull' if r.full else '') }}">
+    <tr class="pcol {{ 'rover' if r.over else ('rfull' if r.full else '') }}" style="--pc:{{ r.color }};--pt:{{ r.tint }}">
       <td>{{ r.code }}</td><td>{{ r.name }}</td>
       {% if not package %}<td>{% if r.package %}<a href="{{ url_for('programs', package=r.package) }}">📦 {{ r.package }}</a>{% else %}—{% endif %}</td>{% endif %}
       <td>{{ r.depart }}</td>
@@ -80,7 +80,8 @@
 {% endif %}
 {% endif %}
 
-<p class="hint-note">🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
+<p class="hint-note">🎨 لكل برنامج لون حسب ترتيبه في باقته (البرامج المتقاسمة غرف
+  فندق واحدة بنفس اللون). 🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
   «الغرف المتبقّية» = عدد غرف الفندق في البرنامج − الغرف المشغولة حسب أنواع غرف
   المعتمرين (كل شخصين «ثنائي» غرفة، وكل ثلاثة «ثلاثي» غرفة… والطفل والرضيع بلا

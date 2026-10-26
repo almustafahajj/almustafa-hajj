@@ -384,7 +384,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-26b · غرف فندق مشتركة بين برامج الطيران"
+_BUILD_TAG = "2026-10-26c · لون لكل برنامج في الباقة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1950,6 +1950,25 @@ _PROG_GROUPS = [
 _PROG_KEYS = [k for _t, fs in _PROG_GROUPS for k, _l, _ty in fs]
 
 
+# ألوان تمييز البرامج داخل الباقة: (لون الشريط، لون خلفية الصفّ)
+# (بلا أحمر أو أخضر كي لا تُخلط بألوان «متجاوز/مكتمل السعة»)
+_PROG_COLORS = [("#2C5AA0", "#EAF1FB"), ("#8E44AD", "#F4EBF8"),
+                ("#B26A00", "#FDF1DE"), ("#0E7C9B", "#E2F3F8"),
+                ("#B03A7A", "#FAE9F2"), ("#4B4FB5", "#ECECFA"),
+                ("#7A5230", "#F3ECE4"), ("#34495E", "#ECEFF3")]
+
+
+def _color_rows(rows) -> None:
+    """يعطي كل برنامج لوناً حسب ترتيبه داخل باقته (الأول لون، الثاني لون…).
+    البرامج المتقاسمة غرف فندق واحدة (طيران آخر بنفس التاريخ) بلون واحد،
+    واللون نفسه في صفحة الباقة وفي قائمة كل البرامج."""
+    order: dict = {}
+    for r in rows:
+        seen = order.setdefault(r["package"], {})
+        idx = seen.setdefault(r["pool"], len(seen))
+        r["color"], r["tint"] = _PROG_COLORS[idx % len(_PROG_COLORS)]
+
+
 def _share_choices(trip, trips) -> list:
     """خيارات «يشارك غرف الفندق مع»: البرامج الأخرى التي لا تعود إليه."""
     from hajj_app import umrah
@@ -2004,6 +2023,8 @@ def programs():
     pkg_of = {t.code: str(t.package or "").strip() for t in trips}
     for r in rows:
         r["package"] = pkg_of.get(r["code"], "")
+        r["pool"] = pools[r["code"]][0].code
+    _color_rows(rows)
     # صفحة باقة مستقلّة (?package=): برامجها فقط + إضافة برامج مسجّلة إليها
     package = (request.args.get("package") or "").strip()
     others = []

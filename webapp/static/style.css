@@ -362,3 +362,9 @@ fieldset.danger-zone legend{ color:#C0392B; }
 table.data tr.pkg-head td{ background:var(--soft); color:var(--bronze); font-size:15px;
   border-top:2px solid var(--bronze); }
 .nav-group .navlink.subnav{ padding-inline-start:50px; font-size:13px; }
+
+/* ---- لون تمييز لكل برنامج في قائمة برامج العمرة ---- */
+table.data tr.pcol td:first-child{ border-inline-start:6px solid var(--pc); font-weight:700;
+  color:var(--pc); }
+table.data tr.pcol:not(.rover):not(.rfull) td{ background:var(--pt); }
+table.data tr.pcol:hover td{ filter:brightness(.97); }

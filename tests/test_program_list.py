@@ -248,4 +248,26 @@ t0 = time.perf_counter()
 pl = umrah.room_pools(big)
 assert time.perf_counter() - t0 < 1.0 and [t.code for t in pl["P5"]] == ["P3", "P4", "P5"]
 print("[ok] غرف فندق مشتركة بين برامج الطيران")
+
+# ---- 5) لون لكل برنامج في الباقة (المتقاسمة غرف فندق بلون واحد) ----
+for code, share in (("R1", ""), ("R2", "R1"), ("R3", ""), ("R4", ""), ("R5", "")):
+    form = {k: "" for k in server._PROG_KEYS}
+    form.update(code=code, package="برامج رمضان", makkah_rooms="5" if not share else "",
+                room_share=share)
+    c.post("/programs/save", data=form)
+
+
+def colors(page):
+    return dict((code, col) for col, code in re.findall(
+        r'<tr class="pcol[^"]*" style="--pc:([^;]+);--pt:[^"]+">\s*<td>(\w+)</td>', page))
+
+
+ram = colors(c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True))
+assert set(ram) == {"R1", "R2", "R3", "R4", "R5"}, ram
+assert ram["R1"] == ram["R2"]                                   # نفس التاريخ/الفندق
+assert len({ram["R1"], ram["R3"], ram["R4"], ram["R5"]}) == 4, ram   # الأول/الثاني/…
+assert ram["R1"] == server._PROG_COLORS[0][0] and ram["R3"] == server._PROG_COLORS[1][0]
+allp = colors(c.get("/programs").get_data(as_text=True))
+assert all(allp[k] == v for k, v in ram.items())                # نفس اللون في الصفحتين
+print("[ok] لون لكل برنامج في الباقة")
 print("ALL OK")
