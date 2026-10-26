@@ -92,17 +92,29 @@ form.update(code="U1", orig="U1", name="رمضان", package="برامج ديس�
             flight_out="EY611", flight_ret="EY612")
 c.post("/programs/save", data=form)
 html = c.get("/programs").get_data(as_text=True)
-order = re.findall(r"📦 ([^<]+)</b>", html)
-assert order == ["برامج ديسمبر", "برامج رمضان", "بدون باقة"], order
-dec = html.split("📦 برامج ديسمبر")[1].split("📦 برامج رمضان")[0]
-ram = html.split("📦 برامج رمضان")[1].split("📦 بدون باقة")[0]
-loose = html.split("📦 بدون باقة")[1]
-assert "<td>U1</td>" in dec and "<td>U3</td>" in ram and "<td>U2</td>" in loose
+# الباقات قوائم مستقلّة في القائمة الجانبية تحت «برامج العمرة»
+side = re.findall(r'class="navlink subnav[^"]*" href="([^"]+)">📦 ([^<]+)</a>', html)
+assert [n for _h, n in side] == ["برامج ديسمبر", "برامج رمضان"], side
+assert "<td>U1</td>" in html and "<td>U2</td>" in html     # الصفحة العامة: الكل
+dec = c.get("/programs", query_string={"package": "برامج ديسمبر"}).get_data(as_text=True)
+table = dec.split("<tbody>")[1].split("</tbody>")[0]
+assert "<td>U1</td>" in table and "<td>U3</td>" not in table and "<td>U2</td>" not in table
+assert 'navlink subnav active' in dec
+# ضمّ برامج مسجّلة مسبقاً إلى الباقة، ثم إخراج أحدها
+c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "code": ["U2", "U3"]})
+dec = c.get("/programs", query_string={"package": "برامج ديسمبر"}).get_data(as_text=True)
+table = dec.split("<tbody>")[1].split("</tbody>")[0]
+assert all(f"<td>{x}</td>" in table for x in ("U1", "U2", "U3"))
+c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "remove": "U3"})
+app_mode.set_mode(app_mode.UMRAH)
+pk = {t.code: t.package for t in umrah.load_trips(storage.load_settings())}
+assert pk == {"U1": "برامج ديسمبر", "U2": "برامج ديسمبر", "U3": ""}, pk
+assert c.get("/programs", query_string={"package": "مجهولة"}).status_code == 302
 # حذف باقة فيها برامج يُرفض، والفارغة تُحذف
 assert "msg=" in c.post("/programs/packages/delete",
-                        data={"name": "برامج رمضان"}).headers["Location"]
+                        data={"name": "برامج ديسمبر"}).headers["Location"]
 c.post("/programs/packages/add", data={"name": "فارغة"})
-assert "🗑 حذف الباقة" in c.get("/programs").get_data(as_text=True)
+assert "🗑 حذف الباقة" in c.get("/programs", query_string={"package": "فارغة"}).get_data(as_text=True)
 c.post("/programs/packages/delete", data={"name": "فارغة"})
 app_mode.set_mode(app_mode.UMRAH)
 assert "فارغة" not in umrah.load_packages(storage.load_settings())

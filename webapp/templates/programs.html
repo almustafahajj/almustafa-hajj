@@ -1,36 +1,26 @@
 {% extends "base.html" %}
-{% block title %}برامج العمرة — المصطفى{% endblock %}
-{% block heading %}🗂 برامج العمرة{% endblock %}
-{% block subhead %}{% if can_edit %}<a class="pill" href="{{ url_for('program_new') }}">➕ برنامج جديد</a>{% endif %}{% endblock %}
+{% block title %}{{ package or 'برامج العمرة' }} — المصطفى{% endblock %}
+{% block heading %}{% if package %}📦 {{ package }}{% else %}🗂 برامج العمرة{% endif %}{% endblock %}
+{% block subhead %}{% if can_edit %}<a class="pill" href="{{ url_for('program_new', package=package) if package else url_for('program_new') }}">➕ برنامج جديد{{ ' في هذه الباقة' if package }}</a>{% endif %}
+  {% if package %}<a class="pill" href="{{ url_for('programs') }}">← كل برامج العمرة</a>{% endif %}{% endblock %}
 {% block content %}
 {% if msg %}<div class="acc-msg err">{{ msg }}</div>{% endif %}
-{% if can_edit %}
+{% if can_edit and not package %}
 <form method="post" action="{{ url_for('program_package_add') }}" class="searchbar" style="margin-bottom:14px">
-  <input name="name" placeholder="اسم باقة جديدة، مثل: برامج رمضان" required maxlength="80">
+  <input name="name" placeholder="اسم باقة جديدة، مثل: برامج رمضان (تظهر في القائمة الجانبية تحت «برامج العمرة»)" required maxlength="80">
   <button class="btn primary" type="submit" style="width:auto">➕ إضافة باقة</button>
 </form>
 {% endif %}
 <table class="data">
-  <thead><tr><th>الرمز</th><th>الاسم</th><th>المغادرة</th><th>العودة</th>
+  <thead><tr><th>الرمز</th><th>الاسم</th>{% if not package %}<th>الباقة</th>{% endif %}<th>المغادرة</th><th>العودة</th>
     <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th><th>الطيران</th>
     <th>السعة</th><th>المتبقّي</th><th>الغرف المتبقّية</th><th>إجراءات</th></tr></thead>
-  {% for sec in sections %}
   <tbody>
-    <tr class="pkg-head"><td colspan="12">
-      <b>📦 {{ sec.name or 'بدون باقة' }}</b>
-      <span class="muted">({{ sec.rows|length }} برنامج)</span>
-      {% if can_edit and sec.name %}
-      <a class="acc-btn add" style="margin-inline-start:10px" href="{{ url_for('program_new', package=sec.name) }}">➕ برنامج في هذه الباقة</a>
-      {% if not sec.rows %}
-      <form method="post" class="inline" action="{{ url_for('program_package_delete') }}"
-            data-msg="حذف الباقة «{{ sec.name }}»؟" onsubmit="return confirm(this.getAttribute('data-msg'));">
-        <input type="hidden" name="name" value="{{ sec.name }}">
-        <button class="acc-btn del" type="submit">🗑 حذف الباقة</button></form>
-      {% endif %}{% endif %}
-    </td></tr>
-  {% for r in sec.rows %}
+  {% for r in rows %}
     <tr class="{{ 'rover' if r.over else ('rfull' if r.full else '') }}">
-      <td>{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.depart }}</td>
+      <td>{{ r.code }}</td><td>{{ r.name }}</td>
+      {% if not package %}<td>{% if r.package %}<a href="{{ url_for('programs', package=r.package) }}">📦 {{ r.package }}</a>{% else %}—{% endif %}</td>{% endif %}
+      <td>{{ r.depart }}</td>
       <td>{{ r['return'] }}</td><td>{{ r.makkah }}</td><td>{{ r.madinah }}</td>
       <td>{{ r.count }}</td>
       <td>{{ r.airline }}{% if r.flights %}<br><span class="muted" dir="ltr" style="font-size:12px">{{ r.flights }}</span>{% endif %}</td>
@@ -39,7 +29,12 @@
             style="white-space:nowrap{% if left < 0 %};color:#C0392B;font-weight:700{% endif %}">{{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}{{ left }}{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</td>
       <td>
         <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">تعديل</a>
-        {% if can_edit %}
+        {% if can_edit and package %}
+        <form method="post" class="inline" action="{{ url_for('program_package_assign') }}">
+          <input type="hidden" name="name" value="{{ package }}">
+          <input type="hidden" name="remove" value="{{ r.code }}">
+          <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">↩ إخراج</button></form>
+        {% elif can_edit %}
         <form method="post" class="inline"
               action="{{ url_for('program_delete', code=r.code) }}"
               onsubmit="return confirm('حذف البرنامج «{{ r.code }}» نهائياً؟');">
@@ -48,15 +43,41 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="12" style="text-align:center;color:var(--muted)">
-      لا برامج في هذه الباقة بعد.</td></tr>
+    <tr><td colspan="13" style="text-align:center;color:var(--muted)">
+      {% if package %}لا برامج في هذه الباقة بعد — أضف من البرامج المسجّلة أدناه، أو «➕ برنامج جديد في هذه الباقة».
+      {% else %}لا برامج بعد. أنشئ أوّل برنامج من «➕ برنامج جديد».{% endif %}</td></tr>
   {% endfor %}
   </tbody>
-  {% else %}
-  <tbody><tr><td colspan="12" style="text-align:center;color:var(--muted)">
-    لا برامج بعد. أضف باقة ثم «➕ برنامج في هذه الباقة»، أو «➕ برنامج جديد».</td></tr></tbody>
-  {% endfor %}
 </table>
+
+{% if package and can_edit %}
+<fieldset class="editcard" style="margin-top:16px">
+  <legend>➕ إضافة برامج مسجّلة إلى «{{ package }}»</legend>
+  {% if others %}
+  <form method="post" action="{{ url_for('program_package_assign') }}">
+    <input type="hidden" name="name" value="{{ package }}">
+    <div class="fgrid">
+      {% for r in others %}
+      <label class="remember" style="margin:4px 0">
+        <input type="checkbox" name="code" value="{{ r.code }}">
+        {{ r.code }} — {{ r.name }} <span class="muted">({{ r.depart }}{% if r.package %} · حالياً في «{{ r.package }}»{% endif %})</span>
+      </label>
+      {% endfor %}
+    </div>
+    <button class="btn primary" type="submit" style="width:auto;margin-top:10px">➕ إضافة المحدَّد إلى الباقة</button>
+  </form>
+  {% else %}<p class="hint-note">كل البرامج المسجّلة موجودة في هذه الباقة.</p>{% endif %}
+</fieldset>
+{% if not rows %}
+<form method="post" action="{{ url_for('program_package_delete') }}"
+      data-msg="حذف الباقة «{{ package }}»؟" onsubmit="return confirm(this.getAttribute('data-msg'));"
+      style="margin-top:10px">
+  <input type="hidden" name="name" value="{{ package }}">
+  <button class="btn ghost" type="submit" style="color:#C0392B">🗑 حذف الباقة</button>
+</form>
+{% endif %}
+{% endif %}
+
 <p class="hint-note">🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
   «الغرف المتبقّية» = عدد غرف الفندق في البرنامج − الغرف المشغولة حسب أنواع غرف

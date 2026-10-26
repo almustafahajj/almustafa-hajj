@@ -361,3 +361,4 @@ fieldset.danger-zone legend{ color:#C0392B; }
 /* ---- رأس الباقة في قائمة برامج العمرة ---- */
 table.data tr.pkg-head td{ background:var(--soft); color:var(--bronze); font-size:15px;
   border-top:2px solid var(--bronze); }
+.nav-group .navlink.subnav{ padding-inline-start:50px; font-size:13px; }
