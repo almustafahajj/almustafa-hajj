@@ -368,3 +368,11 @@ table.data tr.pcol td:first-child{ border-inline-start:6px solid var(--pc); font
   color:var(--pc); }
 table.data tr.pcol:not(.rover):not(.rfull) td{ background:var(--pt); }
 table.data tr.pcol:hover td{ filter:brightness(.97); }
+/* شريط عنوان ملوّن فوق كل برنامج في صفحة الباقة */
+table.data tr.pg-head td, table.data tr.pg-head:hover td{ background:var(--pc); color:#fff;
+  padding:10px 16px; border-top:none; filter:none; }
+table.data tr.pg-head .pg-title{ font-weight:800; font-size:16px; margin-inline-end:18px; }
+table.data tr.pg-head .pg-meta{ font-size:13.5px; margin-inline-end:16px; white-space:nowrap;
+  opacity:.95; }
+table.data tr.pg-gap td, table.data tr.pg-gap:hover td{ background:var(--bg, #fff);
+  border:none; padding:7px; }

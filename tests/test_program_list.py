@@ -269,5 +269,19 @@ assert len({ram["R1"], ram["R3"], ram["R4"], ram["R5"]}) == 4, ram   # الأو�
 assert ram["R1"] == server._PROG_COLORS[0][0] and ram["R3"] == server._PROG_COLORS[1][0]
 allp = colors(c.get("/programs").get_data(as_text=True))
 assert all(allp[k] == v for k, v in ram.items())                # نفس اللون في الصفحتين
+# شريط عنوان ملوّن فوق كل برنامج، والترتيب بتاريخ المغادرة
+form = {k: "" for k in server._PROG_KEYS}
+form.update(code="R5", orig="R5", package="برامج رمضان", name="الوداع",
+            depart_date="2027-01-01", makkah_rooms="5")
+c.post("/programs/save", data=form)
+page = c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
+heads = re.findall(r'<tr class="pg-head" style="--pc:([^"]+)">\s*<td colspan="12">\s*'
+                   r'<span class="pg-title">([^<]+)</span>', page)
+assert [t for _c, t in heads][:2] == ["البرنامج الأول · الوداع", "البرنامج الثاني · —"], heads
+assert len(heads) == 4 and heads[0][0] == server._PROG_COLORS[0][0]
+assert page.count('class="pg-gap"') == 3
+body = page.split("<tbody>")[1]
+assert body.index("<td>R5</td>") < body.index("<td>R1</td>") < body.index("<td>R2</td>") \
+    < body.index("<td>R3</td>")                                   # R2 تحت R1 في شريطه
 print("[ok] لون لكل برنامج في الباقة")
 print("ALL OK")

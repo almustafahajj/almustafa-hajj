@@ -384,7 +384,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-26c · لون لكل برنامج في الباقة"
+_BUILD_TAG = "2026-10-26d · شريط عنوان ملوّن لكل برنامج"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1950,23 +1950,52 @@ _PROG_GROUPS = [
 _PROG_KEYS = [k for _t, fs in _PROG_GROUPS for k, _l, _ty in fs]
 
 
-# ألوان تمييز البرامج داخل الباقة: (لون الشريط، لون خلفية الصفّ)
+# ألوان تمييز البرامج داخل الباقة: (لون شريط العنوان، لون خلفية الصفوف)
 # (بلا أحمر أو أخضر كي لا تُخلط بألوان «متجاوز/مكتمل السعة»)
-_PROG_COLORS = [("#2C5AA0", "#EAF1FB"), ("#8E44AD", "#F4EBF8"),
-                ("#B26A00", "#FDF1DE"), ("#0E7C9B", "#E2F3F8"),
-                ("#B03A7A", "#FAE9F2"), ("#4B4FB5", "#ECECFA"),
-                ("#7A5230", "#F3ECE4"), ("#34495E", "#ECEFF3")]
+_PROG_COLORS = [("#1F5FAD", "#DCE8F8"), ("#7B3FA0", "#EDE0F5"),
+                ("#C26A00", "#FCE6C8"), ("#0B7A99", "#D5EEF5"),
+                ("#A8336F", "#F7DCEA"), ("#3F43A8", "#E0E1F7"),
+                ("#7A5230", "#EEE2D6"), ("#34495E", "#E1E6EC")]
+_ORDINALS = ("الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس",
+             "السابع", "الثامن", "التاسع", "العاشر")
 
 
-def _color_rows(rows) -> None:
-    """يعطي كل برنامج لوناً حسب ترتيبه داخل باقته (الأول لون، الثاني لون…).
-    البرامج المتقاسمة غرف فندق واحدة (طيران آخر بنفس التاريخ) بلون واحد،
-    واللون نفسه في صفحة الباقة وفي قائمة كل البرامج."""
-    order: dict = {}
+def _color_rows(rows, dates: dict = None) -> None:
+    """يرقّم البرامج داخل كل باقة (الأول، الثاني…) حسب تاريخ المغادرة ويعطي
+    كلاً لونه. البرامج المتقاسمة غرف فندق واحدة (طيران آخر بنفس التاريخ)
+    برنامج واحد بلون واحد، واللون نفسه في صفحة الباقة وفي قائمة كل البرامج."""
+    dates = dates or {}
+    first: dict = {}
+    for i, r in enumerate(rows):
+        first.setdefault((r["package"], r["pool"]), i)
+    by_pkg: dict = {}
+    for (pkg, pool), i in first.items():
+        by_pkg.setdefault(pkg, []).append((dates.get(pool) or "9999", i, pool))
+    num = {(pkg, pool): n for pkg, lst in by_pkg.items()
+           for n, (_d, _i, pool) in enumerate(sorted(lst))}
     for r in rows:
-        seen = order.setdefault(r["package"], {})
-        idx = seen.setdefault(r["pool"], len(seen))
-        r["color"], r["tint"] = _PROG_COLORS[idx % len(_PROG_COLORS)]
+        n = num[(r["package"], r["pool"])]
+        r["gnum"] = n + 1
+        r["color"], r["tint"] = _PROG_COLORS[n % len(_PROG_COLORS)]
+
+
+def _program_groups(rows) -> list:
+    """صفوف صفحة الباقة مجمّعة: لكل برنامج شريط عنوان ثم صفوف طيرانه."""
+    rows.sort(key=lambda r: (r["gnum"], r["pool"] != r["code"]))
+    groups: list = []
+    for r in rows:
+        if not groups or groups[-1]["num"] != r["gnum"]:
+            n = r["gnum"]
+            groups.append({"num": n, "color": r["color"], "rows": [],
+                           "ordinal": _ORDINALS[n - 1] if n <= len(_ORDINALS)
+                           else f"رقم {n}"})
+        groups[-1]["rows"].append(r)
+    for g in groups:
+        head = g["rows"][0]
+        g.update(name=head["name"], depart=head["depart"], ret=head["return"],
+                 makkah=head["makkah"], rooms=head["rooms"],
+                 airlines=[(r["airline"], r["code"]) for r in g["rows"]])
+    return groups
 
 
 def _share_choices(trip, trips) -> list:
@@ -2024,7 +2053,7 @@ def programs():
     for r in rows:
         r["package"] = pkg_of.get(r["code"], "")
         r["pool"] = pools[r["code"]][0].code
-    _color_rows(rows)
+    _color_rows(rows, {t.code: str(t.depart_date or "").strip() for t in trips})
     # صفحة باقة مستقلّة (?package=): برامجها فقط + إضافة برامج مسجّلة إليها
     package = (request.args.get("package") or "").strip()
     others = []
@@ -2034,8 +2063,9 @@ def programs():
         # البرنامج يتبع باقة واحدة: لا يُعرض للإضافة إلا ما ليس في باقة
         others = [r for r in rows if not r["package"]]
         rows = [r for r in rows if r["package"] == package]
+    groups = _program_groups(rows) if package else []
     return render_template("programs.html", active="programs", rows=rows,
-                           package=package, others=others,
+                           package=package, others=others, groups=groups,
                            msg=request.args.get("msg", ""), **_ctx())
 
 

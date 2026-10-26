@@ -16,7 +16,7 @@
     <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th><th>الطيران</th>
     <th>السعة</th><th>المتبقّي</th><th>الغرف المتبقّية</th><th>إجراءات</th></tr></thead>
   <tbody>
-  {% for r in rows %}
+  {% macro prow(r) %}
     <tr class="pcol {{ 'rover' if r.over else ('rfull' if r.full else '') }}" style="--pc:{{ r.color }};--pt:{{ r.tint }}">
       <td>{{ r.code }}</td><td>{{ r.name }}</td>
       {% if not package %}<td>{% if r.package %}<a href="{{ url_for('programs', package=r.package) }}">📦 {{ r.package }}</a>{% else %}—{% endif %}</td>{% endif %}
@@ -43,11 +43,29 @@
         {% endif %}
       </td>
     </tr>
+  {% endmacro %}
+  {% if package %}
+  {% for g in groups %}
+    {% if not loop.first %}<tr class="pg-gap"><td colspan="12"></td></tr>{% endif %}
+    <tr class="pg-head" style="--pc:{{ g.color }}"><td colspan="12">
+      <span class="pg-title">البرنامج {{ g.ordinal }} · {{ g.name }}</span>
+      <span class="pg-meta">🛫 المغادرة <bdi dir="ltr">{{ g.depart }}</bdi>{% if g.ret != '—' %} · 🛬 العودة <bdi dir="ltr">{{ g.ret }}</bdi>{% endif %}</span>
+      <span class="pg-meta">✈️ {% for air, code in g.airlines %}{{ air if air != '—' else code }}{% if not loop.last %} + {% endif %}{% endfor %}</span>
+      {% if g.makkah != '—' %}<span class="pg-meta">🏨 {{ g.makkah }}</span>{% endif %}
+      {% for city, avail, used, left in g.rooms %}<span class="pg-meta">🛏 {{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}متبقّي {{ left }}{% endif %}</span>{% endfor %}
+    </td></tr>
+    {% for r in g.rows %}{{ prow(r) }}{% endfor %}
+  {% else %}
+    <tr><td colspan="12" style="text-align:center;color:var(--muted)">
+      لا برامج في هذه الباقة بعد — أضف من البرامج المسجّلة أدناه، أو «➕ برنامج جديد في هذه الباقة».</td></tr>
+  {% endfor %}
+  {% else %}
+  {% for r in rows %}{{ prow(r) }}
   {% else %}
     <tr><td colspan="13" style="text-align:center;color:var(--muted)">
-      {% if package %}لا برامج في هذه الباقة بعد — أضف من البرامج المسجّلة أدناه، أو «➕ برنامج جديد في هذه الباقة».
-      {% else %}لا برامج بعد. أنشئ أوّل برنامج من «➕ برنامج جديد».{% endif %}</td></tr>
+      لا برامج بعد. أنشئ أوّل برنامج من «➕ برنامج جديد».</td></tr>
   {% endfor %}
+  {% endif %}
   </tbody>
 </table>
 
@@ -80,8 +98,8 @@
 {% endif %}
 {% endif %}
 
-<p class="hint-note">🎨 لكل برنامج لون حسب ترتيبه في باقته (البرامج المتقاسمة غرف
-  فندق واحدة بنفس اللون). 🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
+<p class="hint-note">🎨 لكل برنامج لون حسب ترتيبه في باقته بتاريخ المغادرة (البرامج
+  المتقاسمة غرف فندق واحدة برنامج واحد بنفس اللون). 🟩 مكتمل السعة · 🟥 متجاوز السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
   «الغرف المتبقّية» = عدد غرف الفندق في البرنامج − الغرف المشغولة حسب أنواع غرف
   المعتمرين (كل شخصين «ثنائي» غرفة، وكل ثلاثة «ثلاثي» غرفة… والطفل والرضيع بلا
