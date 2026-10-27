@@ -50,15 +50,17 @@
     {% if not loop.first %}<tr class="pg-gap"><td colspan="12"></td></tr>{% endif %}
     {% set g_first, g_last = loop.first, loop.last %}{% set r0 = g.rows[0] %}
     <tr class="pg-head" style="--pc:{{ g.color }};--pf:{{ g.fg }}"><td colspan="12">
-      {% if can_edit and groups|length > 1 %}<span class="pg-move">
-        {% for d, arrow, tip, show in [('up', '▲', 'تقديم البرنامج', not g_first), ('down', '▼', 'تأخير البرنامج', not g_last)] if show %}
+      {% if can_edit and (g.can_up or g.can_down) %}<span class="pg-move">
+        {% for d, arrow, tip, show in [('up', '▲', 'تقديم البرنامج', g.can_up), ('down', '▼', 'تأخير البرنامج', g.can_down)] if show %}
         <form method="post" class="inline" action="{{ url_for('program_package_move') }}">
           <input type="hidden" name="name" value="{{ package }}">
           <input type="hidden" name="group" value="{{ g.key }}">
           <input type="hidden" name="dir" value="{{ d }}">
           <button type="submit" title="{{ tip }}">{{ arrow }}</button></form>
         {% endfor %}</span>{% endif %}
-      <span class="pg-title">البرنامج {{ g.ordinal }} · {% if g.airline %}✈️ {{ g.airline }}{% if g.city %} من {{ g.city }}{% endif %}{% else %}{{ r0.name if r0.name != '—' else r0.code }}{% endif %}</span>
+      {% if g.fixed %}<span class="pg-title">البرنامج {{ g.ordinal }}</span>
+      {% if g.lines %}<span class="pg-meta">✈️ {{ g.lines|join(' + ') }}</span>{% endif %}
+      {% else %}<span class="pg-title">{% if g.show_num %}البرنامج {{ g.ordinal }} · {% endif %}{% if g.airline %}✈️ {{ g.airline }}{% if g.city %} من {{ g.city }}{% endif %}{% else %}{{ r0.name if r0.name != '—' else r0.code }}{% endif %}</span>{% endif %}
       {% if g.rows|length == 1 %}
       {% if g.airline and r0.name != '—' %}<span class="pg-meta">{{ r0.name }}</span>{% endif %}
       <span class="pg-meta">🛫 المغادرة <bdi dir="ltr">{{ r0.depart }}</bdi>{% if r0['return'] != '—' %} · 🛬 العودة <bdi dir="ltr">{{ r0['return'] }}</bdi>{% endif %}</span>
@@ -113,7 +115,9 @@
 {% endif %}
 {% endif %}
 
-<p class="hint-note">🎨 البرنامج في الباقة = خط طيران (الناقل + «المغادرة من»)، وتحته
+<p class="hint-note">🎨 الرحلات المكتوب في اسمها «البرنامج الأول/الثاني/الثالث/الرابع…»
+  تُجمع تحت برنامجها بلونه الثابت: الأول أخضر غامق، الثاني أخضر فاتح، الثالث سماوي،
+  الرابع ذهبي. وغيرها: البرنامج في الباقة = خط طيران (الناقل + «المغادرة من»)، وتحته
   كل رحلاته بتواريخها؛ لكل برنامج رقم ولون حسب ترتيبه، وغيّر الترتيب بالسهمين ▲▼ في
   شريطه. «✅ مكتمل» / «⛔ زيادة» في خانة المتبقّي لحالة السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>

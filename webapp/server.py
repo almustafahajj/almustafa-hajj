@@ -384,7 +384,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-26g · البرنامج = خط طيران بلونه"
+_BUILD_TAG = "2026-10-27a · لون البرنامج حسب المكتوب في اسمه"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2034,11 +2034,20 @@ def _color_rows(rows, trips, orders: dict = None) -> None:
         for i, r in lst:
             key, air, city = lines.get(r["code"], (f"#{r['code']}", "", ""))
             t = tmap.get(r["code"])
+            # «البرنامج الأول/الثاني…» مكتوب في اسم الرحلة (أو ملاحظاتها) يحدّد
+            # برنامجها ولونه — مهما كان طيرانها وترتيبها
+            num = (umrah.program_ordinal(getattr(t, "name", ""))
+                   or umrah.program_ordinal(getattr(t, "notes", "")))
             d = str(getattr(t, "depart_date", "") or "").strip() or "9999"
-            g = groups.setdefault(key, {"key": key, "airline": air, "city": city,
-                                        "first": i, "date": d, "rows": []})
+            g = groups.setdefault(f"@{num}" if num else key, {
+                "key": f"@{num}" if num else key, "num": num,
+                "airline": "" if num else air, "city": "" if num else city,
+                "first": i, "date": d, "rows": [], "lines": []})
             g["date"] = min(g["date"], d)
             g["rows"].append((d, i, r))
+            label = f"{air} من {city}" if air and city else air
+            if label and label not in g["lines"]:
+                g["lines"].append(label)
 
         current = set(groups)
 
@@ -2060,12 +2069,20 @@ def _color_rows(rows, trips, orders: dict = None) -> None:
                 hits = [k for k, e in enumerate(saved) if e in codes]
             return min(hits) if hits else len(saved)
 
-        ordered = sorted(groups.values(), key=lambda g: (pos(g), g["date"], g["first"]))
-        for n, g in enumerate(ordered):
-            band, tint, fg, ink = _PROG_COLORS[n % len(_PROG_COLORS)]
+        # المرقّمة بالاسم أوّلاً برقمها ولون رقمها الثابت (الأول أخضر غامق…)،
+        # ثم بقية الخطوط بالترتيب اليدوي (▲▼) ثم التاريخ، بالألوان التالية
+        fixed = sorted((g for g in groups.values() if g["num"]), key=lambda g: g["num"])
+        free = sorted((g for g in groups.values() if not g["num"]),
+                      key=lambda g: (pos(g), g["date"], g["first"]))
+        top = max((g["num"] for g in fixed), default=0)
+        for k, g in enumerate(fixed + free):
+            n = g["num"] or top + k - len(fixed) + 1
+            band, tint, fg, ink = _PROG_COLORS[(n - 1) % len(_PROG_COLORS)]
             for sub, (_d, _i, r) in enumerate(sorted(g["rows"], key=lambda x: x[:2])):
-                r.update(gnum=n + 1, gsub=sub, gkey=g["key"], color=band, tint=tint,
-                         fg=fg, ink=ink, line_air=g["airline"], line_city=g["city"])
+                r.update(gnum=n, gsub=sub, gkey=g["key"], gfixed=bool(g["num"]),
+                         gnamed=bool(fixed), glines=g["lines"], color=band,
+                         tint=tint, fg=fg, ink=ink, line_air=g["airline"],
+                         line_city=g["city"])
 
 
 def _program_groups(rows) -> list:
@@ -2078,9 +2095,16 @@ def _program_groups(rows) -> list:
             groups.append({"num": n, "key": r["gkey"], "color": r["color"],
                            "fg": r["fg"], "airline": r["line_air"],
                            "city": r["line_city"], "rows": [],
+                           "fixed": r["gfixed"], "lines": r["glines"],
+                           # في باقة فيها «البرنامج الأول…» مكتوبة: لا رقم لغيرها
+                           "show_num": r["gfixed"] or not r["gnamed"],
                            "ordinal": _ORDINALS[n - 1] if n <= len(_ORDINALS)
                            else f"رقم {n}"})
         groups[-1]["rows"].append(r)
+    # الأسهم للبرامج غير المرقّمة بالاسم فقط (المرقّمة ترتيبها رقمها)
+    free = [g for g in groups if not g["fixed"]]
+    for k, g in enumerate(free):
+        g["can_up"], g["can_down"] = k > 0, k < len(free) - 1
     for g in groups:
         g["count"] = sum(r["count"] for r in g["rows"])
         caps = [r for r in g["rows"] if isinstance(r["capacity"], int)]
@@ -2183,7 +2207,7 @@ def program_package_move():
     _color_rows(rows, trips, orders)
     keys: list = []
     for r in sorted(rows, key=lambda r: r["gnum"]):
-        if r["gkey"] not in keys:
+        if not r["gfixed"] and r["gkey"] not in keys:
             keys.append(r["gkey"])
     key = request.form.get("group") or ""
     if key in keys:

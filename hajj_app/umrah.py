@@ -354,6 +354,34 @@ def split_airline(text) -> tuple:
     return disp, city
 
 
+_ORDINAL_WORDS = {"اول": 1, "الاول": 1, "ثاني": 2, "الثاني": 2, "ثالث": 3,
+                  "الثالث": 3, "رابع": 4, "الرابع": 4, "الرايع": 4, "خامس": 5,
+                  "الخامس": 5, "سادس": 6, "السادس": 6, "سابع": 7, "السابع": 7,
+                  "ثامن": 8, "الثامن": 8, "تاسع": 9, "التاسع": 9, "عاشر": 10,
+                  "العاشر": 10}
+
+
+def program_ordinal(text) -> int:
+    """رقم البرنامج المكتوب في النصّ: «البرنامج الأول» → 1، «برنامج رقم 3» → 3،
+    «البرنامج الرابع - الاتحاد» → 4؛ و0 إن لم يُكتب."""
+    toks = [n for _w, n in _tokens(text)]
+    for i, w in enumerate(toks):
+        if w not in ("البرنامج", "برنامج"):
+            continue
+        nxt = toks[i + 1:i + 3]
+        if nxt and nxt[0] == "رقم":
+            nxt = nxt[1:]
+        if not nxt:
+            continue
+        if nxt[0].isdigit():
+            v = int(nxt[0])
+            if 0 < v < 100:
+                return v
+        elif nxt[0] in _ORDINAL_WORDS:
+            return _ORDINAL_WORDS[nxt[0]]
+    return 0
+
+
 def program_lines(trips: list) -> dict:
     """يجمع برامج باقةٍ في «خطوط طيران» (الناقل + مدينة المغادرة).
 

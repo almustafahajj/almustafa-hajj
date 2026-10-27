@@ -485,4 +485,45 @@ form.update(code="QZ2", orig="QZ", package=PO, depart_date="2027-01-07")
 c.post("/programs/save", data=form)
 assert po_bands()[0][1] == "#QZ2"
 print("[ok] البرنامج = خط طيران بلونه في الباقة + ترتيب ▲▼")
+
+# ---- 6) «البرنامج الأول/الثاني…» المكتوب في اسم الرحلة يحدّد برنامجها ولونه ----
+assert umrah.program_ordinal("البرنامج الأول") == 1
+assert umrah.program_ordinal("البرنامج الاول - السعودي") == 1
+assert umrah.program_ordinal("رمضان البرنامج الثاني") == 2
+assert umrah.program_ordinal("البرنامج الرايع") == 4                 # خطأ كتابة شائع
+assert umrah.program_ordinal("برنامج رقم 3") == 3 and umrah.program_ordinal("رمضان 1") == 0
+PN = "رمضان بالأسماء"
+c.post("/programs/packages/add", data={"name": PN})
+named = (("N2", "البرنامج الثاني", "الطيران السعودي", "دبي", "2027-02-01"),
+         ("N4", "البرنامج الرابع", "الاتحاد", "", "2027-02-02"),
+         ("N1", "البرنامج الأول", "الطيران السعودي", "أبوظبي", "2027-02-20"),
+         ("N3", "البرنامج الثالث", "فلاي دبي", "", "2027-02-03"),
+         ("N1b", "البرنامج الأول", "الاتحاد", "", "2027-02-25"),      # طيران آخر
+         ("N4b", "البرنامج الرايع", "الاتحاد", "", "2027-03-01"),
+         ("NX", "رحلة خاصة", "طيران الإمارات", "", "2027-01-01"))
+for code, name, air, city, dep in named:
+    form = {k: "" for k in server._PROG_KEYS}
+    form.update(code=code, package=PN, name=name, airline=air, depart_city=city,
+                depart_date=dep)
+    c.post("/programs/save", data=form)
+page = c.get("/programs", query_string={"package": PN}).get_data(as_text=True)
+heads = re.findall(r'<tr class="pg-head" style="--pc:([^;]+);--pf:[^"]+">.*?'
+                   r'<span class="pg-title">([^<]+)</span>', page, re.S)
+assert [t for _c, t in heads] == ["البرنامج الأول", "البرنامج الثاني", "البرنامج الثالث",
+                                  "البرنامج الرابع", "✈️ طيران الإمارات"], heads
+assert [c_ for c_, _t in heads] == [p[0] for p in server._PROG_COLORS[:5]]
+body = page.split("<tbody>")[1]
+assert re.findall(r"<td>(N\w*)</td>", body) == ["N1", "N1b", "N2", "N3", "N4", "N4b", "NX"]
+rc = dict((code, col) for col, code in re.findall(
+    r'<tr class="pcol" style="--pc:([^;]+);[^"]*">\s*<td>(\w+)</td>', page))
+GD, GL, SK, GO = (p[0] for p in server._PROG_COLORS[:4])
+assert rc["N1"] == rc["N1b"] == GD and rc["N2"] == GL and rc["N3"] == SK
+assert rc["N4"] == rc["N4b"] == GO
+assert "✈️ الطيران السعودي من أبوظبي + الاتحاد" in page          # طيرانات البرنامج الأول
+assert 'name="dir"' not in page          # ترتيب المرقّمة رقمها (والباقي برنامج واحد)
+allp = dict((code, col) for col, code in re.findall(
+    r'<tr class="pcol" style="--pc:([^;]+);[^"]*">\s*<td>(\w+)</td>',
+    c.get("/programs").get_data(as_text=True)))
+assert all(allp[k] == v for k, v in rc.items())                  # نفس اللون في الصفحتين
+print("[ok] «البرنامج الأول…» في الاسم: برنامجه ولونه ثابتان")
 print("ALL OK")
