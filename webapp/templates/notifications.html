@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}الإشعارات — المصطفى{% endblock %}
+{% block heading %}🔔 الإشعارات{% endblock %}
+{% block subhead %}<div class="season">ما يحتاج انتباهاً الآن في نظام {{ theme.noun }} — يُحدَّث تلقائياً من البيانات</div>{% endblock %}
+{% block content %}
+{% if items %}
+<div class="alerts-box">
+  {% for a in items %}
+  <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon }} {{ a.text }}</a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="acc-msg ok">✅ لا شيء يحتاج انتباهاً الآن.</div>
+{% endif %}
+<p class="hint-note">🟥 عاجل (تجاوز السعة أو الغرف، سداد ناقص قبل المغادرة بأسبوع) ·
+  🟧 تنبيه (غرف قاربت النفاد، جوازات تنتهي قبل ٦ أشهر من السفر، سداد ناقص قبل المغادرة
+  بشهر) · 🟦 للعلم (مغادرة خلال أسبوعين، اكتمال المقاعد). الرقم على الجرس = العاجل
+  والتنبيهات.</p>
+{% endblock %}

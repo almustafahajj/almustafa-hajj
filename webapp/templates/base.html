@@ -81,7 +81,13 @@
           {% block subhead %}{% endblock %}
         </div>
       </div>
+      <form class="tb-search" method="get" action="{{ url_for('search_page') }}" role="search">
+        <input name="q" value="{{ search_q }}" placeholder="🔎 بحث سريع: اسم، جواز، هاتف، رقم مرجعي، برنامج، عرض سعر…"
+               aria-label="بحث سريع" autocomplete="off">
+      </form>
       <div class="actions">
+        <a class="pill bell {{ 'has' if alert_count }}" href="{{ url_for('notifications') }}"
+           title="الإشعارات">🔔{% if alert_count %}<span class="bell-n">{{ alert_count }}</span>{% endif %}</a>
         <button class="pill install-btn" id="installBtn" type="button" hidden>📲 تثبيت التطبيق</button>
         <span class="mode-badge" title="أنت الآن في نظام {{ theme.noun }}">{{ theme.icon }} نظام {{ theme.noun }}</span>
         <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}{{ season_suffix }}</a>

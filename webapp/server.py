@@ -452,9 +452,12 @@ def dashboard():
               "remaining": format_amount(pf.remaining) or "0",
               "pct": pf.collected_percent}
              for name, pf in _by_group(records)]
+    pcards = (_package_cards(records, storage.load_settings())
+              if _mode() == app_mode.UMRAH else [])
+    alerts_top = [dict(a, link=_alert_link(a)) for a in _alerts()[:6]]
     return render_template(
-        "dashboard.html", kpis=kpis, progs=progs, active="dashboard",
-        **_ctx())
+        "dashboard.html", kpis=kpis, progs=progs, pcards=pcards,
+        alerts_top=alerts_top, active="dashboard", **_ctx())
 
 
 # الحج: سنة هجرية (هـ) — العمرة: سنة ميلادية (م)
@@ -725,10 +728,144 @@ def _ctx() -> dict:
         packages=_side_packages(),
         season=_season(), season_suffix=_season_suffix(),
         is_admin=bool(s is not None and s.is_admin),
-        can_edit=bool(s is not None and s.can_edit))
+        can_edit=bool(s is not None and s.can_edit),
+        alert_count=_alert_count(),
+        search_q=(request.args.get("q") or "") if request.endpoint == "search_page" else "")
 
 
-_BUILD_TAG = "2026-10-28b · تطبيق قابل للتثبيت + عرض الجوال"
+# ---- الإشعارات (تُحسب من البيانات، وتُخزَّن مؤقّتاً حتى تتغيّر الملفّات) ----
+_ALERTS_CACHE: dict = {}
+
+
+def _alerts() -> list:
+    """إشعارات النظام الحالي — تُعاد حسابها فقط حين يتغيّر ملف البيانات أو
+    الإعدادات أو اليوم."""
+    from datetime import date as _date
+    from webapp import alerts as _al
+    if _sess() is None:
+        return []
+    def _mt(p):
+        try:
+            return os.path.getmtime(p)
+        except OSError:
+            return 0
+    key = (_mode(), _mt(storage.default_data_path()), _mt(storage.settings_path()),
+           _date.today().isoformat())
+    hit = _ALERTS_CACHE.get(key)
+    if hit is None:
+        try:
+            records = _load_records()
+            settings = storage.load_settings()
+            hit = (_al.umrah_alerts(records, settings) if _mode() == app_mode.UMRAH
+                   else _al.hajj_alerts(records, settings))
+        except Exception:                          # noqa: BLE001
+            hit = []
+        _ALERTS_CACHE.clear()
+        _ALERTS_CACHE[key] = hit
+    return hit
+
+
+def _alert_count() -> int:
+    try:
+        return sum(1 for a in _alerts() if a["level"] in ("danger", "warn"))
+    except Exception:                              # noqa: BLE001
+        return 0
+
+
+def _alert_link(a: dict) -> str:
+    k, ref = a.get("kind"), a.get("ref")
+    if k == "program" and ref:
+        return url_for("program_edit", code=ref)
+    if k == "finance":
+        return url_for("finance")
+    if k == "quality":
+        return url_for("quality_report")
+    if k == "travel":
+        return url_for("travel_list")
+    return url_for("dashboard")
+
+
+@app.get("/notifications")
+def notifications():
+    if _sess() is None:
+        return redirect(url_for("login"))
+    items = [dict(a, link=_alert_link(a)) for a in _alerts()]
+    return render_template("notifications.html", active="notifications",
+                           items=items, **_ctx())
+
+
+@app.get("/search")
+def search_page():
+    """البحث السريع الشامل (خانة أعلى كل صفحة)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from webapp import search as _sr
+    q = (request.args.get("q") or "").strip()
+    groups = []
+    if q:
+        records = _load_records()
+        try:
+            docs = storage.load_documents(session=_sess())
+        except Exception:                          # noqa: BLE001
+            docs = []
+        groups = _sr.search(q, records, storage.load_settings(), _mode(), docs)
+        for g in groups:
+            for it in g["items"]:
+                k, ref = it["kind"], it["ref"]
+                if k == "record":
+                    it["link"] = url_for("hujjaj_edit", idx=ref,
+                                         fp=_rec_token(records[ref]))
+                    it["extra"] = url_for("record_docs", idx=ref,
+                                          fp=_rec_token(records[ref]))
+                elif k == "program":
+                    it["link"] = url_for("program_edit", code=ref)
+                elif k == "package":
+                    it["link"] = url_for("programs", package=ref)
+                elif k == "quote":
+                    it["link"] = url_for("quote_edit", code=ref[0], num=ref[1])
+                elif k == "pricing":
+                    it["link"] = url_for("pricing_edit", num=ref)
+                elif k == "archive":
+                    it["link"] = url_for("archive_pdf", doc_id=ref)
+        # نتيجة واحدة فقط ← افتحها مباشرة
+        if len(groups) == 1 and groups[0]["total"] == 1:
+            return redirect(groups[0]["items"][0]["link"])
+    return render_template("search.html", active="search", q=q, groups=groups,
+                           total=sum(g["total"] for g in groups), **_ctx())
+
+
+def _package_cards(records, settings) -> list:
+    """بطاقة لكل باقة برامج (العمرة): الرحلات، المعتمرون، المقاعد، أقرب مغادرة."""
+    from datetime import date as _date
+    from hajj_app import umrah
+    from webapp.alerts import _d
+    trips = umrah.load_trips(settings)
+    today = _date.today()
+    cards = []
+    for i, pkg in enumerate(umrah.load_packages(settings)):
+        ts = [t for t in trips if str(t.package or "").strip() == pkg]
+        n = cap = 0
+        upcoming = []
+        for t in ts:
+            k = len(umrah.trip_pilgrims(records, t.code))
+            n += k
+            try:
+                cap += int(float(str(t.capacity or "").strip() or 0))
+            except ValueError:
+                pass
+            d = _d(t.depart_date)
+            if d and d >= today:
+                upcoming.append(d)
+        band = _PROG_COLORS[i % len(_PROG_COLORS)][0]
+        cards.append({"name": pkg, "trips": len(ts), "count": n, "cap": cap,
+                      "left": cap - n if cap else None,
+                      "pct": min(100, round(n * 100 / cap)) if cap else 0,
+                      "next": min(upcoming).isoformat() if upcoming else "",
+                      "color": band, "link": url_for("programs", package=pkg)})
+    return cards
+
+
+_BUILD_TAG = "2026-10-28c · البحث السريع + الإشعارات + بطاقات الباقات"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 

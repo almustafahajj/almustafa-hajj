@@ -2,6 +2,15 @@
 {% block title %}لوحة التحكم — المصطفى{% endblock %}
 {% block heading %}لوحة التحكم — {{ '🕋 الحج' if mode=='hajj' else '🌙 العمرة' }}{% endblock %}
 {% block content %}
+{% if alerts_top %}
+<div class="alerts-box">
+  <div class="alerts-head"><b>🔔 يحتاج انتباهك</b>
+    <a href="{{ url_for('notifications') }}">كل الإشعارات ←</a></div>
+  {% for a in alerts_top %}
+  <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon }} {{ a.text }}</a>
+  {% endfor %}
+</div>
+{% endif %}
 <div class="kpis">
   {% for k in kpis %}
   <div class="card">
@@ -13,6 +22,24 @@
   </div>
   {% endfor %}
 </div>
+
+{% if pcards %}
+<div class="section-title">📦 الباقات</div>
+<div class="kpis">
+  {% for p in pcards %}
+  <a class="card pkg-card" href="{{ p.link }}" style="--pc:{{ p.color }}">
+    <div class="strip" style="background:{{ p.color }}"></div>
+    <div class="pkg-name">📦 {{ p.name }}</div>
+    <div class="pkg-stats">
+      <span>🗂 {{ p.trips }} برنامج</span><span>👥 {{ p.count }} معتمر</span>
+      {% if p.cap %}<span>🪑 {% if p.left < 0 %}<b style="color:#C0392B">زيادة {{ -p.left }}</b>{% else %}متبقٍّ {{ p.left }} من {{ p.cap }}{% endif %}</span>{% endif %}
+    </div>
+    {% if p.cap %}<div class="bar"><i style="width:{{ p.pct }}%;background:{{ p.color }}"></i></div>{% endif %}
+    <div class="sub">{% if p.next %}✈️ أقرب مغادرة: {{ p.next }}{% else %}لا مغادرة قادمة{% endif %}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
 
 <div class="section-title">المالية حسب البرنامج</div>
 <table class="data">

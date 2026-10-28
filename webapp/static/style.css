@@ -428,3 +428,37 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
   table.data tr.pg-head .pg-meta{ white-space:normal; display:inline-block; }
   .login-card{ padding:22px 18px; }
 }
+
+/* ---- البحث السريع + الإشعارات + بطاقات الباقات ---- */
+.tb-search{ flex:1; max-width:460px; min-width:180px; }
+.tb-search input{ width:100%; font:inherit; font-size:14px; border:1px solid var(--border);
+  border-radius:22px; padding:9px 16px; background:var(--soft); color:var(--ink); }
+.tb-search input:focus{ outline:none; border-color:var(--bronze); background:#fff; }
+.pill.bell{ position:relative; padding:7px 12px; }
+.pill.bell .bell-n{ position:absolute; top:-6px; inset-inline-start:-6px; background:#C0392B;
+  color:#fff; font-size:11px; font-weight:800; border-radius:10px; min-width:18px;
+  padding:1px 5px; text-align:center; box-shadow:0 1px 4px #0004; }
+.alerts-box{ background:var(--panel); border:1px solid var(--border); border-radius:16px;
+  padding:12px 14px; margin-bottom:16px; box-shadow:0 4px 14px #6e543a0f; }
+.alerts-head{ display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:8px; }
+.alert-row{ display:block; padding:8px 12px; border-radius:10px; margin:4px 0; color:var(--ink);
+  border-inline-start:5px solid #888; background:var(--soft); font-size:14px; }
+.alert-row:hover{ filter:brightness(.97); }
+.alert-row.lv-danger{ border-color:#C0392B; background:#fbeae7; }
+.alert-row.lv-warn{ border-color:#C26A00; background:#fdf2e2; }
+.alert-row.lv-info{ border-color:#1F5FAD; background:#e8f0fb; }
+.pkg-card{ display:block; color:var(--ink); text-decoration:none; }
+.pkg-card:hover{ border-color:var(--pc); }
+.pkg-name{ font-weight:800; font-size:17px; margin:2px 0 8px; }
+.pkg-stats{ display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13.5px; margin-bottom:8px; }
+.search-group{ margin-bottom:16px; }
+.search-group h3{ margin:0 0 8px; color:var(--bronze); font-size:16px; }
+.search-item{ display:flex; justify-content:space-between; align-items:center; gap:10px;
+  padding:10px 14px; background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; margin:6px 0; }
+.search-item .t{ font-weight:700; }
+.search-item .s{ color:var(--muted); font-size:13px; }
+@media (max-width:760px){
+  .tb-search{ order:3; max-width:none; width:100%; flex-basis:100%; }
+}
