@@ -26,13 +26,14 @@
         <a class="navlink {{ 'active' if active=='groups' }}" href="{{ url_for('groups_page') }}">المجموعات والمرشدون</a>
       </details>
 
-      <details class="nav-group" {% if active in ['programs','travel','camps','occupancy'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['programs','travel','camps','occupancy','calendar'] %}open{% endif %}>
         <summary><span class="ng-ic" style="background:#2E7D5B"><svg viewBox="0 0 20 20"><rect x="4.5" y="4" width="11" height="13" rx="2"/><path d="M8 4V3.2h4V4"/><path d="M7.3 11l1.8 1.8 3.5-3.5"/></svg></span> العمليات</summary>
         {% if mode=='umrah' %}<a class="navlink {{ 'active' if active=='programs' and not package }}" href="{{ url_for('programs') }}">برامج العمرة</a>
         {% for p in packages %}<a class="navlink subnav {{ 'active' if active=='programs' and package==p }}" href="{{ url_for('programs', package=p) }}">📦 {{ p }}</a>{% endfor %}{% endif %}
         {% if mode=='hajj' %}<a class="navlink {{ 'active' if active=='travel' }}" href="{{ url_for('travel_list') }}">مواعيد وتعليمات السفر</a>{% endif %}
         {% if mode=='hajj' %}<a class="navlink {{ 'active' if active=='camps' }}" href="{{ url_for('camps_page') }}">تسكين المخيمات</a>{% endif %}
         <a class="navlink {{ 'active' if active=='occupancy' }}" href="{{ url_for('occupancy') }}">إشغال الغرف</a>
+        <a class="navlink {{ 'active' if active=='calendar' }}" href="{{ url_for('calendar_page') }}">تقويم الرحلات</a>
       </details>
 
       <details class="nav-group" {% if active in ['finance','expenses','offers'] %}open{% endif %}>

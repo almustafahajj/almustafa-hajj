@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>برنامجي — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body class="mode-{{ (p or {}).get('mode') or 'umrah' }}">
+<div class="login-wrap">
+  <div class="login-card pub-card">
+    <img class="pub-logo" src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="المصطفى للحج والعمرة">
+    {% if p %}
+    <h1>أهلاً {{ p.first }} 🤍</h1>
+    <p class="sub">تقبّل الله منك — هذه تفاصيل رحلتك مع المصطفى للحج والعمرة{% if info.group %}<br><b>{{ info.group }}</b>{% endif %}</p>
+    {% if info.rows %}
+    <table class="pub-tbl">
+      {% for k, v in info.rows %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="sub">ستظهر تفاصيل رحلتك هنا عند اكتمالها.</p>{% endif %}
+    {% if docs %}
+    <h3 class="pub-h">📄 مستنداتك</h3>
+    {% for link, title, num in docs %}
+    <a class="btn primary" style="display:block;margin:6px 0;text-align:center" href="{{ link }}">{{ title }} {{ num }}</a>
+    {% endfor %}
+    {% endif %}
+    {% if info.phones %}
+    <h3 class="pub-h">📞 للطوارئ</h3>
+    {% for k, v in info.phones %}<p class="sub" style="margin:4px 0">{{ k }}: <a href="tel:{{ v|replace(' ', '') }}" dir="ltr">{{ v }}</a></p>{% endfor %}
+    {% endif %}
+    {% else %}
+    <div class="pub-bad">❌ الرابط غير صالح أو أُلغي</div>
+    <p class="sub">اطلب من مكتب المصطفى رابطاً جديداً.</p>
+    {% endif %}
+  </div>
+</div>
+</body></html>

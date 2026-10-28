@@ -113,13 +113,14 @@ def hajj_alerts(records, settings, today: date | None = None) -> list:
     from hajj_app import programs as hp
     today = today or date.today()
     out: list = []
-    for p in hp.load_programs(settings):
+    # برامج الحج بأسمائها الثابتة (البرنامج الأول/الثاني/الثالث) بالترتيب
+    for name, p in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
         dep = _d(p.travel_date)
-        if not p.name or (dep and dep < today):
+        if dep and dep < today:
             continue
-        recs = [r for r in records if str(getattr(r, "program", "") or "") == p.name]
+        recs = [r for r in records if str(getattr(r, "program", "") or "") == name]
         if recs:
-            _common(out, p.name, p.name, recs, dep, today, "travel")
+            _common(out, name, name, recs, dep, today, "travel")
     return _sorted(out)
 
 

@@ -3634,7 +3634,14 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     sig_cell = [Paragraph(ar(data.get("office_title") or "مدير المكتب"), sig),
                 Spacer(1, 2),
                 Paragraph(ar(data.get("office_manager") or ""), sig)]
-    sig_tbl = Table([[sig_cell]], colWidths=[W])
+    _qr = (_qr_drawing(str(data.get("verify_url")), 60)
+           if str(data.get("verify_url") or "").strip() else None)
+    if _qr is not None:                    # رمز التحقّق (البورتال)
+        _cap = ParagraphStyle("tqrc", parent=st["cell"], alignment=1, fontSize=7)
+        sig_tbl = Table([[sig_cell, [_qr, Paragraph(ar("امسح للتحقّق"), _cap)]]],
+                        colWidths=[W - 76, 76])
+    else:
+        sig_tbl = Table([[sig_cell]], colWidths=[W])
     sig_tbl.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (0, 0), (0, 0), "LEFT"),
@@ -3914,7 +3921,12 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         # عمود الختم: كلمة «الختم» فوق مربّع الشعار (بلا نصّ إنجليزي)
         s_title = "Stamp" if L else "الختم"
         stamp_logo = _logo_cell(_LOGO_PATH, 46)
-        stamp_box = Table([[stamp_logo]], colWidths=[(1 - cwv) * W * 0.9])
+        # رمز التحقّق (البورتال): يُمسح فيفتح صفحة تؤكّد صحّة الفاوتشر
+        _qr = (_qr_drawing(str(data.get("verify_url")), 46)
+               if str(data.get("verify_url") or "").strip() else None)
+        _bw = (1 - cwv) * W * 0.9
+        stamp_box = (Table([[stamp_logo, _qr]], colWidths=[_bw - 54, 54]) if _qr
+                     else Table([[stamp_logo]], colWidths=[_bw]))
         stamp_box.setStyle(TableStyle([
             ("BOX", (0, 0), (-1, -1), 0.8, _ACCENT),
             ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFAF6")),
@@ -3942,6 +3954,17 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
         ]))
         story.append(combo)
         story.append(Spacer(1, 4))
+    elif str(data.get("verify_url") or "").strip():
+        # بلا جهات تواصل (فلا مربّع ختم): رمز التحقّق وحده في الطرف
+        _qr = _qr_drawing(str(data.get("verify_url")), 52)
+        if _qr is not None:
+            _cap = ParagraphStyle("vqrc", parent=st["cell"], alignment=1, fontSize=7)
+            _t = Table([["", [_qr, Paragraph(ar("امسح للتحقّق" if not L else
+                                                  "Scan to verify"), _cap)]]],
+                       colWidths=[W - 64, 64] if L else [W - 64, 64])
+            _t.setStyle(TableStyle([("ALIGN", (1, 0), (1, 0), "CENTER")]))
+            story.append(Spacer(1, 4))
+            story.append(_t)
 
     # ---- الشروط والأحكام (ثابتة) — عمودان لتوفير الارتفاع (صفحة واحدة) ----
     terms = [t for t in data.get("terms", []) if str(t or "").strip()]

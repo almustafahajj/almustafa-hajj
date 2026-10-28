@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>التحقّق من مستند — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body class="mode-{{ (d or {}).get('mode') or 'umrah' }}">
+<div class="login-wrap">
+  <div class="login-card pub-card">
+    <img class="pub-logo" src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="المصطفى للحج والعمرة">
+    {% if d %}
+    <div class="pub-ok">✅ مستند صحيح صادر من المصطفى للحج والعمرة</div>
+    <table class="pub-tbl">
+      <tr><th>نوع المستند</th><td>{{ title }}</td></tr>
+      <tr><th>الرقم</th><td dir="ltr">{{ d.number or '—' }}</td></tr>
+      <tr><th>تاريخ المستند</th><td dir="ltr">{{ d.date or d.issued[:10] }}</td></tr>
+      <tr><th>الاسم</th><td>{{ d.guest }}</td></tr>
+      {% for s in d.stays or [] %}
+      <tr><th>🏨 {{ s[0] }}</th><td>{{ s[1] }}{% if s[2] %}<br><span class="muted" dir="ltr">{{ s[2] }} → {{ s[3] }}</span>{% endif %}{% if s[4] %} · {{ s[4] }} ليالٍ{% endif %}</td></tr>
+      {% endfor %}
+      {% if d.moves %}<tr><th>🚐 التنقّلات</th><td>{{ d.moves }} حركة{% if d['from'] %}<br><span class="muted" dir="ltr">{{ d['from'] }} → {{ d['to'] }}</span>{% endif %}</td></tr>{% endif %}
+      <tr><th>آخر تحديث</th><td dir="ltr">{{ (d.updated or '')[:16]|replace('T', ' ') }}</td></tr>
+    </table>
+    <p class="sub" style="font-size:12px">تطابق هذه البيانات المطبوعة على المستند. لأي استفسار تواصل مع مكتب المصطفى.</p>
+    {% else %}
+    <div class="pub-bad">❌ لا يوجد مستند بهذا الرمز</div>
+    <p class="sub">قد يكون الرمز منسوخاً بشكل خاطئ أو المستند غير صادر منّا. تواصل مع مكتب المصطفى للتأكّد.</p>
+    {% endif %}
+  </div>
+</div>
+</body></html>

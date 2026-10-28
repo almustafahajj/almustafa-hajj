@@ -604,7 +604,8 @@ def _csrf_inject(resp):
 
 # ---- إلزام الدخول بخطوتين (إن فعّله المدير لكل الحسابات) ----
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
-             "setup", "recover", "switch", "index", "service_worker"}
+             "setup", "recover", "switch", "index", "service_worker",
+             "verify_doc", "person_page"}
 
 
 @app.before_request
@@ -865,7 +866,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28c · البحث السريع + الإشعارات + بطاقات الباقات"
+_BUILD_TAG = "2026-10-28d · QR للتحقّق + رابط المعتمر + تقويم الرحلات"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1304,6 +1305,180 @@ def doc_manual(kind):
         build=_BUILD_ID)
 
 
+def _attach_verify(kind: str, data: dict, uid: str = "") -> None:
+    """يسجّل الفاوتشر/طلب المواصلات في سجلّ التحقّق العام ويضع رابطه في البيانات
+    (فيُرسم QR على المستند، ويبقى عند إعادة توليده من الأرشيف)."""
+    if kind not in ("voucher", "treq") or not isinstance(data, dict):
+        return
+    from webapp import public
+    guest = (data.get("guest_ar") or data.get("guest_en") or data.get("to")
+             or data.get("name") or "")
+    info = {"mode": _mode(), "kind": kind, "number": str(data.get("number") or ""),
+            "date": str(data.get("date") or ""), "guest": public.mask_name(guest),
+            "uid": uid or ""}
+    if kind == "voucher":
+        info["stays"] = [[str(x or "") for x in (list(r)[:2] + list(r)[5:8])]
+                         for r in (data.get("stays") or [])
+                         if isinstance(r, (list, tuple)) and len(r) >= 8
+                         and str(r[1] or "").strip()]
+    else:
+        days = sorted(str(m[0]) for m in (data.get("movements") or [])
+                      if isinstance(m, (list, tuple)) and m and str(m[0] or "").strip())
+        info["moves"] = len(days)
+        info["from"], info["to"] = (days[0], days[-1]) if days else ("", "")
+    try:
+        tok = public.doc_token(info)
+        data["verify_url"] = url_for("verify_doc", token=tok, _external=True)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+@app.get("/v/<token>")
+def verify_doc(token):
+    """صفحة عامة يفتحها مسح QR المستند: تؤكّد أنه صادر من المصطفى (بلا دخول)."""
+    from webapp import public
+    d = public.get_doc(token)
+    return render_template("public_verify.html", d=d,
+                           title=_DOC_TITLES.get((d or {}).get("kind"), ("مستند", ""))[0]
+                           ), (200 if d else 404)
+
+
+@app.get("/p/<token>")
+def person_page(token):
+    """صفحة المعتمر الخاصة (رابط سرّي يُرسل له): برنامجه ورحلته وفندقه
+    ومستنداته — تُقرأ بيانات البرنامج حيّةً من الإعدادات."""
+    from webapp import public
+    p = public.get_person(token)
+    if not p:
+        return render_template("public_person.html", p=None), 404
+    mode = p.get("mode") if p.get("mode") in app_mode.MODES else app_mode.UMRAH
+    app_mode.set_mode(mode)
+    settings = storage.load_settings()
+    info = {"group": p.get("group", ""), "rows": [], "phones": []}
+    if mode == app_mode.UMRAH:
+        from hajj_app import umrah
+        t = next((x for x in umrah.load_trips(settings) if x.code == p.get("group")), None)
+        if t:
+            info["group"] = t.name or t.code
+            fl = lambda f, a, b: " · ".join(x for x in (f, a and f"إقلاع {a}",
+                                                        b and f"وصول {b}") if x)
+            info["rows"] = [r for r in [
+                ("✈️ الطيران", " — ".join(x for x in (t.airline, t.depart_city and
+                                                      f"من {t.depart_city}") if x)),
+                ("🛫 المغادرة", t.depart_date), ("رحلة الذهاب", fl(t.flight_out,
+                    t.out_depart_time, t.out_arrive_time)),
+                ("🛬 العودة", t.return_date), ("رحلة العودة", fl(t.flight_ret,
+                    t.ret_depart_time, t.ret_arrive_time)),
+                ("🏨 فندق مكة", " · ".join(x for x in (t.makkah_hotel, t.makkah_nights
+                                                      and f"{t.makkah_nights} ليالٍ") if x)),
+                ("🏨 فندق المدينة", " · ".join(x for x in (t.madinah_hotel, t.madinah_nights
+                                                          and f"{t.madinah_nights} ليالٍ") if x)),
+                ("🚐 النقل", t.transport)] if r[1]]
+            info["phones"] = [x for x in (("طوارئ الإمارات", t.emergency_uae),
+                                          ("طوارئ السعودية", t.emergency_ksa)) if x[1]]
+    else:
+        from hajj_app import programs as hp
+        for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
+            if nm == p.get("group"):
+                info["rows"] = [r for r in [
+                    ("✈️ الناقل", pr.carrier), ("🛫 السفر", pr.travel_date),
+                    ("رحلة الذهاب", pr.flight_out), ("🛬 العودة", pr.return_date),
+                    ("رحلة العودة", pr.flight_ret), ("🏨 الفندق", pr.hotel)] if r[1]]
+    if p.get("room"):
+        info["rows"].append(("🛏 نوع الغرفة", p["room"]))
+    docs = [(url_for("verify_doc", token=t), _DOC_TITLES.get(d.get("kind"), ("مستند", ""))[0],
+             d.get("number", "")) for t, d in public.person_docs(mode, p.get("uid"))]
+    return render_template("public_person.html", p=p, info=info, docs=docs,
+                           noun="الحاج" if mode == app_mode.HAJJ else "المعتمر")
+
+
+@app.post("/hujjaj/<int:idx>/link")
+def person_link(idx):
+    """إنشاء/تجديد/إلغاء رابط المعتمر الخاص (للمحرّرين)."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from webapp import public
+    records = _load_records()
+    j = _resolve_idx(records, idx, request.form.get("fp"))
+    if j is None or not _sess().can_edit:
+        return redirect(url_for("hujjaj"))
+    rec = records[j]
+    uid = getattr(rec, "uid", "") or ""
+    action = request.form.get("action") or "create"
+    name = rec.full_name_ar or rec.full_name_en or ""
+    if action == "revoke":
+        public.revoke_person(_mode(), uid)
+        _audit("إلغاء رابط معتمر", name)
+    else:
+        public.person_token(_mode(), uid, {
+            "first": (name.split() or [""])[0], "group": getattr(rec, _group_attr(), "") or "",
+            "room": rec.room_type or ""}, rotate=(action == "rotate"))
+        _audit("رابط معتمر" + (" (تجديد)" if action == "rotate" else ""), name)
+    return redirect(url_for("record_docs", idx=j, fp=_rec_token(rec)))
+
+
+@app.get("/calendar")
+def calendar_page():
+    """تقويم الرحلات: مغادرة وعودة كل برنامج على أيام الشهر، بألوان البرامج."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    import calendar as _cal
+    from datetime import date as _date
+    from webapp.alerts import _d
+    today = _date.today()
+    try:
+        y, m = (int(x) for x in (request.args.get("m") or "").split("-")[:2])
+        first = _date(y, m, 1)
+    except (ValueError, TypeError):
+        first = today.replace(day=1)
+    settings = storage.load_settings()
+    records = _load_records()
+    events: dict = {}
+
+    def add(d, ev):
+        if d and d.year == first.year and d.month == first.month:
+            events.setdefault(d.day, []).append(ev)
+
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        trips = umrah.load_trips(settings)
+        rows = [{"code": t.code, "package": str(t.package or "").strip()} for t in trips]
+        _color_rows(rows, trips, _pkg_orders(settings))
+        col = {r["code"]: r for r in rows}
+        for t in trips:
+            n = len(umrah.trip_pilgrims(records, t.code))
+            c = col.get(t.code, {})
+            base = {"label": f"{t.code} {t.name or ''}".strip(), "n": n,
+                    "color": c.get("color", "#1F5FAD"), "fg": c.get("fg", "#fff"),
+                    "link": url_for("program_edit", code=t.code),
+                    "sub": " · ".join(x for x in (t.airline, t.package) if x)}
+            add(_d(t.depart_date), dict(base, icon="🛫"))
+            add(_d(t.return_date), dict(base, icon="🛬"))
+    else:
+        from hajj_app import programs as hp
+        for i, (nm, pr) in enumerate(zip(hp.PROGRAM_NAMES, hp.load_programs(settings))):
+            n = sum(1 for r in records if (r.program or "") == nm)
+            band, _t, fg, _i = _PROG_COLORS[i % len(_PROG_COLORS)]
+            base = {"label": nm, "n": n, "color": band, "fg": fg,
+                    "link": url_for("travel_list"), "sub": pr.carrier}
+            add(_d(pr.travel_date), dict(base, icon="🛫"))
+            add(_d(pr.return_date), dict(base, icon="🛬"))
+    weeks = []
+    for wk in _cal.Calendar(firstweekday=5).monthdayscalendar(first.year, first.month):
+        weeks.append([{"day": d, "events": events.get(d, []),
+                       "today": (d and first.replace(day=d) == today)} for d in wk])
+    prev = (first.replace(day=1) - __import__("datetime").timedelta(days=1)).replace(day=1)
+    nxt = (first.replace(day=28) + __import__("datetime").timedelta(days=4)).replace(day=1)
+    months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
+              "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
+    return render_template(
+        "calendar.html", active="calendar", weeks=weeks,
+        title=f"{months[first.month - 1]} {first.year}",
+        prev=prev.strftime("%Y-%m"), next=nxt.strftime("%Y-%m"),
+        this=today.strftime("%Y-%m"),
+        total=sum(len(v) for v in events.values()), **_ctx())
+
+
 @app.post("/documents/<kind>/manual/pdf")
 def doc_manual_pdf(kind):
     """يولّد PDF لمستند يدوي من البيانات المُحرَّرة (بلا سجلّ)."""
@@ -1315,6 +1490,7 @@ def doc_manual_pdf(kind):
     settings = storage.load_settings()
     co = settings.get("company") if isinstance(settings, dict) else None
     data = request.get_json(force=True, silent=True) or {}
+    _attach_verify(kind, data)                               # QR للتحقّق
     _archive_doc(kind, data, idx=None, name="يدوي بلا اسم")   # أرشفة تلقائية
     _audit("إصدار مستند يدوي", _DOC_TITLES[kind][0])
     return _pdf_response(
@@ -1656,8 +1832,16 @@ def record_docs(idx):
                           "ts": (d.get("ts") or "").replace("T", "  "),
                           "title": d.get("title") or d.get("kind"),
                           "number": d.get("number") or "—"})
+    from webapp import public
+    from hajj_app import whatsapp as _wa
+    tok = public.find_person(_mode(), getattr(rec, "uid", "") or "")
+    plink = url_for("person_page", token=tok, _external=True) if tok else ""
+    wa = (_wa.wa_link(rec.phone, f"السلام عليكم {(name.split() or [''])[0]}، هذا رابط "
+                      f"برنامجك مع المصطفى للحج والعمرة: {plink}",
+                      str(storage.load_settings().get("whatsapp_cc") or "971"))
+          if plink and getattr(rec, "phone", "") else None)
     return render_template("record_docs.html", active="hujjaj", idx=idx,
-                           fp=_rec_token(rec),
+                           fp=_rec_token(rec), plink=plink, wa=wa,
                            name=name, docs=_RECORD_DOCS, saved=saved,
                            noun_singular=_noun_singular(), **_ctx())
 
@@ -2387,6 +2571,7 @@ def quote_doc_pdf(code, num, kind):
     data["quote_ref"] = str(num)
     guest = str(data.get("guest_ar") or data.get("guest_en") or "").strip()
     name = f"{guest or 'بلا اسم'} — عرض {num}"
+    _attach_verify(kind, data)                      # QR للتحقّق
     _archive_doc(kind, data, idx=None, name=name)   # أرشفة تلقائية
     _audit("إصدار مستند من عرض سعر", f"{_DOC_TITLES[kind][0]} — {name}")
     return _pdf_response(
@@ -3274,6 +3459,7 @@ def doc_pdf(idx, kind):
     title = _DOC_TITLES[kind][0]
     _name = getattr(records[idx], "full_name_ar", "") or getattr(
         records[idx], "full_name_en", "") or ""
+    _attach_verify(kind, data, uid=getattr(records[idx], "uid", "") or "")
     _archive_doc(kind, data, idx=idx, name=_name)   # أرشفة تلقائية
     _audit("إصدار مستند", f"{title} — {_name}")
     return _pdf_response(

@@ -462,3 +462,35 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
 @media (max-width:760px){
   .tb-search{ order:3; max-width:none; width:100%; flex-basis:100%; }
 }
+
+/* ---- رابط المعتمر + تقويم الرحلات ---- */
+.link-row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+.link-row input{ flex:1; min-width:220px; font:inherit; font-size:13px; padding:7px 10px;
+  border:1px solid var(--border); border-radius:8px; background:var(--soft); }
+.cal-nav{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+.cal-nav h3{ margin:0 12px; }
+.cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.cal-head{ text-align:center; font-weight:700; color:var(--muted); font-size:13px; }
+.cal-day{ background:var(--panel); border:1px solid var(--border); border-radius:10px;
+  min-height:96px; padding:6px; }
+.cal-day.empty{ background:transparent; border:0; }
+.cal-day.today{ border:2px solid var(--bronze); }
+.cal-day .dn{ font-weight:800; font-size:13px; color:var(--muted); }
+.cal-ev{ display:block; margin-top:4px; padding:3px 6px; border-radius:6px; font-size:12px;
+  background:var(--ec); color:var(--ef); text-decoration:none; line-height:1.4; }
+.cal-ev small{ opacity:.9; }
+@media (max-width:760px){
+  .cal-grid{ grid-template-columns:1fr; }
+  .cal-head, .cal-day.empty, .cal-day.noev{ display:none; }
+}
+.pub-card{ max-width:520px; }
+.pub-logo{ display:block; width:96px; height:96px; margin:0 auto 8px; border-radius:18px; }
+.pub-ok{ background:#e6f3ec; color:#0B5D3B; border:1px solid #b9dcc8; border-radius:12px;
+  padding:12px; font-weight:800; text-align:center; margin-bottom:12px; }
+.pub-bad{ background:#fbeae7; color:#a93226; border:1px solid #f0c4bc; border-radius:12px;
+  padding:12px; font-weight:800; text-align:center; margin:10px 0; }
+.pub-tbl{ width:100%; border-collapse:collapse; margin:8px 0 12px; font-size:14px; }
+.pub-tbl th{ text-align:start; color:var(--muted); font-weight:700; padding:7px 6px;
+  width:38%; vertical-align:top; border-bottom:1px solid var(--border); }
+.pub-tbl td{ padding:7px 6px; border-bottom:1px solid var(--border); }
+.pub-h{ margin:14px 0 6px; color:var(--bronze); font-size:16px; }

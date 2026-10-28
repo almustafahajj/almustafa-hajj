@@ -63,6 +63,18 @@ assert any("تبقّت 0 غرفة فقط في فندق مكة" in t and "U2" in 
 assert not any("قديم" in t for t in texts)                      # برنامج انتهى
 assert al[0]["level"] == "danger" and al[-1]["level"] == "info"
 print("[ok] الإشعارات: السعة، الغرف المشتركة، المغادرة، الجوازات، السداد")
+# الحج: برامج بأسمائها الثابتة
+from hajj_app import programs as _hp  # noqa: E402
+hs = {}
+_progs = _hp.load_programs(hs)
+_progs[0].travel_date = iso(T + timedelta(days=3))
+_hp.save_programs(hs, _progs) if hasattr(_hp, "save_programs") else hs.update(
+    programs=[__import__("dataclasses").asdict(x) for x in _progs])
+hrecs = [PassportData(full_name_ar="حاج", program=_hp.PROGRAM_NAMES[0], program_value="9000",
+                      paid_amount="1000", expiry_date=iso(T + timedelta(days=30)))]
+ht = [a["text"] for a in alerts.hajj_alerts(hrecs, hs, today=T)]
+assert any("مغادرة «" + _hp.PROGRAM_NAMES[0] in t for t in ht), ht
+assert any("لم يُكملوا السداد" in t for t in ht) and any("جوازاً" in t for t in ht)
 
 # ---- 2) البحث (الوحدة): متسامح مع الكتابة العربية ----
 recs2 = [PassportData(full_name_ar="أحمد إبراهيم", passport_number="N1234567",

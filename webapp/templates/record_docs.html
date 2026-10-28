@@ -17,6 +17,32 @@
       <div class="d">الجواز والبطاقة والسند والعقد في ملف PDF واحد.</div></div>
   </a>
 </div>
+<div class="panel" style="margin:14px 0">
+  <h3 style="margin:0 0 8px">🔗 الرابط الخاص بـ{{ noun_singular }}</h3>
+  {% if plink %}
+  <p class="muted" style="margin:0 0 8px">صفحة يفتحها {{ noun_singular }} من جواله (بلا تسجيل دخول): برنامجه
+    ورحلته وفندقه ومستنداته. لا تحوي رقم جواز ولا مبالغ.</p>
+  <div class="link-row"><input id="plink" value="{{ plink }}" readonly dir="ltr"
+    onclick="this.select()">
+    <button class="acc-btn" type="button" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('plink').value);this.textContent='✅ نُسخ'">📋 نسخ</button>
+    {% if wa %}<a class="acc-btn add" target="_blank" href="{{ wa }}">🟢 إرسال واتساب</a>{% endif %}
+    <a class="acc-btn" target="_blank" href="{{ plink }}">👁 معاينة</a></div>
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('person_link', idx=idx) }}" class="inline">
+    <input type="hidden" name="fp" value="{{ fp }}">
+    <button class="acc-btn" name="action" value="rotate" type="submit"
+            onclick="return confirm('تجديد الرابط يُبطل القديم. متابعة؟')">↻ تجديد</button>
+    <button class="acc-btn del" name="action" value="revoke" type="submit"
+            onclick="return confirm('إلغاء الرابط نهائياً؟')">✕ إلغاء الرابط</button>
+  </form>{% endif %}
+  {% elif can_edit %}
+  <form method="post" action="{{ url_for('person_link', idx=idx) }}">
+    <input type="hidden" name="fp" value="{{ fp }}">
+    <button class="btn primary" style="width:auto" name="action" value="create" type="submit">🔗 إنشاء رابط خاص لـ{{ noun_singular }}</button>
+  </form>
+  {% else %}<p class="muted">لا رابط بعد.</p>{% endif %}
+</div>
+
 <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF»
   (يُفتح الـ PDF في تبويب جديد). كل مستند تنشئه يُحفظ تلقائياً في الأرشيف أدناه.</p>
 

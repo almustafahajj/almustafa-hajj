@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}تقويم الرحلات — المصطفى{% endblock %}
+{% block heading %}📅 تقويم الرحلات{% endblock %}
+{% block subhead %}<div class="season">مغادرة (🛫) وعودة (🛬) كل برنامج بلونه — {{ total }} حدثاً في {{ title }}</div>{% endblock %}
+{% block content %}
+<div class="cal-nav">
+  <a class="pill" href="{{ url_for('calendar_page', m=prev) }}">→ الشهر السابق</a>
+  <h3>{{ title }}</h3>
+  <a class="pill" href="{{ url_for('calendar_page', m=next) }}">الشهر التالي ←</a>
+  <a class="pill" href="{{ url_for('calendar_page', m=this) }}">اليوم</a>
+</div>
+<div class="cal-grid">
+  {% for d in ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'] %}<div class="cal-head">{{ d }}</div>{% endfor %}
+  {% for wk in weeks %}{% for c in wk %}
+  {% if c.day %}
+  <div class="cal-day {{ 'today' if c.today }} {{ 'noev' if not c.events }}">
+    <div class="dn">{{ c.day }}</div>
+    {% for e in c.events %}
+    <a class="cal-ev" href="{{ e.link }}" style="--ec:{{ e.color }};--ef:{{ e.fg }}" title="{{ e.sub }}">{{ e.icon }} {{ e.label }} <small>({{ e.n }})</small></a>
+    {% endfor %}
+  </div>
+  {% else %}<div class="cal-day empty"></div>{% endif %}
+  {% endfor %}{% endfor %}
+</div>
+{% endblock %}
