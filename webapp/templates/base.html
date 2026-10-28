@@ -58,10 +58,11 @@
       </details>
 
       {% if is_admin %}
-      <details class="nav-group" {% if active in ['accounts','audit'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['accounts','audit','backup'] %}open{% endif %}>
         <summary><span class="ng-ic" style="background:#C0392B"><svg viewBox="0 0 20 20"><path d="M10 2.5l6 2.3v4.7c0 3.8-2.6 6.6-6 8-3.4-1.4-6-4.2-6-8V4.8L10 2.5z"/><path d="M7.5 10l1.8 1.8L13 8.2"/></svg></span> الإدارة</summary>
         <a class="navlink {{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">إدارة الحسابات</a>
         <a class="navlink {{ 'active' if active=='audit' }}" href="{{ url_for('audit_log') }}">سجلّ التدقيق</a>
+        <a class="navlink {{ 'active' if active=='backup' }}" href="{{ url_for('backup_page') }}">النسخ الاحتياطي</a>
       </details>
       {% endif %}
     </nav>

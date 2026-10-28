@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}النسخ الاحتياطي — المصطفى{% endblock %}
+{% block heading %}🛟 النسخ الاحتياطي{% endblock %}
+{% block subhead %}<div class="season">نسخة يومية تلقائية على الخادم + نسخة مشفّرة تنزّلها وتحفظها خارجه</div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="acc-msg err">{{ err }}</div>{% endif %}
+<div class="acc-cards">
+  <div class="acc-card">
+    <h3>⬇️ تنزيل نسخة كاملة (مشفّرة)</h3>
+    <p class="muted">احفظها في مكان آمن خارج الخادم (جهازك، Google Drive، فلاشة). لا تُفتح
+      إلا بكلمة المرور التي تختارها الآن — <b>احفظها جيداً، لا يمكن استرجاعها</b>.</p>
+    <form method="post" action="{{ url_for('backup_download') }}" class="acc-form">
+      <label>كلمة مرور النسخة<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+      <label>تأكيدها<input name="confirm" type="password" minlength="8" required autocomplete="new-password"></label>
+      <label class="remember"><input type="checkbox" name="images" value="1" checked> مع صور الجوازات (حجم أكبر — قد يستغرق دقائق)</label>
+      <button class="acc-btn add" type="submit">⬇️ تنزيل النسخة</button>
+    </form>
+  </div>
+  <div class="acc-card">
+    <h3>♻️ استعادة من ملف منزّل</h3>
+    <p class="muted">تستبدل البيانات الحالية بمحتوى النسخة، بعد حفظ نسخة أمان من الحالي
+      تلقائياً. يُطلب من الجميع تسجيل الدخول من جديد.<br>
+      ⚠ الحسابات وكلمات المرور تعود كما كانت وقت أخذ النسخة — ادخل بكلمة مرورك
+      في ذلك الوقت. سجلّ التدقيق لا يُستبدل.</p>
+    <form method="post" action="{{ url_for('backup_restore') }}" enctype="multipart/form-data" class="acc-form"
+          onsubmit="return confirm('استبدال البيانات الحالية بمحتوى النسخة؟ (تُحفظ نسخة أمان من الحالي أولاً)');">
+      <label>ملف النسخة (.almbak)<input name="file" type="file" accept=".almbak" required></label>
+      <label>كلمة مرور النسخة<input name="password" type="password" required autocomplete="off"></label>
+      <button class="acc-btn del" type="submit">♻️ استعادة</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <h3 style="margin:0">🗄 النسخ على الخادم</h3>
+    <form method="post" action="{{ url_for('backup_now') }}" class="inline">
+      <button class="acc-btn add" type="submit">📸 نسخة الآن</button></form>
+  </div>
+  <p class="muted" style="font-size:13px">تُؤخذ نسخة تلقائية مرّة يومياً (البيانات بلا الصور)، ويُحتفظ بآخر
+    {{ keep }} يوماً. تحمي من الأخطاء والتلف — ولحماية كاملة نزّل نسخة مشفّرة دورياً واحفظها خارج الخادم.</p>
+  <table class="data">
+    <thead><tr><th>التاريخ</th><th>النوع</th><th>الحجم</th><th></th></tr></thead>
+    <tbody>
+    {% for s in snaps %}
+      <tr><td dir="ltr">{{ s.when }}</td><td>{{ s.kind }}</td><td dir="ltr">{{ s.size }}</td>
+        <td><form method="post" action="{{ url_for('backup_restore') }}" class="inline"
+                  onsubmit="return confirm('استعادة نسخة {{ s.when }}؟ (تُحفظ نسخة أمان من الحالي أولاً)');">
+          <input type="hidden" name="snapshot" value="{{ s.name }}">
+          <button class="acc-btn" type="submit">♻️ استعادة</button></form></td></tr>
+    {% else %}
+      <tr><td colspan="4" style="text-align:center;color:var(--muted)">لا نسخ بعد — تُؤخذ الأولى تلقائياً اليوم.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -12,6 +12,7 @@
     <h1>المصطفى للحج والعمرة</h1>
     <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">✅ استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
     {% include "_mode_pick.html" %}
     <div class="field">
       <label for="username">اسم المستخدم</label>

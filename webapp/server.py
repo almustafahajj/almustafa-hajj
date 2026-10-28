@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import secrets
 import re
@@ -58,6 +59,8 @@ app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 # حماية النماذج من الطلبات المزوّرة (تُعطَّل في الاختبارات فقط)
 app.config["CSRF_ENABLED"] = True
+# أكبر رفع مسموح (نسخة احتياطية مع الصور)
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024
 # صفحة تعديل التسكين ترسل كل الصفوف (مع رمز كل سجلّ): نرفع حدّ النموذج
 # الافتراضي (500KB) كي لا يُرفض حفظ كشفٍ كبير (~2000 شخص)
 app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
@@ -602,6 +605,139 @@ def _csrf_inject(resp):
     return resp
 
 
+# ---- النسخ الاحتياطي: نسخة يومية تلقائية + تنزيل مشفّر + استعادة (للمدير) ----
+@app.before_request
+def _daily_backup():
+    if _sess() is None or request.endpoint in ("static", "service_worker"):
+        return None
+    try:
+        from webapp import backup
+        backup.daily()
+    except Exception:                              # noqa: BLE001
+        pass
+    return None
+
+
+def _backup_admin():
+    s = _sess()
+    if s is None:
+        return None, redirect(url_for("login"))
+    if not s.is_admin:
+        return None, redirect(url_for("dashboard"))
+    return s, None
+
+
+@app.get("/backup")
+def backup_page():
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from webapp import backup
+    snaps = []
+    for p in backup.list_snapshots():
+        kind = p.stem.split("_", 2)[-1]
+        snaps.append({"name": p.name, "size": backup.human_size(p.stat().st_size),
+                      "when": p.stem[:10] + " " + p.stem[11:13] + ":" + p.stem[13:15],
+                      "kind": {"auto": "يومية تلقائية", "manual": "يدوية",
+                               "before-restore": "قبل استعادة"}.get(kind, kind)})
+    return render_template("backup.html", active="backup", snaps=snaps,
+                           keep=backup.KEEP_DAYS, msg=session.pop("bk_msg", ""),
+                           err=session.pop("bk_err", ""), **_ctx())
+
+
+@app.post("/backup/now")
+def backup_now():
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from webapp import backup
+    p = backup.snapshot("manual")
+    backup.prune()
+    _audit("نسخة احتياطية يدوية", p.name)
+    session["bk_msg"] = f"✅ حُفظت نسخة على الخادم: {p.name}"
+    return redirect(url_for("backup_page"))
+
+
+@app.post("/backup/download")
+def backup_download():
+    """نسخة كاملة مشفّرة بكلمة مرور تُنزَّل لتُحفظ خارج الخادم."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from webapp import backup
+    pw = request.form.get("password") or ""
+    if len(pw) < 8 or pw != (request.form.get("confirm") or ""):
+        session["bk_err"] = "كلمة مرور النسخة ٨ خانات على الأقل، ويجب أن تتطابق مع التأكيد."
+        return redirect(url_for("backup_page"))
+    z = backup.tempfile_path(".zip")
+    enc = backup.tempfile_path(".almbak")
+    try:
+        n = backup.build_zip(z, with_images=bool(request.form.get("images")))
+        backup.encrypt_file(z, enc, pw)
+    finally:
+        z.unlink(missing_ok=True)
+    _audit("تنزيل نسخة احتياطية", f"{n} ملفّاً")
+    from datetime import datetime as _dt
+    # يُرسل من الملف مباشرةً (لا يُحمَّل كاملاً في الذاكرة) ثم يُحذف
+    resp = send_file(str(enc), mimetype="application/octet-stream",
+                     as_attachment=True,
+                     download_name=f"almustafa-backup-{_dt.now():%Y-%m-%d}.almbak")
+
+    def _cleanup():
+        try:
+            enc.unlink(missing_ok=True)
+        except OSError:
+            pass
+    resp.call_on_close(_cleanup)
+    return resp
+
+
+@app.post("/backup/restore")
+def backup_restore():
+    """استعادة من ملف منزّل (بكلمة مروره) أو من نسخة على الخادم — يُخرج الجميع."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from webapp import backup
+    snap = (request.form.get("snapshot") or "").strip()
+    tmp_zip = backup.tempfile_path(".zip")
+    try:
+        if snap:
+            src = backup.snaps_dir() / snap
+            if "/" in snap or "\\" in snap or not src.is_file():
+                raise ValueError("النسخة غير موجودة.")
+            import shutil
+            shutil.copyfile(src, tmp_zip)
+        else:
+            up = request.files.get("file")
+            if not up or not up.filename:
+                raise ValueError("اختر ملف النسخة (.almbak).")
+            enc = backup.tempfile_path(".almbak")
+            try:
+                up.save(enc)
+                backup.decrypt_file(enc, tmp_zip, request.form.get("password") or "")
+            finally:
+                enc.unlink(missing_ok=True)
+        import zipfile
+        if not zipfile.is_zipfile(tmp_zip):
+            raise ValueError("الملف ليس نسخة صالحة.")
+        # نسخة أمان كاملة (مع الصور) من الحالي — للتراجع إن لزم
+        safety = backup.snapshot("before-restore", with_images=True)
+        done = backup.restore_zip(tmp_zip)
+    except ValueError as exc:
+        session["bk_err"] = str(exc)
+        return redirect(url_for("backup_page"))
+    finally:
+        tmp_zip.unlink(missing_ok=True)
+    _audit("استعادة نسخة احتياطية",
+           f"{snap or 'ملف منزّل'} — {len(done)} ملفّاً (نسخة أمان: {safety.name})")
+    # البيانات تغيّرت (وقد يتغيّر مفتاحها): خروج الجميع وإعادة الدخول
+    for _d in (_SESSIONS, _ALERTS_CACHE, _PENDING, _TOTP_SETUP, _TOTP_LAST, _FAILS):
+        _d.clear()
+    session.clear()
+    return redirect(url_for("login", restored=1))
+
+
 # ---- إلزام الدخول بخطوتين (إن فعّله المدير لكل الحسابات) ----
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
@@ -866,7 +1002,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28d · QR للتحقّق + رابط المعتمر + تقويم الرحلات"
+_BUILD_TAG = "2026-10-28e · النسخ الاحتياطي اليومي والاستعادة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
