@@ -47,12 +47,15 @@
     <div class="acc-card wide">
       <h3>المستخدمون الحاليون</h3>
       <table class="acc-table">
-        <thead><tr><th>المستخدم</th><th>الصلاحية</th><th>آخر تحديث</th>
-          <th>إجراءات</th></tr></thead>
+        <thead><tr><th>المستخدم</th><th>الصلاحية</th><th>الدخول بخطوتين</th>
+          <th>آخر تحديث</th><th>إجراءات</th></tr></thead>
         <tbody>
         {% for a in accounts %}
           <tr>
-            <td>{{ a.username }}{% if a.me %} <span class="you">(أنت)</span>{% endif %}</td>
+            <td>{{ a.username }}{% if a.me %} <span class="you">(أنت)</span>{% endif %}
+              {% if a.locked %}<br><span style="color:#C0392B;font-size:12px">⛔ موقوف مؤقّتاً</span>
+              <form method="post" action="{{ url_for('accounts_unlock', username=a.username) }}" class="inline">
+                <button class="acc-btn" type="submit" title="فكّ الإيقاف">🔓</button></form>{% endif %}</td>
             <td>
               <form method="post" action="{{ url_for('accounts_role', username=a.username) }}"
                     class="inline">
@@ -63,6 +66,11 @@
                 </select>
               </form>
             </td>
+            <td>{% if a.totp %}✅ مفعّل
+              <form method="post" action="{{ url_for('accounts_2fa_reset', username=a.username) }}"
+                    class="inline" onsubmit="return confirm('إلغاء الدخول بخطوتين لـ«{{ a.username }}»؟ (حين يضيع جواله)');">
+                <button class="acc-btn" type="submit" title="إلغاء الدخول بخطوتين">↺</button>
+              </form>{% else %}<span class="muted">—</span>{% endif %}</td>
             <td class="muted">{{ a.updated or '—' }}</td>
             <td>
               <form method="post" action="{{ url_for('accounts_password', username=a.username) }}"
@@ -84,6 +92,21 @@
         </tbody>
       </table>
     </div>
+  </div>
+
+  <div class="acc-card" style="margin-top:14px">
+    <h3>🔐 الدخول بخطوتين</h3>
+    <p>كل مستخدم يفعّله لحسابه من «🔐 الدخول بخطوتين» أسفل القائمة الجانبية (رمز من
+      تطبيق مصادقة في الجوال). ويمكنك إلزام كل الحسابات به:</p>
+    <form method="post" action="{{ url_for('accounts_2fa_policy') }}" class="inline">
+      <label class="remember"><input type="checkbox" name="require" value="1"
+        {{ 'checked' if require_totp }} onchange="this.form.submit()">
+        إلزام كل الحسابات بالدخول بخطوتين</label>
+      <noscript><button class="acc-btn" type="submit">حفظ</button></noscript>
+    </form>
+    <p class="hint-note">عند الإلزام: من لم يفعّله يُحوَّل لصفحة التفعيل بعد دخوله.
+      محاولات الدخول الخاطئة المتكرّرة (٥ لكل حساب) توقف الدخول ١٥ دقيقة وتُسجَّل في
+      «سجلّ التدقيق».</p>
   </div>
 
   <p class="hint-note">كل الحسابات تفتح البيانات نفسها (مشفّرة)؛ الصلاحية تحدّد ما

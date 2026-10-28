@@ -37,6 +37,7 @@ print("[ok] الغرف المشغولة والمتبقّية")
 
 try:
     from webapp import server
+    server.app.config["CSRF_ENABLED"] = False     # الحماية تُختبر في test_security
 except ImportError as exc:
     print(f"[skip] مسارات الويب: {exc}")
     print("ALL OK")

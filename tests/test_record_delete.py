@@ -15,6 +15,7 @@ from hajj_app import app_mode, auth, images, storage  # noqa: E402
 
 try:
     from webapp import server
+    server.app.config["CSRF_ENABLED"] = False     # الحماية تُختبر في test_security
 except ImportError as exc:
     print(f"[skip] مسارات الويب: {exc}")
     print("ALL OK")

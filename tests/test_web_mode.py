@@ -43,6 +43,7 @@ print("[ok] رأس صفحات المحرّر والمسعّر بلون الوض�
 # ---- 3) مسارات الويب ----
 try:
     from webapp import server
+    server.app.config["CSRF_ENABLED"] = False     # الحماية تُختبر في test_security
 except ImportError as exc:                   # Flask غير مثبّت
     print(f"[skip] مسارات الويب: {exc}")
     print("ALL OK")

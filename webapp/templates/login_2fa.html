@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>رمز الدخول — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body class="mode-{{ selected_mode }}">
+<div class="login-wrap">
+  <form class="login-card" method="post" autocomplete="off">
+    <div class="brand-dot">🔐</div>
+    <h1>الدخول بخطوتين</h1>
+    <p class="sub">مرحباً {{ username }} — افتح تطبيق المصادقة في جوالك واكتب الرمز
+      المكوّن من ٦ أرقام.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label for="code">رمز التحقّق</label>
+      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="12" autofocus required dir="ltr"
+             style="text-align:center;font-size:22px;letter-spacing:6px">
+    </div>
+    <button class="btn primary" type="submit">تأكيد الدخول</button>
+    <p class="sub" style="margin-top:14px">
+      <a href="{{ url_for('login') }}">↩ رجوع لتسجيل الدخول</a></p>
+    <p class="sub" style="font-size:12px">ضاع الجوال؟ اطلب من المدير إلغاء الدخول
+      بخطوتين لحسابك من «إدارة الحسابات».</p>
+  </form>
+</div>
+</body></html>

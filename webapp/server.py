@@ -12,9 +12,12 @@ import secrets
 import re
 import tempfile
 import threading
+import hmac
+import time
 
 from flask import (Flask, redirect, render_template, request, send_file,
                    session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from hajj_app import app_mode, auth, stats, storage
 from hajj_app.fields import BY_KEY, format_amount
@@ -51,6 +54,10 @@ _GROUPS = [
 ]
 
 app = Flask(__name__)
+# خلف وكيل Railway: عنوان الزائر الحقيقي (لإيقاف محاولات الدخول) وبروتوكول https
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+# حماية النماذج من الطلبات المزوّرة (تُعطَّل في الاختبارات فقط)
+app.config["CSRF_ENABLED"] = True
 # صفحة تعديل التسكين ترسل كل الصفوف (مع رمز كل سجلّ): نرفع حدّ النموذج
 # الافتراضي (500KB) كي لا يُرفض حفظ كشفٍ كبير (~2000 شخص)
 app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
@@ -202,6 +209,85 @@ def setup():
     return render_template("setup.html", error=error)
 
 
+# ---- حماية الدخول: إيقاف مؤقّت بعد محاولات خاطئة متكرّرة ----
+_FAILS: dict = {}                  # (نوع، قيمة) → أوقات المحاولات الخاطئة
+_LOCK_WINDOW = 15 * 60             # نافذة العدّ ومدّة الإيقاف (ثانية)
+_LOCK_LIMITS = {"user": 5, "ip": 20}
+_PENDING: dict = {}                # دخول ينتظر رمز الخطوة الثانية
+_TOTP_LAST: dict = {}              # آخر خطوة زمنية قُبلت لكل مستخدم (منع التكرار)
+_TOTP_SETUP: dict = {}             # سرّ قيد التفعيل لكل جلسة
+
+
+def _client_ip() -> str:
+    return request.remote_addr or "?"
+
+
+def _ukey(username: str) -> str:
+    return (username or "").strip().lower()[:64]
+
+
+def _fail_keys(username: str) -> list:
+    keys = [("ip", _client_ip())]
+    if _ukey(username):
+        keys.append(("user", _ukey(username)))
+    return keys
+
+
+def _lock_wait(username: str = "") -> int:
+    """الثواني المتبقّية حتى يُفكّ الإيقاف (0 = الدخول مسموح)."""
+    now, wait = time.time(), 0
+    if len(_FAILS) > 5000:                     # تنظيف عناوين قديمة
+        for k in [k for k, v in _FAILS.items() if not v or now - v[-1] > _LOCK_WINDOW]:
+            _FAILS.pop(k, None)
+    for k in _fail_keys(username):
+        times = [t for t in _FAILS.get(k, []) if now - t < _LOCK_WINDOW]
+        if times:
+            _FAILS[k] = times
+        else:
+            _FAILS.pop(k, None)
+        limit = _LOCK_LIMITS[k[0]]
+        if len(times) >= limit:
+            wait = max(wait, int(_LOCK_WINDOW - (now - times[-limit])) + 1)
+    return wait
+
+
+def _note_fail(username: str, what: str = "محاولة دخول فاشلة") -> None:
+    now = time.time()
+    for k in _fail_keys(username):
+        _FAILS.setdefault(k, []).append(now)
+    try:
+        from hajj_app import audit
+        # اسم غير موجود لا يُكتب كما هو (قد يكون كلمة مرور كُتبت في خانة الاسم)
+        known = {a["username"].lower() for a in auth.list_accounts()}
+        who = username.strip() if _ukey(username) in known else "اسم غير معروف"
+        audit.record(what, f"{who} — من {_client_ip()}", user=who)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+def _lock_msg(wait: int) -> str:
+    return (f"محاولات خاطئة كثيرة — أُوقف الدخول مؤقّتاً. "
+            f"حاول بعد {max(1, -(-wait // 60))} دقيقة.")
+
+
+def _finish_login(hs, username: str, mode: str, remember: bool) -> None:
+    """يفتح الجلسة بعد نجاح كلمة المرور (والرمز إن لزم)."""
+    sid = secrets.token_hex(16)
+    _SESSIONS[sid] = hs
+    session["sid"] = sid
+    session["mode"] = mode
+    session["username"] = hs.username or username
+    session["role"] = getattr(hs, "role_label", "")
+    _csrf_token()               # (لا يُبدَّل: تبقى الصفحات المفتوحة صالحة للحفظ)
+    session.permanent = bool(remember)                 # تذكّرني
+    _FAILS.pop(("user", _ukey(username)), None)
+    try:
+        from hajj_app import audit
+        audit.record("دخول", f"من {_client_ip()}", user=hs.username or username)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if not auth.is_configured():           # نشر جديد بلا حسابات → تهيئة المالك
@@ -209,24 +295,73 @@ def login():
     error = ""
     mode = app_mode.UMRAH                  # الدخول الافتراضي: العمرة
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
+        username = (request.form.get("username") or "").strip()[:64]
         password = request.form.get("password") or ""
         mode = _form_mode()
-        try:
-            app_mode.set_mode(mode)
-            hs = auth.login(username, password)
-            sid = secrets.token_hex(16)
-            _SESSIONS[sid] = hs
-            session["sid"] = sid
-            session["mode"] = mode
-            session["username"] = username
-            session["role"] = getattr(hs, "role_label", "")
-            session.permanent = bool(request.form.get("remember"))  # تذكّرني
-            return redirect(url_for("dashboard"))
-        except Exception:
-            error = "اسم المستخدم أو كلمة المرور غير صحيحة."
+        remember = bool(request.form.get("remember"))
+        wait = _lock_wait(username)
+        if wait:
+            error = _lock_msg(wait)
+        else:
+            try:
+                app_mode.set_mode(mode)
+                hs = auth.login(username, password)
+            except Exception:                      # noqa: BLE001
+                hs = None
+            if hs is None:
+                _note_fail(username)
+                error = "اسم المستخدم أو كلمة المرور غير صحيحة."
+            elif auth.has_totp(hs.username):       # الخطوة الثانية: رمز الجوال
+                now = time.time()
+                for k in [k for k, v in _PENDING.items() if v["exp"] < now]:
+                    _PENDING.pop(k, None)
+                pid = secrets.token_hex(16)
+                _PENDING[pid] = {"hs": hs, "user": username, "mode": mode,
+                                 "remember": remember, "exp": now + 300}
+                session["p2fa"] = pid
+                return redirect(url_for("login_2fa"))
+            else:
+                _finish_login(hs, username, mode, remember)
+                return redirect(url_for("dashboard"))
     return render_template("login.html", error=error, modes=_MODE_CHOICES,
                            selected_mode=mode)
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+def login_2fa():
+    """الخطوة الثانية: رمز من تطبيق المصادقة في الجوال (٦ أرقام)."""
+    from hajj_app import totp
+    pid = session.get("p2fa")
+    p = _PENDING.get(pid) if pid else None
+    if not p or p["exp"] < time.time():
+        _PENDING.pop(pid, None)
+        session.pop("p2fa", None)
+        return redirect(url_for("login"))
+    error = ""
+    if request.method == "POST":
+        hs = p["hs"]
+        wait = _lock_wait(p["user"])
+        if wait:
+            error = _lock_msg(wait)
+        elif not auth.has_totp(hs.username):       # أُلغي أثناء الانتظار أو حُذف
+            _PENDING.pop(pid, None)
+            session.pop("p2fa", None)
+            return redirect(url_for("login"))         # يُعاد الدخول بكلمة المرور
+        else:
+            ukey = hs.username.lower()
+            step = totp.verify(auth.get_totp(hs) or "", request.form.get("code"),
+                               last_step=_TOTP_LAST.get(ukey))
+            if step is None:
+                _note_fail(p["user"], "رمز دخول بخطوتين خاطئ")
+                error = "الرمز غير صحيح أو انتهت مدّته — اكتب الرمز الظاهر الآن في التطبيق."
+            else:
+                _TOTP_LAST[ukey] = step
+                _PENDING.pop(pid, None)
+                session.pop("p2fa", None)
+                _finish_login(hs, p["user"], p["mode"], p["remember"])
+                return redirect(url_for("dashboard"))
+    return render_template("login_2fa.html", error=error,
+                           selected_mode=p["mode"], username=p["hs"].username)
 
 
 @app.route("/recover", methods=["GET", "POST"])
@@ -241,7 +376,10 @@ def recover():
         pw = request.form.get("password") or ""
         confirm = request.form.get("confirm") or ""
         mode = _form_mode()
-        if pw != confirm:
+        wait = _lock_wait()
+        if wait:
+            error = _lock_msg(wait)
+        elif pw != confirm:
             error = "كلمتا المرور غير متطابقتين."
         else:
             try:
@@ -254,16 +392,31 @@ def recover():
                 session["mode"] = mode
                 session["username"] = hs.username
                 session["role"] = getattr(hs, "role_label", "")
+                _csrf_token()
                 _audit("استرداد كلمة مرور (المدير)", hs.username)
                 return redirect(url_for("dashboard"))
             except Exception as exc:
+                if "مفتاح الاسترداد غير صحيح" in str(exc):
+                    _note_fail("", "محاولة استرداد بمفتاح خاطئ")
                 error = str(exc)
     return render_template("recover.html", error=error, modes=_MODE_CHOICES,
                            selected_mode=mode)
 
 
+def _link_ok() -> bool:
+    """روابط GET التي تغيّر الحالة (التبديل/الخروج) تحمل رمز الجلسة ‎?t=‎."""
+    if not app.config.get("CSRF_ENABLED", True):
+        return True
+    good = session.get("csrf") or ""
+    sent = request.args.get("t") or ""
+    return bool(good) and hmac.compare_digest(sent.encode("utf-8"),
+                                              good.encode("utf-8"))
+
+
 @app.get("/logout")
 def logout():
+    if _sess() is not None and not _link_ok():     # رابط من موقع خارجي
+        return redirect(url_for("dashboard"))
     _SESSIONS.pop(session.get("sid"), None)
     session.clear()
     return redirect(url_for("login"))
@@ -271,7 +424,7 @@ def logout():
 
 @app.get("/switch/<mode>")
 def switch(mode):
-    if mode in (app_mode.HAJJ, app_mode.UMRAH):
+    if mode in (app_mode.HAJJ, app_mode.UMRAH) and _link_ok():
         session["mode"] = mode
     return redirect(url_for("dashboard"))
 
@@ -347,6 +500,197 @@ def _sync_mode():
         pass
 
 
+# ---- حماية النماذج من الطلبات المزوّرة (CSRF) ----
+# رمز سرّي لكل جلسة متصفّح: يُضاف تلقائياً لكل نموذج POST في الصفحات (وكترويسة
+# لطلبات fetch)، ويُرفض أي POST لا يحمله.
+_FORM_TAG_RE = re.compile(r"<form\b[^<>]*>", re.I)
+_POST_ATTR_RE = re.compile(r"\smethod\s*=\s*[\"']?post\b", re.I)
+_SCRIPT_RE = re.compile(r"(<script\b.*?</script\s*>)", re.I | re.S)
+_CSRF_JS = (
+    "(function(){var m=document.querySelector('meta[name=csrf-token]');"
+    "if(!m)return;var t=m.content,f=window.fetch;"
+    "if(f){window.fetch=function(u,o){o=o||{};"
+    "var x=(o.method||(u&&u.method)||'GET').toUpperCase();"
+    "if(x!=='GET'&&x!=='HEAD'){try{var l=new URL((u&&u.url)||u,location.href);"
+    "if(l.origin===location.origin){var h=new Headers(o.headers||{});"
+    "h.set('X-CSRF-Token',t);o.headers=h;}}catch(e){}}"
+    "return f.call(this,u,o);};}"
+    "document.addEventListener('submit',function(e){var fm=e.target,"
+    "b=e.submitter,mm=((b&&b.getAttribute('formmethod'))||"
+    "fm.getAttribute('method')||'get').toLowerCase();"
+    "if(mm==='post'&&!fm.querySelector('input[name=csrf_token]')){"
+    "var i=document.createElement('input');i.type='hidden';"
+    "i.name='csrf_token';i.value=t;fm.appendChild(i);"
+    "if((fm.getAttribute('method')||'get').toLowerCase()!=='post')"
+    "setTimeout(function(){i.remove();},0);}},true);})();")
+_CSRF_FAIL = """<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>انتهت صلاحية الصفحة</title></head>
+<body style="font-family:Tahoma,Arial,sans-serif;background:#F4F1EC;padding:40px">
+<div style="max-width:520px;margin:auto;background:#fff;border-radius:14px;padding:26px;
+box-shadow:0 4px 18px rgba(0,0,0,.08)"><h2 style="margin-top:0">⚠ انتهت صلاحية الصفحة</h2>
+<p>لم يُنفَّذ الطلب لأن الصفحة قديمة أو أُرسلت من مصدر غير موثوق (حماية الحساب).</p>
+<p>ارجع إلى الصفحة، أعد تحميلها، ثم حاول مرّة أخرى.</p>
+<p><a href="{back}">↩ رجوع</a></p></div></body></html>"""
+
+
+def _csrf_token() -> str:
+    tok = session.get("csrf")
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        session["csrf"] = tok
+    return tok
+
+
+@app.context_processor
+def _csrf_ctx():
+    return {"csrf_token": _csrf_token}
+
+
+@app.before_request
+def _csrf_protect():
+    """يرفض أي POST لا يحمل رمز الجلسة (في النموذج أو في ترويسة X-CSRF-Token)."""
+    if request.method != "POST" or not app.config.get("CSRF_ENABLED", True):
+        return None
+    sent = (request.headers.get("X-CSRF-Token")
+            or request.form.get("csrf_token") or "")
+    good = session.get("csrf") or ""
+    if good and hmac.compare_digest(str(sent).encode("utf-8"),
+                                    str(good).encode("utf-8")):
+        return None
+    back = request.referrer or url_for("index")
+    if not back.startswith(request.host_url):
+        back = url_for("index")
+    import html as _html
+    return _CSRF_FAIL.replace("{back}", _html.escape(back)), 400, {
+        "Content-Type": "text/html; charset=utf-8"}
+
+
+@app.after_request
+def _csrf_inject(resp):
+    """يضيف رمز الحماية لكل نماذج POST في صفحات HTML، وسكربتاً صغيراً يرسله مع
+    طلبات fetch ومع أزرار formmethod=post."""
+    if (not app.config.get("CSRF_ENABLED", True) or resp.direct_passthrough
+            or resp.mimetype != "text/html" or resp.status_code >= 400):
+        return resp
+    try:
+        body = resp.get_data(as_text=True)
+    except Exception:                              # noqa: BLE001
+        return resp
+    if "<form" not in body and "fetch(" not in body:
+        return resp
+    tok = _csrf_token()
+    field = f'<input type="hidden" name="csrf_token" value="{tok}">'
+
+    def _add(m):
+        tag = m.group(0)
+        return tag + field if _POST_ATTR_RE.search(tag) else tag
+    # الحقل يُضاف للوسوم الحقيقية فقط، لا لنصوص داخل <script> (بيانات المحرّرات)
+    parts = _SCRIPT_RE.split(body)
+    new = "".join(p if i % 2 else _FORM_TAG_RE.sub(_add, p)
+                  for i, p in enumerate(parts))
+    head = f'<meta name="csrf-token" content="{tok}"><script>{_CSRF_JS}</script>'
+    if "</head>" in new:
+        new = new.replace("</head>", head + "</head>", 1)
+    elif "<body" in new:
+        new = re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + head, new, count=1)
+    if new != body:
+        resp.set_data(new)
+    return resp
+
+
+# ---- إلزام الدخول بخطوتين (إن فعّله المدير لكل الحسابات) ----
+_2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
+             "setup", "recover", "switch", "index"}
+
+
+@app.before_request
+def _require_2fa():
+    s = _sess()
+    if s is None or request.endpoint in _2FA_FREE:
+        return None
+    try:
+        if auth.get_policy().get("require_totp") and not auth.has_totp(s.username):
+            return redirect(url_for("account_2fa", need=1))
+    except Exception:                              # noqa: BLE001
+        return None
+    return None
+
+
+def _qr_svg(data: str, size: int = 200) -> str:
+    """رمز QR كـ SVG داخل الصفحة (reportlab، بلا مكتبات إضافية)."""
+    try:
+        from reportlab.graphics import renderSVG
+        from reportlab.graphics.barcode.qr import QrCodeWidget
+        from reportlab.graphics.shapes import Drawing
+        w = QrCodeWidget(data)
+        x0, y0, x1, y1 = w.getBounds()
+        d = Drawing(size, size, transform=[size / (x1 - x0), 0, 0,
+                                           size / (y1 - y0), 0, 0])
+        d.add(w)
+        svg = renderSVG.drawToString(d)
+        return svg[svg.find("<svg"):]
+    except Exception:                              # noqa: BLE001
+        return ""
+
+
+@app.route("/account/2fa", methods=["GET", "POST"])
+def account_2fa():
+    """تفعيل/إلغاء الدخول بخطوتين لحساب المستخدم نفسه."""
+    from hajj_app import totp
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    sid = session.get("sid")
+    ukey = s.username.lower()
+    enabled = auth.has_totp(s.username)
+    required = bool(auth.get_policy().get("require_totp"))
+    msg = err = ""
+    wait = _lock_wait(s.username) if request.method == "POST" else 0
+    if wait:
+        err = _lock_msg(wait)
+    elif request.method == "POST":
+        action = request.form.get("action")
+        code = request.form.get("code")
+        if action == "enable" and not enabled:
+            secret = _TOTP_SETUP.get(sid)
+            step = totp.verify(secret, code) if secret else None
+            if step is None:
+                _note_fail(s.username, "رمز تفعيل الدخول بخطوتين خاطئ")
+                err = ("الرمز غير صحيح — تأكّد أنك مسحت الرمز الظاهر هنا، وأن وقت "
+                       "الجوال مضبوط تلقائياً، ثم اكتب الرمز الحالي.")
+            else:
+                auth.set_totp(s, secret)
+                _TOTP_SETUP.pop(sid, None)
+                _TOTP_LAST[ukey] = step
+                _audit("تفعيل الدخول بخطوتين", s.username)
+                enabled, msg = True, "✅ فُعِّل الدخول بخطوتين لحسابك."
+        elif action == "disable" and enabled:
+            if required:
+                err = "الدخول بخطوتين إلزامي لكل الحسابات (قرار المدير) — لا يُلغى."
+            else:
+                step = totp.verify(auth.get_totp(s) or "", code,
+                                   last_step=_TOTP_LAST.get(ukey))
+                if step is None:
+                    _note_fail(s.username, "رمز إلغاء الدخول بخطوتين خاطئ")
+                    err = "الرمز غير صحيح — اكتب الرمز الظاهر الآن في التطبيق."
+                else:
+                    auth.set_totp(s, None)
+                    _TOTP_LAST[ukey] = step
+                    _audit("إلغاء الدخول بخطوتين", s.username)
+                    enabled, msg = False, "أُلغي الدخول بخطوتين لحسابك."
+    setup = None
+    if not enabled:
+        secret = _TOTP_SETUP.get(sid) or totp.new_secret()
+        _TOTP_SETUP[sid] = secret
+        setup = {"secret": totp.pretty(secret),
+                 "qr": _qr_svg(totp.otpauth_uri(secret, s.username))}
+    return render_template("account_2fa.html", active="account2fa",
+                           enabled=enabled, required=required,
+                           need=bool(request.args.get("need")), setup=setup,
+                           msg=msg, err=err, **_ctx())
+
+
 def _season() -> str:
     """سنة الموسم الحالي (لكل وضع) — من الإعدادات أو الافتراضي حسب التقويم."""
     default = _DEFAULT_HIJRI if _mode() == app_mode.HAJJ else _DEFAULT_GREG
@@ -384,7 +728,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-27a · لون البرنامج حسب المكتوب في اسمه"
+_BUILD_TAG = "2026-10-28a · حماية الدخول والنماذج + الدخول بخطوتين"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -435,10 +779,16 @@ def accounts():
     rows = [{"username": a["username"], "role": a["role"],
              "role_label": auth.ROLE_LABELS.get(a["role"], a["role"]),
              "updated": (a.get("updated_at") or "").replace("T", "  "),
+             "totp": a.get("totp", False),
+             "locked": bool(_FAILS.get(("user", _ukey(a["username"])))
+                            and len([t for t in _FAILS[("user", _ukey(a["username"]))]
+                                     if time.time() - t < _LOCK_WINDOW])
+                            >= _LOCK_LIMITS["user"]),
              "me": a["username"].lower() == s.username.lower()}
             for a in auth.list_accounts()]
     return render_template(
         "accounts.html", active="accounts", forbidden=False, accounts=rows,
+        require_totp=bool(auth.get_policy().get("require_totp")),
         roles=[(r, auth.ROLE_LABELS[r]) for r in auth.ROLES],
         recovery_key=session.pop("acc_key", None),
         added_user=session.pop("acc_added", None),
@@ -493,6 +843,52 @@ def accounts_password(username):
         if rk:
             session["acc_key"] = rk
             session["acc_added"] = username
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/<username>/2fa-reset")
+def accounts_2fa_reset(username):
+    """إلغاء الدخول بخطوتين لحساب (ضاع جوال صاحبه) — للمدير."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    try:
+        auth.admin_clear_totp(s, username)
+        session["acc_msg"] = (f"أُلغي الدخول بخطوتين لـ«{username}» — يفعّله من "
+                              "جديد من «🔐 الدخول بخطوتين».")
+        _audit("إلغاء الدخول بخطوتين (المدير)", username)
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/<username>/unlock")
+def accounts_unlock(username):
+    """فكّ إيقاف الدخول عن حساب (بعد محاولات خاطئة) — للمدير."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if s.is_admin:
+        _FAILS.pop(("user", _ukey(username)), None)
+        session["acc_msg"] = f"فُكّ إيقاف الدخول عن «{username}»."
+        _audit("فكّ إيقاف الدخول", username)
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/2fa-policy")
+def accounts_2fa_policy():
+    """إلزام كل الحسابات بالدخول بخطوتين — للمدير."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    req = bool(request.form.get("require"))
+    try:
+        auth.set_policy(s, require_totp=req)
+        session["acc_msg"] = ("صار الدخول بخطوتين إلزامياً لكل الحسابات."
+                              if req else "صار الدخول بخطوتين اختيارياً.")
+        _audit("سياسة الدخول بخطوتين", "إلزامي" if req else "اختياري")
     except Exception as exc:
         session["acc_err"] = str(exc)
     return redirect(url_for("accounts"))

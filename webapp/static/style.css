@@ -383,3 +383,6 @@ table.data tr.pg-head .pg-move button{ background:rgba(255,255,255,.22); color:i
   border:1px solid currentColor; border-radius:6px; padding:1px 10px; font-size:14px;
   cursor:pointer; line-height:1.5; }
 table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
+.qr-box{ background:#fff; display:inline-block; padding:10px; border-radius:12px;
+  border:1px solid var(--border); }
+.qr-box svg{ display:block; width:200px; height:200px; }

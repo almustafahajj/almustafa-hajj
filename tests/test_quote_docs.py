@@ -239,6 +239,7 @@ print("[ok] القوائم المنسدلة في الفاوتشر والطلب =
 # ---- 7) مسارات الويب ----
 try:
     from webapp import server
+    server.app.config["CSRF_ENABLED"] = False     # الحماية تُختبر في test_security
 except ImportError as exc:                   # Flask غير مثبّت في هذه البيئة
     print(f"[skip] مسارات الويب: {exc}")
     print("ALL OK")

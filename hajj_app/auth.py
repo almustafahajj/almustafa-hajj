@@ -215,14 +215,32 @@ def _load(path: str | Path | None) -> tuple[dict, int]:
     return {username.lower(): account}, schema
 
 
-def _save_accounts(path: str | Path | None, accounts: dict) -> None:
-    """يكتب خريطة الحسابات بالصيغة الحالية (schema 3)."""
-    _write_json(Path(path or default_auth_path()), {
+def _save_accounts(path: str | Path | None, accounts: dict,
+                   policy: dict | None = None) -> None:
+    """يكتب خريطة الحسابات بالصيغة الحالية (schema 3)، مع الإبقاء على سياسة
+    الحسابات المحفوظة (مثل إلزام الدخول بخطوتين) ما لم تُمرَّر سياسة جديدة."""
+    path = Path(path or default_auth_path())
+    if policy is None:
+        try:
+            policy = get_policy(path)
+        except AuthError:
+            policy = {}
+    payload = {
         "schema": SCHEMA_VERSION,
         "kdf": "pbkdf2_sha256",
         "iterations": ITERATIONS,
         "accounts": accounts,
-    })
+    }
+    if policy:
+        payload["policy"] = policy
+    _write_json(path, payload)
+
+
+def _carry(old: dict | None, new: dict) -> dict:
+    """ينقل حقول الحساب الإضافية (سرّ الدخول بخطوتين) إلى مدخل أُعيد بناؤه."""
+    if old and old.get("totp"):
+        new["totp"] = old["totp"]
+    return new
 
 
 def _find(accounts: dict, username: str) -> str | None:
@@ -341,7 +359,8 @@ def list_accounts(path: str | Path | None = None) -> list[dict]:
     """يعيد قائمة الحسابات: [{username, role, updated_at}] مرتّبة بالاسم."""
     accounts, _ = _load(path)
     rows = [{"username": a.get("username", ""), "role": a.get("role", "admin"),
-             "updated_at": a.get("updated_at", "")} for a in accounts.values()]
+             "updated_at": a.get("updated_at", ""), "totp": bool(a.get("totp"))}
+            for a in accounts.values()]
     return sorted(rows, key=lambda r: r["username"].lower())
 
 
@@ -401,6 +420,8 @@ def login(username: str, password: str, path: str | Path | None = None) -> "Sess
             data_key = _unwrap_with_password(account, password)
         except (AuthError, KeyError, ValueError, InvalidToken):
             data_key = None
+    else:                      # الزمن نفسه لاسمٍ غير موجود (لا يُكشف وجود الحساب)
+        _derive(password, b"\0" * _SALT_BYTES)
 
     # لا نُفصح أي الحقلين أخطأ — وإلا صار تخمين أسماء المستخدمين أسهل
     if account is None or data_key is None:
@@ -447,8 +468,8 @@ def upgrade_legacy(
         raise AuthError("لا يوجد حساب بهذا الاسم.")
     role = accounts[key].get("role", "admin")
     recovery_key = generate_recovery_key()
-    accounts[key] = _wrap_account(session.username, role, session.data_key,
-                                  password, recovery_key)
+    accounts[key] = _carry(accounts[key], _wrap_account(
+        session.username, role, session.data_key, password, recovery_key))
     _save_accounts(path, accounts)
     session.needs_recovery_key = False
     return recovery_key
@@ -468,8 +489,8 @@ def regenerate_recovery_key(
     key = _find(accounts, username)
     role = accounts[key].get("role", "admin")
     recovery_key = generate_recovery_key()
-    accounts[key] = _wrap_account(session.username, role, session.data_key,
-                                  password, recovery_key)
+    accounts[key] = _carry(accounts[key], _wrap_account(
+        session.username, role, session.data_key, password, recovery_key))
     _save_accounts(path, accounts)
     return recovery_key
 
@@ -512,6 +533,7 @@ def reset_with_recovery_key(
             raise AuthError("الاسترداد الذاتي متاح للمدير فقط — "
                             "اطلب من المدير إعادة تعيين كلمة مرورك.")
         username = account.get("username", "")
+        # الاسترداد استعادة كاملة: يُلغى الدخول بخطوتين (قد يكون الجوال ضاع)
         accounts[key] = _wrap_account(username, role, data_key,
                                       new_password, normalized)
         _save_accounts(path, accounts)
@@ -552,12 +574,88 @@ def change_password(
 
     # حساب قديم: نرقّيه ونولّد مفتاح استرداد — على المُنادي عرضه
     recovery_key = generate_recovery_key()
-    accounts[key] = _wrap_account(session.username, role, session.data_key,
-                                  new_password, recovery_key)
+    accounts[key] = _carry(account, _wrap_account(
+        session.username, role, session.data_key, new_password, recovery_key))
     _save_accounts(path, accounts)
     new_session = Session(session.username, session.data_key, role=role)
     new_session.fresh_recovery_key = recovery_key
     return new_session
+
+
+# ------------------------------------------------------------- الدخول بخطوتين
+# سرّ تطبيق المصادقة يُحفظ في مدخل الحساب مشفّراً بمفتاح البيانات، فلا يُقرأ
+# إلا بعد التحقّق من كلمة المرور.
+def has_totp(username: str, path: str | Path | None = None) -> bool:
+    """هل فعّل هذا الحساب الدخول بخطوتين؟"""
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    return bool(key and accounts[key].get("totp"))
+
+
+def get_totp(session: "Session", path: str | Path | None = None) -> str | None:
+    """سرّ الدخول بخطوتين لحساب الجلسة (مفكوك التشفير)، أو None."""
+    accounts, _ = _load(path)
+    key = _find(accounts, session.username)
+    token = accounts[key].get("totp") if key else None
+    if not token:
+        return None
+    try:
+        return session.decrypt(token.encode("ascii")).decode("ascii")
+    except (AuthError, ValueError):
+        return None
+
+
+def set_totp(session: "Session", secret: str | None,
+             path: str | Path | None = None) -> None:
+    """يفعّل (بالسرّ) أو يلغي (None) الدخول بخطوتين لحساب الجلسة نفسها."""
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    key = _find(accounts, session.username)
+    if key is None:
+        raise AuthError("لا يوجد حساب بهذا الاسم.")
+    if secret:
+        accounts[key]["totp"] = session.encrypt(secret.encode("ascii")).decode("ascii")
+    else:
+        accounts[key].pop("totp", None)
+    accounts[key]["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    _save_accounts(path, accounts)
+
+
+def admin_clear_totp(session: "Session", username: str,
+                     path: str | Path | None = None) -> None:
+    """يلغي الدخول بخطوتين لحساب آخر — للمدير (حين يضيع جوال صاحبه)."""
+    if session is None or not session.is_admin:
+        raise AuthError("إلغاء الدخول بخطوتين لحساب آخر للمدير فقط.")
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    if key is None:
+        raise AuthError("لا يوجد حساب بهذا الاسم.")
+    accounts[key].pop("totp", None)
+    accounts[key]["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    _save_accounts(path, accounts)
+
+
+def get_policy(path: str | Path | None = None) -> dict:
+    """سياسة الحسابات المحفوظة، مثل ‎{"require_totp": True}‎."""
+    path = Path(path or default_auth_path())
+    if not path.is_file():
+        return {}
+    pol = _read_json(path).get("policy")
+    return dict(pol) if isinstance(pol, dict) else {}
+
+
+def set_policy(session: "Session", path: str | Path | None = None,
+               **changes) -> dict:
+    """يغيّر سياسة الحسابات — للمدير فقط."""
+    if session is None or not session.is_admin:
+        raise AuthError("سياسة الحسابات للمدير فقط.")
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    pol = get_policy(path)
+    pol.update(changes)
+    _save_accounts(path, accounts, policy=pol)
+    return pol
 
 
 class Session:

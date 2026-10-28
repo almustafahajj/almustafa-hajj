@@ -64,8 +64,9 @@
     </nav>
     <div class="foot">
       👤 {{ session.get('username','') }} · {{ session.get('role','') }}<br>
+      <a href="{{ url_for('account_2fa') }}">🔐 الدخول بخطوتين</a><br>
       🔒 البيانات مشفّرة<br>
-      <a href="{{ url_for('logout') }}">🚪 تسجيل الخروج</a>
+      <a href="{{ url_for('logout', t=csrf_token()) }}">🚪 تسجيل الخروج</a>
     </div>
   </aside>
   <div class="main">
@@ -81,7 +82,7 @@
       <div class="actions">
         <span class="mode-badge" title="أنت الآن في نظام {{ theme.noun }}">{{ theme.icon }} نظام {{ theme.noun }}</span>
         <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}{{ season_suffix }}</a>
-        <a class="pill mode-switch" style="--other:{{ other_theme.accent }}" href="{{ url_for('switch', mode=other) }}">↔ التبديل إلى {{ other_theme.icon }} {{ other_label }}</a>
+        <a class="pill mode-switch" style="--other:{{ other_theme.accent }}" href="{{ url_for('switch', mode=other, t=csrf_token()) }}">↔ التبديل إلى {{ other_theme.icon }} {{ other_label }}</a>
       </div>
     </div>
     <div class="content">{% block content %}{% endblock %}</div>

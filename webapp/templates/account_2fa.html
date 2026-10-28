@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}الدخول بخطوتين — المصطفى{% endblock %}
+{% block heading %}🔐 الدخول بخطوتين{% endblock %}
+{% block subhead %}<div class="season">حماية إضافية لحسابك: كلمة المرور + رمز يتغيّر كل ٣٠ ثانية في جوالك</div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="acc-msg err">{{ err }}</div>{% endif %}
+{% if need and not enabled %}
+<div class="acc-msg err">قرّر المدير أن الدخول بخطوتين إلزامي لكل الحسابات — فعّله لحسابك
+  أولاً لتتمكّن من استخدام البورتال.</div>
+{% endif %}
+
+{% if enabled %}
+<div class="acc-cards">
+  <div class="acc-card">
+    <h3>✅ الدخول بخطوتين مفعّل لحسابك</h3>
+    <p>عند كل دخول سيُطلب منك — بعد كلمة المرور — الرمز الظاهر في تطبيق المصادقة.</p>
+    {% if required %}
+    <p class="hint-note">الدخول بخطوتين إلزامي لكل الحسابات (قرار المدير)، فلا يمكن إلغاؤه.</p>
+    {% else %}
+    <form method="post" class="acc-form">
+      <input type="hidden" name="action" value="disable">
+      <label>لإلغائه اكتب الرمز الحالي من التطبيق
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" required
+               dir="ltr" maxlength="12"></label>
+      <button class="acc-btn del" type="submit">إلغاء الدخول بخطوتين</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="acc-cards">
+  <div class="acc-card">
+    <h3>١) ثبّت تطبيق مصادقة على جوالك</h3>
+    <p>مثل <b>Google Authenticator</b> أو <b>Microsoft Authenticator</b> (مجاني من
+      متجر التطبيقات).</p>
+    <h3>٢) امسح هذا الرمز من التطبيق</h3>
+    <div class="qr-box">{{ setup.qr|safe }}</div>
+    <p class="muted" style="font-size:13px">لا تستطيع المسح؟ أضف حساباً يدوياً بهذا المفتاح:</p>
+    <div class="acc-key"><div class="k" dir="ltr">{{ setup.secret }}</div></div>
+  </div>
+  <div class="acc-card">
+    <h3>٣) اكتب الرمز الظاهر في التطبيق</h3>
+    <form method="post" class="acc-form">
+      <input type="hidden" name="action" value="enable">
+      <label>رمز التحقّق (٦ أرقام)
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" required
+               dir="ltr" maxlength="12"
+               style="text-align:center;font-size:20px;letter-spacing:5px"></label>
+      <button class="acc-btn add" type="submit">🔐 تفعيل الدخول بخطوتين</button>
+    </form>
+    <p class="hint-note">احتفظ بالجوال: إن ضاع، يلغي المدير الدخول بخطوتين لحسابك من
+      «إدارة الحسابات» ثم تفعّله من جديد.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
