@@ -1024,7 +1024,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28i · إخراج البرنامج من الباقة للمدير فقط"
+_BUILD_TAG = "2026-10-28j · تعديل/حذف/إخراج البرامج للمدير فقط"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3302,6 +3302,8 @@ def program_save():
     elif target is not None:
         trip.room_share = umrah.room_base(target, trips).code   # الأساسي مباشرة
     old = next((t for t in trips if t.code == key), None)
+    if not _sess().is_admin and (old is not None or any(t.code == trip.code for t in trips)):
+        return redirect(url_for("programs", msg="تعديل البرامج للمدير فقط."))
     old_pkg = str(getattr(old, "package", "") or "").strip()
     if old_pkg and trip.package and trip.package != old_pkg:
         trip.package = old_pkg
@@ -3338,7 +3340,7 @@ def program_save():
 def program_delete(code):
     if _sess() is None:
         return redirect(url_for("login"))
-    if _sess().can_edit:
+    if _sess().is_admin:                           # الحذف للمدير فقط
         from hajj_app import umrah
         settings = storage.load_settings()
         all_trips = umrah.load_trips(settings)

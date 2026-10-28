@@ -1,10 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{{ 'برنامج جديد' if is_new else 'تعديل برنامج' }} — المصطفى{% endblock %}
-{% block heading %}{{ '➕ برنامج عمرة جديد' if is_new else '✏️ تعديل البرنامج' }}{% endblock %}
+{% set ro = not is_new and not is_admin %}
+{% block title %}{{ 'برنامج جديد' if is_new else ('عرض برنامج' if ro else 'تعديل برنامج') }} — المصطفى{% endblock %}
+{% block heading %}{{ '➕ برنامج عمرة جديد' if is_new else ('📋 عرض البرنامج' if ro else '✏️ تعديل البرنامج') }}{% endblock %}
 {% block subhead %}<div class="season">الرمز: {{ code }}</div>{% endblock %}
 {% block content %}
+{% if ro %}<div class="acc-msg">تعديل البرامج للمدير فقط — هذه الصفحة للعرض.</div>{% endif %}
 <form method="post" action="{{ url_for('program_save') }}">
   <input type="hidden" name="orig" value="{{ orig }}">
+  <fieldset {{ 'disabled' if ro }} style="border:0;padding:0;margin:0;min-width:0">
   <fieldset class="editcard"><legend>رمز البرنامج</legend>
     <div class="fgrid"><label class="ff"><span>الرمز (فريد)</span>
       <input name="code" value="{{ code }}" {{ 'readonly' if not is_new }}></label></div>
@@ -53,8 +56,9 @@
     </div>
     <button type="button" class="acc-btn add" onclick="addSvc()">➕ إضافة خدمة</button>
   </fieldset>
+  </fieldset>
   <div class="formbar">
-    <button class="btn primary" type="submit">💾 حفظ البرنامج</button>
+    {% if not ro %}<button class="btn primary" type="submit">💾 حفظ البرنامج</button>{% endif %}
     <a class="btn ghost" href="{{ url_for('programs') }}">رجوع</a>
   </div>
 </form>
@@ -72,7 +76,7 @@
   <p class="hint-note">تُفتح كمعاينة في تبويب جديد لمعتمري هذا البرنامج فقط.</p>
 </fieldset>
 {% endif %}
-{% if not is_new and can_edit %}
+{% if not is_new and is_admin %}
 <form method="post" action="{{ url_for('program_delete', code=code) }}"
       onsubmit="return confirm('حذف البرنامج «{{ code }}» نهائياً؟');"
       style="margin-top:10px">

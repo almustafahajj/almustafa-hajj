@@ -30,13 +30,13 @@
             style="white-space:nowrap{% if left < 0 %};color:#C0392B;font-weight:700{% endif %}">{{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}{{ left }}{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}
         {% if r.shared %}<br><span class="muted" style="font-size:12px;white-space:nowrap" title="غرف فندق مشتركة">🔗 مع {{ r.shared|join('، ') }}</span>{% endif %}</td>
       <td>
-        <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">تعديل</a>
+        <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">{{ 'تعديل' if is_admin else 'عرض' }}</a>
         {% if package %}{% if is_admin %}
         <form method="post" class="inline" action="{{ url_for('program_package_assign') }}">
           <input type="hidden" name="name" value="{{ package }}">
           <input type="hidden" name="remove" value="{{ r.code }}">
           <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">↩ إخراج</button></form>{% endif %}
-        {% elif can_edit %}
+        {% elif is_admin %}
         <form method="post" class="inline"
               action="{{ url_for('program_delete', code=r.code) }}"
               onsubmit="return confirm('حذف البرنامج «{{ r.code }}» نهائياً؟');">

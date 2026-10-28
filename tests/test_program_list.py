@@ -130,6 +130,23 @@ assert "↩ إخراج" not in ed.get("/programs", query_string={"package": "ب�
 ed.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "U3"})
 app_mode.set_mode(app_mode.UMRAH)
 assert next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U3").package == "برامج رمضان"
+# التعديل والحذف للمدير فقط: المحرّر يرى «عرض» وصفحة للقراءة فقط
+app_mode.set_mode(app_mode.UMRAH)
+pg = ed.get("/programs").get_data(as_text=True)
+assert ">عرض</a>" in pg and ">تعديل</a>" not in pg and "🗑</button>" not in pg
+app_mode.set_mode(app_mode.UMRAH)
+pe = ed.get("/programs/U3").get_data(as_text=True)
+assert "📋 عرض البرنامج" in pe and "💾 حفظ البرنامج" not in pe and "<fieldset disabled" in pe
+assert "حذف البرنامج</button>" not in pe and "تسكين مكة" in pe
+app_mode.set_mode(app_mode.UMRAH)
+assert "💾 حفظ البرنامج" in c.get("/programs/U3").get_data(as_text=True)
+before = umrah.load_trips(storage.load_settings())
+for d in ({**form, "code": "U3", "orig": "U3", "name": "عبث"}, {**form, "code": "U3", "orig": "", "name": "عبث"}):
+    app_mode.set_mode(app_mode.UMRAH)
+    assert "msg=" in ed.post("/programs/save", data=d).headers["Location"]
+ed.post("/programs/U3/delete")
+app_mode.set_mode(app_mode.UMRAH)
+assert [(t.code, t.name) for t in umrah.load_trips(storage.load_settings())] == [(t.code, t.name) for t in before]
 # بعد الإخراج يصبح متاحاً لباقة أخرى
 c.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "U3"})
 c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "code": ["U3"]})
