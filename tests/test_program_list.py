@@ -119,6 +119,17 @@ assert "msg=" in r.headers["Location"]
 app_mode.set_mode(app_mode.UMRAH)
 u3 = next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U3")
 assert u3.package == "برامج رمضان" and u3.name == "رمضان المعدّل"
+# زر «إخراج» للمدير فقط: المحرّر لا يراه ولا يستطيع الإخراج
+auth.add_account(SESS, "ed1", "Passw0rd!e", role="editor")
+ed = server.app.test_client()
+ed.post("/login", data={"username": "ed1", "password": "Passw0rd!e"})
+app_mode.set_mode(app_mode.UMRAH)
+assert "↩ إخراج" in c.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
+app_mode.set_mode(app_mode.UMRAH)
+assert "↩ إخراج" not in ed.get("/programs", query_string={"package": "برامج رمضان"}).get_data(as_text=True)
+ed.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "U3"})
+app_mode.set_mode(app_mode.UMRAH)
+assert next(t for t in umrah.load_trips(storage.load_settings()) if t.code == "U3").package == "برامج رمضان"
 # بعد الإخراج يصبح متاحاً لباقة أخرى
 c.post("/programs/packages/assign", data={"name": "برامج رمضان", "remove": "U3"})
 c.post("/programs/packages/assign", data={"name": "برامج ديسمبر", "code": ["U3"]})

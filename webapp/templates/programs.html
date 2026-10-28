@@ -31,11 +31,11 @@
         {% if r.shared %}<br><span class="muted" style="font-size:12px;white-space:nowrap" title="غرف فندق مشتركة">🔗 مع {{ r.shared|join('، ') }}</span>{% endif %}</td>
       <td>
         <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">تعديل</a>
-        {% if can_edit and package %}
+        {% if package %}{% if is_admin %}
         <form method="post" class="inline" action="{{ url_for('program_package_assign') }}">
           <input type="hidden" name="name" value="{{ package }}">
           <input type="hidden" name="remove" value="{{ r.code }}">
-          <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">↩ إخراج</button></form>
+          <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">↩ إخراج</button></form>{% endif %}
         {% elif can_edit %}
         <form method="post" class="inline"
               action="{{ url_for('program_delete', code=r.code) }}"

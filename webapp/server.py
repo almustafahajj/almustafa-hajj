@@ -1024,7 +1024,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28h · السجلات على الجوال + محاذاة عرض السعر"
+_BUILD_TAG = "2026-10-28i · إخراج البرنامج من الباقة للمدير فقط"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3159,6 +3159,8 @@ def program_package_assign():
         return redirect(url_for("programs"))
     add = set(request.form.getlist("code"))
     remove = (request.form.get("remove") or "").strip()
+    if remove and not _sess().is_admin:          # الإخراج من الباقة للمدير فقط
+        return redirect(url_for("programs", package=name))
     trips = umrah.load_trips(settings)
     _migrate_orders(settings, trips)
     n = 0
