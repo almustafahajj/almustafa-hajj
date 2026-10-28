@@ -247,7 +247,7 @@ except ImportError as exc:                   # Flask غير مثبّت في هذ
 
 
 class _FakeSession:
-    username, is_admin, can_edit = "tester", True, True
+    username, is_admin, can_edit, role = "tester", True, True, "admin"
 
     def encrypt(self, b):
         return b
@@ -256,6 +256,8 @@ class _FakeSession:
         return b
 
 
+from hajj_app import auth as _auth  # noqa: E402
+_auth.create_account("tester", "Passw0rd!t")    # الجلسة لحساب موجود (تُفحص الصلاحية)
 server._SESSIONS["sid-test"] = _FakeSession()
 storage.save_settings({"umrah_quotes": {"U1": [QUOTE_AR],
                                         "_manual": [QUOTE_EN]}})

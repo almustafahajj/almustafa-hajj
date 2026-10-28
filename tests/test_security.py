@@ -246,4 +246,21 @@ assert "أُوقف الدخول مؤقّتاً" in k.post("/account/2fa", data={
     "action": "enable", "code": "000000", "csrf_token": t}).get_data(as_text=True)
 server._FAILS.clear()
 print("[ok] إصلاحات المراجعة: لا حقن داخل السكربت، روابط بالرمز، فكّ الإيقاف، حدود الرموز")
+
+# ---- 8) قائمة الإدارة للمدير فقط، وتغيير الدور يسري فوراً ----
+server._FAILS.clear()
+owner = auth.login("owner", "Passw0rd!r")
+auth.add_account(owner, "boss2", "Passw0rd!b", role="admin")
+b = server.app.test_client()
+t = token(b.get("/login").get_data(as_text=True))
+b.post("/login", data={"username": "boss2", "password": "Passw0rd!b", "csrf_token": t})
+assert "النسخ الاحتياطي" in b.get("/dashboard").get_data(as_text=True)
+auth.set_role(owner, "boss2", "editor")                      # إنزال أثناء جلسته
+page = b.get("/dashboard").get_data(as_text=True)
+assert "النسخ الاحتياطي" not in page and "إدارة الحسابات" not in page
+assert b.get("/backup").status_code == 302
+assert "للمدير فقط" in b.get("/accounts").get_data(as_text=True)
+auth.remove_account(owner, "boss2")                          # حذف الحساب يُخرجه
+assert b.get("/dashboard").status_code == 302
+print("[ok] الإدارة للمدير فقط، وتغيير الدور/حذف الحساب يسري فوراً")
 print("ALL OK")

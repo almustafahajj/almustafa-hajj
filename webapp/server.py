@@ -493,6 +493,28 @@ def _audit(action: str, details: str = "") -> None:
 
 
 @app.before_request
+def _refresh_role():
+    """الصلاحية تُقرأ من ملف الحسابات مع كل طلب: تغيير دور مستخدم (مثل إنزاله من
+    «مدير») يسري فوراً على جلسته المفتوحة، وحذف حسابه يُخرجه."""
+    s = _sess()
+    if s is None:
+        return None
+    try:
+        acc = next((a for a in auth.list_accounts()
+                    if a["username"].lower() == s.username.lower()), None)
+    except Exception:                              # noqa: BLE001
+        return None
+    if acc is None:                                # حُذف الحساب
+        _SESSIONS.pop(session.get("sid"), None)
+        session.clear()
+        return redirect(url_for("login"))
+    if acc["role"] != s.role:
+        s.role = acc["role"] if acc["role"] in auth.ROLES else "viewer"
+        session["role"] = s.role_label
+    return None
+
+
+@app.before_request
 def _sync_mode():
     """يزامن وضع التخزين (حج/عمرة) مع جلسة المتصفّح قبل كل طلب.
 
@@ -1002,7 +1024,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28e · النسخ الاحتياطي اليومي والاستعادة"
+_BUILD_TAG = "2026-10-28f · الصلاحية تسري فوراً على الجلسات المفتوحة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
