@@ -601,7 +601,7 @@ def _csrf_inject(resp):
 
 # ---- إلزام الدخول بخطوتين (إن فعّله المدير لكل الحسابات) ----
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
-             "setup", "recover", "switch", "index"}
+             "setup", "recover", "switch", "index", "service_worker"}
 
 
 @app.before_request
@@ -728,8 +728,52 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit))
 
 
-_BUILD_TAG = "2026-10-28a · حماية الدخول والنماذج + الدخول بخطوتين"
+_BUILD_TAG = "2026-10-28b · تطبيق قابل للتثبيت + عرض الجوال"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
+
+
+_SW_JS = r"""// عامل خدمة البورتال: يحفظ الملفّات الثابتة فقط (التنسيق والأيقونات) لتسريع
+// الفتح، ولا يحفظ أي صفحة فيها بيانات. بلا اتصال تظهر صفحة توضيحية.
+const CACHE = 'almustafa-__BUILD__';
+const ASSETS = ['/static/style.css', '/static/logo.png', '/static/icons/icon-192.png',
+                '/static/icons/icon-512.png', '/static/manifest.webmanifest'];
+const OFFLINE = '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width, initial-scale=1"><title>لا يوجد اتصال</title></head>' +
+  '<body style="font-family:Tahoma,Arial,sans-serif;background:#F4F1EC;text-align:center;padding:60px 20px">' +
+  '<h2>📡 لا يوجد اتصال بالإنترنت</h2><p>البورتال يحتاج اتصالاً لعرض البيانات المحدّثة.</p>' +
+  '<p><a href="/dashboard" onclick="location.reload();return false">🔄 إعادة المحاولة</a></p></body></html>';
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE)
+    .map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const r = e.request;
+  if (r.method !== 'GET') return;
+  const u = new URL(r.url);
+  if (u.origin !== location.origin) return;
+  if (u.pathname.startsWith('/static/')) {
+    e.respondWith(fetch(r).then(resp => {
+      const cp = resp.clone(); caches.open(CACHE).then(c => c.put(r, cp)); return resp;
+    }).catch(() => caches.match(r)));
+    return;
+  }
+  if (r.mode === 'navigate') {
+    e.respondWith(fetch(r).catch(() => new Response(OFFLINE,
+      {headers: {'Content-Type': 'text/html; charset=utf-8'}})));
+  }
+});
+"""
+
+
+@app.get("/sw.js")
+def service_worker():
+    """عامل الخدمة من جذر الموقع (ليشمل كل الصفحات) — بلا تسجيل دخول."""
+    body = _SW_JS.replace("__BUILD__", re.sub(r"[^0-9a-z]", "", _BUILD_TAG.split()[0]))
+    return body, 200, {"Content-Type": "application/javascript; charset=utf-8",
+                       "Cache-Control": "no-cache", "Service-Worker-Allowed": "/"}
 
 
 @app.get("/version")

@@ -5,10 +5,12 @@
 <title>{{ theme.icon }} {{ theme.noun }} · {% block title %}المصطفى للحج والعمرة{% endblock %}</title>
 <link rel="icon" href="{{ favicon }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% set pwa_color = theme.accent %}{% include "_pwa_head.html" %}
 <script>(function(){try{if(localStorage.getItem('navc')==='1')
   document.documentElement.classList.add('nav-collapsed');}catch(e){}})();</script>
 </head><body class="mode-{{ mode }}">
 <div class="shell">
+  <div class="nav-backdrop" onclick="document.documentElement.classList.remove('nav-open')"></div>
   <aside class="sidebar">
     <div class="logo"><img class="logo-img" src="{{ url_for('static', filename='logo.png') }}" alt="المصطفى للحج والعمرة"></div>
     <div class="mode-band"><small>النظام الحالي</small>{{ theme.icon }} {{ theme.noun }}</div>
@@ -80,6 +82,7 @@
         </div>
       </div>
       <div class="actions">
+        <button class="pill install-btn" id="installBtn" type="button" hidden>📲 تثبيت التطبيق</button>
         <span class="mode-badge" title="أنت الآن في نظام {{ theme.noun }}">{{ theme.icon }} نظام {{ theme.noun }}</span>
         <a class="pill" href="{{ url_for('season_page') }}" title="تحديد الموسم">🗓 موسم {{ season }}{{ season_suffix }}</a>
         <a class="pill mode-switch" style="--other:{{ other_theme.accent }}" href="{{ url_for('switch', mode=other, t=csrf_token()) }}">↔ التبديل إلى {{ other_theme.icon }} {{ other_label }}</a>
@@ -89,9 +92,25 @@
   </div>
 </div>
 <script>
+function isPhone(){return window.matchMedia('(max-width:760px)').matches;}
 function toggleNav(){
+  if(isPhone()){document.documentElement.classList.toggle('nav-open');return;}
   var c=document.documentElement.classList.toggle('nav-collapsed');
   try{localStorage.setItem('navc',c?'1':'0');}catch(e){}
 }
+/* على الجوال: الجداول تصير بطاقات — كل خانة تحمل اسم عمودها */
+document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
+  var hs=[].map.call(t.querySelectorAll('thead th'),function(th){return th.textContent.trim();});
+  t.querySelectorAll('tbody tr').forEach(function(tr){var i=0;
+    [].forEach.call(tr.children,function(td){
+      if(td.tagName==='TD'&&!td.hasAttribute('data-label')&&hs[i]&&(td.colSpan||1)===1)
+        td.setAttribute('data-label',hs[i]);
+      i+=td.colSpan||1;});});
+});
+/* تثبيت البورتال كتطبيق (يظهر الزرّ حين يسمح المتصفّح) */
+(function(){var ev=null,b=document.getElementById('installBtn');if(!b)return;
+  window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();ev=e;b.hidden=false;});
+  b.addEventListener('click',function(){if(!ev)return;ev.prompt();ev.userChoice.then(function(){ev=null;b.hidden=true;});});
+  window.addEventListener('appinstalled',function(){b.hidden=true;});})();
 </script>
 </body></html>

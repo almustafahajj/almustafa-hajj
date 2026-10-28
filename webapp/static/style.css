@@ -386,3 +386,45 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
 .qr-box{ background:#fff; display:inline-block; padding:10px; border-radius:12px;
   border:1px solid var(--border); }
 .qr-box svg{ display:block; width:200px; height:200px; }
+
+/* ================= الجوال والشاشات الصغيرة ================= */
+.nav-backdrop{ display:none; }
+.install-btn{ cursor:pointer; background:#fff; border-color:var(--bronze); color:var(--bronze); }
+@media (max-width:760px){
+  /* القائمة الجانبية درج ينزلق فوق الصفحة */
+  .sidebar{ position:fixed; top:0; bottom:0; right:0; z-index:60; width:264px;
+    transform:translateX(105%); transition:transform .22s ease; overflow-y:auto; }
+  html.nav-collapsed .sidebar{ width:264px; padding-inline:12px; }
+  html.nav-collapsed .sidebar > *{ opacity:1; visibility:visible; }
+  html.nav-open .sidebar{ transform:none; box-shadow:-8px 0 28px #0006; }
+  html.nav-open .nav-backdrop{ display:block; position:fixed; inset:0; background:#0007;
+    z-index:55; }
+  .topbar{ padding:10px 12px; position:sticky; top:0; z-index:40; }
+  .topbar h2{ font-size:17px; }
+  .topbar .actions{ gap:6px; width:100%; }
+  .pill{ padding:6px 10px; font-size:12.5px; }
+  .mode-badge{ display:none; }
+  .content{ padding:12px; }
+  .kpis{ grid-template-columns:1fr 1fr; gap:10px; }
+  .card{ padding:12px; }
+  .card .val{ font-size:22px; }
+  .fgrid{ grid-template-columns:1fr; }
+  .acc-cards{ grid-template-columns:1fr; }
+  /* الجداول بطاقات: كل صفّ بطاقة، وكل خانة «اسم العمود: القيمة» */
+  table.data thead, table.acc-table thead{ display:none; }
+  table.data, table.data tbody, table.data tr, table.data td,
+  table.acc-table, table.acc-table tbody, table.acc-table tr, table.acc-table td{
+    display:block; width:auto; }
+  table.data tr, table.acc-table tr{ border-bottom:8px solid var(--bg); padding:4px 0; }
+  table.data td, table.acc-table td{ position:relative; padding:7px 12px;
+    border-top:none; text-align:start; min-height:20px; }
+  table.data td[data-label], table.acc-table td[data-label]{ padding-inline-start:40%; }
+  table.data td[data-label]::before, table.acc-table td[data-label]::before{
+    content:attr(data-label); position:absolute; inset-inline-start:12px; top:7px;
+    width:calc(40% - 20px); font-weight:700; color:var(--muted); font-size:12.5px; }
+  table.data td[colspan], table.data tr.pg-head td{ display:block; }
+  table.data tr.pg-gap{ display:none; }
+  table.data tr.pg-head .pg-move{ float:none; margin-bottom:6px; }
+  table.data tr.pg-head .pg-meta{ white-space:normal; display:inline-block; }
+  .login-card{ padding:22px 18px; }
+}

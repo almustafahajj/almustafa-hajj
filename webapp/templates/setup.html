@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>التهيئة الأولى — المصطفى للحج والعمرة</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% include "_pwa_head.html" %}
 </head><body>
 <div class="login-wrap">
   <form class="login-card" method="post" action="{{ url_for('setup') }}">

@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>استرداد كلمة المرور — المصطفى للحج والعمرة</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% set pwa_color = '#8A6E4B' if selected_mode == 'hajj' else '#13795B' %}{% include "_pwa_head.html" %}
 </head><body class="mode-{{ selected_mode }}">
 <div class="login-wrap">
   <form class="login-card" method="post">
