@@ -4975,7 +4975,9 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
         author="ميسّر العمرة")
     st = _styles()
     story = []
-    W = doc.width
+    # عرض المحتوى = المساحة الفعلية داخل الإطار (عرض الصفحة ناقص الهوامش ناقص
+    # حشوة الإطار ٦+٦) — فتتطابق حواف الجداول والعناوين والنصوص تماماً
+    W = doc.width - 12
     _DEEP = colors.HexColor("#6E543A")
 
     def _logo_cell(pathobj, h):
@@ -5476,8 +5478,15 @@ def export_umrah_quotation_pdf(rec, path: str | Path, *, trip=None, company=None
                 pass
         _footer_portrait(canvas, d, foot)
 
-    # عرض السعر في صفحة واحدة مهما طال المحتوى (تصغير تلقائي عند الحاجة)
-    fitted = KeepInFrame(doc.width, doc.height, story, mode="shrink",
+    # عرض السعر في صفحة واحدة مهما طال المحتوى (تصغير تلقائي عند الحاجة).
+    # المحتوى كلّه داخل حاوية ثابتة العرض W قبل التصغير — وإلّا أعاد التصغير لفّ
+    # النصوص على عرضٍ أوسع من الجداول فخرجت السطور عن حوافها.
+    body = Table([[story]], colWidths=[W])
+    body.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    fitted = KeepInFrame(W, doc.height - 12, [body], mode="shrink",
                          hAlign="CENTER", vAlign="TOP")
     doc.build([fitted], onFirstPage=_bg, onLaterPages=_bg)
     return path

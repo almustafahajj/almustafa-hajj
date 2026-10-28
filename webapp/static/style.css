@@ -427,6 +427,15 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
   table.data tr.pg-head .pg-move{ float:none; margin-bottom:6px; }
   table.data tr.pg-head .pg-meta{ white-space:normal; display:inline-block; }
   .login-card{ padding:22px 18px; }
+  /* لا تصير أي صفحة أعرض من الشاشة (وإلّا يصغّرها المتصفح كلها) */
+  html, body{ max-width:100%; overflow-x:hidden; }
+  .main{ max-width:100vw; }
+  .searchbar, .formbar, .docbtns, .cal-nav{ flex-wrap:wrap; }
+  .searchbar input{ flex:1 1 100%; min-width:0; }
+  .searchbar .btn{ flex:1 1 auto; width:auto; padding:9px 12px; font-size:13.5px; }
+  .fltgrid{ grid-template-columns:1fr 1fr; }
+  input, select, textarea{ max-width:100%; }
+  .panel, .acc-card, .editcard{ min-width:0; max-width:100%; }
 }
 
 /* ---- البحث السريع + الإشعارات + بطاقات الباقات ---- */

@@ -1024,7 +1024,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28f · الصلاحية تسري فوراً على الجلسات المفتوحة"
+_BUILD_TAG = "2026-10-28h · السجلات على الجوال + محاذاة عرض السعر"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
