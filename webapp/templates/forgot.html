@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نسيت كلمة المرور — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% set pwa_color = '#13795B' %}{% include "_pwa_head.html" %}
+</head><body class="mode-{{ selected_mode }}">
+<div class="login-wrap">
+  <form class="login-card" method="post">
+    <div class="brand-dot">📧</div>
+    <h1>نسيت كلمة المرور</h1>
+    {% if done %}
+    <div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ done }}</div>
+    {% else %}
+    <p class="sub">اكتب اسم المستخدم أو إيميل العمل. يصل طلبك إلى المدير، وبعد موافقته
+      يصلك رابط على إيميلك لوضع كلمة مرور جديدة.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label for="who">اسم المستخدم أو الإيميل</label>
+      <input id="who" name="who" required autofocus autocomplete="username" maxlength="254">
+    </div>
+    <button class="btn primary" type="submit">إرسال الطلب</button>
+    {% endif %}
+    <p class="sub" style="margin-top:14px">
+      <a href="{{ url_for('login') }}">← العودة لتسجيل الدخول</a></p>
+    <p class="sub" style="font-size:12px">المدير ومعه مفتاح الاسترداد؟
+      <a href="{{ url_for('recover') }}">استرداد بالمفتاح</a></p>
+  </form>
+</div>
+</body></html>

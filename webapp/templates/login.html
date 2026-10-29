@@ -13,6 +13,7 @@
     <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">✅ استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
+    {% if request.args.get('reset') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">✅ حُفظت كلمة المرور الجديدة — سجّل الدخول بها.</div>{% endif %}
     {% include "_mode_pick.html" %}
     <div class="field">
       <label for="username">اسم المستخدم</label>
@@ -27,7 +28,7 @@
     </label>
     <button class="btn primary" type="submit">دخول</button>
     <p class="sub" style="margin-top:14px">
-      <a href="{{ url_for('recover') }}">نسيت كلمة المرور؟ (استرداد المدير)</a></p>
+      <a href="{{ url_for('forgot') }}">نسيت كلمة المرور؟</a></p>
   </form>
 </div>
 </body></html>

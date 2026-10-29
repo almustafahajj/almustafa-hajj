@@ -238,8 +238,9 @@ def _save_accounts(path: str | Path | None, accounts: dict,
 
 def _carry(old: dict | None, new: dict) -> dict:
     """ينقل حقول الحساب الإضافية (سرّ الدخول بخطوتين) إلى مدخل أُعيد بناؤه."""
-    if old and old.get("totp"):
-        new["totp"] = old["totp"]
+    for f in ("totp", "email", "email_2fa"):
+        if old and old.get(f):
+            new[f] = old[f]
     return new
 
 
@@ -359,7 +360,8 @@ def list_accounts(path: str | Path | None = None) -> list[dict]:
     """يعيد قائمة الحسابات: [{username, role, updated_at}] مرتّبة بالاسم."""
     accounts, _ = _load(path)
     rows = [{"username": a.get("username", ""), "role": a.get("role", "admin"),
-             "updated_at": a.get("updated_at", ""), "totp": bool(a.get("totp"))}
+             "updated_at": a.get("updated_at", ""), "totp": bool(a.get("totp")),
+             "email": a.get("email", ""), "email_2fa": bool(a.get("email_2fa"))}
             for a in accounts.values()]
     return sorted(rows, key=lambda r: r["username"].lower())
 
@@ -536,6 +538,8 @@ def reset_with_recovery_key(
         # الاسترداد استعادة كاملة: يُلغى الدخول بخطوتين (قد يكون الجوال ضاع)
         accounts[key] = _wrap_account(username, role, data_key,
                                       new_password, normalized)
+        if account.get("email"):                   # إيميل العمل يبقى
+            accounts[key]["email"] = account["email"]
         _save_accounts(path, accounts)
         return Session(username, data_key, role=role)
 
@@ -632,6 +636,7 @@ def admin_clear_totp(session: "Session", username: str,
     if key is None:
         raise AuthError("لا يوجد حساب بهذا الاسم.")
     accounts[key].pop("totp", None)
+    accounts[key].pop("email_2fa", None)
     accounts[key]["updated_at"] = datetime.now().isoformat(timespec="seconds")
     _save_accounts(path, accounts)
 
@@ -656,6 +661,122 @@ def set_policy(session: "Session", path: str | Path | None = None,
     pol.update(changes)
     _save_accounts(path, accounts, policy=pol)
     return pol
+
+
+# ------------------------------------------------------------- إيميل العمل
+# العنوان يُحفظ نصّاً عادياً في مدخل الحساب (يلزم قبل الدخول لإرسال الرمز أو
+# طلب الاستعادة). المدير وحده يضبطه.
+def get_email(username: str, path: str | Path | None = None) -> str:
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    return str(accounts[key].get("email") or "") if key else ""
+
+
+def find_by_email(email: str, path: str | Path | None = None) -> str | None:
+    """اسم الحساب صاحب هذا الإيميل (غير حسّاس للحالة)، أو None."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    accounts, _ = _load(path)
+    hits = [a.get("username", "") for a in accounts.values()
+            if str(a.get("email") or "").lower() == email]
+    return hits[0] if len(hits) == 1 else None
+
+
+def set_email(session: "Session", username: str, email: str,
+              path: str | Path | None = None) -> None:
+    """يضبط إيميل العمل لحساب (فارغ = إزالة) — للمدير فقط."""
+    if session is None or not session.is_admin:
+        raise AuthError("ضبط الإيميل للمدير فقط.")
+    email = (email or "").strip()
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    if key is None:
+        raise AuthError("لا يوجد حساب بهذا الاسم.")
+    if email:
+        low = email.lower()
+        if any(k != key and str(a.get("email") or "").lower() == low
+               for k, a in accounts.items()):
+            raise AuthError("هذا الإيميل مستخدم لحساب آخر.")
+        if str(accounts[key].get("email") or "").lower() != low:
+            accounts[key].pop("email_2fa", None)   # عنوان جديد: يُعاد تفعيل الرمز
+        accounts[key]["email"] = email
+    else:
+        accounts[key].pop("email", None)
+        accounts[key].pop("email_2fa", None)
+    accounts[key]["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    _save_accounts(path, accounts)
+
+
+def has_email_2fa(username: str, path: str | Path | None = None) -> bool:
+    """هل اختار الحساب رمز الدخول على الإيميل (ومعه إيميل)؟"""
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    return bool(key and accounts[key].get("email_2fa") and accounts[key].get("email"))
+
+
+def set_email_2fa(session: "Session", on: bool,
+                  path: str | Path | None = None) -> None:
+    """يفعّل/يلغي رمز الدخول على الإيميل لحساب الجلسة نفسها."""
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    key = _find(accounts, session.username)
+    if key is None:
+        raise AuthError("لا يوجد حساب بهذا الاسم.")
+    if on and not accounts[key].get("email"):
+        raise AuthError("لا يوجد إيميل لحسابك — اطلب من المدير إضافته.")
+    if on:
+        accounts[key]["email_2fa"] = True
+    else:
+        accounts[key].pop("email_2fa", None)
+    accounts[key]["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    _save_accounts(path, accounts)
+
+
+# --------------------------------------------- إعادة التعيين برابط الإيميل
+# عند موافقة المدير يُغلَّف مفتاح البيانات (من جلسته) بسرّ عشوائي يُرسل في
+# الرابط فقط؛ يُحفظ المغلَّف مؤقّتاً، ولا يُفتح إلا بالرابط نفسه.
+def wrap_key_for_token(session: "Session", token: str) -> dict:
+    if session is None or not session.is_admin:
+        raise AuthError("الموافقة على الاستعادة للمدير فقط.")
+    salt = secrets.token_bytes(_SALT_BYTES)
+    return {"salt": _b64(salt),
+            "wrapped": _fernet(_derive(token, salt))
+                       .encrypt(session.data_key).decode("ascii")}
+
+
+def set_password_by_token(username: str, token: str, wrapped: dict,
+                          new_password: str,
+                          path: str | Path | None = None) -> None:
+    """يعيّن كلمة مرور جديدة بمفتاح البيانات المغلَّف بسرّ الرابط.
+
+    يُبقي مفتاح الاسترداد والدخول بخطوتين والإيميل كما هي.
+    """
+    problem = password_problem(new_password)
+    if problem:
+        raise AuthError(problem)
+    try:
+        data_key = _fernet(_derive(token, _unb64(wrapped["salt"]))).decrypt(
+            wrapped["wrapped"].encode("ascii"))
+    except (InvalidToken, KeyError, ValueError) as exc:
+        raise AuthError("الرابط غير صالح.") from exc
+    path = Path(path or default_auth_path())
+    accounts, _ = _load(path)
+    key = _find(accounts, username)
+    if key is None:
+        raise AuthError("لا يوجد حساب بهذا الاسم.")
+    password_salt = secrets.token_bytes(_SALT_BYTES)
+    acc = {k: v for k, v in accounts[key].items()
+           if k not in ("legacy1", "auth_salt", "auth_hash", "data_salt")}
+    acc.update({
+        "password_salt": _b64(password_salt),
+        "key_by_password": _fernet(_derive(new_password, password_salt))
+                           .encrypt(data_key).decode("ascii"),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    })
+    accounts[key] = acc
+    _save_accounts(path, accounts)
 
 
 class Session:

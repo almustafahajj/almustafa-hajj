@@ -165,7 +165,7 @@ print("[ok] الدخول بخطوتين: تفعيل بالرمز ثم طلبه �
 # ---- 6) إلزام المدير + إلغاؤه لحساب ضاع جواله ----
 server._FAILS.clear()
 acc = c.get("/accounts").get_data(as_text=True)
-assert "✅ مفعّل" in acc
+assert "✅ تطبيق" in acc
 t = token(acc)
 c.post("/accounts/2fa-policy", data={"require": "1", "csrf_token": t})
 assert auth.get_policy().get("require_totp") is True

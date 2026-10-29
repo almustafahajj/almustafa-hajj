@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>كلمة مرور جديدة — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% set pwa_color = '#13795B' %}{% include "_pwa_head.html" %}
+</head><body class="mode-{{ selected_mode }}">
+<div class="login-wrap">
+  <form class="login-card" method="post">
+    <div class="brand-dot">🔑</div>
+    <h1>كلمة مرور جديدة</h1>
+    {% if invalid %}
+    <div class="err">الرابط غير صالح أو انتهت مدّته أو استُخدم من قبل. اطلب استعادة جديدة.</div>
+    <p class="sub"><a href="{{ url_for('forgot') }}">طلب استعادة جديد</a></p>
+    {% else %}
+    <p class="sub">لحساب «{{ username }}». الرابط لمرة واحدة.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field">
+      <label>كلمة المرور الجديدة</label>
+      <input name="password" type="password" required minlength="8" autofocus
+             pattern=".*[^0-9].*" autocomplete="new-password"
+             title="٨ خانات على الأقل وبها حرف غير رقمي">
+    </div>
+    <div class="field">
+      <label>تأكيد كلمة المرور</label>
+      <input name="confirm" type="password" required autocomplete="new-password">
+    </div>
+    <button class="btn primary" type="submit">حفظ كلمة المرور</button>
+    {% endif %}
+    <p class="sub" style="margin-top:14px">
+      <a href="{{ url_for('login') }}">← العودة لتسجيل الدخول</a></p>
+  </form>
+</div>
+</body></html>

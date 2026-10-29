@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import html as _html
 import io
 import os
 import secrets
@@ -219,6 +220,60 @@ _LOCK_LIMITS = {"user": 5, "ip": 20}
 _PENDING: dict = {}                # دخول ينتظر رمز الخطوة الثانية
 _TOTP_LAST: dict = {}              # آخر خطوة زمنية قُبلت لكل مستخدم (منع التكرار)
 _TOTP_SETUP: dict = {}             # سرّ قيد التفعيل لكل جلسة
+_EMAIL_SETUP: dict = {}            # رمز تفعيل «الرمز على الإيميل» لكل جلسة
+_FORGOT: dict = {}                 # عنوان → أوقات طلبات «نسيت كلمة المرور»
+_MAIL_CODE_TTL = 10 * 60
+_MAIL_RESEND = 60                  # ثوانٍ بين رسالتين
+_MAIL_MAX_SENDS = 5
+
+
+def _mail_2fa(username: str) -> bool:
+    """رمز الدخول على الإيميل متاح لهذا الحساب الآن؟"""
+    from webapp import mailer
+    return mailer.configured() and auth.has_email_2fa(username)
+
+
+def _mask_email(email: str) -> str:
+    name, _, dom = (email or "").partition("@")
+    return (name[:2] + "•••@" + dom) if dom else ""
+
+
+def _code_hash(code: str) -> str:
+    return hashlib.sha256(("mailcode:" + code).encode("utf-8")).hexdigest()
+
+
+def _mail_code(state: dict, email: str, title: str, purpose: str) -> tuple[str, str]:
+    """يرسل رمزاً من ٦ أرقام ويحفظ بصمته في state. يعيد (خطأ، رسالة)."""
+    from webapp import mailer
+    now = time.time()
+    if now - state.get("elast", 0) < _MAIL_RESEND:
+        return (f"انتظر {int(_MAIL_RESEND - (now - state['elast'])) + 1} ثانية "
+                "قبل طلب رمز جديد.", "")
+    if state.get("esent", 0) >= _MAIL_MAX_SENDS:
+        return "طلبت رموزاً كثيرة — أعد المحاولة لاحقاً.", ""
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    ok, why = mailer.send(email, f"{title}: {code}", mailer.wrap(title, (
+        f"<p>{_html.escape(purpose)}</p><p style=\"font-size:30px;letter-spacing:8px;font-weight:bold;"
+        f"text-align:center;direction:ltr\">{code}</p>"
+        "<p>الرمز صالح ١٠ دقائق. إن لم تطلبه أنت فتجاهل الرسالة وغيّر كلمة مرورك.</p>")))
+    if not ok:
+        return "تعذّر إرسال الرمز — " + why, ""
+    state.update(ecode=_code_hash(code), eexp=now + _MAIL_CODE_TTL, etries=0,
+                 esent=state.get("esent", 0) + 1, elast=now, eto=_mask_email(email))
+    return "", f"📧 أرسلنا رمزاً إلى {state['eto']} — صالح ١٠ دقائق."
+
+
+def _check_mail_code(state: dict, code) -> bool:
+    from hajj_app import totp
+    if not state.get("ecode") or state.get("eexp", 0) < time.time():
+        return False
+    if hmac.compare_digest(_code_hash(totp.clean_code(code)), state["ecode"]):
+        state.pop("ecode", None)                   # لمرة واحدة
+        return True
+    state["etries"] = state.get("etries", 0) + 1
+    if state["etries"] >= 5:                       # ٥ أخطاء: يُلغى الرمز
+        state.pop("ecode", None)
+    return False
 
 
 def _client_ip() -> str:
@@ -314,13 +369,18 @@ def login():
             if hs is None:
                 _note_fail(username)
                 error = "اسم المستخدم أو كلمة المرور غير صحيحة."
-            elif auth.has_totp(hs.username):       # الخطوة الثانية: رمز الجوال
-                now = time.time()
+            elif auth.has_totp(hs.username) or _mail_2fa(hs.username):
+                now = time.time()                  # الخطوة الثانية: رمز الجوال/الإيميل
                 for k in [k for k, v in _PENDING.items() if v["exp"] < now]:
                     _PENDING.pop(k, None)
                 pid = secrets.token_hex(16)
-                _PENDING[pid] = {"hs": hs, "user": username, "mode": mode,
-                                 "remember": remember, "exp": now + 300}
+                _PENDING[pid] = p = {"hs": hs, "user": username, "mode": mode,
+                                     "remember": remember, "exp": now + 300}
+                if not auth.has_totp(hs.username):   # الإيميل وحده: يُرسل فوراً
+                    p["exp"] = now + _MAIL_CODE_TTL
+                    p["err"], p["info"] = _mail_code(
+                        p, auth.get_email(hs.username), "رمز الدخول",
+                        f"رمز الدخول إلى بورتال المصطفى لحساب «{hs.username}»:")
                 session["p2fa"] = pid
                 return redirect(url_for("login_2fa"))
             else:
@@ -332,7 +392,7 @@ def login():
 
 @app.route("/login/2fa", methods=["GET", "POST"])
 def login_2fa():
-    """الخطوة الثانية: رمز من تطبيق المصادقة في الجوال (٦ أرقام)."""
+    """الخطوة الثانية: رمز من تطبيق المصادقة أو رمز يصل إلى إيميل العمل."""
     from hajj_app import totp
     pid = session.get("p2fa")
     p = _PENDING.get(pid) if pid else None
@@ -340,31 +400,133 @@ def login_2fa():
         _PENDING.pop(pid, None)
         session.pop("p2fa", None)
         return redirect(url_for("login"))
-    error = ""
+    hs = p["hs"]
+    use_app, use_mail = auth.has_totp(hs.username), _mail_2fa(hs.username)
+    if not (use_app or use_mail):                  # أُلغي أثناء الانتظار أو حُذف
+        _PENDING.pop(pid, None)
+        session.pop("p2fa", None)
+        return redirect(url_for("login"))             # يُعاد الدخول بكلمة المرور
+    error, info = p.pop("err", ""), p.pop("info", "")
     if request.method == "POST":
-        hs = p["hs"]
         wait = _lock_wait(p["user"])
         if wait:
             error = _lock_msg(wait)
-        elif not auth.has_totp(hs.username):       # أُلغي أثناء الانتظار أو حُذف
-            _PENDING.pop(pid, None)
-            session.pop("p2fa", None)
-            return redirect(url_for("login"))         # يُعاد الدخول بكلمة المرور
+        elif request.form.get("action") == "email":
+            if use_mail:
+                p["exp"] = max(p["exp"], time.time() + _MAIL_CODE_TTL)
+                error, info = _mail_code(
+                    p, auth.get_email(hs.username), "رمز الدخول",
+                    f"رمز الدخول إلى بورتال المصطفى لحساب «{hs.username}»:")
         else:
             ukey = hs.username.lower()
-            step = totp.verify(auth.get_totp(hs) or "", request.form.get("code"),
-                               last_step=_TOTP_LAST.get(ukey))
-            if step is None:
-                _note_fail(p["user"], "رمز دخول بخطوتين خاطئ")
-                error = "الرمز غير صحيح أو انتهت مدّته — اكتب الرمز الظاهر الآن في التطبيق."
-            else:
-                _TOTP_LAST[ukey] = step
+            code = request.form.get("code")
+            ok = False
+            if use_app:
+                step = totp.verify(auth.get_totp(hs) or "", code,
+                                   last_step=_TOTP_LAST.get(ukey))
+                if step is not None:
+                    _TOTP_LAST[ukey], ok = step, True
+            if not ok and use_mail:
+                ok = _check_mail_code(p, code)
+            if ok:
                 _PENDING.pop(pid, None)
                 session.pop("p2fa", None)
                 _finish_login(hs, p["user"], p["mode"], p["remember"])
                 return redirect(url_for("dashboard"))
-    return render_template("login_2fa.html", error=error,
-                           selected_mode=p["mode"], username=p["hs"].username)
+            _note_fail(p["user"], "رمز دخول بخطوتين خاطئ")
+            error = ("الرمز غير صحيح أو انتهت مدّته — اكتب الرمز الظاهر الآن في التطبيق"
+                     + (" أو الرمز الذي وصلك على الإيميل." if use_mail and p.get("eto")
+                        else "."))
+    return render_template("login_2fa.html", error=error, info=info,
+                           use_app=use_app, use_mail=use_mail, sent_to=p.get("eto"),
+                           selected_mode=p["mode"], username=hs.username)
+
+
+@app.route("/forgot", methods=["GET", "POST"])
+def forgot():
+    """نسيت كلمة المرور: طلب يصل المدير، وبعد موافقته رابط لإيميل صاحب الحساب."""
+    from webapp import mailer, resets
+    if not auth.is_configured():
+        return redirect(url_for("setup"))
+    done = error = ""
+    if request.method == "POST":
+        ip, now = _client_ip(), time.time()
+        times = [t for t in _FORGOT.get(ip, []) if now - t < 3600]
+        if len(times) >= 5:
+            error = "طلبات كثيرة من هذا الجهاز — حاول بعد ساعة."
+        else:
+            _FORGOT[ip] = times + [now]
+            if len(_FORGOT) > 2000:
+                _FORGOT.clear()
+            who = (request.form.get("who") or "").strip()[:254]
+            uname = (auth.find_by_email(who) if "@" in who else
+                     next((a["username"] for a in auth.list_accounts()
+                           if a["username"].lower() == who.lower()), None))
+            email = auth.get_email(uname) if uname else ""
+            if uname and email and mailer.configured():
+                rid, new = resets.add(uname, ip)
+                if new:
+                    _audit_as(uname, "طلب استعادة كلمة المرور", f"من {ip}")
+                    hu = _html.escape(uname)
+                    for a in auth.list_accounts():
+                        if (a["role"] == "admin" and a.get("email")
+                                and a["username"].lower() != uname.lower()):
+                            mailer.send(a["email"], f"طلب استعادة كلمة مرور: {uname}",
+                                        mailer.wrap("طلب استعادة كلمة مرور", (
+                                f"<p>طلب «<b>{hu}</b>» استعادة كلمة المرور من البورتال.</p>"
+                                "<p>إن كان الطلب صحيحاً فادخل إلى البورتال ← «إدارة الحسابات» "
+                                "واضغط <b>موافقة</b>، فيصله رابط على إيميله لوضع كلمة مرور "
+                                "جديدة.</p>")))
+                    mailer.send(email, "استلمنا طلب استعادة كلمة المرور", mailer.wrap(
+                        "استلمنا طلبك", (
+                            f"<p>وصل طلب استعادة كلمة المرور لحسابك «{hu}». سيراجعه "
+                            "المدير، وبعد موافقته يصلك رابط هنا لوضع كلمة مرور جديدة.</p>"
+                            "<p>إن لم تطلب ذلك فأبلغ المدير.</p>")))
+            done = ("إن كان الحساب موجوداً وله إيميل عمل، فقد وصل طلبك إلى المدير. "
+                    "بعد موافقته يصلك رابط على إيميلك لوضع كلمة مرور جديدة.")
+    return render_template("forgot.html", done=done, error=error,
+                           selected_mode=app_mode.UMRAH)
+
+
+@app.route("/reset/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    """رابط لمرة واحدة (بعد موافقة المدير) لوضع كلمة مرور جديدة."""
+    from webapp import mailer, resets
+    rid, r = resets.by_token(token)
+    error = ""
+    if r is None:
+        if request.method == "POST":
+            _note_fail("", "رابط استعادة غير صالح")
+        return render_template("reset.html", invalid=True, error="",
+                               selected_mode=app_mode.UMRAH), 404
+    wait = _lock_wait(r["user"]) if request.method == "POST" else 0
+    if wait:
+        error = _lock_msg(wait)
+    elif request.method == "POST":
+        pw = request.form.get("password") or ""
+        if pw != (request.form.get("confirm") or ""):
+            error = "كلمتا المرور غير متطابقتين."
+        else:
+            try:
+                auth.set_password_by_token(r["user"], token, r["wrapped"], pw)
+            except Exception as exc:               # noqa: BLE001
+                error = str(exc)
+            else:
+                resets.remove(rid)
+                _FAILS.pop(("user", _ukey(r["user"])), None)
+                for sid in [k for k, v in _SESSIONS.items()      # خروج جلساته القديمة
+                            if getattr(v, "username", "").lower() == r["user"].lower()]:
+                    _SESSIONS.pop(sid, None)
+                _audit_as(r["user"], "تعيين كلمة مرور برابط الإيميل", f"من {_client_ip()}")
+                email = auth.get_email(r["user"])
+                if email:
+                    mailer.send(email, "تغيّرت كلمة مرورك", mailer.wrap(
+                        "تغيّرت كلمة مرورك", (
+                            f"<p>وُضعت كلمة مرور جديدة لحسابك «{_html.escape(r['user'])}» الآن.</p>"
+                            "<p>إن لم تفعل ذلك أنت فأبلغ المدير فوراً.</p>")))
+                return redirect(url_for("login", reset=1))
+    return render_template("reset.html", invalid=False, error=error,
+                           username=r["user"], selected_mode=app_mode.UMRAH)
 
 
 @app.route("/recover", methods=["GET", "POST"])
@@ -477,6 +639,14 @@ def _season_years() -> list:
 
 def _season_suffix() -> str:
     return "هـ" if _mode() == app_mode.HAJJ else "م"
+
+
+def _audit_as(user: str, action: str, details: str = "") -> None:
+    try:
+        from hajj_app import audit
+        audit.record(action, details, user=user)
+    except Exception:                              # noqa: BLE001
+        pass
 
 
 def _audit(action: str, details: str = "") -> None:
@@ -754,8 +924,11 @@ def backup_restore():
     _audit("استعادة نسخة احتياطية",
            f"{snap or 'ملف منزّل'} — {len(done)} ملفّاً (نسخة أمان: {safety.name})")
     # البيانات تغيّرت (وقد يتغيّر مفتاحها): خروج الجميع وإعادة الدخول
-    for _d in (_SESSIONS, _ALERTS_CACHE, _PENDING, _TOTP_SETUP, _TOTP_LAST, _FAILS):
+    for _d in (_SESSIONS, _ALERTS_CACHE, _PENDING, _TOTP_SETUP, _TOTP_LAST, _FAILS,
+               _EMAIL_SETUP):
         _d.clear()
+    from webapp import resets
+    resets.clear()                    # مفتاح البيانات قد تغيّر: الروابط القديمة لا تصلح
     session.clear()
     return redirect(url_for("login", restored=1))
 
@@ -763,6 +936,7 @@ def backup_restore():
 # ---- إلزام الدخول بخطوتين (إن فعّله المدير لكل الحسابات) ----
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
+             "forgot", "reset_password",
              "verify_doc", "person_page"}
 
 
@@ -772,7 +946,8 @@ def _require_2fa():
     if s is None or request.endpoint in _2FA_FREE:
         return None
     try:
-        if auth.get_policy().get("require_totp") and not auth.has_totp(s.username):
+        if (auth.get_policy().get("require_totp") and not auth.has_totp(s.username)
+                and not _mail_2fa(s.username)):
             return redirect(url_for("account_2fa", need=1))
     except Exception:                              # noqa: BLE001
         return None
@@ -805,8 +980,11 @@ def account_2fa():
         return redirect(url_for("login"))
     sid = session.get("sid")
     ukey = s.username.lower()
+    from webapp import mailer
     enabled = auth.has_totp(s.username)
     required = bool(auth.get_policy().get("require_totp"))
+    email = auth.get_email(s.username)
+    email_on = auth.has_email_2fa(s.username)
     msg = err = ""
     wait = _lock_wait(s.username) if request.method == "POST" else 0
     if wait:
@@ -827,8 +1005,32 @@ def account_2fa():
                 _TOTP_LAST[ukey] = step
                 _audit("تفعيل الدخول بخطوتين", s.username)
                 enabled, msg = True, "✅ فُعِّل الدخول بخطوتين لحسابك."
+        elif action == "email_send" and not email_on:
+            if not (email and mailer.configured()):
+                err = "رمز الإيميل غير متاح — لا يوجد إيميل لحسابك أو البريد غير مفعّل."
+            else:
+                st = _EMAIL_SETUP.setdefault(sid, {})
+                err, msg = _mail_code(st, email, "رمز التفعيل",
+                                      "رمز تفعيل الدخول برمز على الإيميل:")
+        elif action == "email_enable" and not email_on:
+            if _check_mail_code(_EMAIL_SETUP.get(sid, {}), code):
+                auth.set_email_2fa(s, True)
+                _EMAIL_SETUP.pop(sid, None)
+                _audit("تفعيل رمز الدخول على الإيميل", s.username)
+                email_on, msg = True, "✅ فُعِّل رمز الدخول على الإيميل لحسابك."
+            else:
+                _note_fail(s.username, "رمز تفعيل الإيميل خاطئ")
+                err = "الرمز غير صحيح أو انتهت مدّته — اطلب رمزاً جديداً."
+        elif action == "email_disable" and email_on:
+            if required and not enabled:
+                err = ("الدخول بخطوتين إلزامي — فعّل تطبيق المصادقة أولاً ثم ألغِ "
+                       "رمز الإيميل.")
+            else:
+                auth.set_email_2fa(s, False)
+                _audit("إلغاء رمز الدخول على الإيميل", s.username)
+                email_on, msg = False, "أُلغي رمز الدخول على الإيميل لحسابك."
         elif action == "disable" and enabled:
-            if required:
+            if required and not email_on:
                 err = "الدخول بخطوتين إلزامي لكل الحسابات (قرار المدير) — لا يُلغى."
             else:
                 step = totp.verify(auth.get_totp(s) or "", code,
@@ -849,6 +1051,9 @@ def account_2fa():
                  "qr": _qr_svg(totp.otpauth_uri(secret, s.username))}
     return render_template("account_2fa.html", active="account2fa",
                            enabled=enabled, required=required,
+                           email=_mask_email(email), email_on=email_on,
+                           mail_ok=mailer.configured(),
+                           email_sent=bool(_EMAIL_SETUP.get(sid, {}).get("ecode")),
                            need=bool(request.args.get("need")), setup=setup,
                            msg=msg, err=err, **_ctx())
 
@@ -1024,7 +1229,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-28j · تعديل/حذف/إخراج البرامج للمدير فقط"
+_BUILD_TAG = "2026-10-29 · إيميلات العمل: رمز الدخول + استعادة بموافقة المدير"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1120,6 +1325,7 @@ def accounts():
              "role_label": auth.ROLE_LABELS.get(a["role"], a["role"]),
              "updated": (a.get("updated_at") or "").replace("T", "  "),
              "totp": a.get("totp", False),
+             "email": a.get("email", ""), "email_2fa": a.get("email_2fa", False),
              "locked": bool(_FAILS.get(("user", _ukey(a["username"])))
                             and len([t for t in _FAILS[("user", _ukey(a["username"]))]
                                      if time.time() - t < _LOCK_WINDOW])
@@ -1129,10 +1335,114 @@ def accounts():
     return render_template(
         "accounts.html", active="accounts", forbidden=False, accounts=rows,
         require_totp=bool(auth.get_policy().get("require_totp")),
+        mail_status=_mailer().status(), resets=_reset_rows(s),
         roles=[(r, auth.ROLE_LABELS[r]) for r in auth.ROLES],
         recovery_key=session.pop("acc_key", None),
         added_user=session.pop("acc_added", None),
         msg=session.pop("acc_msg", ""), err=session.pop("acc_err", ""), **_ctx())
+
+
+def _mailer():
+    from webapp import mailer
+    return mailer
+
+
+def _reset_rows(s) -> list:
+    from webapp import resets
+    out = []
+    for r in resets.pending():
+        out.append({"id": r["id"], "user": r["user"], "ip": r.get("ip", ""),
+                    "status": r["status"],
+                    "own": r["user"].lower() == s.username.lower(),
+                    "when": time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created"]))})
+    return out
+
+
+@app.post("/accounts/<username>/email")
+def accounts_email(username):
+    """إيميل العمل لحساب — للمدير."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    email = (request.form.get("email") or "").strip()
+    try:
+        if email and not _mailer().valid_email(email):
+            raise ValueError("صيغة الإيميل غير صحيحة.")
+        auth.set_email(s, username, email)
+        session["acc_msg"] = (f"حُفظ إيميل «{username}»." if email
+                              else f"أُزيل إيميل «{username}».")
+        _audit("إيميل حساب", f"{username} → {email or '—'}")
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/mail-test")
+def accounts_mail_test():
+    """رسالة تجريبية إلى إيميل المدير نفسه — للتأكّد من إعداد البريد."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if not s.is_admin:
+        return redirect(url_for("accounts"))
+    m = _mailer()
+    to = auth.get_email(s.username)
+    if not to:
+        session["acc_err"] = "أضف إيميلاً لحسابك أولاً (في جدول المستخدمين)."
+    else:
+        ok, why = m.send(to, "رسالة تجريبية من بورتال المصطفى", m.wrap(
+            "البريد يعمل ✅", "<p>وصلت هذه الرسالة، فإعداد البريد في البورتال سليم.</p>"))
+        if ok:
+            session["acc_msg"] = f"أُرسلت رسالة تجريبية إلى {to} — تحقّق من صندوقك (وكذلك Spam)."
+        else:
+            session["acc_err"] = "فشل الإرسال — " + why
+    return redirect(url_for("accounts"))
+
+
+@app.post("/accounts/resets/<rid>/<action>")
+def accounts_reset_action(rid, action):
+    """موافقة المدير على طلب استعادة (يُرسل الرابط) أو رفضه."""
+    from webapp import resets
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if not s.is_admin:
+        return redirect(url_for("accounts"))
+    r = resets.load().get(rid)
+    if r is None:
+        session["acc_err"] = "الطلب غير موجود أو انتهت مدّته."
+    elif action == "deny":
+        resets.remove(rid)
+        session["acc_msg"] = f"رُفض طلب استعادة «{r['user']}»."
+        _audit("رفض طلب استعادة", r["user"])
+    elif action == "approve":
+        m = _mailer()
+        email = auth.get_email(r["user"])
+        if r["user"].lower() == s.username.lower():
+            session["acc_err"] = "لا توافق على طلبك أنت — يوافق عليه مدير آخر."
+        elif r["status"] != "pending":
+            session["acc_err"] = "أُرسل رابط هذا الطلب من قبل."
+        elif not email:
+            session["acc_err"] = f"لا يوجد إيميل لـ«{r['user']}» — أضفه أولاً."
+        else:
+            token = secrets.token_urlsafe(32)
+            resets.approve(rid, auth.wrap_key_for_token(s, token), token)
+            link = url_for("reset_password", token=token, _external=True)
+            ok, why = m.send(email, "رابط وضع كلمة مرور جديدة", m.wrap(
+                "وضع كلمة مرور جديدة", (
+                    f"<p>وافق المدير على طلبك لحساب «{_html.escape(r['user'])}». اضغط الزر لوضع "
+                    "كلمة مرور جديدة:</p>"
+                    f'<p style="text-align:center"><a href="{link}" style="background:#13795B;'
+                    'color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;'
+                    'display:inline-block">وضع كلمة مرور جديدة</a></p>'
+                    "<p>الرابط صالح ٣٠ دقيقة ولمرة واحدة. إن لم تطلب ذلك فتجاهله وأبلغ المدير.</p>")))
+            if ok:
+                session["acc_msg"] = f"أُرسل رابط الاستعادة إلى إيميل «{r['user']}» ({_mask_email(email)})."
+                _audit("موافقة على طلب استعادة", r["user"])
+            else:
+                resets.revert(rid)
+                session["acc_err"] = "فشل إرسال الرابط — " + why
+    return redirect(url_for("accounts"))
 
 
 @app.post("/accounts/add")
@@ -1180,6 +1490,12 @@ def accounts_password(username):
                                      request.form.get("password") or "")
         session["acc_msg"] = f"غُيّرت كلمة مرور «{username}» — سلّمها لصاحبه."
         _audit("إعادة تعيين كلمة مرور", username)
+        _em = auth.get_email(username)
+        if _em and username.lower() != s.username.lower():
+            m = _mailer()
+            m.send(_em, "تغيّرت كلمة مرورك", m.wrap("تغيّرت كلمة مرورك", (
+                f"<p>عيّن المدير كلمة مرور جديدة لحسابك «{_html.escape(username)}». سيسلّمك إياها.</p>"
+                "<p>إن لم تكن تتوقّع ذلك فراجع المدير.</p>")))
         if rk:
             session["acc_key"] = rk
             session["acc_added"] = username

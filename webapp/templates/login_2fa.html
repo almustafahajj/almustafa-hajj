@@ -7,12 +7,16 @@
 {% set pwa_color = '#8A6E4B' if selected_mode == 'hajj' else '#13795B' %}{% include "_pwa_head.html" %}
 </head><body class="mode-{{ selected_mode }}">
 <div class="login-wrap">
-  <form class="login-card" method="post" autocomplete="off">
+  <div class="login-card">
+  <form method="post" autocomplete="off">
     <div class="brand-dot">🔐</div>
     <h1>الدخول بخطوتين</h1>
-    <p class="sub">مرحباً {{ username }} — افتح تطبيق المصادقة في جوالك واكتب الرمز
-      المكوّن من ٦ أرقام.</p>
+    <p class="sub">مرحباً {{ username }} —
+      {% if use_app and use_mail %}اكتب الرمز من تطبيق المصادقة في جوالك، أو اطلب رمزاً على إيميلك.
+      {% elif use_app %}افتح تطبيق المصادقة في جوالك واكتب الرمز المكوّن من ٦ أرقام.
+      {% else %}اكتب الرمز المكوّن من ٦ أرقام الذي وصلك على إيميلك.{% endif %}</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if info %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ info }}</div>{% endif %}
     <div class="field">
       <label for="code">رمز التحقّق</label>
       <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
@@ -20,10 +24,17 @@
              style="text-align:center;font-size:22px;letter-spacing:6px">
     </div>
     <button class="btn primary" type="submit">تأكيد الدخول</button>
+  </form>
+  {% if use_mail %}
+  <form method="post" style="margin-top:10px">
+    <input type="hidden" name="action" value="email">
+    <button class="btn ghost" type="submit" style="width:100%">📧 {{ 'أعد إرسال الرمز إلى إيميلي' if sent_to else 'أرسل رمزاً إلى إيميلي' }}</button>
+  </form>
+  {% endif %}
     <p class="sub" style="margin-top:14px">
       <a href="{{ url_for('login') }}">↩ رجوع لتسجيل الدخول</a></p>
-    <p class="sub" style="font-size:12px">ضاع الجوال؟ اطلب من المدير إلغاء الدخول
-      بخطوتين لحسابك من «إدارة الحسابات».</p>
-  </form>
+    <p class="sub" style="font-size:12px">ضاع الجوال أو لا يصل الإيميل؟ اطلب من المدير
+      إلغاء الدخول بخطوتين لحسابك من «إدارة الحسابات».</p>
+  </div>
 </div>
 </body></html>

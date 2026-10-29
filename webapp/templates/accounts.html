@@ -18,6 +18,29 @@
   </div>
   {% endif %}
 
+  {% if resets %}
+  <div class="acc-card" id="resets" style="margin-bottom:14px;border-color:#E0A800">
+    <h3>📧 طلبات استعادة كلمة المرور</h3>
+    <table class="acc-table">
+      <thead><tr><th>المستخدم</th><th>الوقت</th><th>من</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+      <tbody>
+      {% for r in resets %}
+      <tr><td>{{ r.user }}</td><td class="muted">{{ r.when }}</td><td class="muted" dir="ltr">{{ r.ip }}</td>
+        <td>{{ '⏳ ينتظر موافقتك' if r.status == 'pending' else '📨 أُرسل الرابط' }}</td>
+        <td>{% if r.status == 'pending' and not r.own %}
+          <form method="post" class="inline" action="{{ url_for('accounts_reset_action', rid=r.id, action='approve') }}">
+            <button class="acc-btn add" type="submit">✅ موافقة وإرسال الرابط</button></form>{% endif %}
+          {% if r.own %}<span class="muted" style="font-size:12px">يوافق عليه مدير آخر</span>{% endif %}
+          <form method="post" class="inline" action="{{ url_for('accounts_reset_action', rid=r.id, action='deny') }}">
+            <button class="acc-btn del" type="submit">✖ رفض</button></form></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint-note">تأكّد أن الطلب من صاحب الحساب فعلاً قبل الموافقة. الرابط يصل إلى
+      إيميله صالحاً ٣٠ دقيقة ولمرة واحدة، ولا ترى أنت كلمة المرور.</p>
+  </div>
+  {% endif %}
+
   <div class="acc-cards">
     <div class="acc-card">
       <h3>➕ إضافة مستخدم</h3>
@@ -47,7 +70,7 @@
     <div class="acc-card wide">
       <h3>المستخدمون الحاليون</h3>
       <table class="acc-table">
-        <thead><tr><th>المستخدم</th><th>الصلاحية</th><th>الدخول بخطوتين</th>
+        <thead><tr><th>المستخدم</th><th>الصلاحية</th><th>إيميل العمل</th><th>الدخول بخطوتين</th>
           <th>آخر تحديث</th><th>إجراءات</th></tr></thead>
         <tbody>
         {% for a in accounts %}
@@ -66,7 +89,14 @@
                 </select>
               </form>
             </td>
-            <td>{% if a.totp %}✅ مفعّل
+            <td>
+              <form method="post" action="{{ url_for('accounts_email', username=a.username) }}"
+                    class="inline pw-reset">
+                <input name="email" type="email" value="{{ a.email }}" dir="ltr"
+                       placeholder="name@ntravel.ae" maxlength="254" style="min-width:170px">
+                <button class="acc-btn" type="submit" title="حفظ الإيميل">💾</button>
+              </form></td>
+            <td>{% if a.totp or a.email_2fa %}✅ {{ 'تطبيق' if a.totp }}{{ ' + ' if a.totp and a.email_2fa }}{{ 'إيميل' if a.email_2fa }}
               <form method="post" action="{{ url_for('accounts_2fa_reset', username=a.username) }}"
                     class="inline" onsubmit="return confirm('إلغاء الدخول بخطوتين لـ«{{ a.username }}»؟ (حين يضيع جواله)');">
                 <button class="acc-btn" type="submit" title="إلغاء الدخول بخطوتين">↺</button>
@@ -107,6 +137,22 @@
     <p class="hint-note">عند الإلزام: من لم يفعّله يُحوَّل لصفحة التفعيل بعد دخوله.
       محاولات الدخول الخاطئة المتكرّرة (٥ لكل حساب) توقف الدخول ١٥ دقيقة وتُسجَّل في
       «سجلّ التدقيق».</p>
+  </div>
+
+  <div class="acc-card" style="margin-top:14px">
+    <h3>📧 البريد الإلكتروني</h3>
+    {% if mail_status == 'ok' %}
+    <p>✅ إرسال البريد مفعّل: رموز الدخول، وطلبات استعادة كلمة المرور (بموافقتك)، وتنبيه
+      صاحب الحساب حين تتغيّر كلمة مروره.</p>
+    <form method="post" action="{{ url_for('accounts_mail_test') }}" class="inline">
+      <button class="acc-btn add" type="submit">✉️ أرسل رسالة تجريبية إلى إيميلي</button></form>
+    {% elif mail_status == 'no-sender' %}
+    <p class="acc-msg err">مفتاح Brevo موجود، لكن ينقص عنوان المرسل: أضف في Railway متغيّراً
+      اسمه <b dir="ltr">MAIL_FROM</b> وقيمته عنوان موثَّق في Brevo (مثل
+      <span dir="ltr">noreply@ntravel.ae</span>).</p>
+    {% else %}
+    <p class="acc-msg err">البريد غير مفعّل: أضف في Railway المتغيّر <b dir="ltr">BREVO_API_KEY</b>.</p>
+    {% endif %}
   </div>
 
   <p class="hint-note">كل الحسابات تفتح البيانات نفسها (مشفّرة)؛ الصلاحية تحدّد ما
