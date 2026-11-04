@@ -611,3 +611,31 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
   align-self:center; }
 form.inline.needs-save{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .policy-row.dirty::after{ align-self:flex-end; padding-bottom:10px; }
+
+/* ---- إطار متحرّك حول شعار الشركة: وميض ذهبي يدور ببطء + توهّج يتنفّس ---- */
+.logo-frame{ position:relative; display:block; max-width:178px; margin:0 auto; padding:3px;
+  border-radius:17px; overflow:hidden; isolation:isolate; text-decoration:none;
+  background:rgba(255,255,255,.10);
+  animation:logo-breathe 5s ease-in-out infinite; }
+.logo-frame::before{ content:""; position:absolute; z-index:-1; left:50%; top:50%;
+  width:260%; aspect-ratio:1; transform:translate(-50%,-50%) rotate(0deg);
+  background:conic-gradient(from 0deg,
+    transparent 0 55%, rgba(212,165,63,.25) 66%, #D4A53F 80%, #FFF3C8 88%, transparent 92%,
+    transparent 100%);
+  animation:logo-spin 7s linear infinite; }
+.logo-frame::after{ content:""; position:absolute; z-index:2; inset:3px; border-radius:14px;
+  pointer-events:none; background:linear-gradient(115deg, transparent 40%,
+    rgba(255,255,255,.55) 50%, transparent 60%) no-repeat;
+  background-size:250% 100%; background-position:150% 0;
+  animation:logo-shine 9s ease-in-out infinite; }
+.logo-frame .logo-img{ position:relative; z-index:1; max-width:none; box-shadow:none; }
+.logo-frame:hover::before{ animation-duration:3s; }
+@keyframes logo-spin{ to{ transform:translate(-50%,-50%) rotate(360deg); } }
+@keyframes logo-breathe{
+  0%,100%{ box-shadow:0 4px 12px #0003, 0 0 0 0 rgba(212,165,63,0); }
+  50%{ box-shadow:0 4px 12px #0003, 0 0 18px 2px rgba(212,165,63,.28); } }
+@keyframes logo-shine{ 0%,70%{ background-position:150% 0; } 85%,100%{ background-position:-50% 0; } }
+@media (prefers-reduced-motion:reduce){
+  .logo-frame, .logo-frame::before, .logo-frame::after{ animation:none; } }
+html.nav-collapsed .logo-frame, html.nav-collapsed .logo-frame::before,
+html.nav-collapsed .logo-frame::after{ animation-play-state:paused; }

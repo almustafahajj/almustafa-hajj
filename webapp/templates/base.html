@@ -12,7 +12,7 @@
 <div class="shell">
   <div class="nav-backdrop" onclick="document.documentElement.classList.remove('nav-open')"></div>
   <aside class="sidebar">
-    <div class="logo"><img class="logo-img" src="{{ url_for('static', filename='logo.png') }}" alt="المصطفى للحج والعمرة"></div>
+    <div class="logo"><a class="logo-frame" href="{{ url_for('dashboard') }}" title="لوحة التحكم"><img class="logo-img" src="{{ url_for('static', filename='logo.png') }}" alt="المصطفى للحج والعمرة"></a></div>
     <div class="mode-band"><small>النظام الحالي</small>{{ theme.icon|iconize }} {{ theme.noun }}</div>
     <nav class="nav">
       <a class="navlink toplink {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">
