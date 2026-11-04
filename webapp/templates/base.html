@@ -120,5 +120,19 @@ document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();ev=e;b.hidden=false;});
   b.addEventListener('click',function(){if(!ev)return;ev.prompt();ev.userChoice.then(function(){ev=null;b.hidden=true;});});
   window.addEventListener('appinstalled',function(){b.hidden=true;});})();
+{% if session_minutes %}
+/* مدّة الجلسة: النشاط في الصفحة يمدّدها، وعند انتهائها تظهر شاشة الدخول */
+(function(){var act=Date.now(),sent=Date.now(),lim={{ session_minutes }}*60000;
+  ['keydown','click','scroll','touchstart','mousemove'].forEach(function(e){
+    window.addEventListener(e,function(){act=Date.now();},{passive:true,capture:true});});
+  setInterval(function(){var now=Date.now();
+    if(act>sent&&now-sent>60000){sent=now;
+      fetch('{{ url_for("session_ping") }}',{method:'POST',credentials:'same-origin'}).catch(function(){});}
+    if(now-act>lim-30000)
+      fetch('{{ url_for("session_status") }}',{credentials:'same-origin'})
+        .then(function(r){return r.json();}).then(function(d){
+          if(d.left===0)location.href='{{ url_for("login", expired=1) }}';}).catch(function(){});
+  },30000);})();
+{% endif %}
 </script>
 </body></html>

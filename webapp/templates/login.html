@@ -12,6 +12,7 @@
     <h1>المصطفى للحج والعمرة</h1>
     <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
     {% if error %}<div class="err">{{ error|iconize }}</div>{% endif %}
+    {% if request.args.get('expired') %}<div class="err" style="background:#fdf6e3;color:#7a5a00;border-color:#ecd9a0">{{ ic('clock') }} انتهت الجلسة لعدم النشاط — سجّل الدخول من جديد.</div>{% endif %}
     {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
     {% if request.args.get('reset') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} حُفظت كلمة المرور الجديدة — سجّل الدخول بها.</div>{% endif %}
     {% include "_mode_pick.html" %}

@@ -585,6 +585,7 @@ def logout():
     if _sess() is not None and not _link_ok():     # رابط من موقع خارجي
         return redirect(url_for("dashboard"))
     _SESSIONS.pop(session.get("sid"), None)
+    _LAST_SEEN.pop(session.get("sid"), None)
     session.clear()
     return redirect(url_for("login"))
 
@@ -723,6 +724,65 @@ def _audit(action: str, details: str = "") -> None:
         audit.record(action, details, user=(s.username if s else "—"))
     except Exception:                              # noqa: BLE001
         pass
+
+
+# ---- مدّة الجلسة: خروج تلقائي بعد مدّة بلا نشاط (يحدّدها المدير لكل المستخدمين) ----
+SESSION_CHOICES = (15, 30, 60, 120, 240, 480, 720, 1440)   # دقائق؛ 0 = بلا حدّ
+_LAST_SEEN: dict = {}              # رمز الجلسة → وقت آخر نشاط
+_IDLE_FREE = {"static", "service_worker", "session_status"}   # لا تُحسب نشاطاً
+
+
+def _session_minutes() -> int:
+    try:
+        m = int(auth.get_policy().get("session_minutes") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return m if m in SESSION_CHOICES else 0
+
+
+@app.before_request
+def _idle_timeout():
+    sid = session.get("sid")
+    if sid is None or sid not in _SESSIONS:
+        return None
+    now, mins = time.time(), _session_minutes()
+    seen = _LAST_SEEN.get(sid, now)
+    if mins and now - seen > mins * 60:
+        hs = _SESSIONS.pop(sid, None)
+        _LAST_SEEN.pop(sid, None)
+        session.clear()
+        try:
+            from hajj_app import audit
+            audit.record("انتهاء الجلسة", f"بعد {mins} دقيقة بلا نشاط",
+                         user=getattr(hs, "username", "") or "—")
+        except Exception:                          # noqa: BLE001
+            pass
+        if request.endpoint == "session_status":
+            return None
+        return redirect(url_for("login", expired=1))
+    if request.endpoint not in _IDLE_FREE:
+        _LAST_SEEN[sid] = now
+    else:
+        _LAST_SEEN.setdefault(sid, now)
+    return None
+
+
+@app.get("/session/status")
+def session_status():
+    """الثواني المتبقّية قبل الخروج التلقائي (لا يُعدّ نشاطاً)."""
+    mins = _session_minutes()
+    sid = session.get("sid")
+    if sid is None or sid not in _SESSIONS:
+        return {"left": 0}
+    if not mins:
+        return {"left": None}
+    return {"left": max(0, int(mins * 60 - (time.time() - _LAST_SEEN.get(sid, time.time()))))}
+
+
+@app.post("/session/ping")
+def session_ping():
+    """نشاط في الصفحة (كتابة/نقر) دون طلب للخادم: يمدّد الجلسة."""
+    return {"ok": _sess() is not None}
 
 
 @app.before_request
@@ -988,7 +1048,7 @@ def backup_restore():
            f"{snap or 'ملف منزّل'} — {len(done)} ملفّاً (نسخة أمان: {safety.name})")
     # البيانات تغيّرت (وقد يتغيّر مفتاحها): خروج الجميع وإعادة الدخول
     for _d in (_SESSIONS, _ALERTS_CACHE, _PENDING, _TOTP_SETUP, _TOTP_LAST, _FAILS,
-               _EMAIL_SETUP):
+               _EMAIL_SETUP, _LAST_SEEN):
         _d.clear()
     from webapp import resets
     resets.clear()                    # مفتاح البيانات قد تغيّر: الروابط القديمة لا تصلح
@@ -999,7 +1059,7 @@ def backup_restore():
 # ---- إلزام الدخول بخطوتين (إن فعّله المدير لكل الحسابات) ----
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
-             "forgot", "reset_password",
+             "forgot", "reset_password", "session_status", "session_ping",
              "verify_doc", "person_page"}
 
 
@@ -1158,6 +1218,7 @@ def _ctx() -> dict:
         can_edit=bool(s is not None and s.can_edit),
         alert_count=_alert_count(),
         nav_badges=_nav_badges(),
+        session_minutes=_session_minutes() if s is not None else 0,
         search_q=(request.args.get("q") or "") if request.endpoint == "search_page" else "")
 
 
@@ -1318,7 +1379,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-04 · الحلقة الذكية: أيقونات بحلقات تعرض النسب + ملخّص الموسم"
+_BUILD_TAG = "2026-11-04 · مدّة الجلسة: خروج تلقائي بعد عدم النشاط يحدّده المدير"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1457,6 +1518,7 @@ def accounts():
     return render_template(
         "accounts.html", active="accounts", forbidden=False, accounts=rows,
         require_totp=bool(auth.get_policy().get("require_totp")),
+        session_choices=SESSION_CHOICES,
         mail_status=_mailer().status(), resets=_reset_rows(s),
         roles=[(r, auth.ROLE_LABELS[r]) for r in auth.ROLES],
         recovery_key=session.pop("acc_key", None),
@@ -1667,6 +1729,41 @@ def accounts_2fa_policy():
         session["acc_msg"] = ("صار الدخول بخطوتين إلزامياً لكل الحسابات."
                               if req else "صار الدخول بخطوتين اختيارياً.")
         _audit("سياسة الدخول بخطوتين", "إلزامي" if req else "اختياري")
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
+def _minutes_label(m: int) -> str:
+    if not m:
+        return "بلا حدّ"
+    if m < 60:
+        return f"{m} دقيقة"
+    h = m // 60
+    return {1: "ساعة", 2: "ساعتان", 24: "يوم كامل"}.get(h, f"{h} ساعات" if h <= 10 else f"{h} ساعة")
+
+
+@app.post("/accounts/session-policy")
+def accounts_session_policy():
+    """مدّة الجلسة (الخروج التلقائي بعد عدم النشاط) لكل الحسابات — للمدير."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    try:
+        mins = int(request.form.get("minutes") or 0)
+    except ValueError:
+        mins = 0
+    if mins not in SESSION_CHOICES:
+        mins = 0
+    try:
+        auth.set_policy(s, session_minutes=mins)
+        now = time.time()                          # تبدأ المدّة من الآن للجميع
+        for sid in _SESSIONS:
+            _LAST_SEEN[sid] = now
+        session["acc_msg"] = ("مدّة الجلسة الآن: " + _minutes_label(mins)
+                              + (" بلا نشاط لكل المستخدمين." if mins else
+                                 " — لا خروج تلقائي."))
+        _audit("مدّة الجلسة", _minutes_label(mins))
     except Exception as exc:
         session["acc_err"] = str(exc)
     return redirect(url_for("accounts"))

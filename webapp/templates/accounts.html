@@ -140,6 +140,24 @@
   </div>
 
   <div class="acc-card" style="margin-top:14px">
+    <h3>{{ ic('clock') }} مدّة الجلسة</h3>
+    <p>يخرج أي مستخدم تلقائياً إذا بقي بلا نشاط هذه المدّة، ويلزمه الدخول من جديد.
+      تُطبَّق على كل الحسابات فوراً.</p>
+    <form method="post" action="{{ url_for('accounts_session_policy') }}" class="inline">
+      <label class="ff" style="max-width:260px"><span>الخروج بعد عدم النشاط</span>
+        <select name="minutes" onchange="this.form.submit()">
+          <option value="0" {{ 'selected' if not session_minutes }}>بلا حدّ (لا خروج تلقائي)</option>
+          {% for m in session_choices %}<option value="{{ m }}" {{ 'selected' if m == session_minutes }}>
+            {%- if m < 60 %}{{ m }} دقيقة{% elif m == 60 %}ساعة{% elif m == 120 %}ساعتان{% elif m == 1440 %}يوم كامل{% elif m // 60 <= 10 %}{{ m // 60 }} ساعات{% else %}{{ m // 60 }} ساعة{% endif -%}
+          </option>{% endfor %}
+        </select></label>
+      <noscript><button class="acc-btn" type="submit">حفظ</button></noscript>
+    </form>
+    <p class="hint-note">الكتابة والنقر داخل الصفحة تُحسب نشاطاً، فلا يخرج من يملأ نموذجاً طويلاً.
+      وعند انتهاء المدّة تُغلق الصفحة المفتوحة وتظهر شاشة الدخول.</p>
+  </div>
+
+  <div class="acc-card" style="margin-top:14px">
     <h3>{{ ic('mail') }} البريد الإلكتروني</h3>
     {% if mail_status == 'ok' %}
     <p>{{ ic('check') }} إرسال البريد مفعّل: رموز الدخول، وطلبات استعادة كلمة المرور (بموافقتك)، وتنبيه
