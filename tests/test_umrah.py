@@ -831,7 +831,7 @@ _qe._add_price_row(["أطفال", "ثنائي", "1", "2000"])
 assert _qe._total_var.get().replace(",", "") == "19100"
 _qdc = _qe._collect()
 assert _qdc["number"] == _qe._number and _qdc["flights"] and _qdc["stays"]
-assert _qdc["guests"] == [["2", "كبار"], ["1", "أطفال"]]
+assert _qdc["guests"] == [["2", "بالغ"], ["1", "أطفال"]]
 assert len(_qdc["trains"]) == 2 and _qdc["visas"]   # بندا قطار
 assert _qdc["trains"][0][4] == "2026-09-07" and _qdc["trains"][0][5] == "14:30"
 assert _qdc["visas"] == "عدد (2) تأشيرة عمرة"        # التأشيرات من العدد والنوع
