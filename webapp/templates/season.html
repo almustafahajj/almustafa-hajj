@@ -3,21 +3,61 @@
 {% block heading %}🗓 تحديد موسم {{ 'الحج' if mode=='hajj' else 'العمرة' }}{% endblock %}
 {% block subhead %}<div class="season">الموسم الحالي: {{ current }}{{ season_suffix }} · مستقلّ لكل وضع</div>{% endblock %}
 {% block content %}
-{% if saved %}<div class="acc-msg ok">✅ تم ضبط الموسم على {{ saved }}{{ season_suffix }}.</div>{% endif %}
-<fieldset class="editcard" style="max-width:460px">
+{% if msg %}<div class="acc-msg {{ 'ok' if msg_ok else 'err' }}">{{ '✅ ' if msg_ok }}{{ msg }}</div>{% endif %}
+<fieldset class="editcard" style="max-width:520px">
   <legend>{{ cal_label }} للموسم</legend>
-  <form method="post">
+  <form method="post" id="season-form"
+        onsubmit="return seasonConfirm(this);">
     <div class="fgrid">
       <label class="ff"><span>{{ cal_label }}</span>
-        <select name="season_year" {{ '' if can_edit else 'disabled' }}>
-          {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==current }}>{{ y }}{{ season_suffix }}</option>{% endfor %}
+        <select name="season_year" {{ '' if is_admin else 'disabled' }}>
+          {% for y in years %}<option value="{{ y }}" data-saved="{{ 1 if y in saved_years else 0 }}"
+            {{ 'selected' if y==current }}>{{ y }}{{ season_suffix }}{{ ' — محفوظ' if y in saved_years }}{{ ' — الحالي' if y==current }}</option>{% endfor %}
         </select></label>
     </div>
-    {% if can_edit %}
-    <div class="formbar"><button class="btn primary" type="submit">💾 حفظ الموسم</button></div>
-    {% else %}<p class="hint-note">العرض فقط — تغيير الموسم للمحرّرين والمدير.</p>{% endif %}
+    {% if is_admin %}
+    <label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:13px">
+      <input type="checkbox" name="relabel" value="1">
+      تصحيح سنة الموسم الحالي فقط (دون حفظه أو تفريغ القوائم)</label>
+    <div class="formbar"><button class="btn primary" type="submit">🗓 الانتقال للموسم</button></div>
+    {% else %}<p class="hint-note">العرض فقط — تغيير الموسم للمدير فقط.</p>{% endif %}
   </form>
 </fieldset>
+<p class="hint-note">عند الانتقال لسنة جديدة <b>يُحفظ الموسم الحالي كاملاً</b> (القوائم، المجموعات،
+  المصروفات، السكن، المستندات…) ويبدأ الموسم الجديد <b>بقوائم فارغة</b>، وتُنقل البرامج والباقات
+  كما هي لتعدّلها. واختيار سنة محفوظة يفتح ذلك الموسم كما كان (ويُحفظ الحالي أولاً).</p>
+
+<h3 style="margin-top:22px">المواسم المحفوظة</h3>
+<table class="data" style="max-width:620px">
+  <thead><tr><th>الموسم</th><th>العدد</th><th>حُفظ في</th><th></th></tr></thead>
+  <tbody>
+  {% for s in saved %}
+    <tr><td>{{ s.year }}{{ season_suffix }}</td>
+      <td>{{ s.count if s.count is not none else '—' }}</td>
+      <td dir="ltr">{{ s.saved_at }}</td>
+      <td>{% if is_admin %}<form method="post" class="inline"
+              onsubmit="return confirm('يُحفظ الموسم الحالي {{ current }}{{ season_suffix }} ثم يُفتح موسم {{ s.year }}{{ season_suffix }} كما كان. متابعة؟');">
+          <input type="hidden" name="season_year" value="{{ s.year }}">
+          <button class="acc-btn" type="submit">📂 فتح</button></form>{% endif %}</td></tr>
+  {% else %}
+    <tr><td colspan="4" style="text-align:center;color:var(--muted)">لا مواسم محفوظة بعد.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
 <p class="hint-note">الحج يُحدَّد بالسنة <b>الهجرية (هـ)</b>، والعمرة بالسنة
   <b>الميلادية (م)</b>. لكل وضع موسمه المستقلّ، ويظهر في ترويسة المستندات والتقارير.</p>
+<script>
+function seasonConfirm(f) {
+  var opt = f.season_year.options[f.season_year.selectedIndex];
+  var y = opt.value + '{{ season_suffix }}', cur = '{{ current }}{{ season_suffix }}';
+  if (opt.value === '{{ current }}') return true;
+  if (f.relabel && f.relabel.checked)
+    return confirm('تصحيح سنة الموسم الحالي من ' + cur + ' إلى ' + y + ' دون تغيير أي بيانات؟');
+  if (opt.dataset.saved === '1')
+    return confirm('يُحفظ الموسم الحالي ' + cur + ' ثم يُفتح موسم ' + y + ' كما كان. متابعة؟');
+  return confirm('بدء موسم جديد ' + y + '؟\n\nيُحفظ الموسم الحالي ' + cur +
+    ' كاملاً، ويبدأ الجديد بقوائم فارغة (الحجاج/المعتمرون، المجموعات، المصروفات، السكن، المستندات). '
+    + 'البرامج والباقات تُنقل كما هي.\n\nيمكنك الرجوع للموسم القديم من «المواسم المحفوظة».');
+}
+</script>
 {% endblock %}

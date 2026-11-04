@@ -29,6 +29,9 @@ _DATA_PATTERNS = ("auth.json", "hajjaj.json", "umrah.json", "settings.json",
                   "settings_umrah.json", "documents_*.json", "camps_*.json",
                   "audit.log", "public_links.json")
 _IMAGES_DIR = "images"
+_SEASONS_DIR = "seasons"          # المواسم المحفوظة: seasons/<الوضع>/<السنة>/<ملف>
+_SEASON_FILES = ("hajjaj.json", "umrah.json", "documents_*.json", "camps_*.json",
+                 "season.json")
 
 
 def data_dir() -> Path:
@@ -50,6 +53,11 @@ def _allowed(name: str) -> bool:
     if name.startswith(_IMAGES_DIR + "/"):
         rest = name[len(_IMAGES_DIR) + 1:]
         return bool(rest) and "/" not in rest and not rest.startswith(".")
+    if name.startswith(_SEASONS_DIR + "/"):
+        parts = name.split("/")
+        return (len(parts) == 4 and parts[1] in ("hajj", "umrah")
+                and parts[2].isdigit() and len(parts[2]) == 4
+                and any(fnmatch.fnmatch(parts[3], p) for p in _SEASON_FILES))
     return any(fnmatch.fnmatch(name, p) for p in _DATA_PATTERNS) and "/" not in name
 
 
@@ -64,6 +72,17 @@ def _members(with_images: bool) -> list:
         for p in sorted(img.iterdir()):
             if p.is_file():
                 out.append((p, f"{_IMAGES_DIR}/{p.name}"))
+    return out + _season_members(root)
+
+
+def _season_members(root: Path) -> list:
+    """ملفّات المواسم المحفوظة (صغيرة — تُنسخ دائماً)."""
+    out = []
+    base = root / _SEASONS_DIR
+    for p in sorted(base.rglob("*")) if base.is_dir() else []:
+        arc = p.relative_to(root).as_posix()
+        if p.is_file() and _allowed(arc):
+            out.append((p, arc))
     return out
 
 
@@ -181,7 +200,7 @@ def daily(today: date | None = None) -> Path | None:
 
 
 # ------------------------------------------------------------- الاستعادة
-def _current_files(root: Path, with_images: bool) -> list:
+def _current_files(root: Path, with_images: bool, with_seasons: bool = False) -> list:
     """ملفّات البيانات الحالية التي تحلّ النسخة محلّها (مع احتياطيات .bak، والصور
     فقط إن كانت النسخة تحوي صوراً — النسخ اليومية بلا صور فتبقى الحالية)."""
     out = [p for p in root.iterdir() if p.is_file()
@@ -190,6 +209,8 @@ def _current_files(root: Path, with_images: bool) -> list:
     img = root / _IMAGES_DIR
     if with_images and img.is_dir():
         out += [p for p in img.iterdir() if p.is_file()]
+    if with_seasons:
+        out += [p for p, _arc in _season_members(root)]
     return out
 
 
@@ -232,7 +253,8 @@ def restore_zip(zpath: Path) -> list:
         try:
             old.mkdir(parents=True)
             has_img = any(n.startswith(_IMAGES_DIR + "/") for n in wanted)
-            for p in _current_files(root, has_img):
+            has_seasons = any(n.startswith(_SEASONS_DIR + "/") for n in wanted)
+            for p in _current_files(root, has_img, has_seasons):
                 rel = p.relative_to(root)
                 dst = old / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)

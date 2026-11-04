@@ -1229,7 +1229,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-10-29 · إيميلات العمل: رمز الدخول + استعادة بموافقة المدير"
+_BUILD_TAG = "2026-11-04 · المواسم: الانتقال للمدير فقط، حفظ القديم وبدء الجديد بقوائم فارغة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1287,29 +1287,62 @@ def version():
 
 @app.route("/season", methods=["GET", "POST"])
 def season_page():
-    """تحديد موسم الحج/العمرة (السنة الهجرية) — مستقلّ لكل وضع، للمحرّرين."""
+    """تحديد موسم الحج/العمرة — مستقلّ لكل وضع، للمدير فقط.
+
+    الانتقال لسنة أخرى يحفظ الموسم الحالي كاملاً، ثم يفتح المحفوظ إن وُجد أو
+    يبدأ موسماً جديداً بقوائم فارغة (مع نقل البرامج). «تصحيح السنة» يغيّر
+    التسمية فقط دون حفظ أو تفريغ."""
+    from webapp import seasons
     if _sess() is None:
         return redirect(url_for("login"))
     app_mode.set_mode(_mode())                   # الإعدادات مستقلّة لكل وضع
-    saved = ""
-    if request.method == "POST" and _sess().can_edit:
+    sfx = _season_suffix()
+    if request.method == "POST":
+        if not _sess().is_admin:
+            return redirect(url_for("season_page"))
         year = (request.form.get("season_year") or "").strip()
-        if year in _season_years():
-            settings = storage.load_settings()
-            settings["season_year"] = year
-            try:
-                storage.save_settings(settings)
-                saved = year
-                _audit("تحديد الموسم", f"{year}{_season_suffix()}")
-            except Exception:
-                pass
-        return redirect(url_for("season_page", saved=saved or year))
+        current = _season()
+        if year not in _season_years() and not seasons.has(year):
+            return redirect(url_for("season_page"))
+        ok, msg = True, ""
+        try:
+            if year == current:
+                msg = f"الموسم {year}{sfx} مفتوح أصلاً."
+            elif request.form.get("relabel"):
+                if seasons.has(year):
+                    ok, msg = False, (f"للموسم {year}{sfx} نسخة محفوظة — "
+                                      "افتحه بدل تصحيح السنة.")
+                else:
+                    settings = storage.load_settings()
+                    settings["season_year"] = year
+                    storage.save_settings(settings)
+                    _audit("تصحيح سنة الموسم", f"{current}{sfx} ← {year}{sfx}")
+                    msg = f"صُحّحت سنة الموسم الحالي إلى {year}{sfx} دون تغيير البيانات."
+            else:
+                with _UID_LOCK:
+                    how = seasons.switch(current, year)
+                _ALERTS_CACHE.clear()
+                if how == "new":
+                    _audit("بدء موسم جديد", f"حُفظ {current}{sfx} — بدأ {year}{sfx}")
+                    msg = (f"حُفظ موسم {current}{sfx} وبدأ موسم {year}{sfx} "
+                           "بقوائم فارغة (البرامج نُقلت كما هي).")
+                else:
+                    _audit("فتح موسم محفوظ", f"حُفظ {current}{sfx} — فُتح {year}{sfx}")
+                    msg = f"حُفظ موسم {current}{sfx} وفُتح موسم {year}{sfx} كما كان."
+        except Exception as exc:                   # noqa: BLE001
+            ok, msg = False, f"تعذّر تغيير الموسم: {exc}"
+        session["season_msg"] = [ok, msg]
+        return redirect(url_for("season_page"))
     cal_label = ("السنة الهجرية" if _mode() == app_mode.HAJJ
                  else "السنة الميلادية")
+    saved = seasons.list_saved(_sess())
+    saved_years = {s["year"] for s in saved}
+    flash = session.pop("season_msg", None) or [True, ""]
     return render_template("season.html", active="season",
-                           years=_season_years(), current=_season(),
-                           cal_label=cal_label, saved=request.args.get("saved"),
-                           **_ctx())
+                           years=sorted(set(_season_years()) | saved_years),
+                           current=_season(), cal_label=cal_label,
+                           saved=saved, saved_years=saved_years,
+                           msg_ok=flash[0], msg=flash[1], **_ctx())
 
 
 @app.get("/accounts")
