@@ -99,6 +99,14 @@
     <div class="content">{% block content %}{% endblock %}</div>
   </div>
 </div>
+{% if session_minutes %}
+<div class="sess-warn" id="sessWarn" role="alertdialog" aria-live="assertive" hidden>
+  {{ ic('clock') }}
+  <div class="sw-text"><b>ستنتهي جلستك بعد <span id="sessLeft" dir="ltr"></span> <span id="sessUnit"></span></b>
+    <small>لعدم النشاط — ما لم تحفظه سيضيع ويلزمك الدخول من جديد.</small></div>
+  <button type="button" class="btn primary" id="sessStay">متابعة العمل</button>
+</div>
+{% endif %}
 <script>
 function isPhone(){return window.matchMedia('(max-width:760px)').matches;}
 function toggleNav(){
@@ -121,18 +129,38 @@ document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
   b.addEventListener('click',function(){if(!ev)return;ev.prompt();ev.userChoice.then(function(){ev=null;b.hidden=true;});});
   window.addEventListener('appinstalled',function(){b.hidden=true;});})();
 {% if session_minutes %}
-/* مدّة الجلسة: النشاط في الصفحة يمدّدها، وعند انتهائها تظهر شاشة الدخول */
-(function(){var act=Date.now(),sent=Date.now(),lim={{ session_minutes }}*60000;
-  ['keydown','click','scroll','touchstart','mousemove'].forEach(function(e){
+/* مدّة الجلسة: النشاط في الصفحة يمدّدها، وقبل انتهائها تنبيه بالعدّ التنازلي،
+   وعند انتهائها تظهر شاشة الدخول */
+(function(){var act=Date.now(),sent=Date.now(),lim={{ session_minutes }}*60000,
+  warn=Math.min(120000,lim/5),box=document.getElementById('sessWarn'),
+  out=document.getElementById('sessLeft'),unit=document.getElementById('sessUnit'),
+  end=0,tick=null;
+  function ping(){sent=Date.now();
+    return fetch('{{ url_for("session_ping") }}',{method:'POST',credentials:'same-origin'}).catch(function(){});}
+  function expire(){location.href='{{ url_for("login", expired=1) }}';}
+  function hide(){box.hidden=true;clearInterval(tick);tick=null;}
+  function draw(){var s=Math.max(0,Math.ceil((end-Date.now())/1000)),m=Math.floor(s/60),r=s%60;
+    out.textContent=s>=60?m+':'+(r<10?'0':'')+r:String(s);
+    unit.textContent=s>=60?'دقيقة':'ثانية';
+    box.classList.toggle('urgent',s<=30);if(!s){hide();check();}}
+  function show(left){end=Date.now()+left*1000;box.hidden=false;draw();
+    if(!tick)tick=setInterval(draw,1000);}
+  function check(){
+    fetch('{{ url_for("session_status") }}',{credentials:'same-origin'})
+      .then(function(r){return r.json();}).then(function(d){
+        if(d.left===0)expire();
+        else if(d.left!==null&&d.left*1000<=warn)show(d.left);
+        else hide();}).catch(function(){});}
+  function stay(){act=Date.now();if(!box.hidden){hide();ping();}}
+  ['keydown','click','touchstart'].forEach(function(e){
+    window.addEventListener(e,stay,{passive:true,capture:true});});
+  ['scroll','mousemove'].forEach(function(e){
     window.addEventListener(e,function(){act=Date.now();},{passive:true,capture:true});});
+  document.getElementById('sessStay').addEventListener('click',function(){hide();ping();});
   setInterval(function(){var now=Date.now();
-    if(act>sent&&now-sent>60000){sent=now;
-      fetch('{{ url_for("session_ping") }}',{method:'POST',credentials:'same-origin'}).catch(function(){});}
-    if(now-act>lim-30000)
-      fetch('{{ url_for("session_status") }}',{credentials:'same-origin'})
-        .then(function(r){return r.json();}).then(function(d){
-          if(d.left===0)location.href='{{ url_for("login", expired=1) }}';}).catch(function(){});
-  },30000);})();
+    if(act>sent&&now-sent>60000&&box.hidden)ping();
+    if(box.hidden?now-act>lim-warn-30000:true)check();   /* أثناء التنبيه: مزامنة مع النوافذ الأخرى */
+  },15000);})();
 {% endif %}
 </script>
 </body></html>

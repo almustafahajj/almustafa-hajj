@@ -577,3 +577,23 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
   .ring-arc{ animation:none; }
   .nav-group > summary:hover .ng-ring .ring-svg, .navlink:hover .ng-ring .ring-svg{ animation:none; }
 }
+
+/* تنبيه انتهاء الجلسة (عدّ تنازلي) */
+.sess-warn{ position:fixed; z-index:200; bottom:max(18px, env(safe-area-inset-bottom, 0px));
+  left:50%; transform:translateX(-50%); width:min(560px, calc(100% - 32px));
+  display:flex; align-items:center; gap:14px; padding:14px 16px;
+  background:#FFF8E6; color:#5C4300; border:1px solid #EBCB7A; border-inline-start:5px solid #E0A12B;
+  border-radius:14px; box-shadow:0 12px 32px rgba(0,0,0,.18); animation:sw-in .25s ease-out; }
+.sess-warn[hidden]{ display:none; }
+.sess-warn > .ico{ width:26px; height:26px; flex:none; color:#E0A12B; }
+.sess-warn .sw-text{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.sess-warn .sw-text b{ font-size:15px; }
+.sess-warn #sessLeft{ font-variant-numeric:tabular-nums; }
+.sess-warn small{ font-size:12.5px; opacity:.85; }
+.sess-warn .btn.primary{ width:auto; flex:none; font-size:14px; padding:9px 16px; white-space:nowrap; }
+.sess-warn.urgent{ background:#FDECEC; color:#7A1D20; border-color:#F2B8BA; border-inline-start-color:#E5484D; }
+.sess-warn.urgent > .ico{ color:#E5484D; animation:sw-pulse 1s ease-in-out infinite; }
+@keyframes sw-in{ from{ opacity:0; transform:translate(-50%, 12px); } }
+@keyframes sw-pulse{ 50%{ transform:scale(1.15); } }
+@media (max-width:520px){ .sess-warn{ flex-wrap:wrap; } .sess-warn .btn.primary{ width:100%; } }
+@media (prefers-reduced-motion:reduce){ .sess-warn, .sess-warn > .ico{ animation:none !important; } }

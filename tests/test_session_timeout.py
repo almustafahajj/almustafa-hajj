@@ -50,7 +50,9 @@ assert server._session_minutes() == 30
 assert auth.get_policy()["session_minutes"] == 30
 left = s.get("/session/status").get_json()["left"]
 assert 1790 <= left <= 1800, left
-assert "session/ping" in s.get("/dashboard").get_data(as_text=True), "سكربت المدّة في الصفحات"
+page = s.get("/dashboard").get_data(as_text=True)
+assert "session/ping" in page, "سكربت المدّة في الصفحات"
+assert 'id="sessWarn"' in page and "ستنتهي جلستك بعد" in page, "تنبيه العدّ التنازلي"
 
 # نشاط قبل انتهاء المدّة يمدّدها
 server._LAST_SEEN[sid_of("sara")] -= 29 * 60
@@ -82,6 +84,7 @@ assert "انتهاء الجلسة" in acts and "مدّة الجلسة" in acts, 
 c.post("/accounts/session-policy", data={"minutes": "0"})
 server._LAST_SEEN[sid_of("owner")] -= 10 * 86400
 assert c.get("/dashboard").status_code == 200
-assert "session/ping" not in c.get("/dashboard").get_data(as_text=True)
+page = c.get("/dashboard").get_data(as_text=True)
+assert "session/ping" not in page and 'id="sessWarn"' not in page
 
 print("ALL OK")
