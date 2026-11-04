@@ -597,3 +597,17 @@ table.data tr.pg-head .pg-move button:hover{ background:rgba(255,255,255,.35); }
 @keyframes sw-pulse{ 50%{ transform:scale(1.15); } }
 @media (max-width:520px){ .sess-warn{ flex-wrap:wrap; } .sess-warn .btn.primary{ width:100%; } }
 @media (prefers-reduced-motion:reduce){ .sess-warn, .sess-warn > .ico{ animation:none !important; } }
+
+/* أزرار الحفظ/التطبيق في نماذج الإعدادات */
+.policy-row{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 14px; margin:6px 0 4px; }
+.policy-row .remember{ margin:0; }
+.policy-row .ff{ margin:0; flex:1 1 220px; }
+.save-btn{ display:inline-flex; align-items:center; gap:4px; padding:8px 14px;
+  background:var(--bronze); color:#fff; transition:background .15s, opacity .15s, box-shadow .15s; }
+.save-btn:hover:not(:disabled){ background:var(--bronze-d); }
+.save-btn:disabled{ background:#E9E4DA; color:#9A907F; cursor:default; }
+.needs-save.dirty .save-btn{ box-shadow:0 0 0 3px rgba(224,161,43,.35); }
+.needs-save.dirty::after{ content:"تغيير غير محفوظ"; font-size:12px; font-weight:700; color:#B7791F;
+  align-self:center; }
+form.inline.needs-save{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.policy-row.dirty::after{ align-self:flex-end; padding-bottom:10px; }

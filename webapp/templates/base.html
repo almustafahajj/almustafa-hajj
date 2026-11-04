@@ -128,6 +128,16 @@ document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();ev=e;b.hidden=false;});
   b.addEventListener('click',function(){if(!ev)return;ev.prompt();ev.userChoice.then(function(){ev=null;b.hidden=true;});});
   window.addEventListener('appinstalled',function(){b.hidden=true;});})();
+/* نماذج الإعدادات: زرّ الحفظ/التطبيق يتفعّل عند التغيير، وتنبيه قبل مغادرة الصفحة بلا حفظ */
+(function(){var fs=document.querySelectorAll('form.needs-save'),going=false;if(!fs.length)return;
+  function snap(f){var o=[];[].forEach.call(f.elements,function(e){if(!e.name||e.name==='csrf_token')return;
+    o.push(e.name+'='+((e.type==='checkbox'||e.type==='radio')?e.checked:e.value));});return o.join('&');}
+  [].forEach.call(fs,function(f){var init=snap(f),b=f.querySelector('.save-btn');
+    function upd(){var d=snap(f)!==init;f.classList.toggle('dirty',d);if(b)b.disabled=!d;}
+    f.addEventListener('change',upd);f.addEventListener('input',upd);
+    f.addEventListener('submit',function(){going=true;});upd();});
+  window.addEventListener('beforeunload',function(e){
+    if(!going&&document.querySelector('form.needs-save.dirty')){e.preventDefault();e.returnValue='';}});})();
 {% if session_minutes %}
 /* مدّة الجلسة: النشاط في الصفحة يمدّدها، وقبل انتهائها تنبيه بالعدّ التنازلي،
    وعند انتهائها تظهر شاشة الدخول */

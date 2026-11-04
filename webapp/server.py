@@ -1379,7 +1379,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-04 · تنبيه بالعدّ التنازلي قبل انتهاء الجلسة"
+_BUILD_TAG = "2026-11-04 · أزرار حفظ/تطبيق لإعدادات الحسابات بدل الحفظ التلقائي"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
