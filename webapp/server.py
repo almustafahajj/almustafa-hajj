@@ -251,6 +251,7 @@ def setup():
         else:
             try:
                 sess, key = auth.create_account(username, password)
+                _pw_mark(username)
                 sid = secrets.token_hex(16)
                 _SESSIONS[sid] = sess
                 session["sid"] = sid
@@ -394,11 +395,79 @@ def _finish_login(hs, username: str, mode: str, remember: bool) -> None:
     _csrf_token()               # (لا يُبدَّل: تبقى الصفحات المفتوحة صالحة للحفظ)
     session.permanent = bool(remember)                 # تذكّرني
     _FAILS.pop(("user", _ukey(username)), None)
+    _note_device(hs.username or username)
+    try:
+        from webapp import pwpolicy
+        pwpolicy.changed_at(hs.username or username)   # حساب بلا تاريخ: يبدأ العدّ الآن
+    except Exception:                              # noqa: BLE001
+        pass
     try:
         from hajj_app import audit
         audit.record("دخول", f"من {_client_ip()}", user=hs.username or username)
     except Exception:                              # noqa: BLE001
         pass
+
+
+def _pw_mark(username: str) -> None:
+    try:
+        from webapp import pwpolicy
+        pwpolicy.mark(username)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+def _note_device(username: str) -> None:
+    """يسجّل جهاز الدخول؛ جهاز جديد لحساب له أجهزة سابقة = تنبيه لصاحبه بالبريد."""
+    from webapp import devices, websessions
+    try:
+        tok = request.cookies.get(devices.COOKIE)
+        if not devices.valid_token(tok):
+            tok = secrets.token_urlsafe(24)
+            g.dev_cookie = tok
+        label = websessions.device(request.headers.get("User-Agent", ""))
+        new, had_any = devices.remember(username, tok, label)
+        if not (new and had_any):
+            return
+        ip, when = _client_ip(), time.strftime("%Y-%m-%d %H:%M")
+        try:
+            from hajj_app import audit
+            audit.record("دخول من جهاز جديد", f"{label} — من {ip}", user=username)
+        except Exception:                          # noqa: BLE001
+            pass
+        email = auth.get_email(username)
+        mailer = _mailer()
+        if not email or not mailer.configured():
+            return
+        body = mailer.wrap("دخول جديد إلى حسابك", (
+            f"<p>دخل أحد إلى حسابك «{_html.escape(username)}» من جهاز لم يُستعمل من قبل:</p>"
+            f"<p><b>الجهاز:</b> {_html.escape(label)}<br><b>العنوان:</b> <span dir=\"ltr\">{_html.escape(ip)}</span>"
+            f"<br><b>الوقت:</b> <span dir=\"ltr\">{when}</span></p>"
+            "<p>إن كنت أنت فتجاهل الرسالة. وإن لم تكن أنت: غيّر كلمة مرورك فوراً وأبلغ المدير "
+            "(يستطيع إنهاء الجلسة من «الجلسات النشطة»).</p>"))
+        threading.Thread(target=mailer.send, args=(email, "تنبيه: دخول من جهاز جديد", body),
+                         daemon=True).start()
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+@app.after_request
+def _device_cookie(resp):
+    tok = g.get("dev_cookie")
+    if tok:
+        resp.set_cookie("alm_dev", tok, max_age=400 * 86400, httponly=True, samesite="Lax",
+                        secure=bool(app.config.get("SESSION_COOKIE_SECURE")))
+    return resp
+
+
+@app.get("/healthz")
+def healthz():
+    """فحص عمل الموقع (لخدمات المراقبة): يتأكّد أن مجلّد البيانات مقروء."""
+    try:
+        from hajj_app.paths import data_dir
+        ok = os.path.isdir(data_dir()) and os.access(data_dir(), os.R_OK | os.W_OK)
+    except Exception:                              # noqa: BLE001
+        ok = False
+    return ({"status": "ok"} if ok else {"status": "error"}), (200 if ok else 503)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -564,6 +633,7 @@ def reset_password(token):
         else:
             try:
                 auth.set_password_by_token(r["user"], token, r["wrapped"], pw)
+                _pw_mark(r["user"])
             except Exception as exc:               # noqa: BLE001
                 error = str(exc)
             else:
@@ -604,6 +674,7 @@ def recover():
                 app_mode.set_mode(mode)
                 hs = auth.reset_with_recovery_key(rk, pw,
                                                   allowed_roles=("admin",))
+                _pw_mark(hs.username)
                 sid = secrets.token_hex(16)
                 _SESSIONS[sid] = hs
                 session["sid"] = sid
@@ -1175,6 +1246,115 @@ _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "verify_doc", "person_page"}
 
 
+_PW_FREE = _2FA_FREE | {"account_password", "session_ping", "healthz"}
+
+
+def _password_days() -> int:
+    from webapp import pwpolicy
+    try:
+        d = int(auth.get_policy().get("password_days") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return d if d in pwpolicy.CHOICES else 0
+
+
+@app.before_request
+def _password_expiry():
+    s = _sess()
+    if s is None or request.endpoint in _PW_FREE:
+        return None
+    try:
+        from webapp import pwpolicy
+        left = pwpolicy.days_left(s.username, _password_days())
+    except Exception:                              # noqa: BLE001
+        return None
+    if left is not None and left <= 0:
+        return redirect(url_for("account_password", expired=1))
+    return None
+
+
+@app.route("/account/password", methods=["GET", "POST"])
+def account_password():
+    """تغيير المستخدم كلمة مروره بنفسه (وإلزامياً عند انتهائها)."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    from webapp import pwpolicy
+    error, fresh_key = "", None
+    if request.method == "POST":
+        old = request.form.get("old") or ""
+        new = request.form.get("password") or ""
+        wait = _lock_wait(s.username)
+        if wait:
+            error = _lock_msg(wait)
+        elif new != (request.form.get("confirm") or ""):
+            error = "كلمتا المرور الجديدتان غير متطابقتين."
+        elif new == old:
+            error = "اختر كلمة مرور مختلفة عن الحالية."
+        else:
+            try:
+                hs = auth.change_password(s.username, old, new)
+            except Exception as exc:               # noqa: BLE001
+                if "غير صحيحة" in str(exc) or "incorrect" in str(exc).lower():
+                    _note_fail(s.username, "كلمة مرور حالية خاطئة عند التغيير")
+                    error = "كلمة المرور الحالية غير صحيحة."
+                else:
+                    error = str(exc)
+            else:
+                pwpolicy.mark(s.username)
+                me = session.get("sid")
+                hs.role = s.role
+                for sid in [k for k, v in _SESSIONS.items()     # خروج جلساته الأخرى
+                            if k != me and getattr(v, "username", "").lower() == s.username.lower()]:
+                    _end(sid)
+                from webapp import websessions
+                mine = websessions.sid_id(me or "")
+                for r in websessions.list_all():
+                    if r["user"].lower() == s.username.lower() and r["id"] != mine:
+                        websessions.drop_id(r["id"])
+                _SESSIONS[me] = hs
+                _audit("تغيير كلمة المرور", "من صفحة الحساب")
+                email = auth.get_email(s.username)
+                if email:
+                    m = _mailer()
+                    m.send(email, "تغيّرت كلمة مرورك", m.wrap("تغيّرت كلمة مرورك", (
+                        f"<p>غُيّرت كلمة مرور حسابك «{_html.escape(s.username)}» الآن.</p>"
+                        "<p>إن لم تفعل ذلك أنت فأبلغ المدير فوراً.</p>")))
+                fresh_key = getattr(hs, "fresh_recovery_key", None)
+                session["pw_msg"] = "✅ غُيّرت كلمة المرور، وأُخرجت جلساتك على الأجهزة الأخرى."
+                if not fresh_key:
+                    return redirect(url_for("account_password"))
+    days = _password_days()
+    return render_template(
+        "account_password.html", active="", error=error, fresh_key=fresh_key,
+        expired=bool(request.args.get("expired")), days=days,
+        left=pwpolicy.days_left(s.username, days),
+        msg=session.pop("pw_msg", ""), **_ctx())
+
+
+@app.post("/accounts/password-policy")
+def accounts_password_policy():
+    """انتهاء كلمة المرور لكل الحسابات — للمدير."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    from webapp import pwpolicy
+    try:
+        days = int(request.form.get("days") or 0)
+    except ValueError:
+        days = 0
+    if days not in pwpolicy.CHOICES:
+        days = 0
+    try:
+        auth.set_policy(s, password_days=days)
+        session["acc_msg"] = (f"تنتهي كلمة مرور كل حساب بعد {days} يوماً من آخر تغيير لها."
+                              if days else "كلمات المرور لا تنتهي.")
+        _audit("سياسة انتهاء كلمة المرور", f"{days} يوماً" if days else "لا تنتهي")
+    except Exception as exc:
+        session["acc_err"] = str(exc)
+    return redirect(url_for("accounts"))
+
+
 @app.before_request
 def _require_2fa():
     s = _sess()
@@ -1497,7 +1677,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-04 · جلسات تبقى بعد النشر + الجلسات النشطة + نسخة خارجية بالبريد"
+_BUILD_TAG = "2026-11-04 · تغيير كلمة المرور وانتهاؤها + تنبيه جهاز جديد + عرض موسم سابق + healthz"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1551,6 +1731,39 @@ def version():
     return (f"BUILD {_BUILD_TAG}", 200,
             {"Content-Type": "text/plain; charset=utf-8",
              "Cache-Control": "no-store, max-age=0"})
+
+
+@app.get("/season/<year>/view")
+def season_view(year):
+    """عرض موسم محفوظ للقراءة فقط — دون فتحه أو تبديل بيانات أحد."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    from webapp import seasons
+    if not seasons.has(year):
+        return redirect(url_for("season_page"))
+    path = seasons._dir(year) / storage.default_data_path().name
+    try:
+        records = storage._read_file(path, s) if path.is_file() else []
+    except Exception:                              # noqa: BLE001
+        records = []
+    attr = _group_attr()
+    rows = []
+    for r in records:
+        rem = stats.remaining_amount(r)
+        rows.append({"name": r.full_name_ar or getattr(r, "full_name", "") or "—",
+                     "passport": r.passport_number, "group": getattr(r, attr, "") or "—",
+                     "phone": r.phone, "value": format_amount(stats._amount(r.program_value)) or "—",
+                     "paid": format_amount(stats._amount(r.paid_amount)) or "0",
+                     "rem": format_amount(rem) or "0", "owes": rem > 0.005,
+                     "status": r.status or "نشط"})
+    rows.sort(key=lambda x: (x["group"], x["name"]))
+    fin = stats.financial_summary(records)
+    meta = next((m for m in seasons.list_saved() if m["year"] == year), {})
+    return render_template(
+        "season_view.html", active="season", year=year, rows=rows, fin=fin,
+        saved_at=meta.get("saved_at", ""), groups=len({r["group"] for r in rows}),
+        fmt=lambda v: format_amount(v) or "0", **_ctx())
 
 
 @app.route("/season", methods=["GET", "POST"])
@@ -1633,10 +1846,12 @@ def accounts():
                             >= _LOCK_LIMITS["user"]),
              "me": a["username"].lower() == s.username.lower()}
             for a in auth.list_accounts()]
+    from webapp import pwpolicy
     return render_template(
         "accounts.html", active="accounts", forbidden=False, accounts=rows,
         require_totp=bool(auth.get_policy().get("require_totp")),
         session_choices=SESSION_CHOICES,
+        password_days=_password_days(), password_choices=pwpolicy.CHOICES,
         mail_status=_mailer().status(), resets=_reset_rows(s),
         roles=[(r, auth.ROLE_LABELS[r]) for r in auth.ROLES],
         recovery_key=session.pop("acc_key", None),
@@ -1759,6 +1974,7 @@ def accounts_add():
             request.form.get("role") or "viewer")
         session["acc_key"] = key
         _u = (request.form.get("username") or "").strip()
+        _pw_mark(_u)
         session["acc_added"] = _u
         session["acc_msg"] = "أُضيف الحساب — سلّم صاحبه كلمة المرور ومفتاح الاسترداد."
         _audit("إضافة حساب", f"{_u} ({request.form.get('role') or 'viewer'})")
@@ -1790,6 +2006,7 @@ def accounts_password(username):
     try:
         rk = auth.admin_set_password(s, username,
                                      request.form.get("password") or "")
+        _pw_mark(username)
         session["acc_msg"] = f"غُيّرت كلمة مرور «{username}» — سلّمها لصاحبه."
         _audit("إعادة تعيين كلمة مرور", username)
         _em = auth.get_email(username)
@@ -1977,6 +2194,11 @@ def accounts_delete(username):
     try:
         auth.remove_account(s, username)
         _end_user(username)
+        try:
+            from webapp import pwpolicy
+            pwpolicy.forget(username)
+        except Exception:                          # noqa: BLE001
+            pass
         session["acc_msg"] = f"حُذف الحساب «{username}»."
         _audit("حذف حساب", username)
     except Exception as exc:

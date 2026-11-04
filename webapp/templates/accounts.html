@@ -159,6 +159,23 @@
   </div>
 
   <div class="acc-card" style="margin-top:14px">
+    <h3>{{ ic('key') }} انتهاء كلمة المرور</h3>
+    <p>يُطلب من كل مستخدم تغيير كلمة مروره بعد هذه المدّة من آخر تغيير لها. يستطيع أي مستخدم
+      تغييرها متى شاء من «تغيير كلمة المرور» أسفل القائمة الجانبية.</p>
+    <form method="post" action="{{ url_for('accounts_password_policy') }}" class="needs-save policy-row">
+      <label class="ff" style="max-width:260px"><span>تغيير إلزامي كل</span>
+        <select name="days">
+          <option value="0" {{ 'selected' if not password_days }}>لا تنتهي</option>
+          {% for d in password_choices %}<option value="{{ d }}" {{ 'selected' if d == password_days }}>
+            {{ {90: '٣ أشهر (90 يوماً)', 180: '٦ أشهر (180 يوماً)', 365: 'سنة (365 يوماً)'}[d] }}</option>{% endfor %}
+        </select></label>
+      <button class="acc-btn save-btn" type="submit">{{ ic('check') }} تطبيق</button>
+    </form>
+    <p class="hint-note">قبل الانتهاء بأسبوعين يظهر للمستخدم تذكير، وعند الانتهاء يُحوَّل لصفحة التغيير ولا
+      يكمل العمل حتى يغيّرها. الحسابات القديمة يبدأ العدّ لها من أوّل دخول بعد التفعيل.</p>
+  </div>
+
+  <div class="acc-card" style="margin-top:14px">
     <h3>{{ ic('mail') }} البريد الإلكتروني</h3>
     {% if mail_status == 'ok' %}
     <p>{{ ic('check') }} إرسال البريد مفعّل: رموز الدخول، وطلبات استعادة كلمة المرور (بموافقتك)، وتنبيه

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}موسم {{ year }}{{ season_suffix }} (عرض) — المصطفى{% endblock %}
+{% block heading %}{{ ic('archive') }} موسم {{ year }}{{ season_suffix }} — للعرض فقط{% endblock %}
+{% block subhead %}<div class="season">محفوظ {{ saved_at }} · لا يغيّر الموسم الحالي ولا بيانات أحد</div>{% endblock %}
+{% block content %}
+<div class="acc-msg" style="background:#eef4fb;color:#1d4f86;border-color:#c9dcf1">{{ ic('eye') }}
+  تعرض الآن بيانات موسم سابق كما حُفظت. للعمل عليه افتحه من
+  <a href="{{ url_for('season_page') }}">تحديد الموسم</a> (للمدير).</div>
+<div class="kpis" style="margin:14px 0">
+  {% set rem_pct = (100 - fin.collected_percent) if fin.total else 0 %}
+  {% for icon, val, lbl, sub, pct, color in [
+      ('user', fin.count, noun, groups ~ (' برنامج' if mode=='hajj' else ' رحلة'), none, '#8A6E4B'),
+      ('wallet', fmt(fin.total), 'الإجمالي', 'AED', none, '#2C5AA0'),
+      ('check', fmt(fin.paid), 'المحصّل', fin.collected_percent ~ '% من الإجمالي', fin.collected_percent, status_color(fin.collected_percent)),
+      ('hourglass', fmt(fin.remaining), 'المتبقّي', fin.unpaid_count ~ ' عليهم متبقٍّ', rem_pct, status_color(fin.collected_percent))] %}
+  <div class="card kpi">
+    <div class="icon">{{ ring(icon, pct, color, 'kpi-ring', glyph=color) }}</div>
+    <div class="val" style="color:{{ color }}">{{ val }}</div>
+    <div class="lbl">{{ lbl }}</div>
+    <div class="sub">{{ sub }}</div>
+  </div>
+  {% endfor %}
+</div>
+<div class="panel">
+  <input id="svq" type="search" placeholder="ابحث بالاسم أو الجواز أو الهاتف أو البرنامج…"
+         style="width:100%;max-width:420px;margin-bottom:10px;font:inherit;padding:9px 12px;border:1px solid var(--border);border-radius:10px" oninput="svFilter(this.value)">
+  <table class="data" id="svt">
+    <thead><tr><th>#</th><th>الاسم</th><th>الجواز</th><th>{{ 'البرنامج' if mode=='hajj' else 'الرحلة' }}</th>
+      <th>الهاتف</th><th>القيمة</th><th>المدفوع</th><th>المتبقّي</th><th>الحالة</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ loop.index }}</td><td>{{ r.name }}</td><td dir="ltr">{{ r.passport }}</td><td>{{ r.group }}</td>
+        <td dir="ltr">{{ r.phone }}</td><td>{{ r.value }}</td><td>{{ r.paid }}</td>
+        <td {% if r.owes %}style="color:#C0392B;font-weight:700"{% endif %}>{{ r.rem }}</td><td>{{ r.status }}</td></tr>
+    {% else %}
+      <tr><td colspan="9" style="text-align:center;color:var(--muted)">لا سجلّات في هذا الموسم.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>
+function svFilter(q){q=q.trim().toLowerCase();
+  document.querySelectorAll('#svt tbody tr').forEach(function(tr){
+    tr.hidden=q&&tr.textContent.toLowerCase().indexOf(q)<0;});}
+</script>
+{% endblock %}

@@ -35,7 +35,8 @@
     <tr><td>{{ s.year }}{{ season_suffix }}</td>
       <td>{{ s.count if s.count is not none else '—' }}</td>
       <td dir="ltr">{{ s.saved_at }}</td>
-      <td>{% if is_admin %}<form method="post" class="inline"
+      <td><a class="acc-btn" href="{{ url_for('season_view', year=s.year) }}">{{ ic('eye') }} عرض</a>
+        {% if is_admin %}<form method="post" class="inline"
               onsubmit="return confirm('يُحفظ الموسم الحالي {{ current }}{{ season_suffix }} ثم يُفتح موسم {{ s.year }}{{ season_suffix }} كما كان. متابعة؟');">
           <input type="hidden" name="season_year" value="{{ s.year }}">
           <button class="acc-btn" type="submit">{{ ic('folder') }} فتح</button></form>{% endif %}</td></tr>

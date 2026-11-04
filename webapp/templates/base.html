@@ -69,6 +69,7 @@
     </nav>
     <div class="foot">
       {{ ic('user') }} {{ session.get('username','') }} · {{ session.get('role','') }}<br>
+      <a href="{{ url_for('account_password') }}">{{ ic('key') }} تغيير كلمة المرور</a><br>
       <a href="{{ url_for('account_2fa') }}">{{ ic('shield') }} الدخول بخطوتين</a><br>
       {{ ic('lock') }} البيانات مشفّرة<br>
       <a href="{{ url_for('logout', t=csrf_token()) }}">{{ ic('logout') }} تسجيل الخروج</a>
