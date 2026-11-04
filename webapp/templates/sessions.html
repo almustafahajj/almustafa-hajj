@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}الجلسات النشطة — المصطفى{% endblock %}
+{% block heading %}{{ ic('users') }} الجلسات النشطة{% endblock %}
+{% block subhead %}<div class="season">{{ rows|length }} جلسة مفتوحة لـ {{ users }} مستخدم — من الداخل الآن ومن أي جهاز</div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ ic('check') }} {{ msg }}</div>{% endif %}
+<div class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <p class="muted" style="margin:0;font-size:13px">«نشطة الآن» = استعمل البورتال خلال آخر ٥ دقائق.
+      إنهاء جلسة يُخرج صاحبها فوراً من ذلك الجهاز (مفيد عند فقدان جهاز أو مغادرة موظف).</p>
+    {% if rows|length > 1 %}
+    <form method="post" action="{{ url_for('sessions_end_others') }}" class="inline"
+          onsubmit="return confirm('إنهاء كل الجلسات ما عدا جلستك؟ سيُطلب من الجميع الدخول من جديد.');">
+      <button class="acc-btn del" type="submit">{{ ic('logout') }} إنهاء كل الجلسات الأخرى</button></form>
+    {% endif %}
+  </div>
+  <table class="data" style="margin-top:12px">
+    <thead><tr><th>المستخدم</th><th>الجهاز</th><th>العنوان (IP)</th><th>الدخول</th>
+      <th>آخر نشاط</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><b>{{ r.user }}</b> <span class="muted" style="font-size:12px">{{ r.role }}</span>
+          {% if r.mine %}<span class="you">(جلستك)</span>{% endif %}</td>
+        <td>{{ r.device }}</td>
+        <td dir="ltr">{{ r.ip }}</td>
+        <td dir="ltr">{{ r.since }}</td>
+        <td>{% if r.active %}<span class="sess-live">نشطة الآن</span>{% else %}{{ r.ago }}{% endif %}</td>
+        <td>{% if not r.mine %}<form method="post" action="{{ url_for('sessions_end', sess_id=r.id) }}" class="inline"
+              onsubmit="return confirm('إنهاء جلسة {{ r.user }} على {{ r.device }}؟');">
+            <button class="acc-btn del" type="submit">{{ ic('logout') }} إنهاء</button></form>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" style="text-align:center;color:var(--muted)">لا جلسات مفتوحة.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

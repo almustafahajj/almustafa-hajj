@@ -58,9 +58,10 @@
       </details>
 
       {% if is_admin %}
-      <details class="nav-group" {% if active in ['accounts','audit','backup'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['accounts','sessions','audit','backup'] %}open{% endif %}>
         <summary>{{ ring('shield', 25, '#C0392B', 'ng-ring', badge=nav_badges.get('admin'), glyph='gold') }} الإدارة</summary>
         <a class="navlink {{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">إدارة الحسابات</a>
+        <a class="navlink {{ 'active' if active=='sessions' }}" href="{{ url_for('sessions_page') }}">الجلسات النشطة</a>
         <a class="navlink {{ 'active' if active=='audit' }}" href="{{ url_for('audit_log') }}">سجلّ التدقيق</a>
         <a class="navlink {{ 'active' if active=='backup' }}" href="{{ url_for('backup_page') }}">النسخ الاحتياطي</a>
       </details>

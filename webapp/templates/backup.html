@@ -5,6 +5,50 @@
 {% block content %}
 {% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
 {% if err %}<div class="acc-msg err">{{ err|iconize }}</div>{% endif %}
+<div class="panel offsite {{ 'on' if off.enabled and not off.last_err else ('bad' if off.enabled else '') }}">
+  <h3 style="margin-top:0">{{ ic('mail') }} نسخة خارج الخادم — تلقائياً بالبريد</h3>
+  {% if off.enabled %}
+    {% if off.last_err %}
+    <div class="acc-msg err">{{ ic('alert') }} آخر محاولة فشلت: {{ off.last_err }}</div>
+    {% endif %}
+    <p class="off-state">{% if off.last_ok %}{{ ic('check') }} آخر نسخة وصلت: <b dir="ltr">{{ off.last_ok }}</b>
+      ({{ off.size_kb }} KB){% if off.next %} · القادمة: <span dir="ltr">{{ off.next }}</span>{% endif %}
+      {% else %}{{ ic('clock') }} تُرسل أوّل نسخة خلال دقائق من الاستعمال (أو اضغط «أرسل نسخة الآن»).{% endif %}</p>
+  {% else %}
+  <p class="muted">النسخ أدناه محفوظة على قرص الخادم نفسه — لو ضاع القرص أو حُذف المشروع تضيع معه.
+    فعّل هذه لتصلك نسخة مشفّرة على بريدك تلقائياً.</p>
+  {% endif %}
+  {% if not mail_ok %}<div class="acc-msg err">البريد غير مفعّل على الخادم — لا يمكن الإرسال الآن.</div>{% endif %}
+  {% if not off.pw_ok %}<div class="acc-msg err">{{ ic('alert') }} أعد إدخال كلمة مرور النسخ (تغيّر مفتاح البيانات بعد استعادة).</div>{% endif %}
+  <form method="post" action="{{ url_for('backup_offsite') }}" class="acc-form needs-save off-grid">
+    <label>البريد الذي تصله النسخ<input name="email" type="email" dir="ltr" required maxlength="254"
+      value="{{ off.email }}" placeholder="name@gmail.com"></label>
+    <label>كل كم؟<select name="freq">
+      {% for k, v in off_freqs.items() %}<option value="{{ k }}" {{ 'selected' if k == off.freq }}>{{ v[0] }}</option>{% endfor %}
+    </select></label>
+    <label>كلمة مرور النسخ<input name="password" type="password" minlength="8" autocomplete="new-password"
+      {{ '' if off.has_pw else 'required' }} placeholder="{{ '•••••••• (اتركها لتبقى كما هي)' if off.has_pw }}"></label>
+    <label>تأكيدها<input name="confirm" type="password" minlength="8" autocomplete="new-password"
+      {{ '' if off.has_pw else 'required' }}></label>
+    <div class="off-bar">
+      <button class="acc-btn save-btn" type="submit">{{ ic('save') }} {{ 'حفظ' if off.enabled else 'تفعيل' }}</button>
+    </div>
+  </form>
+  {% if off.enabled %}
+  <div class="off-bar" style="margin-top:8px">
+    <form method="post" action="{{ url_for('backup_offsite_send') }}" class="inline">
+      <button class="acc-btn" type="submit">{{ ic('send') }} أرسل نسخة الآن</button></form>
+    <form method="post" action="{{ url_for('backup_offsite') }}" class="inline"
+          onsubmit="return confirm('إيقاف إرسال النسخ إلى البريد؟');">
+      <input type="hidden" name="action" value="disable">
+      <button class="acc-btn del" type="submit">إيقاف</button></form>
+  </div>
+  {% endif %}
+  <p class="hint-note">{{ ic('alert') }} <b>احفظ كلمة مرور النسخ في مكان آمن</b> — بدونها لا تُفتح النسخة.
+    تُرسل البيانات كاملة بلا صور الجوازات (لحجمها). يُفضَّل بريد Gmail: رسائل البورتال لا تصل حالياً
+    لبريد @ntravel.ae. للاستعادة: «استعادة من ملف منزّل» واختر الملف المرفق كما هو.</p>
+</div>
+
 <div class="acc-cards">
   <div class="acc-card">
     <h3>{{ ic('download') }} تنزيل نسخة كاملة (مشفّرة)</h3>
@@ -25,7 +69,7 @@
       في ذلك الوقت. سجلّ التدقيق لا يُستبدل.</p>
     <form method="post" action="{{ url_for('backup_restore') }}" enctype="multipart/form-data" class="acc-form"
           onsubmit="return confirm('استبدال البيانات الحالية بمحتوى النسخة؟ (تُحفظ نسخة أمان من الحالي أولاً)');">
-      <label>ملف النسخة (.almbak)<input name="file" type="file" accept=".almbak" required></label>
+      <label>ملف النسخة (.almbak، أو ملف zip من البريد)<input name="file" type="file" accept=".almbak,.zip" required></label>
       <label>كلمة مرور النسخة<input name="password" type="password" required autocomplete="off"></label>
       <button class="acc-btn del" type="submit">{{ ic('history') }} استعادة</button>
     </form>

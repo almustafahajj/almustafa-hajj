@@ -639,3 +639,18 @@ form.inline.needs-save{ display:inline-flex; align-items:center; gap:6px; flex-w
   .logo-frame, .logo-frame::before, .logo-frame::after{ animation:none; } }
 html.nav-collapsed .logo-frame, html.nav-collapsed .logo-frame::before,
 html.nav-collapsed .logo-frame::after{ animation-play-state:paused; }
+
+/* الجلسات النشطة */
+.sess-live{ display:inline-flex; align-items:center; gap:6px; color:#1E9E6A; font-weight:700; }
+.sess-live::before{ content:""; width:8px; height:8px; border-radius:50%; background:#1E9E6A;
+  box-shadow:0 0 0 0 rgba(30,158,106,.5); animation:live-dot 1.8s ease-out infinite; }
+@keyframes live-dot{ 70%{ box-shadow:0 0 0 7px rgba(30,158,106,0); } 100%{ box-shadow:0 0 0 0 rgba(30,158,106,0); } }
+@media (prefers-reduced-motion:reduce){ .sess-live::before{ animation:none; } }
+
+/* النسخة الخارجية بالبريد */
+.panel.offsite{ margin-bottom:16px; border-inline-start:5px solid #E0A12B; }
+.panel.offsite.on{ border-inline-start-color:#1E9E6A; }
+.panel.offsite.bad{ border-inline-start-color:#E5484D; }
+.off-state{ margin:4px 0 10px; }
+.off-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px 14px; }
+.off-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; grid-column:1 / -1; }

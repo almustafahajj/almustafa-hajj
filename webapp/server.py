@@ -17,7 +17,7 @@ import threading
 import hmac
 import time
 
-from flask import (Flask, redirect, render_template, request, send_file,
+from flask import (Flask, g, redirect, render_template, request, send_file,
                    session, url_for)
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -108,7 +108,58 @@ _SESSIONS: dict = {}
 
 
 def _sess():
-    return _SESSIONS.get(session.get("sid"))
+    """جلسة hajj_app لهذا المتصفّح؛ بعد إعادة تشغيل الخادم تُستعاد من القرص."""
+    sid = session.get("sid")
+    if not sid:
+        return None
+    hs = _SESSIONS.get(sid)
+    if hs is None and session.get("sk") and not g.get("_sess_miss"):
+        from webapp import websessions
+        try:
+            hs = websessions.restore(sid, session["sk"])
+        except Exception:                          # noqa: BLE001
+            hs = None
+        if hs is None:
+            g._sess_miss = True
+        else:
+            _SESSIONS[sid] = hs
+    return hs
+
+
+def _persist(sid: str, hs) -> None:
+    """يحفظ الجلسة (مشفّرة بمفتاح في متصفّح صاحبها) لتبقى بعد إعادة التشغيل."""
+    _LAST_SEEN[sid] = time.time()
+    try:
+        from webapp import websessions
+        session["sk"] = websessions.save(sid, hs, ip=_client_ip(),
+                                         ua=request.headers.get("User-Agent", ""))
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+def _end(sid) -> None:
+    """ينهي جلسة (من الذاكرة والقرص)."""
+    if not sid:
+        return
+    _SESSIONS.pop(sid, None)
+    _LAST_SEEN.pop(sid, None)
+    try:
+        from webapp import websessions
+        websessions.drop(sid)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+def _end_user(username: str) -> None:
+    """ينهي كل جلسات مستخدم (تغيير كلمة مروره أو حذف حسابه)."""
+    for sid in [k for k, v in _SESSIONS.items()
+                if getattr(v, "username", "").lower() == (username or "").lower()]:
+        _end(sid)
+    try:
+        from webapp import websessions
+        websessions.drop_user(username)
+    except Exception:                              # noqa: BLE001
+        pass
 
 
 def _mode() -> str:
@@ -203,6 +254,7 @@ def setup():
                 sid = secrets.token_hex(16)
                 _SESSIONS[sid] = sess
                 session["sid"] = sid
+                _persist(sid, sess)
                 session["mode"] = app_mode.UMRAH      # الدخول الافتراضي: العمرة
                 session["username"] = username
                 session["role"] = sess.role_label
@@ -335,6 +387,7 @@ def _finish_login(hs, username: str, mode: str, remember: bool) -> None:
     sid = secrets.token_hex(16)
     _SESSIONS[sid] = hs
     session["sid"] = sid
+    _persist(sid, hs)
     session["mode"] = mode
     session["username"] = hs.username or username
     session["role"] = getattr(hs, "role_label", "")
@@ -516,9 +569,7 @@ def reset_password(token):
             else:
                 resets.remove(rid)
                 _FAILS.pop(("user", _ukey(r["user"])), None)
-                for sid in [k for k, v in _SESSIONS.items()      # خروج جلساته القديمة
-                            if getattr(v, "username", "").lower() == r["user"].lower()]:
-                    _SESSIONS.pop(sid, None)
+                _end_user(r["user"])                       # خروج جلساته القديمة
                 _audit_as(r["user"], "تعيين كلمة مرور برابط الإيميل", f"من {_client_ip()}")
                 email = auth.get_email(r["user"])
                 if email:
@@ -556,6 +607,7 @@ def recover():
                 sid = secrets.token_hex(16)
                 _SESSIONS[sid] = hs
                 session["sid"] = sid
+                _persist(sid, hs)
                 session["mode"] = mode
                 session["username"] = hs.username
                 session["role"] = getattr(hs, "role_label", "")
@@ -584,8 +636,7 @@ def _link_ok() -> bool:
 def logout():
     if _sess() is not None and not _link_ok():     # رابط من موقع خارجي
         return redirect(url_for("dashboard"))
-    _SESSIONS.pop(session.get("sid"), None)
-    _LAST_SEEN.pop(session.get("sid"), None)
+    _end(session.get("sid"))
     session.clear()
     return redirect(url_for("login"))
 
@@ -743,13 +794,13 @@ def _session_minutes() -> int:
 @app.before_request
 def _idle_timeout():
     sid = session.get("sid")
-    if sid is None or sid not in _SESSIONS:
+    if sid is None or _sess() is None:
         return None
     now, mins = time.time(), _session_minutes()
     seen = _LAST_SEEN.get(sid, now)
     if mins and now - seen > mins * 60:
-        hs = _SESSIONS.pop(sid, None)
-        _LAST_SEEN.pop(sid, None)
+        hs = _SESSIONS.get(sid)
+        _end(sid)
         session.clear()
         try:
             from hajj_app import audit
@@ -762,6 +813,11 @@ def _idle_timeout():
         return redirect(url_for("login", expired=1))
     if request.endpoint not in _IDLE_FREE:
         _LAST_SEEN[sid] = now
+        try:
+            from webapp import websessions
+            websessions.touch(sid)
+        except Exception:                          # noqa: BLE001
+            pass
     else:
         _LAST_SEEN.setdefault(sid, now)
     return None
@@ -772,7 +828,7 @@ def session_status():
     """الثواني المتبقّية قبل الخروج التلقائي (لا يُعدّ نشاطاً)."""
     mins = _session_minutes()
     sid = session.get("sid")
-    if sid is None or sid not in _SESSIONS:
+    if sid is None or _sess() is None:
         return {"left": 0}
     if not mins:
         return {"left": None}
@@ -798,7 +854,7 @@ def _refresh_role():
     except Exception:                              # noqa: BLE001
         return None
     if acc is None:                                # حُذف الحساب
-        _SESSIONS.pop(session.get("sid"), None)
+        _end(session.get("sid"))
         session.clear()
         return redirect(url_for("login"))
     if acc["role"] != s.role:
@@ -930,6 +986,12 @@ def _daily_backup():
         backup.daily()
     except Exception:                              # noqa: BLE001
         pass
+    try:
+        from webapp import offsite                 # النسخة الخارجية بالبريد (إن حان موعدها)
+        if not str(request.endpoint or "").startswith("backup_offsite"):
+            offsite.maybe_run(_sess())
+    except Exception:                              # noqa: BLE001
+        pass
     return None
 
 
@@ -955,9 +1017,57 @@ def backup_page():
                       "when": p.stem[:10] + " " + p.stem[11:13] + ":" + p.stem[13:15],
                       "kind": {"auto": "يومية تلقائية", "manual": "يدوية",
                                "before-restore": "قبل استعادة"}.get(kind, kind)})
+    from webapp import offsite
     return render_template("backup.html", active="backup", snaps=snaps,
+                           off=offsite.status(s), off_freqs=offsite.FREQS,
+                           mail_ok=_mailer().configured(),
                            keep=backup.KEEP_DAYS, msg=session.pop("bk_msg", ""),
                            err=session.pop("bk_err", ""), **_ctx())
+
+
+@app.post("/backup/offsite")
+def backup_offsite():
+    """إعداد النسخة الخارجية التلقائية بالبريد — للمدير."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from webapp import offsite
+    if request.form.get("action") == "disable":
+        offsite.disable()
+        _audit("إيقاف النسخة الخارجية بالبريد")
+        session["bk_msg"] = "أُوقفت النسخة الخارجية التلقائية."
+        return redirect(url_for("backup_page"))
+    pw = request.form.get("password") or ""
+    if pw != (request.form.get("confirm") or ""):
+        session["bk_err"] = "كلمة مرور النسخ وتأكيدها غير متطابقتين."
+        return redirect(url_for("backup_page"))
+    try:
+        cfg = offsite.configure(s, request.form.get("email"), request.form.get("freq"), pw)
+    except ValueError as exc:
+        session["bk_err"] = str(exc)
+        return redirect(url_for("backup_page"))
+    label = offsite.FREQS[cfg["freq"]][0]
+    _audit("إعداد النسخة الخارجية بالبريد", f"{label} إلى {cfg['email']}")
+    session["bk_msg"] = f"✅ حُفظ: تُرسل نسخة مشفّرة {label} إلى {cfg['email']}."
+    return redirect(url_for("backup_page"))
+
+
+@app.post("/backup/offsite/send")
+def backup_offsite_send():
+    """إرسال نسخة خارجية الآن (للتجربة أو قبل تغيير كبير)."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from webapp import offsite
+    cfg = offsite.load()
+    pw = offsite._password(s, cfg) if cfg.get("pw") else None
+    if not cfg.get("enabled") or pw is None:
+        session["bk_err"] = "أكمل إعداد النسخة الخارجية أولاً (البريد وكلمة مرور النسخ)."
+        return redirect(url_for("backup_page"))
+    ok, msg = offsite.send_now(pw, cfg["email"])
+    _audit("نسخة خارجية بالبريد" if ok else "فشل النسخة الخارجية", msg)
+    session["bk_msg" if ok else "bk_err"] = ("✅ " if ok else "") + msg
+    return redirect(url_for("backup_page"))
 
 
 @app.post("/backup/now")
@@ -1030,6 +1140,7 @@ def backup_restore():
             enc = backup.tempfile_path(".almbak")
             try:
                 up.save(enc)
+                backup.unwrap_mail_zip(enc)        # نسخة البريد: zip فيه .almbak
                 backup.decrypt_file(enc, tmp_zip, request.form.get("password") or "")
             finally:
                 enc.unlink(missing_ok=True)
@@ -1050,8 +1161,9 @@ def backup_restore():
     for _d in (_SESSIONS, _ALERTS_CACHE, _PENDING, _TOTP_SETUP, _TOTP_LAST, _FAILS,
                _EMAIL_SETUP, _LAST_SEEN):
         _d.clear()
-    from webapp import resets
+    from webapp import resets, websessions
     resets.clear()                    # مفتاح البيانات قد تغيّر: الروابط القديمة لا تصلح
+    websessions.clear()
     session.clear()
     return redirect(url_for("login", restored=1))
 
@@ -1242,6 +1354,12 @@ def _nav_badges() -> dict:
             k = sum(1 for r in resets.pending() if r.get("status") == "pending")
             if k:
                 out["admin"] = {"n": k, "level": "warn"}
+            from webapp import offsite                 # النسخة الخارجية متعطّلة
+            cfg = offsite.load()
+            if cfg.get("enabled") and cfg.get("last_err"):
+                b = out.setdefault("admin", {"n": 0, "level": "warn"})
+                b["n"] += 1
+                b["level"] = "danger"
     except Exception:                              # noqa: BLE001
         pass
     return out
@@ -1379,7 +1497,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-04 · إطار ذهبي متحرّك حول شعار الشركة"
+_BUILD_TAG = "2026-11-04 · جلسات تبقى بعد النشر + الجلسات النشطة + نسخة خارجية بالبريد"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1769,6 +1887,88 @@ def accounts_session_policy():
     return redirect(url_for("accounts"))
 
 
+# ---- الجلسات النشطة: من الداخل الآن ومن أي جهاز، مع إنهاء أي جلسة (للمدير) ----
+def _ago(ts: float) -> str:
+    d = max(0, int(time.time() - ts))
+    if d < 90:
+        return "الآن"
+    m = d // 60
+    if m < 60:
+        return "منذ دقيقتين" if m == 2 else (f"منذ {m} دقائق" if m <= 10 else f"منذ {m} دقيقة")
+    h = m // 60
+    if h < 24:
+        return "منذ ساعة" if h == 1 else ("منذ ساعتين" if h == 2 else
+                                         f"منذ {h} ساعات" if h <= 10 else f"منذ {h} ساعة")
+    days = h // 24
+    return "منذ يوم" if days == 1 else ("منذ يومين" if days == 2 else f"منذ {days} أيام")
+
+
+def _session_rows() -> list:
+    from datetime import datetime as _dt
+    from webapp import websessions
+    live = {websessions.sid_id(k): k for k in _SESSIONS}
+    mine = websessions.sid_id(session.get("sid") or "")
+    mins = _session_minutes()
+    rows = []
+    for r in websessions.list_all():
+        sid = live.get(r["id"])
+        last = max(r["last"], _LAST_SEEN.get(sid, 0) if sid else 0)
+        if mins and time.time() - last > mins * 60 and r["id"] != mine:
+            continue                              # انتهت بعدم النشاط (تُحذف عند أوّل طلب)
+        rows.append({
+            "id": r["id"], "user": r["user"],
+            "role": auth.ROLE_LABELS.get(r["role"], r["role"]),
+            "device": websessions.device(r["ua"]), "ip": r["ip"] or "—",
+            "since": _dt.fromtimestamp(r["since"]).strftime("%Y-%m-%d %H:%M") if r["since"] else "—",
+            "ago": _ago(last), "active": time.time() - last < 300, "mine": r["id"] == mine})
+    return rows
+
+
+@app.get("/sessions")
+def sessions_page():
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    rows = _session_rows()
+    return render_template("sessions.html", active="sessions", rows=rows,
+                           users=len({r["user"].lower() for r in rows}),
+                           msg=session.pop("ss_msg", ""), **_ctx())
+
+
+def _end_by_id(sess_id: str) -> None:
+    from webapp import websessions
+    for sid in [k for k in _SESSIONS if websessions.sid_id(k) == sess_id]:
+        _end(sid)
+    websessions.drop_id(sess_id)
+
+
+@app.post("/sessions/<sess_id>/end")
+def sessions_end(sess_id):
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    row = next((r for r in _session_rows() if r["id"] == sess_id), None)
+    if row is None or row["mine"]:
+        return redirect(url_for("sessions_page"))
+    _end_by_id(sess_id)
+    _audit("إنهاء جلسة", f"{row['user']} — {row['device']} — {row['ip']}")
+    session["ss_msg"] = f"أُنهيت جلسة «{row['user']}» ({row['device']})."
+    return redirect(url_for("sessions_page"))
+
+
+@app.post("/sessions/end-others")
+def sessions_end_others():
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    others = [r for r in _session_rows() if not r["mine"]]
+    for r in others:
+        _end_by_id(r["id"])
+    _audit("إنهاء كل الجلسات الأخرى", f"{len(others)} جلسة")
+    session["ss_msg"] = f"أُنهيت {len(others)} جلسة — بقيت جلستك فقط."
+    return redirect(url_for("sessions_page"))
+
+
 @app.post("/accounts/<username>/delete")
 def accounts_delete(username):
     s = _sess()
@@ -1776,6 +1976,7 @@ def accounts_delete(username):
         return redirect(url_for("login"))
     try:
         auth.remove_account(s, username)
+        _end_user(username)
         session["acc_msg"] = f"حُذف الحساب «{username}»."
         _audit("حذف حساب", username)
     except Exception as exc:

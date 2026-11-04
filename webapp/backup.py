@@ -126,6 +126,21 @@ def encrypt_file(src: Path, dest: Path, password: str) -> None:
                 break
 
 
+def unwrap_mail_zip(path: Path) -> None:
+    """نسخة البريد تصل ملفّ zip فيه ملفّ .almbak: يُستخرج مكانه (وغيره يبقى كما هو)."""
+    try:
+        if not zipfile.is_zipfile(path):
+            return
+        with zipfile.ZipFile(path) as z:
+            names = [n for n in z.namelist() if n.lower().endswith(".almbak")]
+            if len(names) != 1:
+                return
+            data = z.read(names[0])
+    except (OSError, zipfile.BadZipFile):
+        return
+    path.write_bytes(data)
+
+
 def decrypt_file(src: Path, dest: Path, password: str) -> None:
     """يفكّ تشفير نسخة؛ يرفع ValueError عند كلمة مرور خاطئة أو ملف تالف."""
     from cryptography.exceptions import InvalidTag

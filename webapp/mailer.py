@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import base64
 import html
 import json
 import os
@@ -66,12 +67,14 @@ def wrap(title: str, body_html: str) -> str:
         'لا تردّ عليها.</p></div></div>')
 
 
-def send(to: str, subject: str, body_html: str) -> tuple[bool, str]:
-    """يرسل رسالة واحدة. يعيد (نجح؟، سبب الفشل)."""
+def send(to: str, subject: str, body_html: str,
+         attachments: list | None = None) -> tuple[bool, str]:
+    """يرسل رسالة واحدة (مع مرفقات اختيارية: [(الاسم، البايتات)]). يعيد (نجح؟، سبب الفشل)."""
     if not valid_email(to):
         return False, "عنوان البريد غير صالح."
     if OUTBOX is not None:
-        OUTBOX.append({"to": to, "subject": subject, "html": body_html})
+        OUTBOX.append({"to": to, "subject": subject, "html": body_html,
+                       "attachments": list(attachments or [])})
         return True, ""
     if not configured():
         return False, "البريد غير مفعّل على الخادم."
@@ -83,12 +86,15 @@ def send(to: str, subject: str, body_html: str) -> tuple[bool, str]:
         "subject": subject,
         "htmlContent": body_html,
     }
+    if attachments:
+        payload["attachment"] = [{"name": n, "content": base64.b64encode(b).decode("ascii")}
+                                 for n, b in attachments]
     req = urllib.request.Request(
         API_URL, data=json.dumps(payload).encode("utf-8"), method="POST",
         headers={"api-key": _key(), "Content-Type": "application/json",
                  "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=60 if attachments else 15) as resp:
             if 200 <= resp.status < 300:
                 return True, ""
             return False, f"رفض الخادم ({resp.status})."
