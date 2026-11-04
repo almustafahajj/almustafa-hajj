@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}فحص الجودة — المصطفى{% endblock %}
-{% block heading %}🔍 فحص جودة الكشف وجاهزيته{% endblock %}
+{% block heading %}{{ ic('search') }} فحص جودة الكشف وجاهزيته{% endblock %}
 {% block subhead %}<div class="season">{{ total }} سجلّ ·
-  {% if clean %}لا مشكلات 🎉{% else %}{{ issues_count }} تنبيه{% endif %}</div>{% endblock %}
+  {% if clean %}لا مشكلات {{ ic('sparkles') }}{% else %}{{ issues_count }} تنبيه{% endif %}</div>{% endblock %}
 {% block content %}
 
 <div class="panel" style="margin-top:4px">
@@ -20,7 +20,7 @@
 </div>
 
 {% if clean %}
-<div class="acc-msg ok" style="margin-top:16px">✅ لا توجد مشكلات في الكشف — كل السجلات سليمة.</div>
+<div class="acc-msg ok" style="margin-top:16px">{{ ic('check') }} لا توجد مشكلات في الكشف — كل السجلات سليمة.</div>
 {% else %}
 {% for g in groups %}
 <div class="panel" style="margin-top:16px">
@@ -35,7 +35,7 @@
         <td>{{ iss.name }}</td>
         <td dir="ltr">{{ iss.passport or '—' }}</td>
         <td>{{ iss.detail }}</td>
-        <td><a class="btn ghost" href="{{ url_for('hujjaj_edit', idx=iss.idx) }}">تصحيح ←</a></td>
+        <td><a class="btn ghost" href="{{ url_for('hujjaj_edit', idx=iss.idx) }}">تصحيح {{ ic('arrow-left') }}</a></td>
       </tr>
       {% endfor %}
     </tbody>

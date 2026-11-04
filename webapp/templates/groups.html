@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}المجموعات والمرشدون — المصطفى{% endblock %}
-{% block heading %}👥 المجموعات والمرشدون{% endblock %}
+{% block heading %}{{ ic('users') }} المجموعات والمرشدون{% endblock %}
 {% block subhead %}<div class="season">مرشد/مطوّف وهاتف لكل مجموعة</div>{% endblock %}
 {% block content %}
-{% if saved %}<div class="acc-msg ok">✅ حُفظت بيانات المجموعات والمرشدين.</div>{% endif %}
+{% if saved %}<div class="acc-msg ok">{{ ic('check') }} حُفظت بيانات المجموعات والمرشدين.</div>{% endif %}
 {% if not rows %}
 <div class="acc-msg">لا مجموعات بعد — عيّن حقل «المجموعة» في سجلّات {{ noun }} أولاً.</div>
 {% else %}
@@ -27,7 +27,7 @@
 </div>
 {% if can_edit %}
 <div class="formbar" style="margin-top:12px">
-  <button class="btn primary" type="submit">💾 حفظ</button>
+  <button class="btn primary" type="submit">{{ ic('save') }} حفظ</button>
 </div>
 {% endif %}
 </form>

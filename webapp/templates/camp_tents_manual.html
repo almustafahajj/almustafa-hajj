@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}تسكين يدوي — المصطفى{% endblock %}
-{% block heading %}🖐 تسكين يدوي — مخيّم {{ camp }}{% endblock %}
+{% block heading %}{{ ic('hand') }} تسكين يدوي — مخيّم {{ camp }}{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('camps_page') }}">← خيارات المخيمات</a>
+  <a class="pill" href="{{ url_for('camps_page') }}">{{ ic('arrow-left') }} خيارات المخيمات</a>
   · <a class="pill" href="{{ url_for('camp_tents', camp=camp_slug) }}">تلقائي (خيمة بخيمة)</a>
   · المسكّنون: {{ assigned }}</div>{% endblock %}
 {% block content %}
-{% if msg %}<div class="acc-msg ok">{{ msg }}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}
   {% if has_last %} <a class="btn primary" target="_blank" style="margin-inline-start:8px"
-     href="{{ url_for('camp_tent_last_pdf', camp=camp_slug) }}">📄 فتح كشف الخيمة</a>{% endif %}
+     href="{{ url_for('camp_tent_last_pdf', camp=camp_slug) }}">{{ ic('file-text') }} فتح كشف الخيمة</a>{% endif %}
 </div>{% endif %}
 
 <form method="post" action="{{ url_for('camp_tents_manual_assign') }}">
@@ -45,7 +45,7 @@
       </tbody>
     </table>
     <div class="formbar" style="margin-top:12px">
-      <button class="btn primary" type="submit">🖐 تثبيت الخيمة بالمختارين</button>
+      <button class="btn primary" type="submit">{{ ic('hand') }} تثبيت الخيمة بالمختارين</button>
     </div>
   {% endif %}
   </div>

@@ -1,14 +1,13 @@
 {% extends "base.html" %}
 {% block title %}المالية — المصطفى{% endblock %}
-{% block heading %}💰 المالية والتحصيل{% endblock %}
-{% block subhead %}<a class="pill" href="{{ url_for('rep_financial_pdf') }}">📄 تقرير مالي PDF</a>{% endblock %}
+{% block heading %}{{ ic('wallet') }} المالية والتحصيل{% endblock %}
+{% block subhead %}<a class="pill" href="{{ url_for('rep_financial_pdf') }}">{{ ic('file-text') }} تقرير مالي PDF</a>{% endblock %}
 {% block content %}
 {% if request.args.get('msg') == 'stale' %}<div class="acc-msg err">تغيّر الكشف منذ فتحت الصفحة (حُذف أو عُدّل سجلّ) فلم يُحفظ شيء حتى لا يُكتب على شخصٍ آخر — افتح الصفحة من جديد وأعد المحاولة.</div>{% endif %}
 <div class="kpis">
   {% for k in cards %}
-  <div class="card">
-    <div class="strip" style="background:{{ k.color }}"></div>
-    <div class="icon" style="color:{{ k.color }}">{{ k.icon }}</div>
+  <div class="card kpi">
+    <div class="icon">{{ ring(k.icon, k.get('pct'), k.get('ring') or k.color, 'kpi-ring', glyph=k.color) }}</div>
     <div class="val" style="color:{{ k.color }}">{{ k.value }}</div>
     <div class="lbl">{{ k.label }}</div>
     {% if k.sub %}<div class="sub">{{ k.sub }}</div>{% endif %}
@@ -52,14 +51,14 @@
           <input type="hidden" name="fp" value="{{ a.fp }}">
           <input name="amount" type="number" step="0.01" min="0" placeholder="المبلغ"
                  style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:8px" required>
-          <button class="acc-btn add" type="submit" style="padding:7px 12px">💵 سجّل</button>
+          <button class="acc-btn add" type="submit" style="padding:7px 12px">{{ ic('banknote') }} سجّل</button>
         </form>
       </td>
       {% endif %}
     </tr>
   {% else %}
     <tr><td colspan="{{ 7 if can_edit else 6 }}" style="text-align:center;color:#2E7D5B">
-      🎉 لا متأخّرات — الجميع سدّدوا.</td></tr>
+      {{ ic('sparkles') }} لا متأخّرات — الجميع سدّدوا.</td></tr>
   {% endfor %}
   </tbody>
 </table>

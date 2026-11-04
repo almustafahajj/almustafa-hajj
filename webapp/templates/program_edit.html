@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set ro = not is_new and not is_admin %}
 {% block title %}{{ 'برنامج جديد' if is_new else ('عرض برنامج' if ro else 'تعديل برنامج') }} — المصطفى{% endblock %}
-{% block heading %}{{ '➕ برنامج عمرة جديد' if is_new else ('📋 عرض البرنامج' if ro else '✏️ تعديل البرنامج') }}{% endblock %}
+{% block heading %}{{ ('➕ برنامج عمرة جديد' if is_new else ('📋 عرض البرنامج' if ro else '✏️ تعديل البرنامج'))|iconize }}{% endblock %}
 {% block subhead %}<div class="season">الرمز: {{ code }}</div>{% endblock %}
 {% block content %}
 {% if ro %}<div class="acc-msg">تعديل البرامج للمدير فقط — هذه الصفحة للعرض.</div>{% endif %}
@@ -39,7 +39,7 @@
       برنامجاً، واختر هنا البرنامج الأساسي. يُؤخذ عدد الغرف منه، وتُخصم غرف معتمري
       كل البرامج المشتركة من نفس العدد (المقاعد تبقى لكل طيران على حدة)،
       ويأخذ البرنامج المشارك اسم فندق الأساسي تلقائياً.
-      {% if pool %}<br>🔗 يتقاسم غرف الفندق مع: <b>{{ pool|join('، ') }}</b>
+      {% if pool %}<br>{{ ic('link') }} يتقاسم غرف الفندق مع: <b>{{ pool|join('، ') }}</b>
       {% if room_src != code %} — عدد الغرف يُؤخذ من «{{ room_src }}» (عدد الغرف هنا لا يُحتسب).{% endif %}{% endif %}</p>
     {% endif %}
   </fieldset>
@@ -50,28 +50,28 @@
       <div class="svrow">
         <input name="service_name" value="{{ s.name }}" placeholder="اسم الخدمة">
         <input name="service_price" value="{{ s.price }}" type="number" placeholder="السعر">
-        <button type="button" class="acc-btn del" onclick="this.parentNode.remove()">🗑</button>
+        <button type="button" class="acc-btn del" onclick="this.parentNode.remove()">{{ ic('trash') }}</button>
       </div>
       {% endfor %}
     </div>
-    <button type="button" class="acc-btn add" onclick="addSvc()">➕ إضافة خدمة</button>
+    <button type="button" class="acc-btn add" onclick="addSvc()">{{ ic('plus') }} إضافة خدمة</button>
   </fieldset>
   </fieldset>
   <div class="formbar">
-    {% if not ro %}<button class="btn primary" type="submit">💾 حفظ البرنامج</button>{% endif %}
+    {% if not ro %}<button class="btn primary" type="submit">{{ ic('save') }} حفظ البرنامج</button>{% endif %}
     <a class="btn ghost" href="{{ url_for('programs') }}">رجوع</a>
   </div>
 </form>
 {% if not is_new %}
 <fieldset class="editcard">
-  <legend>📄 كشوف هذا البرنامج (معاينة)</legend>
+  <legend>{{ ic('file-text') }} كشوف هذا البرنامج (معاينة)</legend>
   <div class="docbtns">
     <a class="btn ghost" target="_blank"
-       href="{{ url_for('program_rooming_pdf', code=code, city='makkah') }}">🛏 تسكين مكة</a>
+       href="{{ url_for('program_rooming_pdf', code=code, city='makkah') }}">{{ ic('bed') }} تسكين مكة</a>
     <a class="btn ghost" target="_blank"
-       href="{{ url_for('program_rooming_pdf', code=code, city='madinah') }}">🛏 تسكين المدينة</a>
+       href="{{ url_for('program_rooming_pdf', code=code, city='madinah') }}">{{ ic('bed') }} تسكين المدينة</a>
     <a class="btn ghost" target="_blank"
-       href="{{ url_for('program_transport_pdf', code=code) }}">🚐 كشف المواصلات</a>
+       href="{{ url_for('program_transport_pdf', code=code) }}">{{ ic('bus') }} كشف المواصلات</a>
   </div>
   <p class="hint-note">تُفتح كمعاينة في تبويب جديد لمعتمري هذا البرنامج فقط.</p>
 </fieldset>
@@ -80,7 +80,7 @@
 <form method="post" action="{{ url_for('program_delete', code=code) }}"
       onsubmit="return confirm('حذف البرنامج «{{ code }}» نهائياً؟');"
       style="margin-top:10px">
-  <button class="btn ghost" type="submit" style="color:#C0392B">🗑 حذف البرنامج</button>
+  <button class="btn ghost" type="submit" style="color:#C0392B">{{ ic('trash') }} حذف البرنامج</button>
 </form>
 {% endif %}
 <script>

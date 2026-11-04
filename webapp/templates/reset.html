@@ -9,14 +9,14 @@
 </head><body class="mode-{{ selected_mode }}">
 <div class="login-wrap">
   <form class="login-card" method="post">
-    <div class="brand-dot">🔑</div>
+    <div class="brand-dot">{{ ic('key') }}</div>
     <h1>كلمة مرور جديدة</h1>
     {% if invalid %}
     <div class="err">الرابط غير صالح أو انتهت مدّته أو استُخدم من قبل. اطلب استعادة جديدة.</div>
     <p class="sub"><a href="{{ url_for('forgot') }}">طلب استعادة جديد</a></p>
     {% else %}
     <p class="sub">لحساب «{{ username }}». الرابط لمرة واحدة.</p>
-    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if error %}<div class="err">{{ error|iconize }}</div>{% endif %}
     <div class="field">
       <label>كلمة المرور الجديدة</label>
       <input name="password" type="password" required minlength="8" autofocus
@@ -30,7 +30,7 @@
     <button class="btn primary" type="submit">حفظ كلمة المرور</button>
     {% endif %}
     <p class="sub" style="margin-top:14px">
-      <a href="{{ url_for('login') }}">← العودة لتسجيل الدخول</a></p>
+      <a href="{{ url_for('login') }}">{{ ic('arrow-left') }} العودة لتسجيل الدخول</a></p>
   </form>
 </div>
 </body></html>

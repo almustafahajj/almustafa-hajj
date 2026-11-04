@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}خيمة بخيمة — المصطفى{% endblock %}
-{% block heading %}🏕 إنشاء خيام مخيّم {{ camp }} — خيمة بخيمة{% endblock %}
+{% block heading %}{{ ic('tent') }} إنشاء خيام مخيّم {{ camp }} — خيمة بخيمة{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('camps_page') }}">← الكشف الكامل بالخيارات</a></div>{% endblock %}
+  <a class="pill" href="{{ url_for('camps_page') }}">{{ ic('arrow-left') }} الكشف الكامل بالخيارات</a></div>{% endblock %}
 {% block content %}
-{% if msg %}<div class="acc-msg ok">{{ msg }}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}
   {% if has_last %} <a class="btn primary" target="_blank" style="margin-inline-start:8px"
-     href="{{ url_for('camp_tent_last_pdf', camp=camp_slug) }}">📄 فتح كشف الخيمة</a>{% endif %}
+     href="{{ url_for('camp_tent_last_pdf', camp=camp_slug) }}">{{ ic('file-text') }} فتح كشف الخيمة</a>{% endif %}
 </div>{% endif %}
 
 <form method="get" action="{{ url_for('camp_tents') }}">
@@ -31,10 +31,10 @@
         <input name="campaign" value="{{ campaign }}"></label>
     </div>
     <div class="formbar">
-      <button class="btn ghost" type="submit">↻ تحديث المعاينة</button>
+      <button class="btn ghost" type="submit">{{ ic('redo') }} تحديث المعاينة</button>
       <button class="btn primary" type="submit"
               formmethod="post" formaction="{{ url_for('camp_tents_export') }}">
-        🏕 تثبيت وتصدير هذه الخيمة</button>
+        {{ ic('tent') }} تثبيت وتصدير هذه الخيمة</button>
     </div>
   </fieldset>
 </form>
@@ -66,7 +66,7 @@
 <form method="post" action="{{ url_for('camp_tents_reset') }}"
       onsubmit="return confirm('مسح كل الخيام المثبّتة والبدء من جديد؟');" style="margin-top:12px">
   <input type="hidden" name="camp" value="{{ camp_slug }}">
-  <button class="btn ghost" type="submit" style="color:#C0392B">↺ إعادة الضبط</button>
+  <button class="btn ghost" type="submit" style="color:#C0392B">{{ ic('undo') }} إعادة الضبط</button>
 </form>
 <p class="hint-note">تُملأ الخيمة تلقائياً بعدد الأشخاص المحدّد من التصنيف المختار
   (العائلة وسكّان الغرفة معاً). «تثبيت وتصدير» يثبّت ركّاب هذه الخيمة وينتقل

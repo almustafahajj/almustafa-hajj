@@ -61,6 +61,10 @@ print("[ok] السرّ مشفّر في الحساب ويبقى عبر تغيير
 
 try:
     from webapp import server
+    from webapp import icons as _icons
+    _gd = server.app.response_class.get_data
+    server.app.response_class.get_data = (                       # الأيقونات ← إيموجي للمقارنة
+        lambda self, as_text=False: _icons.plain(_gd(self, True)) if as_text else _gd(self))
 except ImportError as exc:
     print(f"[skip] مسارات الويب: {exc}")
     print("ALL OK")

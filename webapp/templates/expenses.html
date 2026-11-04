@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% block title %}المصروفات — المصطفى{% endblock %}
-{% block heading %}🧮 المصروفات والمحاسبة{% endblock %}
+{% block heading %}{{ ic('calculator') }} المصروفات والمحاسبة{% endblock %}
 {% block subhead %}<div class="season">الصافي = المحصّل − المصروفات</div>{% endblock %}
 {% block content %}
 <div class="kpis" style="margin-bottom:16px">
-  <div class="card"><div class="k-icon" style="background:#2E7D5B">✅</div>
+  <div class="card"><div class="k-icon" style="background:#2E7D5B">{{ ic('check') }}</div>
     <div class="k-body"><div class="k-label">المحصّل من الحجّاج</div>
       <div class="k-value">{{ totals.collected }}</div></div></div>
-  <div class="card"><div class="k-icon" style="background:#C0392B">💸</div>
+  <div class="card"><div class="k-icon" style="background:#C0392B">{{ ic('banknote') }}</div>
     <div class="k-body"><div class="k-label">إجمالي المصروفات</div>
       <div class="k-value">{{ totals.expenses }}</div></div></div>
-  <div class="card"><div class="k-icon" style="background:#2C5AA0">📈</div>
+  <div class="card"><div class="k-icon" style="background:#2C5AA0">{{ ic('trend') }}</div>
     <div class="k-body"><div class="k-label">الصافي</div>
       <div class="k-value">{{ totals.net }}</div></div></div>
 </div>
 
 {% if can_edit %}
 <fieldset class="editcard">
-  <legend>➕ إضافة مصروف</legend>
+  <legend>{{ ic('plus') }} إضافة مصروف</legend>
   <form method="post">
     <input type="hidden" name="action" value="add">
     <div class="fgrid">
@@ -28,7 +28,7 @@
       <label class="ff"><span>المبلغ</span><input name="amount" type="number" step="0.01"></label>
       <label class="ff"><span>ملاحظة</span><input name="note"></label>
     </div>
-    <div class="formbar"><button class="btn primary" type="submit">➕ إضافة</button></div>
+    <div class="formbar"><button class="btn primary" type="submit">{{ ic('plus') }} إضافة</button></div>
   </form>
 </fieldset>
 {% endif %}
@@ -49,7 +49,7 @@
         <form method="post" onsubmit="return confirm('حذف هذا المصروف؟');" style="margin:0">
           <input type="hidden" name="action" value="del">
           <input type="hidden" name="idx" value="{{ r.idx }}">
-          <button class="btn ghost" type="submit" style="color:#C0392B">🗑</button>
+          <button class="btn ghost" type="submit" style="color:#C0392B">{{ ic('trash') }}</button>
         </form></td>{% endif %}
     </tr>
     {% endfor %}

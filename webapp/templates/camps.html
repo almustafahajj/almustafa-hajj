@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}مخيمات منى وعرفة — المصطفى{% endblock %}
-{% block heading %}⛺ تسكين مخيمات منى وعرفة{% endblock %}
+{% block heading %}{{ ic('tent') }} تسكين مخيمات منى وعرفة{% endblock %}
 {% block subhead %}<div class="season">{{ count }} حاجّ · اختر الخيارات ثم عاين كشف التسكين</div>{% endblock %}
 {% block content %}
-{% if reset %}<div class="acc-msg ok">✅ أُعيد تعيين تسكين المخيمات — يمكنك البدء من جديد.</div>{% endif %}
+{% if reset %}<div class="acc-msg ok">{{ ic('check') }} أُعيد تعيين تسكين المخيمات — يمكنك البدء من جديد.</div>{% endif %}
 <form method="get" action="{{ url_for('camp_pdf') }}" target="_blank">
   <fieldset class="editcard">
     <legend>خيارات كشف التسكين</legend>
@@ -27,22 +27,22 @@
         </select></label>
     </div>
     <div class="formbar">
-      <button class="btn primary" type="submit">⛺ معاينة كشف التسكين</button>
-      <a class="btn ghost" href="{{ url_for('camp_tents') }}">🏕 خيمة بخيمة (تلقائي)…</a>
-      <a class="btn ghost" href="{{ url_for('camp_tents_manual') }}">🖐 تسكين يدوي (اختيار الحجّاج)…</a>
+      <button class="btn primary" type="submit">{{ ic('tent') }} معاينة كشف التسكين</button>
+      <a class="btn ghost" href="{{ url_for('camp_tents') }}">{{ ic('tent') }} خيمة بخيمة (تلقائي)…</a>
+      <a class="btn ghost" href="{{ url_for('camp_tents_manual') }}">{{ ic('hand') }} تسكين يدوي (اختيار الحجّاج)…</a>
     </div>
   </fieldset>
 </form>
 
 {% if saved_camps %}
 <div class="panel" style="margin-top:14px">
-  <strong>🏕 الخيام المحفوظة (تظهر تلقائياً — لا تزول بإعادة التشغيل)</strong>
+  <strong>{{ ic('tent') }} الخيام المحفوظة (تظهر تلقائياً — لا تزول بإعادة التشغيل)</strong>
   {% for sc in saved_camps %}
   <div style="margin-top:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
       <span>مخيّم <strong>{{ sc.name }}</strong> — {{ sc.tents|length }} خيمة · {{ sc.assigned }} مسكّن</span>
       <a class="btn primary sm" target="_blank"
-         href="{{ url_for('camp_tents_all_pdf', camp=sc.slug) }}">📄 تصدير الكل (كل خيمة بصفحة)</a>
+         href="{{ url_for('camp_tents_all_pdf', camp=sc.slug) }}">{{ ic('file-text') }} تصدير الكل (كل خيمة بصفحة)</a>
     </div>
     <table class="data">
       <thead><tr><th>#</th><th>رقم الخيمة</th><th>التصنيف</th><th>القطاع</th><th>العدد</th><th></th></tr></thead>
@@ -52,7 +52,7 @@
           <td>{{ loop.index }}</td><td>{{ t.number }}</td><td>{{ t.cls }}</td>
           <td>{{ t.sector or '—' }}</td><td>{{ t.count }}</td>
           <td><a class="btn ghost sm" target="_blank"
-                 href="{{ url_for('camp_tent_pdf', n=t.n, camp=sc.slug) }}">📄 فتح/طباعة</a></td>
+                 href="{{ url_for('camp_tent_pdf', n=t.n, camp=sc.slug) }}">{{ ic('file-text') }} فتح/طباعة</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -66,7 +66,7 @@
 <form method="post" action="{{ url_for('camps_reset') }}"
       onsubmit="return confirm('إعادة تعيين تسكين المخيمات؟ سيُمسح تقدّم «خيمة بخيمة» وتبدأ من جديد.');"
       style="margin-top:4px">
-  <button class="btn ghost" type="submit" style="color:#C0392B">↺ إعادة تعيين التسكين</button>
+  <button class="btn ghost" type="submit" style="color:#C0392B">{{ ic('undo') }} إعادة تعيين التسكين</button>
 </form>
 {% endif %}
 <p class="hint-note">يوزّع الحجّاج على خيام بحجم «سعة الخيمة»، مفصولةً بالجنس، مع

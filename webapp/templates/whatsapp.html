@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}واتساب جماعي — المصطفى{% endblock %}
-{% block heading %}📱 رسائل واتساب جماعية{% endblock %}
+{% block heading %}{{ ic('phone-device') }} رسائل واتساب جماعية{% endblock %}
 {% block subhead %}<div class="season">{{ count }} سجلّ · يفتح لكلٍّ محادثة برسالة جاهزة — تضغط «إرسال» بنفسك</div>{% endblock %}
 {% block content %}
 <form method="post">
@@ -19,7 +19,7 @@
       <textarea name="message" rows="5">{{ message }}</textarea></label>
     <p class="hint-note">عناصر نائبة تُستبدَل لكل حاج: {{ placeholders }}</p>
     <div class="formbar">
-      <button class="btn primary" type="submit">🔗 توليد الروابط</button>
+      <button class="btn primary" type="submit">{{ ic('link') }} توليد الروابط</button>
       <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع</a>
     </div>
   </fieldset>
@@ -39,7 +39,7 @@
     <tr>
       <td>{{ r.name }}</td>
       <td dir="ltr">{{ r.phone }}</td>
-      <td>{% if r.link %}<a class="btn primary" target="_blank" href="{{ r.link }}">📱 فتح المحادثة</a>
+      <td>{% if r.link %}<a class="btn primary" target="_blank" href="{{ r.link }}">{{ ic('phone-device') }} فتح المحادثة</a>
           {% else %}<span class="muted">رقم غير صالح</span>{% endif %}</td>
     </tr>
     {% endfor %}

@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% block title %}مواعيد وتعليمات السفر — المصطفى{% endblock %}
-{% block heading %}🧳 مواعيد وتعليمات السفر{% endblock %}
+{% block heading %}{{ ic('luggage') }} مواعيد وتعليمات السفر{% endblock %}
 {% block subhead %}<div class="season">اختر البرنامج لتحرير جدول الرحلة والتعليمات ومعاينة PDF</div>{% endblock %}
 {% block content %}
 <div class="kpis">
   {% for p in progs %}
   <a class="card" href="{{ url_for('travel_edit', idx=p.idx) }}"
      style="text-decoration:none;color:inherit;display:block">
-    <div class="k-icon" style="background:#2C5AA0">🧳</div>
+    <div class="k-icon" style="background:#2C5AA0">{{ ic('luggage') }}</div>
     <div class="k-body">
       <div class="k-label">{{ p.name }}</div>
-      <div class="k-value" style="font-size:15px">تحرير المواعيد والتعليمات ←</div>
+      <div class="k-value" style="font-size:15px">تحرير المواعيد والتعليمات {{ ic('arrow-left') }}</div>
     </div>
   </a>
   {% endfor %}

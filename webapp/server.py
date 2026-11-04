@@ -56,6 +56,8 @@ _GROUPS = [
 ]
 
 app = Flask(__name__)
+from webapp import icons as _icons  # noqa: E402
+_icons.install(app)                     # ic('…') و|iconize في القوالب
 # خلف وكيل Railway: عنوان الزائر الحقيقي (لإيقاف محاولات الدخول) وبروتوكول https
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 # حماية النماذج من الطلبات المزوّرة (تُعطَّل في الاختبارات فقط)
@@ -601,16 +603,23 @@ def dashboard():
     records = _load_records()
     fin = stats.financial_summary(records)
     owe = stats.outstanding(records)
+    season_rings = _season_rings(records, fin)
+    seats = next((r for r in season_rings if r["key"] == "seats"), None)
+    late = round(len(owe) * 100 / fin.count) if fin.count else 0
     kpis = [
         {"icon": "👤", "label": _noun(), "value": f"{fin.count:,}",
-         "sub": "", "color": "#8A6E4B"},
+         "sub": seats["detail"] if seats else "", "color": "#8A6E4B",
+         "pct": seats["pct"] if seats else None},
         {"icon": "💰", "label": "المحصّل", "value": format_amount(fin.paid) or "0",
-         "sub": f"{fin.collected_percent}% من الإجمالي", "color": "#2E7D5B"},
+         "sub": f"{fin.collected_percent}% من الإجمالي", "color": "#2E7D5B",
+         "pct": fin.collected_percent, "ring": _icons.status_color(fin.collected_percent)},
         {"icon": "⏳", "label": "المتبقّي",
          "value": format_amount(fin.remaining) or "0", "sub": "AED",
-         "color": "#2C5AA0"},
+         "color": "#2C5AA0", "pct": 100 - fin.collected_percent if fin.total else 0,
+         "ring": _icons.status_color(fin.collected_percent)},
         {"icon": "⚠", "label": "المتأخّرون عن السداد", "value": f"{len(owe):,}",
-         "sub": "بحاجة متابعة", "color": "#C0392B"},
+         "sub": "بحاجة متابعة", "color": "#C0392B",
+         "pct": late, "ring": _icons.status_color(100 - late)},
     ]
     progs = [{"name": name, "count": pf.count,
               "paid": format_amount(pf.paid) or "0",
@@ -622,7 +631,61 @@ def dashboard():
     alerts_top = [dict(a, link=_alert_link(a)) for a in _alerts()[:6]]
     return render_template(
         "dashboard.html", kpis=kpis, progs=progs, pcards=pcards,
-        alerts_top=alerts_top, active="dashboard", **_ctx())
+        season_rings=season_rings, alerts_top=alerts_top, active="dashboard", **_ctx())
+
+
+def _season_rings(records, fin) -> list:
+    """حلقات ملخّص الموسم (من الخارج للداخل): التحصيل، ثم المقاعد والغرف في
+    العمرة، أو الجاهزية والجوازات السارية في الحج."""
+    rings = [{"key": "paid", "label": "التحصيل", "pct": fin.collected_percent,
+              "color": "#1E9E6A",
+              "detail": f"{format_amount(fin.paid) or '0'} من {format_amount(fin.total) or '0'} درهم"}]
+    try:
+        if _mode() == app_mode.UMRAH:
+            from hajj_app import umrah
+            trips = umrah.load_trips(storage.load_settings())
+            live = [r for r in records
+                    if str(getattr(r, "status", "") or "").strip() != "ملغى"]
+            cap = n = 0
+            for t in trips:
+                try:
+                    c = int(float(str(t.capacity or "").strip() or 0))
+                except ValueError:
+                    c = 0
+                if c:
+                    cap += c
+                    n += len(umrah.trip_pilgrims(live, t.code))
+            if cap:
+                rings.append({"key": "seats", "label": "المقاعد",
+                              "pct": min(100, round(n * 100 / cap)), "color": "#2C7BD0",
+                              "detail": f"{n:,} من {cap:,} مقعداً"})
+            pools = umrah.room_pools(trips)
+            avail = used = 0
+            for t in trips:
+                if pools[t.code][0].code != t.code:
+                    continue
+                for _city, a, u, _left in umrah.trip_rooms_left(t, live, pool=pools[t.code]):
+                    avail += a
+                    used += u
+            if avail:
+                rings.append({"key": "rooms", "label": "الغرف",
+                              "pct": min(100, round(used * 100 / avail)), "color": "#E0A12B",
+                              "detail": f"{used:,} من {avail:,} غرفة (مكة والمدينة)"})
+        elif records:
+            from hajj_app import quality
+            marks = [quality.pilgrim_readiness(r) for r in records]
+            total = len(marks) * len(marks[0])
+            ready = sum(sum(1 for v in m.values() if v) for m in marks)
+            rings.append({"key": "ready", "label": "الجاهزية",
+                          "pct": round(ready * 100 / total), "color": "#2C7BD0",
+                          "detail": "الجواز والتأشيرة والتصريح والتطعيم والسداد والتواصل"})
+            ok = sum(1 for m in marks if m["passport"])
+            rings.append({"key": "passport", "label": "جوازات سارية",
+                          "pct": round(ok * 100 / len(marks)), "color": "#E0A12B",
+                          "detail": f"{ok:,} من {len(marks):,}"})
+    except Exception:                              # noqa: BLE001
+        pass
+    return rings
 
 
 # الحج: سنة هجرية (هـ) — العمرة: سنة ميلادية (م)
@@ -1094,7 +1157,33 @@ def _ctx() -> dict:
         is_admin=bool(s is not None and s.is_admin),
         can_edit=bool(s is not None and s.can_edit),
         alert_count=_alert_count(),
+        nav_badges=_nav_badges(),
         search_q=(request.args.get("q") or "") if request.endpoint == "search_page" else "")
+
+
+def _nav_badges() -> dict:
+    """رقم على أيقونة كل قسم في القائمة بما يحتاج انتباهاً (تحذير/عاجل)."""
+    if _sess() is None:
+        return {}
+    section = {"program": "ops", "travel": "ops", "finance": "fin", "quality": "reports"}
+    out: dict = {}
+    try:
+        for a in _alerts():
+            sec = section.get(a.get("kind"))
+            if not sec or a.get("level") not in ("warn", "danger"):
+                continue
+            b = out.setdefault(sec, {"n": 0, "level": "warn"})
+            b["n"] += 1
+            if a["level"] == "danger":
+                b["level"] = "danger"
+        if _sess().is_admin:
+            from webapp import resets
+            k = sum(1 for r in resets.pending() if r.get("status") == "pending")
+            if k:
+                out["admin"] = {"n": k, "level": "warn"}
+    except Exception:                              # noqa: BLE001
+        pass
+    return out
 
 
 # ---- الإشعارات (تُحسب من البيانات، وتُخزَّن مؤقّتاً حتى تتغيّر الملفّات) ----
@@ -1229,7 +1318,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-04 · المواسم: الانتقال للمدير فقط، حفظ القديم وبدء الجديد بقوائم فارغة"
+_BUILD_TAG = "2026-11-04 · الحلقة الذكية: أيقونات بحلقات تعرض النسب + ملخّص الموسم"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -4951,13 +5040,18 @@ def finance():
         {"icon": "💰", "label": "إجمالي القيمة",
          "value": format_amount(fin.total) or "0", "sub": "", "color": "#8A6E4B"},
         {"icon": "✅", "label": "المحصّل", "value": format_amount(fin.paid) or "0",
-         "sub": f"{fin.collected_percent}% من الإجمالي", "color": "#2E7D5B"},
+         "sub": f"{fin.collected_percent}% من الإجمالي", "color": "#2E7D5B",
+         "pct": fin.collected_percent, "ring": _icons.status_color(fin.collected_percent)},
         {"icon": "⏳", "label": "المتبقّي",
          "value": format_amount(fin.remaining) or "0", "sub": "AED",
-         "color": "#2C5AA0"},
+         "color": "#2C5AA0", "pct": 100 - fin.collected_percent if fin.total else 0,
+         "ring": _icons.status_color(fin.collected_percent)},
         {"icon": "⚠", "label": "المتأخّرون عن السداد",
          "value": f"{fin.unpaid_count:,}", "sub": "بحاجة متابعة",
-         "color": "#C0392B"},
+         "color": "#C0392B",
+         "pct": round(fin.unpaid_count * 100 / fin.count) if fin.count else 0,
+         "ring": _icons.status_color(
+             100 - (fin.unpaid_count * 100 / fin.count if fin.count else 0))},
     ]
     progs = [{"name": name, "count": pf.count,
               "paid": format_amount(pf.paid) or "0",

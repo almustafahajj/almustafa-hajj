@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}التسعيرات المحفوظة — المصطفى{% endblock %}
-{% block heading %}🗂 التسعيرات المحفوظة{% endblock %}
-{% block subhead %}<a class="pill" href="{{ url_for('offers') }}">← رجوع للتسعير والعروض</a>{% endblock %}
+{% block heading %}{{ ic('folder') }} التسعيرات المحفوظة{% endblock %}
+{% block subhead %}<a class="pill" href="{{ url_for('offers') }}">{{ ic('arrow-left') }} رجوع للتسعير والعروض</a>{% endblock %}
 {% block content %}
 {% if not rows %}
   <p class="hint-note">لا تسعيرات محفوظة بعد. أنشئ واحداً من «مسعّر المجموعات».</p>
@@ -22,7 +22,7 @@
         <form method="post" class="inline"
               action="{{ url_for('pricing_delete', num=r.number) }}"
               onsubmit="return confirm('حذف التسعير «{{ r.number }}» نهائياً؟');">
-          <button class="acc-btn del" type="submit">🗑 حذف</button>
+          <button class="acc-btn del" type="submit">{{ ic('trash') }} حذف</button>
         </form>
         {% endif %}
       </td>

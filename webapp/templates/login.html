@@ -8,12 +8,12 @@
 </head><body class="mode-{{ selected_mode }}">
 <div class="login-wrap">
   <form class="login-card" method="post" autocomplete="on">
-    <div class="brand-dot" id="modeIcon">{% for val,lbl,icon in modes %}{% if val == selected_mode %}{{ icon }}{% endif %}{% endfor %}</div>
+    <div class="brand-dot" id="modeIcon">{% for val,lbl,icon in modes %}{% if val == selected_mode %}{{ icon|iconize }}{% endif %}{% endfor %}</div>
     <h1>المصطفى للحج والعمرة</h1>
     <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
-    {% if error %}<div class="err">{{ error }}</div>{% endif %}
-    {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">✅ استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
-    {% if request.args.get('reset') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">✅ حُفظت كلمة المرور الجديدة — سجّل الدخول بها.</div>{% endif %}
+    {% if error %}<div class="err">{{ error|iconize }}</div>{% endif %}
+    {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
+    {% if request.args.get('reset') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} حُفظت كلمة المرور الجديدة — سجّل الدخول بها.</div>{% endif %}
     {% include "_mode_pick.html" %}
     <div class="field">
       <label for="username">اسم المستخدم</label>

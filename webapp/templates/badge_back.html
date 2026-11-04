@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}تعديل خلف البطاقة — المصطفى{% endblock %}
-{% block heading %}✎ تعديل بيانات خلف بطاقة الحاج{% endblock %}
+{% block heading %}{{ ic('pencil') }} تعديل بيانات خلف بطاقة الحاج{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('reports') }}">← التقارير</a>
+  <a class="pill" href="{{ url_for('reports') }}">{{ ic('arrow-left') }} التقارير</a>
   · تظهر هذه البيانات على ظهر كل بطاقة عند الطباعة</div>{% endblock %}
 {% block content %}
-{% if saved %}<div class="acc-msg ok">✅ حُفظت البيانات — ستظهر على خلف البطاقات عند الطباعة.
+{% if saved %}<div class="acc-msg ok">{{ ic('check') }} حُفظت البيانات — ستظهر على خلف البطاقات عند الطباعة.
   <a class="btn primary" target="_blank" style="margin-inline-start:8px"
-     href="{{ url_for('rep_cards_pdf') }}">🪪 فتح البطاقات PDF</a></div>{% endif %}
+     href="{{ url_for('rep_cards_pdf') }}">{{ ic('id-card') }} فتح البطاقات PDF</a></div>{% endif %}
 
 <form method="post" action="{{ url_for('cards_back') }}">
   <fieldset class="editcard">
@@ -29,12 +29,12 @@
         <tr>
           <td><input name="admin_name" value="{{ a.name or '' }}"></td>
           <td><input name="admin_number" value="{{ a.number or '' }}" dir="ltr"></td>
-          <td><button type="button" class="btn ghost sm" onclick="this.closest('tr').remove()">🗑 حذف</button></td>
+          <td><button type="button" class="btn ghost sm" onclick="this.closest('tr').remove()">{{ ic('trash') }} حذف</button></td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-    <button type="button" class="btn ghost sm" onclick="addAdmin()" style="margin-top:8px">➕ إضافة إداري</button>
+    <button type="button" class="btn ghost sm" onclick="addAdmin()" style="margin-top:8px">{{ ic('plus') }} إضافة إداري</button>
   </fieldset>
 
   <fieldset class="editcard" style="margin-top:12px">
@@ -48,8 +48,8 @@
   </fieldset>
 
   <div class="formbar" style="margin-top:14px">
-    <button class="btn primary" type="submit">💾 حفظ</button>
-    <a class="btn ghost" target="_blank" href="{{ url_for('rep_cards_pdf') }}">🪪 معاينة البطاقات</a>
+    <button class="btn primary" type="submit">{{ ic('save') }} حفظ</button>
+    <a class="btn ghost" target="_blank" href="{{ url_for('rep_cards_pdf') }}">{{ ic('id-card') }} معاينة البطاقات</a>
   </div>
 </form>
 

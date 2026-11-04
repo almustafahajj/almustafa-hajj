@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}بحث: {{ q }} — المصطفى{% endblock %}
-{% block heading %}🔎 البحث السريع{% endblock %}
+{% block heading %}{{ ic('search') }} البحث السريع{% endblock %}
 {% block subhead %}<div class="season">{% if q %}«{{ q }}» — {{ total }} نتيجة في نظام {{ theme.noun }}{% else %}اكتب اسماً أو رقم جواز أو هاتفاً أو رقماً مرجعياً أو برنامجاً{% endif %}</div>{% endblock %}
 {% block content %}
 {% if q and not groups %}
@@ -14,7 +14,7 @@
   <div class="search-item">
     <div><a class="t" href="{{ it.link }}">{{ it.title }}</a>
       {% if it.sub %}<div class="s">{{ it.sub }}</div>{% endif %}</div>
-    {% if it.extra %}<a class="acc-btn" href="{{ it.extra }}">📄 المستندات</a>{% endif %}
+    {% if it.extra %}<a class="acc-btn" href="{{ it.extra }}">{{ ic('file-text') }} المستندات</a>{% endif %}
   </div>
   {% endfor %}
 </div>

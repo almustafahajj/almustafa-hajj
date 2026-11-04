@@ -16,6 +16,10 @@ from hajj_app.mrz import PassportData  # noqa: E402
 
 try:
     from webapp import server, alerts, search
+    from webapp import icons as _icons
+    _gd = server.app.response_class.get_data
+    server.app.response_class.get_data = (                       # الأيقونات ← إيموجي للمقارنة
+        lambda self, as_text=False: _icons.plain(_gd(self, True)) if as_text else _gd(self))
     server.app.config["CSRF_ENABLED"] = False
 except ImportError as exc:
     print(f"[skip] مسارات الويب: {exc}")

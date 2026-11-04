@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}تعديل التسكين — المصطفى{% endblock %}
-{% block heading %}✏️ تعديل تسكين الغرف يدوياً{% endblock %}
+{% block heading %}{{ ic('pencil') }} تعديل تسكين الغرف يدوياً{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('occupancy') }}">← إشغال الغرف</a>
+  <a class="pill" href="{{ url_for('occupancy') }}">{{ ic('arrow-left') }} إشغال الغرف</a>
   · عدّل الفندق ونوع الغرفة ورقمها لكل شخص ثم احفظ</div>{% endblock %}
 {% block content %}
-{% if saved is not none %}<div class="acc-msg ok">✅ حُفظ التسكين ({{ saved }} سجلّ مُعدّل).</div>{% endif %}
+{% if saved is not none %}<div class="acc-msg ok">{{ ic('check') }} حُفظ التسكين ({{ saved }} سجلّ مُعدّل).</div>{% endif %}
 {% if skipped and skipped != '0' %}<div class="acc-msg err">تُخطّي {{ skipped }} سجلّ تغيّر منذ فتحت الصفحة (حُذف أو عُدّل) — افتح الصفحة من جديد لتعديله.</div>{% endif %}
 
 <form method="get" class="searchbar" style="margin-bottom:12px">
@@ -22,7 +22,7 @@
   <datalist id="hotels">{% for h in hotels %}<option value="{{ h }}">{% endfor %}</datalist>
   <datalist id="rtypes">{% for t in rtypes %}<option value="{{ t }}">{% endfor %}</datalist>
   <div class="formbar" style="margin-bottom:10px">
-    <button class="btn primary" type="submit">💾 حفظ التسكين</button>
+    <button class="btn primary" type="submit">{{ ic('save') }} حفظ التسكين</button>
   </div>
   <div class="panel">
   {% if not rows %}
@@ -52,7 +52,7 @@
   {% endif %}
   </div>
   <div class="formbar" style="margin-top:10px">
-    <button class="btn primary" type="submit">💾 حفظ التسكين</button>
+    <button class="btn primary" type="submit">{{ ic('save') }} حفظ التسكين</button>
   </div>
 </form>
 <p class="hint-note">اكتب الفندق ونوع الغرفة (يظهر اقتراح من القيم الموجودة) ورقم الغرفة.

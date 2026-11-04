@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}قراءة جواز — المصطفى{% endblock %}
-{% block heading %}📷 قراءة جواز {{ noun_singular }}{% endblock %}
-{% block subhead %}<a class="pill" href="{{ url_for('hujjaj') }}">← {{ noun }}</a>{% endblock %}
+{% block heading %}{{ ic('camera') }} قراءة جواز {{ noun_singular }}{% endblock %}
+{% block subhead %}<a class="pill" href="{{ url_for('hujjaj') }}">{{ ic('arrow-left') }} {{ noun }}</a>{% endblock %}
 {% block content %}
 {% if ocr_err %}
 <div class="acc-msg" style="background:#fff8ec;color:#8A6E4B;border:1px solid #e7d3a8">
@@ -24,7 +24,7 @@
            style="padding:10px;border:1px solid var(--border);border-radius:10px;
                   background:#fff;width:100%">
     <div class="formbar" style="margin-top:12px">
-      <button class="btn primary" type="submit">📷 اقرأ الجواز</button>
+      <button class="btn primary" type="submit">{{ ic('camera') }} اقرأ الجواز</button>
       <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع</a>
     </div>
   </form>

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}صور ومستندات — {{ name }}{% endblock %}
-{% block heading %}🖼 صور ومستندات {{ noun_singular }}{% endblock %}
+{% block heading %}{{ ic('image') }} صور ومستندات {{ noun_singular }}{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('hujjaj_edit', idx=idx, fp=fp) }}">← تعديل السجلّ</a>
+  <a class="pill" href="{{ url_for('hujjaj_edit', idx=idx, fp=fp) }}">{{ ic('arrow-left') }} تعديل السجلّ</a>
   · {{ name }}
-  · <a class="pill" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">📄 سندات/فواتير</a></div>{% endblock %}
+  · <a class="pill" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">{{ ic('file-text') }} سندات/فواتير</a></div>{% endblock %}
 {% block content %}
-{% if saved %}<div class="acc-msg ok">✅ {{ saved }}</div>{% endif %}
-{% if err %}<div class="acc-msg err">⚠ {{ err }}</div>{% endif %}
+{% if saved %}<div class="acc-msg ok">{{ ic('check') }} {{ saved }}</div>{% endif %}
+{% if err %}<div class="acc-msg err">{{ ic('alert') }} {{ err|iconize }}</div>{% endif %}
 
 <div class="imgrid">
   {% for it in items %}
@@ -16,7 +16,7 @@
     <div class="imgprev">
       {% if it.present and it.is_pdf %}
         <a class="pdfbox" target="_blank"
-           href="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}">📄 ملف PDF — فتح</a>
+           href="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}">{{ ic('file-text') }} ملف PDF — فتح</a>
       {% elif it.present %}
         <a target="_blank" href="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}">
           <img src="{{ url_for('record_image_view', idx=idx, kind=it.kind, fp=fp) }}" alt="{{ it.label }}"></a>
@@ -30,11 +30,11 @@
       <input type="hidden" name="fp" value="{{ fp }}">
       <input type="file" name="file" accept="image/*,application/pdf" required>
       <div class="formbar" style="margin-top:6px">
-        <button class="btn primary sm" type="submit">⬆ {{ 'استبدال' if it.present else 'اختيار' }}</button>
+        <button class="btn primary sm" type="submit">{{ ic('upload') }} {{ 'استبدال' if it.present else 'اختيار' }}</button>
         {% if it.present %}
         <button class="btn ghost sm" type="submit" formnovalidate style="color:#C0392B"
                 formaction="{{ url_for('record_image_delete', idx=idx, kind=it.kind) }}"
-                onclick="return confirm('حذف هذا المستند؟');">🗑 حذف</button>
+                onclick="return confirm('حذف هذا المستند؟');">{{ ic('trash') }} حذف</button>
         {% endif %}
       </div>
     </form>

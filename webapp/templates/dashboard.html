@@ -1,21 +1,34 @@
 {% extends "base.html" %}
 {% block title %}لوحة التحكم — المصطفى{% endblock %}
-{% block heading %}لوحة التحكم — {{ '🕋 الحج' if mode=='hajj' else '🌙 العمرة' }}{% endblock %}
+{% block heading %}لوحة التحكم — {{ ('🕋 الحج' if mode=='hajj' else '🌙 العمرة')|iconize }}{% endblock %}
 {% block content %}
 {% if alerts_top %}
 <div class="alerts-box">
-  <div class="alerts-head"><b>🔔 يحتاج انتباهك</b>
-    <a href="{{ url_for('notifications') }}">كل الإشعارات ←</a></div>
+  <div class="alerts-head"><b>{{ ic('bell') }} يحتاج انتباهك</b>
+    <a href="{{ url_for('notifications') }}">كل الإشعارات {{ ic('arrow-left') }}</a></div>
   {% for a in alerts_top %}
-  <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon }} {{ a.text }}</a>
+  <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon|iconize }} {{ a.text }}</a>
   {% endfor %}
+</div>
+{% endif %}
+{% if season_rings|length > 1 %}
+{% set ring_items = [] %}{% for r in season_rings %}{% set _ = ring_items.append((r.pct, r.color)) %}{% endfor %}
+<div class="season-card">
+  <div class="sc-rings">{{ rings(ring_items) }}</div>
+  <div class="sc-body">
+    <div class="sc-title">ملخّص موسم {{ season }}{{ season_suffix }}</div>
+    {% for r in season_rings %}
+    <div class="sc-row"><i class="dot" style="background:{{ r.color }}"></i>
+      <span class="sc-lbl">{{ r.label }}</span><b>{{ r.pct }}%</b>
+      <span class="sc-det">{{ r.detail }}</span></div>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 <div class="kpis">
   {% for k in kpis %}
-  <div class="card">
-    <div class="strip" style="background:{{ k.color }}"></div>
-    <div class="icon" style="color:{{ k.color }}">{{ k.icon }}</div>
+  <div class="card kpi">
+    <div class="icon">{{ ring(k.icon, k.get('pct'), k.get('ring') or k.color, 'kpi-ring', glyph=k.color) }}</div>
     <div class="val" style="color:{{ k.color }}">{{ k.value }}</div>
     <div class="lbl">{{ k.label }}</div>
     {% if k.sub %}<div class="sub">{{ k.sub }}</div>{% endif %}
@@ -24,18 +37,18 @@
 </div>
 
 {% if pcards %}
-<div class="section-title">📦 الباقات</div>
+<div class="section-title">{{ ic('package') }} الباقات</div>
 <div class="kpis">
   {% for p in pcards %}
   <a class="card pkg-card" href="{{ p.link }}" style="--pc:{{ p.color }}">
     <div class="strip" style="background:{{ p.color }}"></div>
-    <div class="pkg-name">📦 {{ p.name }}</div>
+    <div class="pkg-name">{{ ic('package') }} {{ p.name }}</div>
     <div class="pkg-stats">
-      <span>🗂 {{ p.trips }} برنامج</span><span>👥 {{ p.count }} معتمر</span>
-      {% if p.cap %}<span>🪑 {% if p.left < 0 %}<b style="color:#C0392B">زيادة {{ -p.left }}</b>{% else %}متبقٍّ {{ p.left }} من {{ p.cap }}{% endif %}</span>{% endif %}
+      <span>{{ ic('folder') }} {{ p.trips }} برنامج</span><span>{{ ic('users') }} {{ p.count }} معتمر</span>
+      {% if p.cap %}<span>{{ ic('seat') }} {% if p.left < 0 %}<b style="color:#C0392B">زيادة {{ -p.left }}</b>{% else %}متبقٍّ {{ p.left }} من {{ p.cap }}{% endif %}</span>{% endif %}
     </div>
     {% if p.cap %}<div class="bar"><i style="width:{{ p.pct }}%;background:{{ p.color }}"></i></div>{% endif %}
-    <div class="sub">{% if p.next %}✈️ أقرب مغادرة: {{ p.next }}{% else %}لا مغادرة قادمة{% endif %}</div>
+    <div class="sub">{% if p.next %}{{ ic('plane') }} أقرب مغادرة: {{ p.next }}{% else %}لا مغادرة قادمة{% endif %}</div>
   </a>
   {% endfor %}
 </div>

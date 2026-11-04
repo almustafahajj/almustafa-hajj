@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}تحديد الموسم — المصطفى{% endblock %}
-{% block heading %}🗓 تحديد موسم {{ 'الحج' if mode=='hajj' else 'العمرة' }}{% endblock %}
+{% block heading %}{{ ic('calendar') }} تحديد موسم {{ 'الحج' if mode=='hajj' else 'العمرة' }}{% endblock %}
 {% block subhead %}<div class="season">الموسم الحالي: {{ current }}{{ season_suffix }} · مستقلّ لكل وضع</div>{% endblock %}
 {% block content %}
-{% if msg %}<div class="acc-msg {{ 'ok' if msg_ok else 'err' }}">{{ '✅ ' if msg_ok }}{{ msg }}</div>{% endif %}
+{% if msg %}<div class="acc-msg {{ 'ok' if msg_ok else 'err' }}">{{ ('✅ ' if msg_ok)|iconize }}{{ msg|iconize }}</div>{% endif %}
 <fieldset class="editcard" style="max-width:520px">
   <legend>{{ cal_label }} للموسم</legend>
   <form method="post" id="season-form"
@@ -19,7 +19,7 @@
     <label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:13px">
       <input type="checkbox" name="relabel" value="1">
       تصحيح سنة الموسم الحالي فقط (دون حفظه أو تفريغ القوائم)</label>
-    <div class="formbar"><button class="btn primary" type="submit">🗓 الانتقال للموسم</button></div>
+    <div class="formbar"><button class="btn primary" type="submit">{{ ic('calendar') }} الانتقال للموسم</button></div>
     {% else %}<p class="hint-note">العرض فقط — تغيير الموسم للمدير فقط.</p>{% endif %}
   </form>
 </fieldset>
@@ -38,7 +38,7 @@
       <td>{% if is_admin %}<form method="post" class="inline"
               onsubmit="return confirm('يُحفظ الموسم الحالي {{ current }}{{ season_suffix }} ثم يُفتح موسم {{ s.year }}{{ season_suffix }} كما كان. متابعة؟');">
           <input type="hidden" name="season_year" value="{{ s.year }}">
-          <button class="acc-btn" type="submit">📂 فتح</button></form>{% endif %}</td></tr>
+          <button class="acc-btn" type="submit">{{ ic('folder') }} فتح</button></form>{% endif %}</td></tr>
   {% else %}
     <tr><td colspan="4" style="text-align:center;color:var(--muted)">لا مواسم محفوظة بعد.</td></tr>
   {% endfor %}

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}تعديل — {{ name }}{% endblock %}
-{% block heading %}{{ '➕ إضافة' if is_new else '✏️ تعديل بيانات' }} {{ noun_singular }}{% endblock %}
+{% block heading %}{{ ('➕ إضافة' if is_new else '✏️ تعديل بيانات')|iconize }} {{ noun_singular }}{% endblock %}
 {% block subhead %}<div class="season">{% if is_new %}سجلّ جديد{% else %}{{ name or '—' }}{% if number %} · {{ number }}{% endif %}{% endif %}</div>{% endblock %}
 {% block content %}
-{% if saved %}<div class="ok-banner">✅ تم حفظ التعديلات بنجاح.</div>{% endif %}
+{% if saved %}<div class="ok-banner">{{ ic('check') }} تم حفظ التعديلات بنجاح.</div>{% endif %}
 <form method="post" action="{{ url_for('hujjaj_new') if is_new else url_for('hujjaj_edit', idx=idx) }}">
   {% if not is_new %}<input type="hidden" name="fp" value="{{ fp }}">{% endif %}
   {% for group in groups %}
@@ -27,7 +27,7 @@
   </fieldset>
   {% endfor %}
   <div class="formbar">
-    <button class="btn primary" type="submit">{{ '➕ إضافة السجل' if is_new else '💾 حفظ التعديلات' }}</button>
+    <button class="btn primary" type="submit">{{ ('➕ إضافة السجل' if is_new else '💾 حفظ التعديلات')|iconize }}</button>
     <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع للقائمة</a>
   </div>
 </form>
@@ -87,12 +87,12 @@
 
 {% if not is_new and can_edit %}
 <fieldset class="editcard danger-zone">
-  <legend>🗑 حذف السجلّ</legend>
+  <legend>{{ ic('trash') }} حذف السجلّ</legend>
   <form method="post" action="{{ url_for('hujjaj_delete', idx=idx) }}"
         data-msg="حذف سجلّ «{{ name or '—' }}» نهائياً؟ تُحذف معه صوره المرفقة (الجواز/الهوية)، ولا يمكن التراجع."
         onsubmit="return confirm(this.getAttribute('data-msg'));">
     <input type="hidden" name="fp" value="{{ fp }}">
-    <button class="btn danger" type="submit">🗑 حذف هذا السجلّ</button>
+    <button class="btn danger" type="submit">{{ ic('trash') }} حذف هذا السجلّ</button>
     <span class="hint-note" style="margin:0 10px">المستندات المؤرشفة له (السندات/الفواتير…) تبقى في أرشيف المستندات.</span>
   </form>
 </fieldset>
@@ -100,12 +100,12 @@
 
 {% if has_docs %}
 <fieldset class="editcard">
-  <legend>📄 المستندات</legend>
+  <legend>{{ ic('file-text') }} المستندات</legend>
   <div class="docbtns">
     <a class="btn primary" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">
-      📄 فتح قائمة مستندات {{ noun_singular }}</a>
+      {{ ic('file-text') }} فتح قائمة مستندات {{ noun_singular }}</a>
     <a class="btn ghost" href="{{ url_for('record_images', idx=idx, fp=fp) }}">
-      🖼 صور ومستندات {{ noun_singular }} (جواز/شخصية/هوية/تصريح)</a>
+      {{ ic('image') }} صور ومستندات {{ noun_singular }} (جواز/شخصية/هوية/تصريح)</a>
   </div>
   <p class="hint-note">سند/فاتورة/عقد/فاوتشر/طلب مواصلات + حزمة المستندات — في صفحة مستقلة.
     وإرفاق صور الجواز والصورة الشخصية والهوية والتصريح للحاج.</p>

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ noun }} — المصطفى{% endblock %}
-{% block heading %}🪪 {{ noun }}{% endblock %}
+{% block heading %}{{ ic('id-card') }} {{ noun }}{% endblock %}
 {% block subhead %}<div class="season">{{ total }} سجلّ{% if q %} · نتائج البحث عن «{{ q }}»{% endif %}</div>{% endblock %}
 {% block content %}
 {% set _m = request.args.get('msg') %}
-{% if _m == 'deleted' %}<div class="ok-banner">🗑 تم حذف السجلّ «{{ request.args.get('name') or '—' }}».</div>
+{% if _m == 'deleted' %}<div class="ok-banner">{{ ic('trash') }} تم حذف السجلّ «{{ request.args.get('name') or '—' }}».</div>
 {% elif _m == 'stale' %}<div class="acc-msg err">تغيّر الكشف منذ فتحت الصفحة (حُذف أو عُدّل سجلّ) فلم يُحفظ شيء حتى لا يُكتب على شخصٍ آخر — افتح الصفحة من جديد وأعد المحاولة.</div>
 {% elif _m in ['notfound', 'error'] %}<div class="acc-msg err">تعذّر الحذف: تغيّر الكشف أو تعذّر الحفظ — افتح السجلّ من جديد وحاول مرّة أخرى.</div>{% endif %}
 <form method="get">
@@ -12,14 +12,14 @@
     <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
     <button class="btn primary" type="submit">بحث</button>
     {% if q or any_filter %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
-    <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">➕ إضافة</a>
-    {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">📷 قراءة جواز</a>{% endif %}
-    <a class="btn ghost" target="_blank" href="{{ url_for('hujjaj_export_pdf', **qs) }}">📄 معاينة PDF</a>
-    <a class="btn ghost" href="{{ url_for('hujjaj_export_xlsx', **qs) }}">📊 إكسل</a>
+    <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">{{ ic('plus') }} إضافة</a>
+    {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">{{ ic('camera') }} قراءة جواز</a>{% endif %}
+    <a class="btn ghost" target="_blank" href="{{ url_for('hujjaj_export_pdf', **qs) }}">{{ ic('file-text') }} معاينة PDF</a>
+    <a class="btn ghost" href="{{ url_for('hujjaj_export_xlsx', **qs) }}">{{ ic('chart') }} إكسل</a>
   </div>
 
   <details class="panel filterpanel" id="fltpanel" {% if any_filter %}open{% endif %}>
-    <summary>🔎 تصفية الكشف{% if any_filter %} <span class="qbadge" style="background:#e6f1e9;color:#2E7D5B">مفعّلة</span>{% endif %}</summary>
+    <summary>{{ ic('search') }} تصفية الكشف{% if any_filter %} <span class="qbadge" style="background:#e6f1e9;color:#2E7D5B">مفعّلة</span>{% endif %}</summary>
     <div class="fltgrid">
       {% for key, label, vals in filteropts %}
       <label class="fltcell"><span>{{ label }}</span>
@@ -62,8 +62,8 @@
       <td>{% if r.status %}<span class="st {{ r.status_cls }}">{{ r.status }}</span>{% endif %}</td>
       <td class="tag">{{ r.remaining }}</td>
       <td style="white-space:nowrap">
-        <a class="btn ghost sm" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">✏️ تعديل</a>
-        <a class="btn ghost sm" href="{{ url_for('record_docs', idx=r.idx) }}">📄 مستندات</a></td>
+        <a class="btn ghost sm" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">{{ ic('pencil') }} تعديل</a>
+        <a class="btn ghost sm" href="{{ url_for('record_docs', idx=r.idx) }}">{{ ic('file-text') }} مستندات</a></td>
     </tr>
   {% else %}
     <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">

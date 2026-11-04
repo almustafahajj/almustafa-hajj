@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ package or 'برامج العمرة' }} — المصطفى{% endblock %}
-{% block heading %}{% if package %}📦 {{ package }}{% else %}🗂 برامج العمرة{% endif %}{% endblock %}
-{% block subhead %}{% if can_edit %}<a class="pill" href="{{ url_for('program_new', package=package) if package else url_for('program_new') }}">➕ برنامج جديد{{ ' في هذه الباقة' if package }}</a>{% endif %}
-  {% if package %}<a class="pill" href="{{ url_for('programs') }}">← كل برامج العمرة</a>{% endif %}{% endblock %}
+{% block heading %}{% if package %}{{ ic('package') }} {{ package }}{% else %}{{ ic('folder') }} برامج العمرة{% endif %}{% endblock %}
+{% block subhead %}{% if can_edit %}<a class="pill" href="{{ url_for('program_new', package=package) if package else url_for('program_new') }}">{{ ic('plus') }} برنامج جديد{{ ' في هذه الباقة' if package }}</a>{% endif %}
+  {% if package %}<a class="pill" href="{{ url_for('programs') }}">{{ ic('arrow-left') }} كل برامج العمرة</a>{% endif %}{% endblock %}
 {% block content %}
-{% if msg %}<div class="acc-msg err">{{ msg }}</div>{% endif %}
+{% if msg %}<div class="acc-msg err">{{ msg|iconize }}</div>{% endif %}
 {% if can_edit and not package %}
 <form method="post" action="{{ url_for('program_package_add') }}" class="searchbar" style="margin-bottom:14px">
   <input name="name" placeholder="اسم باقة جديدة، مثل: برامج رمضان (تظهر في القائمة الجانبية تحت «برامج العمرة»)" required maxlength="80">
-  <button class="btn primary" type="submit" style="width:auto">➕ إضافة باقة</button>
+  <button class="btn primary" type="submit" style="width:auto">{{ ic('plus') }} إضافة باقة</button>
 </form>
 {% endif %}
 <table class="data">
@@ -19,28 +19,28 @@
   {% macro prow(r) %}
     <tr class="pcol" style="--pc:{{ r.color }};--pt:{{ r.tint }};--pi:{{ r.ink }}">
       <td>{{ r.code }}</td><td>{{ r.name }}</td>
-      {% if not package %}<td>{% if r.package %}<a href="{{ url_for('programs', package=r.package) }}">📦 {{ r.package }}</a>{% else %}—{% endif %}</td>{% endif %}
+      {% if not package %}<td>{% if r.package %}<a href="{{ url_for('programs', package=r.package) }}">{{ ic('package') }} {{ r.package }}</a>{% else %}—{% endif %}</td>{% endif %}
       <td>{{ r.depart }}</td>
       <td>{{ r['return'] }}</td><td>{{ r.makkah }}</td><td>{{ r.madinah }}</td>
       <td>{{ r.count }}</td>
       <td>{{ r.airline }}{% if r.dcity %} <span class="muted" style="font-size:12px">من {{ r.dcity }}</span>{% endif %}{% if r.flights %}<br><span class="muted" dir="ltr" style="font-size:12px">{{ r.flights }}</span>{% endif %}</td>
       <td>{{ r.capacity }}</td>
-      <td>{% if r.over %}<span class="st-over">⛔ زيادة {{ -r.remaining }}</span>{% elif r.full %}<span class="st-full">✅ مكتمل</span>{% else %}{{ r.remaining }}{% endif %}</td>
+      <td>{% if r.over %}<span class="st-over">{{ ic('ban') }} زيادة {{ -r.remaining }}</span>{% elif r.full %}<span class="st-full">{{ ic('check') }} مكتمل</span>{% else %}{{ r.remaining }}{% endif %}</td>
       <td>{% for city, avail, used, left in r.rooms %}<span title="المتاح {{ avail }} − المشغول {{ used }}"
-            style="white-space:nowrap{% if left < 0 %};color:#C0392B;font-weight:700{% endif %}">{{ city }}: {% if left < 0 %}⚠ زيادة {{ -left }}{% else %}{{ left }}{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}
-        {% if r.shared %}<br><span class="muted" style="font-size:12px;white-space:nowrap" title="غرف فندق مشتركة">🔗 مع {{ r.shared|join('، ') }}</span>{% endif %}</td>
+            style="white-space:nowrap{% if left < 0 %};color:#C0392B;font-weight:700{% endif %}">{{ city }}: {% if left < 0 %}{{ ic('alert') }} زيادة {{ -left }}{% else %}{{ left }}{% endif %}</span>{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}
+        {% if r.shared %}<br><span class="muted" style="font-size:12px;white-space:nowrap" title="غرف فندق مشتركة">{{ ic('link') }} مع {{ r.shared|join('، ') }}</span>{% endif %}</td>
       <td>
         <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">{{ 'تعديل' if is_admin else 'عرض' }}</a>
         {% if package %}{% if is_admin %}
         <form method="post" class="inline" action="{{ url_for('program_package_assign') }}">
           <input type="hidden" name="name" value="{{ package }}">
           <input type="hidden" name="remove" value="{{ r.code }}">
-          <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">↩ إخراج</button></form>{% endif %}
+          <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">{{ ic('back') }} إخراج</button></form>{% endif %}
         {% elif is_admin %}
         <form method="post" class="inline"
               action="{{ url_for('program_delete', code=r.code) }}"
               onsubmit="return confirm('حذف البرنامج «{{ r.code }}» نهائياً؟');">
-          <button class="acc-btn del" type="submit">🗑</button></form>
+          <button class="acc-btn del" type="submit">{{ ic('trash') }}</button></form>
         {% endif %}
       </td>
     </tr>
@@ -59,28 +59,28 @@
           <button type="submit" title="{{ tip }}">{{ arrow }}</button></form>
         {% endfor %}</span>{% endif %}
       {% if g.fixed %}<span class="pg-title">البرنامج {{ g.ordinal }}</span>
-      {% if g.lines %}<span class="pg-meta">✈️ {{ g.lines|join(' + ') }}</span>{% endif %}
-      {% else %}<span class="pg-title">{% if g.show_num %}البرنامج {{ g.ordinal }} · {% endif %}{% if g.airline %}✈️ {{ g.airline }}{% if g.city %} من {{ g.city }}{% endif %}{% else %}{{ r0.name if r0.name != '—' else r0.code }}{% endif %}</span>{% endif %}
+      {% if g.lines %}<span class="pg-meta">{{ ic('plane') }} {{ g.lines|join(' + ') }}</span>{% endif %}
+      {% else %}<span class="pg-title">{% if g.show_num %}البرنامج {{ g.ordinal }} · {% endif %}{% if g.airline %}{{ ic('plane') }} {{ g.airline }}{% if g.city %} من {{ g.city }}{% endif %}{% else %}{{ r0.name if r0.name != '—' else r0.code }}{% endif %}</span>{% endif %}
       {% if g.rows|length == 1 %}
       {% if g.airline and r0.name != '—' %}<span class="pg-meta">{{ r0.name }}</span>{% endif %}
-      <span class="pg-meta">🛫 المغادرة <bdi dir="ltr">{{ r0.depart }}</bdi>{% if r0['return'] != '—' %} · 🛬 العودة <bdi dir="ltr">{{ r0['return'] }}</bdi>{% endif %}</span>
-      {% if r0.makkah != '—' %}<span class="pg-meta">🏨 {{ r0.makkah }}</span>{% endif %}
+      <span class="pg-meta">{{ ic('takeoff') }} المغادرة <bdi dir="ltr">{{ r0.depart }}</bdi>{% if r0['return'] != '—' %} · {{ ic('landing') }} العودة <bdi dir="ltr">{{ r0['return'] }}</bdi>{% endif %}</span>
+      {% if r0.makkah != '—' %}<span class="pg-meta">{{ ic('hotel') }} {{ r0.makkah }}</span>{% endif %}
       {% else %}
-      <span class="pg-meta">🗓 عدد الرحلات: {{ g.rows|length }}</span>
+      <span class="pg-meta">{{ ic('calendar') }} عدد الرحلات: {{ g.rows|length }}</span>
       {% endif %}
-      <span class="pg-meta">👥 المعتمرون: {{ g.count }}</span>
-      {% if g.capacity %}<span class="pg-meta">🪑 المقاعد المتبقّية: {{ g.seats_left }} من {{ g.capacity }}{% if g.seats_over %} · ⛔ زيادة {{ g.seats_over }}{% endif %}</span>{% endif %}
+      <span class="pg-meta">{{ ic('users') }} المعتمرون: {{ g.count }}</span>
+      {% if g.capacity %}<span class="pg-meta">{{ ic('seat') }} المقاعد المتبقّية: {{ g.seats_left }} من {{ g.capacity }}{% if g.seats_over %} · {{ ic('ban') }} زيادة {{ g.seats_over }}{% endif %}</span>{% endif %}
     </td></tr>
     {% for r in g.rows %}{{ prow(r) }}{% endfor %}
   {% else %}
     <tr><td colspan="12" style="text-align:center;color:var(--muted)">
-      لا برامج في هذه الباقة بعد — أضف من البرامج المسجّلة أدناه، أو «➕ برنامج جديد في هذه الباقة».</td></tr>
+      لا برامج في هذه الباقة بعد — أضف من البرامج المسجّلة أدناه، أو «{{ ic('plus') }} برنامج جديد في هذه الباقة».</td></tr>
   {% endfor %}
   {% else %}
   {% for r in rows %}{{ prow(r) }}
   {% else %}
     <tr><td colspan="13" style="text-align:center;color:var(--muted)">
-      لا برامج بعد. أنشئ أوّل برنامج من «➕ برنامج جديد».</td></tr>
+      لا برامج بعد. أنشئ أوّل برنامج من «{{ ic('plus') }} برنامج جديد».</td></tr>
   {% endfor %}
   {% endif %}
   </tbody>
@@ -88,7 +88,7 @@
 
 {% if package and can_edit %}
 <fieldset class="editcard" style="margin-top:16px">
-  <legend>➕ إضافة برامج مسجّلة إلى «{{ package }}»</legend>
+  <legend>{{ ic('plus') }} إضافة برامج مسجّلة إلى «{{ package }}»</legend>
   {% if others %}
   <form method="post" action="{{ url_for('program_package_assign') }}">
     <input type="hidden" name="name" value="{{ package }}">
@@ -100,7 +100,7 @@
       </label>
       {% endfor %}
     </div>
-    <button class="btn primary" type="submit" style="width:auto;margin-top:10px">➕ إضافة المحدَّد إلى الباقة</button>
+    <button class="btn primary" type="submit" style="width:auto;margin-top:10px">{{ ic('plus') }} إضافة المحدَّد إلى الباقة</button>
   </form>
   <p class="hint-note">تظهر هنا البرامج غير المنضمّة إلى أيّ باقة فقط؛ البرنامج يتبع باقة واحدة.</p>
   {% else %}<p class="hint-note">لا برامج متاحة: كل البرامج المسجّلة منضمّة إلى باقات (البرنامج يتبع باقة واحدة فقط — أخرِجه من باقته أوّلاً).</p>{% endif %}
@@ -110,20 +110,20 @@
       data-msg="حذف الباقة «{{ package }}»؟" onsubmit="return confirm(this.getAttribute('data-msg'));"
       style="margin-top:10px">
   <input type="hidden" name="name" value="{{ package }}">
-  <button class="btn ghost" type="submit" style="color:#C0392B">🗑 حذف الباقة</button>
+  <button class="btn ghost" type="submit" style="color:#C0392B">{{ ic('trash') }} حذف الباقة</button>
 </form>
 {% endif %}
 {% endif %}
 
-<p class="hint-note">🎨 الرحلات المكتوب في اسمها «البرنامج الأول/الثاني/الثالث/الرابع…»
+<p class="hint-note">{{ ic('palette') }} الرحلات المكتوب في اسمها «البرنامج الأول/الثاني/الثالث/الرابع…»
   تُجمع تحت برنامجها بلونه الثابت: الأول أخضر غامق، الثاني أخضر فاتح، الثالث سماوي،
   الرابع ذهبي. وغيرها: البرنامج في الباقة = خط طيران (الناقل + «المغادرة من»)، وتحته
   كل رحلاته بتواريخها؛ لكل برنامج رقم ولون حسب ترتيبه، وغيّر الترتيب بالسهمين ▲▼ في
-  شريطه. «✅ مكتمل» / «⛔ زيادة» في خانة المتبقّي لحالة السعة. اربط المعتمرين بالبرنامج
+  شريطه. «{{ ic('check') }} مكتمل» / «{{ ic('ban') }} زيادة» في خانة المتبقّي لحالة السعة. اربط المعتمرين بالبرنامج
   عبر حقل «الرحلة/البرنامج» في صفحة المعتمر.<br>
   «الغرف المتبقّية» = عدد غرف الفندق في البرنامج − الغرف المشغولة حسب أنواع غرف
   المعتمرين (كل شخصين «ثنائي» غرفة، وكل ثلاثة «ثلاثي» غرفة… والطفل والرضيع بلا
   غرفة). يظهر بالأحمر إن تجاوز الحجز عدد الغرف.<br>
-  🔗 البرامج المشتركة في غرف فندق واحدة (أكثر من طيران بنفس التاريخ) تُخصم غرف
+  {{ ic('link') }} البرامج المشتركة في غرف فندق واحدة (أكثر من طيران بنفس التاريخ) تُخصم غرف
   معتمريها جميعاً من نفس العدد.</p>
 {% endblock %}

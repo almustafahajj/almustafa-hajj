@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% block title %}المستندات — المصطفى{% endblock %}
-{% block heading %}📄 المستندات{% endblock %}
+{% block heading %}{{ ic('file-text') }} المستندات{% endblock %}
 {% block subhead %}<div class="season">اختر نوع المستند — من سجلّ شخص، أو يدوي بلا اسم</div>{% endblock %}
 {% block content %}
 <div class="repgrid">
   {% for kind, icon, label, desc in docs %}
   <div class="repcard" style="align-items:flex-start">
-    <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ icon }}</div>
+    <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ icon|iconize }}</div>
     <div style="flex:1">
       <div class="t">{{ label }}</div>
       <div class="d">{{ desc }}</div>
       <div class="docbtns" style="margin-top:8px">
-        <a class="btn ghost sm" href="{{ url_for('documents_pick', kind=kind) }}">👤 من سجلّ شخص</a>
+        <a class="btn ghost sm" href="{{ url_for('documents_pick', kind=kind) }}">{{ ic('user') }} من سجلّ شخص</a>
         {% if kind in ['voucher', 'treq'] %}
-        <a class="btn ghost sm" href="{{ url_for('documents_from_quote', kind=kind) }}">📋 من عرض سعر</a>
+        <a class="btn ghost sm" href="{{ url_for('documents_from_quote', kind=kind) }}">{{ ic('clipboard') }} من عرض سعر</a>
         {% endif %}
         {% if kind != 'packet' %}
-        <a class="btn primary sm" target="_blank" href="{{ url_for('doc_manual', kind=kind) }}">✍ يدوي بلا اسم</a>
+        <a class="btn primary sm" target="_blank" href="{{ url_for('doc_manual', kind=kind) }}">{{ ic('pen') }} يدوي بلا اسم</a>
         {% endif %}
       </div>
     </div>

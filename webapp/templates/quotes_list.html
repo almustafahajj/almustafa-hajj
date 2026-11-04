@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}العروض المحفوظة — المصطفى{% endblock %}
-{% block heading %}📋 عروض الأسعار المحفوظة{% endblock %}
-{% block subhead %}<a class="pill" href="{{ url_for('offers') }}">← رجوع للتسعير والعروض</a>{% endblock %}
+{% block heading %}{{ ic('clipboard') }} عروض الأسعار المحفوظة{% endblock %}
+{% block subhead %}<a class="pill" href="{{ url_for('offers') }}">{{ ic('arrow-left') }} رجوع للتسعير والعروض</a>{% endblock %}
 {% block content %}
 {% if not rows %}
   <p class="hint-note">لا عروض محفوظة بعد. أنشئ عرضاً من «عرض سعر جديد».</p>
@@ -18,13 +18,13 @@
       <td class="muted">{{ r.date or '—' }}</td>
       <td>
         <a class="acc-btn add" href="{{ url_for('quote_edit', code=r.code, num=r.number) }}">فتح / تعديل</a>
-        <a class="acc-btn" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind='voucher') }}">🏨 فاوتشر فندق</a>
-        <a class="acc-btn" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind='treq') }}">🚖 طلب مواصلات</a>
+        <a class="acc-btn" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind='voucher') }}">{{ ic('hotel') }} فاوتشر فندق</a>
+        <a class="acc-btn" target="_blank" href="{{ url_for('quote_doc', code=r.code, num=r.number, kind='treq') }}">{{ ic('car') }} طلب مواصلات</a>
         {% if can_edit %}
         <form method="post" class="inline"
               action="{{ url_for('quote_delete', code=r.code, num=r.number) }}"
               onsubmit="return confirm('حذف العرض «{{ r.number }}» نهائياً؟');">
-          <button class="acc-btn del" type="submit">🗑 حذف</button>
+          <button class="acc-btn del" type="submit">{{ ic('trash') }} حذف</button>
         </form>
         {% endif %}
       </td>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}أرشيف المستندات — المصطفى{% endblock %}
-{% block heading %}🗄 أرشيف المستندات{% endblock %}
+{% block heading %}{{ ic('archive') }} أرشيف المستندات{% endblock %}
 {% block subhead %}<div class="season">{{ total }} مستند محفوظ · مصنّفة حسب النوع</div>{% endblock %}
 {% block content %}
 <form class="searchbar" method="get">
@@ -16,7 +16,7 @@
 {% else %}
 {% for g in groups %}
 <div class="panel" style="margin-top:16px">
-  <h3 style="margin:0 0 10px">{{ g.icon }} {{ g.title }}
+  <h3 style="margin:0 0 10px">{{ g.icon|iconize }} {{ g.title }}
     <span class="qbadge" style="background:#efe6d6;color:#8A6E4B">{{ g.rows|length }}</span></h3>
   <table class="data">
     <thead><tr><th>التاريخ</th><th>الرقم</th><th>صاحب المستند</th><th></th></tr></thead>
@@ -27,11 +27,11 @@
         <td dir="ltr">{{ r.number }}</td>
         <td>{{ r.name }}</td>
         <td style="white-space:nowrap">
-          <a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=r.id) }}">📄 فتح/طباعة</a>
+          <a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=r.id) }}">{{ ic('file-text') }} فتح/طباعة</a>
           {% if can_edit %}
           <form method="post" action="{{ url_for('archive_delete', doc_id=r.id) }}"
                 class="inline" onsubmit="return confirm('حذف هذا المستند من الأرشيف؟');" style="display:inline">
-            <button class="btn ghost sm" type="submit" style="color:#C0392B">🗑</button>
+            <button class="btn ghost sm" type="submit" style="color:#C0392B">{{ ic('trash') }}</button>
           </form>{% endif %}
         </td>
       </tr>

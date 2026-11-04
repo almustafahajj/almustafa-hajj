@@ -8,10 +8,10 @@
 </head><body>
 <div class="login-wrap">
   <form class="login-card" method="post" action="{{ url_for('setup') }}">
-    <div class="brand-dot">🕋</div>
+    <div class="brand-dot">{{ ic('kaaba') }}</div>
     <h1>التهيئة الأولى</h1>
     <p class="sub">أنشئ حساب المالك (المدير) — منه تدير بقيّة المستخدمين وصلاحياتهم.</p>
-    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if error %}<div class="err">{{ error|iconize }}</div>{% endif %}
     <div class="field">
       <label>اسم المستخدم</label>
       <input name="username" required autocomplete="off">
@@ -24,7 +24,7 @@
       <label>تأكيد كلمة المرور</label>
       <input name="confirm" type="password" required autocomplete="new-password">
     </div>
-    <button class="btn primary" type="submit">🚀 إنشاء حساب المالك</button>
+    <button class="btn primary" type="submit">{{ ic('rocket') }} إنشاء حساب المالك</button>
     <p class="sub" style="margin-top:14px">سيظهر لك <b>مفتاح استرداد</b> مرّة واحدة —
       احفظه لاستعادة الدخول إن نسيت كلمة المرور.</p>
   </form>

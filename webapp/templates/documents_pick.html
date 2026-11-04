@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ label }} — اختيار الشخص — المصطفى{% endblock %}
-{% block heading %}📄 {{ label }} — اختر الشخص{% endblock %}
+{% block heading %}{{ ic('file-text') }} {{ label }} — اختر الشخص{% endblock %}
 {% block subhead %}<div class="season">
-  <a class="pill" href="{{ url_for('documents') }}">← أنواع المستندات</a></div>{% endblock %}
+  <a class="pill" href="{{ url_for('documents') }}">{{ ic('arrow-left') }} أنواع المستندات</a></div>{% endblock %}
 {% block content %}
 <form class="searchbar" method="get">
   <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
@@ -25,9 +25,9 @@
       <td>{{ r.phone }}</td>
       <td>
         {% if kind == 'packet' %}
-        <a class="btn primary sm" target="_blank" href="{{ url_for('pilgrim_packet', idx=r.idx) }}">📦 إنشاء الحزمة</a>
+        <a class="btn primary sm" target="_blank" href="{{ url_for('pilgrim_packet', idx=r.idx) }}">{{ ic('package') }} إنشاء الحزمة</a>
         {% else %}
-        <a class="btn primary sm" target="_blank" href="{{ url_for('doc_edit', idx=r.idx, kind=kind) }}">📄 إصدار {{ label }}</a>
+        <a class="btn primary sm" target="_blank" href="{{ url_for('doc_edit', idx=r.idx, kind=kind) }}">{{ ic('file-text') }} إصدار {{ label }}</a>
         {% endif %}
       </td>
     </tr>
