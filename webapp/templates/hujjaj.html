@@ -8,18 +8,19 @@
 {% elif _m == 'stale' %}<div class="acc-msg err">تغيّر الكشف منذ فتحت الصفحة (حُذف أو عُدّل سجلّ) فلم يُحفظ شيء حتى لا يُكتب على شخصٍ آخر — افتح الصفحة من جديد وأعد المحاولة.</div>
 {% elif _m in ['notfound', 'error'] %}<div class="acc-msg err">تعذّر الحذف: تغيّر الكشف أو تعذّر الحفظ — افتح السجلّ من جديد وحاول مرّة أخرى.</div>{% endif %}
 <form method="get">
+  {% if pay %}<input type="hidden" name="pay" value="{{ pay }}">{% endif %}
   <div class="searchbar">
     <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
     <button class="btn primary" type="submit">بحث</button>
     {% if q or any_filter %}<a class="btn ghost" href="{{ url_for('hujjaj') }}">مسح</a>{% endif %}
-    <a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">{{ ic('plus') }} إضافة</a>
-    {% if can_edit %}<a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">{{ ic('camera') }} قراءة جواز</a>{% endif %}
+    {% if can_edit %}<a class="btn add-btn" href="{{ url_for('hujjaj_new') }}">{{ ic('plus') }} إضافة</a>
+    <a class="btn ghost" href="{{ url_for('hujjaj_scan') }}">{{ ic('camera') }} قراءة جواز</a>{% endif %}
     <a class="btn ghost" target="_blank" href="{{ url_for('hujjaj_export_pdf', **qs) }}">{{ ic('file-text') }} معاينة PDF</a>
     <a class="btn ghost" href="{{ url_for('hujjaj_export_xlsx', **qs) }}">{{ ic('chart') }} إكسل</a>
   </div>
 
-  <details class="panel filterpanel" id="fltpanel" {% if any_filter %}open{% endif %}>
-    <summary>{{ ic('search') }} تصفية الكشف{% if any_filter %} <span class="qbadge" style="background:#e6f1e9;color:#2E7D5B">مفعّلة</span>{% endif %}</summary>
+  <details class="panel filterpanel" id="fltpanel" {% if sel or sort %}open{% endif %}>
+    <summary>{{ ic('search') }} تصفية الكشف{% if sel or sort %} <span class="qbadge" style="background:#e6f1e9;color:#2E7D5B">مفعّلة</span>{% endif %}</summary>
     <div class="fltgrid">
       {% for key, label, vals in filteropts %}
       <label class="fltcell"><span>{{ label }}</span>
@@ -45,29 +46,58 @@
 })();
 </script>
 
-<div class="panel" style="margin-top:14px">
-<table class="data">
+{# أزرار التصفية بحالة السداد — العدد على نتيجة البحث والفلاتر الحالية #}
+{% if counts.all %}
+<nav class="pay-chips" aria-label="تصفية حسب السداد">
+  <a class="chip {{ 'on' if not pay }}" href="{{ url_for('hujjaj', **qs_nopay) }}" {% if not pay %}aria-current="true"{% endif %}>الكل <b>{{ counts.all }}</b></a>
+  {% for key, lbl, cls, icon in pay_states %}
+  <a class="chip chip-{{ cls }} {{ 'on' if pay == key }}" href="{{ url_for('hujjaj', pay=key, **qs_nopay) }}"
+     {% if pay == key %}aria-current="true"{% endif %}>{{ ic(icon) }} {{ lbl }} <b>{{ counts[key] }}</b></a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+<div class="panel list-panel">
+<table class="data list-table">
   <thead><tr>
     <th>م</th><th>الاسم</th><th>رقم الجواز</th><th>البرنامج</th>
-    <th>الهاتف</th><th>الحالة</th><th>المتبقّي</th><th></th>
+    <th>الهاتف</th><th>الحالة</th><th>المتبقّي والسداد</th><th><span class="sr-only">إجراءات</span></th>
   </tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td>{{ loop.index + offset }}</td>
-      <td class="prog-name">{{ r.name }}</td>
-      <td>{{ r.passport }}</td>
+      <td class="num">{{ loop.index + offset }}</td>
+      <td><a class="who" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">
+        <span class="av av{{ r.hue }}" aria-hidden="true">{{ r.initial }}</span>
+        <span class="who-t"><b>{{ r.name }}</b>{% if r.name_en %}<small dir="ltr">{{ r.name_en }}</small>{% endif %}</span></a></td>
+      <td><span dir="ltr" class="mono">{{ r.passport }}</span></td>
       <td>{{ r.program }}</td>
-      <td>{{ r.phone }}</td>
+      <td><span dir="ltr">{{ r.phone }}</span></td>
       <td>{% if r.status %}<span class="st {{ r.status_cls }}">{{ r.status }}</span>{% endif %}</td>
-      <td class="tag">{{ r.remaining }}</td>
-      <td style="white-space:nowrap">
-        <a class="btn ghost sm" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">{{ ic('pencil') }} تعديل</a>
-        <a class="btn ghost sm" href="{{ url_for('record_docs', idx=r.idx) }}">{{ ic('file-text') }} مستندات</a></td>
+      <td><div class="pay">
+        <div class="pay-top"><span class="tag">{{ r.remaining }}</span>
+          {% if r.pay %}<span class="st {{ r.pay_cls }}">{{ ic(r.pay_icon) }} {{ r.pay_lbl }}</span>{% endif %}</div>
+        {% if r.pay %}<div class="pay-bar" title="مدفوع {{ r.pct }}%"><i class="pb-{{ r.pay_cls }}" style="width:{{ r.pct }}%"></i></div>{% endif %}
+      </div></td>
+      <td class="row-acts">
+        <a class="icon-btn" href="{{ url_for('hujjaj_edit', idx=r.idx) }}" title="تعديل" aria-label="تعديل {{ r.name }}">{{ ic('pencil') }}</a>
+        <a class="icon-btn" href="{{ url_for('record_docs', idx=r.idx) }}" title="المستندات" aria-label="مستندات {{ r.name }}">{{ ic('file-text') }}</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">
-      {% if q %}لا نتائج مطابقة.{% else %}لا يوجد {{ noun }} بعد.{% endif %}</td></tr>
+    <tr><td colspan="8">
+      {% if q or any_filter %}
+      <div class="empty-state"><span class="es-ic">{{ ic('search') }}</span>
+        <b>لا نتائج مطابقة</b><p>جرّب كلمة أخرى أو ألغِ بعض الفلاتر.</p>
+        <a class="btn ghost sm" href="{{ url_for('hujjaj') }}">{{ ic('x') }} مسح البحث والفلاتر</a></div>
+      {% else %}
+      <div class="empty-state"><span class="es-ic">{{ ic('users') }}</span>
+        <b>لا يوجد {{ noun }} بعد</b><p>أضف أول سجلّ يدوياً، أو اقرأه من صورة الجواز، أو استورد كشفاً من إكسل.</p>
+        {% if can_edit %}<div class="es-acts">
+          <a class="btn add-btn sm" href="{{ url_for('hujjaj_new') }}">{{ ic('plus') }} إضافة سجلّ</a>
+          <a class="btn ghost sm" href="{{ url_for('hujjaj_scan') }}">{{ ic('camera') }} قراءة جواز</a>
+          <a class="btn ghost sm" href="{{ url_for('data_import') }}">{{ ic('import') }} استيراد من إكسل</a></div>{% endif %}</div>
+      {% endif %}
+    </td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -79,4 +109,11 @@
   {% endfor %}
 </div>
 {% endif %}
+<script>
+/* رأس الجدول يبقى ظاهراً تحت الشريط العلوي عند التمرير */
+(function(){var tb=document.querySelector('.topbar');if(!tb)return;
+  function set(){document.documentElement.style.setProperty('--tb-h',
+    (window.matchMedia('(min-width:761px)').matches?tb.offsetHeight:0)+'px');}
+  set();window.addEventListener('resize',set);})();
+</script>
 {% endblock %}

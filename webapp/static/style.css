@@ -1020,3 +1020,74 @@ input:user-invalid, select:user-invalid, textarea:user-invalid{ border-color:#D9
 .chart-tip[hidden]{ display:none; }
 /* على الشاشة الضيّقة يبدأ التمرير من الأحدث (يسار الرسم) */
 .chart-scroll{ direction:ltr; }
+
+/* ======================================================================
+   قائمة المعتمرين/الحجاج — المرحلة ٣: صورة رمزية بالحرف الأول، حالة السداد
+   بشارة وشريط، أزرار تصفية بالسداد، أزرار أخفّ، ورأس جدول ثابت.
+   ====================================================================== */
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.pay-chips{ display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 0; }
+.chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 8px 6px 13px; border-radius:999px;
+  font-size:13.5px; font-weight:600; color:var(--ink); background:var(--panel);
+  border:1px solid var(--border); box-shadow:var(--sh-1);
+  transition:background-color .15s, border-color .15s, color .15s; }
+.chip b{ font-variant-numeric:tabular-nums; font-weight:700; font-size:12px; min-width:24px;
+  text-align:center; padding:1px 7px; border-radius:999px; background:var(--soft); }
+.chip .ico{ width:15px; height:15px; }
+.chip-good .ico{ color:#2E7D5B; }
+.chip-warn .ico{ color:#B26A00; }
+.chip-crit .ico{ color:#C0392B; }
+.chip:hover{ border-color:var(--bronze); }
+.chip:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--focus); }
+.chip.on{ background:var(--bronze); color:#fff; border-color:var(--bronze); }
+.chip.on .ico{ color:#fff; }
+.chip.on b{ background:rgba(255,255,255,.22); }
+
+.list-panel{ margin-top:14px; padding:0; border:0; background:none; box-shadow:none; }
+table.data.list-table{ overflow:clip; }   /* لا overflow:hidden وإلّا صار الجدول نفسه حاوية التمرير فانزاح الرأس الثابت */
+.list-table thead th{ position:sticky; top:var(--tb-h, 0px); z-index:2; }
+.list-table td{ vertical-align:middle; padding-block:9px; }
+.list-table td.num{ color:var(--muted); font-size:12.5px; width:1%; }
+.who{ display:flex; align-items:center; gap:10px; color:var(--ink); min-width:0; }
+.who:hover b{ color:var(--bronze); text-decoration:underline; text-underline-offset:3px; }
+.who:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--focus); border-radius:10px; }
+.who-t{ display:flex; flex-direction:column; min-width:0; line-height:1.35; }
+.who-t b{ font-weight:600; }
+.who-t small{ align-self:flex-start; font-size:11.5px; color:var(--muted); }
+.av{ flex:none; width:36px; height:36px; border-radius:50%; display:grid; place-items:center;
+  font-weight:700; font-size:15px; line-height:1; }
+.av0{ background:#E3EEF9; color:#1F5FAD; }
+.av1{ background:#E4F3EC; color:#17734D; }
+.av2{ background:#FBEFDD; color:#9A5800; }
+.av3{ background:#F1E8F8; color:#7B3FA6; }
+.av4{ background:#FCE7EA; color:#B03550; }
+.av5{ background:#E2F3F4; color:#12737A; }
+.mono{ font-variant-numeric:tabular-nums; letter-spacing:.3px; }
+.st{ display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.st .ico{ width:13px; height:13px; }
+.pay{ display:flex; flex-direction:column; gap:6px; min-width:160px; }
+.pay-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.pay-top .tag{ font-weight:600; }
+.pay-bar{ height:5px; border-radius:3px; background:var(--track); overflow:hidden; }
+.pay-bar i{ display:block; height:100%; border-radius:3px; }
+.pb-good{ background:#2E9E6A; }
+.pb-warn{ background:#E0A12B; }
+.pb-crit{ background:#D64545; }
+.row-acts{ white-space:nowrap; text-align:left; width:1%; }
+.icon-btn{ display:inline-grid; place-items:center; width:34px; height:34px; border-radius:10px;
+  color:var(--muted); border:1px solid transparent; opacity:.6;
+  transition:opacity .15s, background-color .15s, color .15s, border-color .15s; }
+.icon-btn .ico{ width:17px; height:17px; vertical-align:0; }
+.icon-btn:hover{ background:var(--soft); color:var(--bronze); border-color:var(--border); opacity:1; }
+.list-table tbody tr:hover .icon-btn, .icon-btn:focus-visible{ opacity:1; }
+.icon-btn:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--focus); }
+@media (hover:none){ .icon-btn{ opacity:1; } }
+.es-acts{ display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+@media (max-width:760px){
+  .list-table thead th{ position:static; }
+  .list-table td.num{ display:none; }
+  .pay{ min-width:0; }
+  .row-acts{ text-align:start; }
+  .icon-btn{ opacity:1; background:var(--soft); border-color:var(--border); }
+}

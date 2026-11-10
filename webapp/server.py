@@ -1884,7 +1884,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-10 · لوحة تحكم جديدة: ترحيب + التحصيل الشهري + الرحلات القادمة + آخر العمليات"
+_BUILD_TAG = "2026-11-10 · قائمة المعتمرين: حالة السداد + التصفية بالسداد + أزرار أخفّ"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2439,7 +2439,22 @@ _SORT_FIELDS = [
 ]
 
 
-def _list_filtered(records, gattr):
+# حالة السداد لكل سجلّ: (التسمية، صنف اللون، الأيقونة) — تُعرض بنصّ وأيقونة لا باللون وحده
+_PAY_STATES = {"paid": ("مسدَّد", "good", "check"),
+               "part": ("سداد جزئي", "warn", "hourglass"),
+               "none": ("لم يدفع", "crit", "alert")}
+
+
+def _pay_state(r) -> str:
+    """paid / part / none — أو "" إن لم تُحدَّد قيمة البرنامج."""
+    if stats._amount(getattr(r, "program_value", "")) <= 0:
+        return ""
+    if remaining_amount(r) <= 0:
+        return "paid"
+    return "part" if stats._amount(getattr(r, "paid_amount", "")) > 0 else "none"
+
+
+def _list_filtered(records, gattr, ignore_pay: bool = False):
     """يطبّق البحث والفلاتر والترتيب من معطيات الطلب؛ يعيد [(idx, record)]."""
     q = (request.args.get("q") or "").strip().lower()
     sel = {}
@@ -2448,6 +2463,9 @@ def _list_filtered(records, gattr):
         if v:
             sel[key] = v
     sort = (request.args.get("sort") or "").strip()
+    pay = "" if ignore_pay else (request.args.get("pay") or "").strip()
+    if pay not in _PAY_STATES:
+        pay = ""
     out = []
     for i, r in enumerate(records):
         if q and q not in " ".join(str(getattr(r, k, "") or "") for k in
@@ -2457,6 +2475,8 @@ def _list_filtered(records, gattr):
             continue
         if any(str(getattr(r, key, "") or "").strip() != val
                for key, val in sel.items()):
+            continue
+        if pay and _pay_state(r) != pay:
             continue
         out.append((i, r))
     if sort:
@@ -2516,6 +2536,17 @@ def hujjaj():
     sort = (request.args.get("sort") or "").strip()
 
     indexed = _list_filtered(records, gattr)        # بحث + فلاتر + ترتيب
+    pay = (request.args.get("pay") or "").strip()
+    pay = pay if pay in _PAY_STATES else ""
+    # أعداد أزرار السداد: على نتيجة البحث والفلاتر الأخرى (قبل تصفية السداد)
+    base = indexed if not pay else _list_filtered(records, gattr, ignore_pay=True)
+    counts = {"all": len(base)}
+    for key in _PAY_STATES:
+        counts[key] = 0
+    for _i, r in base:
+        st_ = _pay_state(r)
+        if st_:
+            counts[st_] += 1
 
     total = len(indexed)
     pages = max(1, (total + _PAGE - 1) // _PAGE)
@@ -2527,23 +2558,38 @@ def hujjaj():
     rows = []
     for i, r in indexed[offset:offset + _PAGE]:
         st = str(getattr(r, "status", "") or "").strip()
+        name = getattr(r, "full_name_ar", "") or getattr(r, "full_name_en", "") or "—"
+        name_en = str(getattr(r, "full_name_en", "") or "").strip()
+        ps = _pay_state(r)
+        value = stats._amount(getattr(r, "program_value", ""))
+        rem = remaining_amount(r)
+        initial = next((ch for ch in name if ch.isalpha()), "؟")
         rows.append({
-            "idx": i,
-            "name": getattr(r, "full_name_ar", "") or getattr(
-                r, "full_name_en", "") or "—",
+            "idx": i, "name": name,
+            "name_en": name_en if name_en and name_en != name else "",
+            "initial": initial.upper(), "hue": sum(map(ord, name)) % 6,
             "passport": getattr(r, "passport_number", "") or "—",
             "program": str(getattr(r, gattr, "") or "") or "—",
             "phone": getattr(r, "phone", "") or "—",
             "status": st, "status_cls": _STATUS_CLS.get(st, ""),
-            "remaining": format_amount(remaining_amount(r)) or "0",
+            "remaining": format_amount(rem) or "0",
+            "pay": ps, "pay_lbl": _PAY_STATES[ps][0] if ps else "",
+            "pay_cls": _PAY_STATES[ps][1] if ps else "",
+            "pay_icon": _PAY_STATES[ps][2] if ps else "",
+            "pct": max(0, min(100, round((value - rem) * 100 / value))) if value > 0 else 0,
         })
     qs = {"q": q, "sort": sort}                     # لحفظ الفلاتر عبر الصفحات
     for key, val in sel.items():
         qs["flt_" + key] = val
+    qs_nopay = dict(qs)
+    if pay:
+        qs["pay"] = pay
+    pay_states = [(k, lbl, cls, icon) for k, (lbl, cls, icon) in _PAY_STATES.items()]
     return render_template("hujjaj.html", active="hujjaj", rows=rows, q=q,
                            filteropts=filteropts, sel=sel, sort=sort,
-                           sortfields=_SORT_FIELDS, any_filter=bool(sel or sort),
-                           qs=qs, total=total, page=page, pages=pages,
+                           sortfields=_SORT_FIELDS, any_filter=bool(sel or sort or pay),
+                           qs=qs, qs_nopay=qs_nopay, pay=pay, pay_states=pay_states,
+                           counts=counts, total=total, page=page, pages=pages,
                            offset=offset, **_ctx())
 
 
