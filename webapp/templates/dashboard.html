@@ -2,29 +2,22 @@
 {% block title %}لوحة التحكم — المصطفى{% endblock %}
 {% block heading %}لوحة التحكم — {{ ('🕋 الحج' if mode=='hajj' else '🌙 العمرة')|iconize }}{% endblock %}
 {% block content %}
-{% if alerts_top %}
-<div class="alerts-box">
-  <div class="alerts-head"><b>{{ ic('bell') }} يحتاج انتباهك</b>
-    <a href="{{ url_for('notifications') }}">كل الإشعارات {{ ic('arrow-left') }}</a></div>
-  {% for a in alerts_top %}
-  <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon|iconize }} {{ a.text }}</a>
-  {% endfor %}
-</div>
-{% endif %}
-{% if season_rings|length > 1 %}
-{% set ring_items = [] %}{% for r in season_rings %}{% set _ = ring_items.append((r.pct, r.color)) %}{% endfor %}
-<div class="season-card">
-  <div class="sc-rings">{{ rings(ring_items) }}</div>
-  <div class="sc-body">
-    <div class="sc-title">ملخّص موسم {{ season }}{{ season_suffix }}</div>
-    {% for r in season_rings %}
-    <div class="sc-row"><i class="dot" style="background:{{ r.color }}"></i>
-      <span class="sc-lbl">{{ r.label }}</span><b>{{ r.pct }}%</b>
-      <span class="sc-det">{{ r.detail }}</span></div>
-    {% endfor %}
+{# ---- الترويسة: تحية + تاريخ اليوم (ميلادي وهجري) + ملخّص بجملة + اختصارات ---- #}
+<section class="dash-hero">
+  <div class="dh-main">
+    <div class="dh-date">{{ ic('calendar') }} <span>{{ today_txt }}</span>
+      <span class="dh-hijri" id="hijriDate" hidden></span></div>
+    <h2 class="dh-title">{{ greeting }}، {{ session.get('username', '') }}</h2>
+    {% if brief %}<p class="dh-brief">{% for b in brief %}<span>{{ b }}</span>{% endfor %}</p>{% endif %}
   </div>
-</div>
-{% endif %}
+  <nav class="dh-actions" aria-label="اختصارات">
+    {% if can_edit %}<a class="dh-act" href="{{ url_for('hujjaj_new') }}">{{ ic('plus') }} إضافة سجلّ</a>
+    <a class="dh-act" href="{{ url_for('hujjaj_scan') }}">{{ ic('camera') }} قراءة جواز</a>{% endif %}
+    <a class="dh-act" href="{{ url_for('finance') }}">{{ ic('wallet') }} التحصيل</a>
+    <a class="dh-act" href="{{ url_for('reports') }}">{{ ic('chart') }} التقارير</a>
+  </nav>
+</section>
+
 <div class="kpis">
   {% for k in kpis %}
   <div class="card kpi">
@@ -35,6 +28,117 @@
   </div>
   {% endfor %}
 </div>
+
+<div class="dash-grid">
+  {# ---- التحصيل الشهري ---- #}
+  <section class="panel chart-panel">
+    <div class="ph">
+      <div><h3>{{ ic('trend') }} التحصيل الشهري</h3>
+        <p class="ph-sub">من الدفعات المسجّلة بتواريخها{% if chart.bars %} · {{ chart.bars|length }} أشهر{% endif %}</p></div>
+      {% if chart.bars %}
+      <div class="ph-fig"><b>{{ chart.this }}</b><span>درهم في {{ chart.this_month }}</span>
+        {% if chart.delta is not none %}<em class="delta {{ 'up' if chart.delta >= 0 else 'down' }}">{{ '▲' if chart.delta >= 0 else '▼' }}
+          {{ chart.delta|abs }}% عن الشهر السابق</em>{% endif %}</div>
+      {% endif %}
+    </div>
+    {% if chart.bars %}
+    <div class="chart-box">
+      <div class="chart-scroll">
+        <svg class="col-chart" viewBox="0 0 {{ chart.W }} {{ chart.H }}" role="group" aria-label="التحصيل الشهري بالدرهم">
+          {% for t in chart.ticks %}
+          <line class="grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+          <text class="ytick" x="{{ chart.W - 4 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.label }}</text>
+          {% endfor %}
+          {% for b in chart.bars %}
+          <g class="col{{ ' now' if b.now }}" role="img" aria-label="{{ b.title }}: {{ b.amount }} درهم، {{ b.n_txt }}"
+             data-t="{{ b.title }}" data-v="{{ b.amount }}" data-n="{{ b.n_txt }}">
+            <rect class="hit" x="{{ b.x }}" y="0" width="{{ b.w }}" height="{{ chart.H }}"/>
+            {% if b.path %}<path class="bar" d="{{ b.path }}"/>{% endif %}
+            {% if b.cap %}<text class="cap" x="{{ b.cx }}" y="{{ b.yt - 7 }}" text-anchor="middle">{{ b.amount }}</text>{% endif %}
+            <text class="xlab" x="{{ b.cx }}" y="{{ chart.base + 17 }}" text-anchor="middle">{{ b.month }}</text>
+            {% if b.year %}<text class="xyear" x="{{ b.cx }}" y="{{ chart.base + 30 }}" text-anchor="middle">{{ b.year }}</text>{% endif %}
+          </g>
+          {% endfor %}
+        </svg>
+      </div>
+      <div class="chart-tip" id="chartTip" hidden></div>
+    </div>
+    <details class="chart-table"><summary>عرض الأرقام كجدول</summary>
+      <table class="data"><thead><tr><th>الشهر</th><th>المحصّل (درهم)</th><th>الدفعات</th></tr></thead>
+        <tbody>{% for b in chart.bars|reverse %}<tr><td>{{ b.title }}</td><td>{{ b.amount }}</td><td>{{ b.n_txt }}</td></tr>{% endfor %}</tbody></table>
+    </details>
+    {% if chart.undated %}<p class="ph-note">{{ ic('info') }} {{ chart.undated }} درهم مدفوعة دون تاريخ دفعة، فلا تظهر في الرسم.</p>{% endif %}
+    {% else %}
+    <div class="empty-state">
+      <span class="es-ic">{{ ic('trend') }}</span>
+      <b>لا دفعات مسجّلة بتواريخها بعد</b>
+      <p>سجّل الدفعات بتاريخها من صفحة المالية ليظهر هنا منحنى التحصيل شهراً بشهر.</p>
+      <a class="btn ghost sm" href="{{ url_for('finance') }}">{{ ic('wallet') }} المالية والتحصيل</a>
+    </div>
+    {% endif %}
+  </section>
+
+  {# ---- الرحلات الجارية والقادمة ---- #}
+  <section class="panel trips-panel">
+    <div class="ph"><div><h3>{{ ic('plane') }} الرحلات القادمة</h3>
+      <p class="ph-sub">الجارية الآن ثم الأقرب موعداً</p></div>
+      <a class="ph-link" href="{{ url_for('calendar_page') }}">التقويم {{ ic('arrow-left') }}</a></div>
+    {% for t in trips %}
+    <a class="trip trip-{{ t.state }}" href="{{ t.link }}" style="--tc:{{ t.color }};--tf:{{ t.fg }}">
+      <div class="trip-cd">
+        {% if t.state == 'now' %}<small>الآن</small><b>{{ ic('plane') }}</b><small>في الرحلة</small>
+        {% elif t.state == 'today' %}<b>اليوم</b><small>مغادرة</small>
+        {% elif t.days == 1 %}<b>غداً</b><small>مغادرة</small>
+        {% else %}<small>بعد</small><b>{{ t.days }}</b><small>{{ t.unit }}</small>{% endif %}
+      </div>
+      <div class="trip-body">
+        <div class="trip-name">{{ t.label }}</div>
+        <div class="trip-meta"><span>{{ ic('takeoff') }} {{ t.depart_txt }}</span>
+          {% if t.ret_txt %}<span>{{ ic('landing') }} {{ t.ret_txt }}</span>{% endif %}
+          <span>{{ ic('users') }} {{ t.n }}{% if t.cap %} من {{ t.cap }}{% endif %}</span></div>
+        {% if t.state == 'now' %}
+        <div class="trip-prog"><div class="bar"><i style="width:{{ t.pct }}%;background:var(--tc)"></i></div>
+          <small>{% if t.days == 0 %}العودة اليوم{% elif t.days == 1 %}العودة غداً{% else %}العودة بعد {{ t.days }} {{ t.unit }}{% endif %}</small></div>
+        {% endif %}
+      </div>
+    </a>
+    {% else %}
+    <div class="empty-state">
+      <span class="es-ic">{{ ic('plane') }}</span>
+      <b>لا رحلات قادمة</b>
+      <p>أضف تواريخ المغادرة والعودة في {{ 'برامج العمرة' if mode == 'umrah' else 'مواعيد السفر' }} لتظهر هنا بعدّ تنازلي.</p>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+
+{% if alerts_top or season_rings|length > 1 %}
+<div class="dash-grid {{ 'g2' if alerts_top and season_rings|length > 1 else 'g1' }}">
+  {% if alerts_top %}
+  <div class="alerts-box">
+    <div class="alerts-head"><b>{{ ic('bell') }} يحتاج انتباهك</b>
+      <a href="{{ url_for('notifications') }}">كل الإشعارات {{ ic('arrow-left') }}</a></div>
+    {% for a in alerts_top %}
+    <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon|iconize }} {{ a.text }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if season_rings|length > 1 %}
+  {% set ring_items = [] %}{% for r in season_rings %}{% set _ = ring_items.append((r.pct, r.color)) %}{% endfor %}
+  <div class="season-card">
+    <div class="sc-rings">{{ rings(ring_items) }}</div>
+    <div class="sc-body">
+      <div class="sc-title">ملخّص موسم {{ season }}{{ season_suffix }}</div>
+      {% for r in season_rings %}
+      <div class="sc-row"><i class="dot" style="background:{{ r.color }}"></i>
+        <span class="sc-lbl">{{ r.label }}</span><b>{{ r.pct }}%</b>
+        <span class="sc-det">{{ r.detail }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if pcards %}
 <div class="section-title">{{ ic('package') }} الباقات</div>
@@ -54,21 +158,63 @@
 </div>
 {% endif %}
 
-<div class="section-title">المالية حسب البرنامج</div>
-<table class="data">
-  <thead><tr>
-    <th>البرنامج</th><th>{{ noun }}</th><th>المحصّل</th><th>المتبقّي</th><th>نسبة التحصيل</th>
-  </tr></thead>
-  <tbody>
-  {% for p in progs %}
-    <tr>
-      <td>{{ p.name }}</td><td>{{ p.count }}</td><td>{{ p.paid }}</td><td>{{ p.remaining }}</td>
-      <td><div style="display:flex;align-items:center;gap:8px">
-        <div class="bar"><i style="width:{{ p.pct }}%"></i></div><span>{{ p.pct }}%</span></div></td>
-    </tr>
-  {% else %}
-    <tr><td colspan="5" style="text-align:center;color:var(--muted)">لا توجد بيانات بعد.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="dash-grid {{ '' if activity else 'g1' }}">
+  <section class="panel fin-panel">
+    <div class="ph"><div><h3>{{ ic('wallet') }} المالية حسب البرنامج</h3>
+      <p class="ph-sub">المحصّل والمتبقّي لكل {{ 'برنامج' if mode == 'hajj' else 'رحلة' }}</p></div>
+      <a class="ph-link" href="{{ url_for('finance') }}">التفاصيل {{ ic('arrow-left') }}</a></div>
+    <table class="data">
+      <thead><tr>
+        <th>البرنامج</th><th>{{ noun }}</th><th>المحصّل</th><th>المتبقّي</th><th>نسبة التحصيل</th>
+      </tr></thead>
+      <tbody>
+      {% for p in progs %}
+        <tr>
+          <td>{% if p.name == '—' %}<span class="muted">بلا برنامج محدّد</span>{% else %}<b>{{ p.name }}</b>{% endif %}</td>
+          <td>{{ p.count }}</td><td>{{ p.paid }}</td><td>{{ p.remaining }}</td>
+          <td><div class="pct-cell"><div class="bar"><i style="width:{{ p.pct }}%"></i></div><span>{{ p.pct }}%</span></div></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" style="text-align:center;color:var(--muted)">لا توجد بيانات بعد.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% if activity %}
+  <section class="panel act-panel">
+    <div class="ph"><div><h3>{{ ic('history') }} آخر العمليات</h3>
+      <p class="ph-sub">من سجلّ التدقيق — للمدير فقط</p></div>
+      <a class="ph-link" href="{{ url_for('audit_log') }}">السجلّ كاملاً {{ ic('arrow-left') }}</a></div>
+    <ul class="act-list">
+      {% for a in activity %}
+      <li><span class="act-dot" aria-hidden="true"></span>
+        <div class="act-body"><div class="act-what"><b>{{ a.action }}</b>{% if a.details %} <span>— {{ a.details }}</span>{% endif %}</div>
+          <small>{{ ic('user') }} {{ a.user }}{% if a.ago %} · {{ a.ago }}{% endif %}</small></div></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+/* التاريخ الهجري (تقويم أم القرى) من المتصفّح */
+(function(){try{var el=document.getElementById('hijriDate');
+  el.textContent=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',
+    {day:'numeric',month:'long',year:'numeric'}).format(new Date());el.hidden=false;}catch(e){}})();
+/* تلميح الأعمدة: الشهر والمبلغ وعدد الدفعات عند المرور أو التركيز بلوحة المفاتيح */
+(function(){var box=document.querySelector('.chart-box');if(!box)return;
+  var tip=document.getElementById('chartTip');
+  function show(g){var m=g.querySelector('.bar')||g.querySelector('.hit'),
+      r=m.getBoundingClientRect(),br=box.getBoundingClientRect();
+    tip.innerHTML='';[['b',g.dataset.t],['span',g.dataset.v+' درهم'],['small',g.dataset.n]]
+      .forEach(function(p){var e=document.createElement(p[0]);e.textContent=p[1];tip.appendChild(e);});
+    tip.hidden=false;var w=tip.offsetWidth/2+6,x=r.left+r.width/2-br.left;
+    tip.style.left=Math.max(w,Math.min(br.width-w,x))+'px';
+    tip.style.top=(g.querySelector('.bar')?r.top-br.top:br.height*.75)+'px';
+    g.classList.add('on');}
+  function hide(g){tip.hidden=true;g.classList.remove('on');}
+  box.querySelectorAll('g.col').forEach(function(g){g.setAttribute('tabindex','0');
+    g.addEventListener('mouseenter',function(){show(g);});g.addEventListener('mouseleave',function(){hide(g);});
+    g.addEventListener('focus',function(){show(g);});g.addEventListener('blur',function(){hide(g);});});})();
+</script>
 {% endblock %}

@@ -95,6 +95,7 @@ def _session_secret() -> str:
 app.secret_key = _session_secret()
 # أمان ملفّات الارتباط — يُفعَّل Secure تلقائياً خلف HTTPS في النشر السحابي.
 from datetime import timedelta as _timedelta
+from datetime import datetime, timezone, timedelta  # noqa: E402  (لوحة التحكم)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -749,12 +750,218 @@ def dashboard():
               "remaining": format_amount(pf.remaining) or "0",
               "pct": pf.collected_percent}
              for name, pf in _by_group(records)]
-    pcards = (_package_cards(records, storage.load_settings())
+    settings = storage.load_settings()
+    pcards = (_package_cards(records, settings)
               if _mode() == app_mode.UMRAH else [])
-    alerts_top = [dict(a, link=_alert_link(a)) for a in _alerts()[:6]]
+    all_alerts = _alerts()
+    alerts_top = [dict(a, link=_alert_link(a)) for a in all_alerts[:6]]
+    now = datetime.now(_UAE)
+    today = now.date()
+    trips = _upcoming_trips(records, settings, today)
+    s = _sess()
     return render_template(
         "dashboard.html", kpis=kpis, progs=progs, pcards=pcards,
-        season_rings=season_rings, alerts_top=alerts_top, active="dashboard", **_ctx())
+        season_rings=season_rings, alerts_top=alerts_top, active="dashboard",
+        greeting="صباح الخير" if 4 <= now.hour < 12 else "مساء الخير",
+        today_txt=f"{_AR_DAYS[now.weekday()]} {now.day} {_AR_MONTHS[now.month - 1]} {now.year}",
+        brief=_dash_brief(fin, trips, all_alerts), trips=trips,
+        chart=_collection_chart(records, fin, today),
+        activity=_recent_activity() if s is not None and s.is_admin else [],
+        **_ctx())
+
+
+_AR_MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
+              "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
+_AR_DAYS = ("الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد")
+_UAE = timezone(timedelta(hours=4))            # توقيت الإمارات (بلا توقيت صيفي)
+
+
+def _days_unit(n: int) -> str:
+    return "يوم" if n == 1 else "يومان" if n == 2 else "أيام" if 3 <= n <= 10 else "يوماً"
+
+
+def _day_txt(d, today) -> str:
+    s = f"{d.day} {_AR_MONTHS[d.month - 1]}"
+    return s if d.year == today.year else f"{s} {d.year}"
+
+
+def _trip_list(records, settings) -> list:
+    """رحلات الموسم (برامج العمرة أو برامج الحج) بلونها وتاريخَي المغادرة والعودة —
+    يستعملها تقويم الرحلات ولوحة التحكم."""
+    from webapp.alerts import _d
+    out = []
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        trips = umrah.load_trips(settings)
+        rows = [{"code": t.code, "package": str(t.package or "").strip()} for t in trips]
+        _color_rows(rows, trips, _pkg_orders(settings))
+        col = {r["code"]: r for r in rows}
+        for t in trips:
+            c = col.get(t.code, {})
+            try:
+                cap = int(float(str(t.capacity or "").strip() or 0))
+            except ValueError:
+                cap = 0
+            out.append({"label": f"{t.code} {t.name or ''}".strip(),
+                        "n": len(umrah.trip_pilgrims(records, t.code)), "cap": cap,
+                        "color": c.get("color", "#1F5FAD"), "fg": c.get("fg", "#fff"),
+                        "link": url_for("program_edit", code=t.code),
+                        "sub": " · ".join(x for x in (t.airline, t.package) if x),
+                        "depart": _d(t.depart_date), "ret": _d(t.return_date)})
+    else:
+        from hajj_app import programs as hp
+        for i, (nm, pr) in enumerate(zip(hp.PROGRAM_NAMES, hp.load_programs(settings))):
+            band, _t, fg, _i = _PROG_COLORS[i % len(_PROG_COLORS)]
+            out.append({"label": nm, "n": sum(1 for r in records if (r.program or "") == nm),
+                        "cap": 0, "color": band, "fg": fg, "link": url_for("travel_list"),
+                        "sub": pr.carrier, "depart": _d(pr.travel_date),
+                        "ret": _d(pr.return_date)})
+    return out
+
+
+def _upcoming_trips(records, settings, today, limit: int = 5) -> list:
+    """الرحلات الجارية الآن ثم القادمة بالأقرب، مع العدّ التنازلي بالأيام."""
+    out = []
+    for t in _trip_list(records, settings):
+        dep, ret = t["depart"], t["ret"]
+        if not dep:
+            continue
+        if dep > today:
+            state, days, pct, when = "soon", (dep - today).days, 0, dep
+        elif dep == today:
+            state, days, pct, when = "today", 0, 0, dep
+        elif ret and dep < today <= ret:
+            span = max(1, (ret - dep).days)
+            state, days, when = "now", (ret - today).days, ret
+            pct = min(100, round((today - dep).days * 100 / span))
+        else:
+            continue
+        out.append(dict(t, state=state, days=days, pct=pct, unit=_days_unit(days),
+                        when=when, depart_txt=_day_txt(dep, today),
+                        ret_txt=_day_txt(ret, today) if ret else ""))
+    rank = {"now": 0, "today": 1, "soon": 2}
+    out.sort(key=lambda x: (rank[x["state"]], x["when"]))
+    return out[:limit]
+
+
+def _nice_step(x: float) -> float:
+    import math
+    if x <= 0:
+        return 1.0
+    mag = 10 ** math.floor(math.log10(x))
+    for m in (1, 2, 2.5, 5, 10):
+        if m * mag >= x:
+            return m * mag
+    return 10 * mag
+
+
+def _collection_chart(records, fin, today, months: int = 12) -> dict:
+    """التحصيل شهراً بشهر من الدفعات المسجّلة بتواريخها (آخر ١٢ شهراً، ٦ على الأقل)،
+    مع هندسة الأعمدة جاهزة للرسم: الأقدم يميناً والأحدث يساراً."""
+    import math
+    from webapp.alerts import _d
+    by: dict = {}
+    dated = with_date = 0.0                # المرسوم / كل ما له تاريخ (ومنه المؤجَّل)
+    for r in records:
+        for p in getattr(r, "payments", None) or []:
+            if not isinstance(p, dict):
+                continue
+            d, a = _d(p.get("date")), stats._amount(p.get("amount"))
+            if not d or a <= 0:
+                continue
+            with_date += a
+            if d > today:                  # شيك مؤجَّل أو تاريخ مستقبلي: لا يُرسم
+                continue
+            v = by.setdefault((d.year, d.month), [0.0, 0])
+            v[0] += a
+            v[1] += 1
+            dated += a
+    undated = max(0.0, float(fin.paid or 0) - with_date)
+    if not by:
+        return {"bars": [], "undated": format_amount(undated) if undated >= 1 else ""}
+
+    def shift(ym, n):
+        i = ym[0] * 12 + ym[1] - 1 - n
+        return (i // 12, i % 12 + 1)
+
+    end = (today.year, today.month)
+    start = min(max(min(by), shift(end, months - 1)), shift(end, 5))
+    keys, k = [], start
+    while k <= end:
+        keys.append(k)
+        k = shift(k, -1)
+    vals = [by.get(k, [0.0, 0]) for k in keys]
+    top_v = max(v[0] for v in vals)
+    step = _nice_step(top_v / 4)
+    ymax = step * max(1, math.ceil(top_v / step))
+    W, H, left, right, top, base = 720, 236, 8, 666, 24, 204
+    slot = (right - left) / len(keys)
+    bw = min(24.0, slot * 0.56)
+    compact = ymax >= 10000
+    ticks = [{"y": round(base - (base - top) * i * step / ymax, 1),
+              "label": (f"{i * step / 1000:g}K" if compact and i else f"{i * step:,.0f}")}
+             for i in range(int(round(ymax / step)) + 1)]
+    i_max = max(range(len(vals)), key=lambda i: vals[i][0])
+    bars = []
+    for i, (k, (amt, n)) in enumerate(zip(keys, vals)):
+        cx = right - slot * (i + 0.5)
+        h = (base - top) * amt / ymax if ymax else 0
+        x0, x1, yt = cx - bw / 2, cx + bw / 2, base - h
+        rr = min(4.0, h, bw / 2)
+        path = (f"M{x0:.1f},{base}V{yt + rr:.1f}Q{x0:.1f},{yt:.1f} {x0 + rr:.1f},{yt:.1f}"
+                f"H{x1 - rr:.1f}Q{x1:.1f},{yt:.1f} {x1:.1f},{yt + rr:.1f}V{base}Z") if h >= 0.5 else ""
+        label = _AR_MONTHS[k[1] - 1]
+        bars.append({"cx": round(cx, 1), "x": round(cx - slot / 2, 1), "w": round(slot, 1),
+                     "path": path, "yt": round(yt, 1), "amount": format_amount(amt) or "0",
+                     "n": n, "month": label, "title": f"{label} {k[0]}",
+                     "n_txt": ("لا دفعات" if not n else "دفعة واحدة" if n == 1 else
+                               "دفعتان" if n == 2 else f"{n} دفعات" if n <= 10 else f"{n} دفعة"),
+                     "year": k[0] if (k[1] == 1 or i == 0) else "",
+                     "cap": bool(amt) and i in (i_max, len(keys) - 1),
+                     "now": k == end})
+    this = by.get(end, [0.0, 0])[0]
+    prev = by.get(shift(end, 1), [0.0, 0])[0]
+    return {"bars": bars, "ticks": ticks, "W": W, "H": H, "left": left, "right": right,
+            "base": base, "this": format_amount(this) or "0",
+            "this_month": _AR_MONTHS[end[1] - 1],
+            "delta": round((this - prev) * 100 / prev) if prev else None,
+            "dated": format_amount(dated) or "0",
+            "undated": format_amount(undated) if undated >= 1 else ""}
+
+
+def _recent_activity(limit: int = 6) -> list:
+    """آخر العمليات من سجلّ التدقيق (للمدير فقط)."""
+    from hajj_app import audit
+    out = []
+    for e in audit.read_entries(limit=limit):
+        try:
+            ago = _ago(datetime.fromisoformat(str(e.get("ts") or "")).timestamp())
+        except ValueError:
+            ago = ""
+        out.append({"action": str(e.get("action") or ""), "details": str(e.get("details") or ""),
+                    "user": str(e.get("user") or "—"), "ago": ago})
+    return out
+
+
+def _dash_brief(fin, trips, alerts) -> list:
+    """جُمل قصيرة في ترويسة اللوحة: نسبة التحصيل، أقرب رحلة، والتنبيهات العاجلة."""
+    out = []
+    if fin.total:
+        out.append(f"التحصيل {fin.collected_percent}% من {format_amount(fin.total)} درهم")
+    if trips:
+        t = trips[0]
+        if t["state"] == "now":
+            out.append(f"رحلة «{t['label']}» جارية الآن")
+        elif t["state"] == "today":
+            out.append(f"مغادرة «{t['label']}» اليوم")
+        elif t["days"] == 1:
+            out.append(f"أقرب رحلة «{t['label']}» غداً")
+        else:
+            out.append(f"أقرب رحلة «{t['label']}» بعد {t['days']} {t['unit']}")
+    urgent = sum(1 for a in alerts if a.get("level") == "danger")
+    if urgent:
+        out.append(f"تنبيهات عاجلة: {urgent}")
+    return out
 
 
 def _season_rings(records, fin) -> list:
@@ -1677,7 +1884,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-10 · واجهة جديدة: خط عربي احترافي + شاشة دخول جديدة + رسائل منبثقة"
+_BUILD_TAG = "2026-11-10 · لوحة تحكم جديدة: ترحيب + التحصيل الشهري + الرحلات القادمة + آخر العمليات"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2541,7 +2748,6 @@ def calendar_page():
         return redirect(url_for("login"))
     import calendar as _cal
     from datetime import date as _date
-    from webapp.alerts import _d
     today = _date.today()
     try:
         y, m = (int(x) for x in (request.args.get("m") or "").split("-")[:2])
@@ -2556,30 +2762,10 @@ def calendar_page():
         if d and d.year == first.year and d.month == first.month:
             events.setdefault(d.day, []).append(ev)
 
-    if _mode() == app_mode.UMRAH:
-        from hajj_app import umrah
-        trips = umrah.load_trips(settings)
-        rows = [{"code": t.code, "package": str(t.package or "").strip()} for t in trips]
-        _color_rows(rows, trips, _pkg_orders(settings))
-        col = {r["code"]: r for r in rows}
-        for t in trips:
-            n = len(umrah.trip_pilgrims(records, t.code))
-            c = col.get(t.code, {})
-            base = {"label": f"{t.code} {t.name or ''}".strip(), "n": n,
-                    "color": c.get("color", "#1F5FAD"), "fg": c.get("fg", "#fff"),
-                    "link": url_for("program_edit", code=t.code),
-                    "sub": " · ".join(x for x in (t.airline, t.package) if x)}
-            add(_d(t.depart_date), dict(base, icon="🛫"))
-            add(_d(t.return_date), dict(base, icon="🛬"))
-    else:
-        from hajj_app import programs as hp
-        for i, (nm, pr) in enumerate(zip(hp.PROGRAM_NAMES, hp.load_programs(settings))):
-            n = sum(1 for r in records if (r.program or "") == nm)
-            band, _t, fg, _i = _PROG_COLORS[i % len(_PROG_COLORS)]
-            base = {"label": nm, "n": n, "color": band, "fg": fg,
-                    "link": url_for("travel_list"), "sub": pr.carrier}
-            add(_d(pr.travel_date), dict(base, icon="🛫"))
-            add(_d(pr.return_date), dict(base, icon="🛬"))
+    for t in _trip_list(records, settings):
+        base = {k: t[k] for k in ("label", "n", "color", "fg", "link", "sub")}
+        add(t["depart"], dict(base, icon="🛫"))
+        add(t["ret"], dict(base, icon="🛬"))
     weeks = []
     for wk in _cal.Calendar(firstweekday=5).monthdayscalendar(first.year, first.month):
         weeks.append([{"day": d, "events": events.get(d, []),

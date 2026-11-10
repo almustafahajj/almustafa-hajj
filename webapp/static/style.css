@@ -862,3 +862,161 @@ table.data tbody tr td{ transition:background-color .12s; }
 input:invalid, select:invalid, textarea:invalid{ border-color:var(--border); }
 input:user-invalid, select:user-invalid, textarea:user-invalid{ border-color:#D9786B; }
 .lb-inner{ margin-inline:auto; }
+
+/* ======================================================================
+   لوحة التحكم — المرحلة ٢: ترويسة ترحيب، التحصيل الشهري، الرحلات القادمة،
+   آخر العمليات. تعتمد ألوان النظام (--bronze…) فتتبدّل بين الحج والعمرة.
+   ====================================================================== */
+.dash-hero{ position:relative; overflow:hidden; isolation:isolate; display:flex; flex-wrap:wrap;
+  align-items:flex-end; justify-content:space-between; gap:18px 24px; padding:22px 26px;
+  margin-bottom:16px; border-radius:20px; color:#fff;
+  background:linear-gradient(135deg, var(--bronze) 0%, var(--bronze-d) 62%, var(--sidebar) 135%);
+  box-shadow:0 12px 30px -14px color-mix(in srgb, var(--bronze-d) 70%, transparent); }
+.dash-hero::before{ content:""; position:absolute; inset:0; z-index:-1;
+  background:var(--pat-white) 0 0 / 76px 76px;
+  -webkit-mask-image:linear-gradient(to left, transparent 15%, #000 85%);
+          mask-image:linear-gradient(to left, transparent 15%, #000 85%); }
+.dash-hero::after{ content:""; position:absolute; z-index:-1; width:360px; aspect-ratio:1; border-radius:50%;
+  left:-110px; top:-170px; background:radial-gradient(closest-side, rgba(212,165,63,.38), transparent); }
+.dh-main{ min-width:0; flex:1 1 320px; }
+.dh-date{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; font-size:13px;
+  color:rgba(255,255,255,.85); }
+.dh-date .ico{ width:15px; height:15px; }
+.dh-hijri::before{ content:"·"; margin-inline-end:8px; opacity:.6; }
+.dh-title{ margin:6px 0 10px; font-size:26px; font-weight:700; line-height:1.35; text-wrap:balance; }
+.dh-brief{ margin:0; display:flex; flex-wrap:wrap; gap:6px 8px; }
+.dh-brief span{ font-size:13px; padding:4px 11px; border-radius:999px;
+  background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.2); }
+.dh-actions{ display:flex; flex-wrap:wrap; gap:8px; }
+.dh-act{ display:inline-flex; align-items:center; gap:6px; padding:9px 14px; border-radius:12px;
+  font-weight:600; font-size:14px; white-space:nowrap; color:#fff;
+  background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.26);
+  transition:transform .15s var(--ease), background-color .15s, box-shadow .15s; }
+.dh-act:first-child{ background:#fff; color:var(--bronze-d); border-color:#fff;
+  box-shadow:0 4px 12px rgba(0,0,0,.14); }
+.dh-act:hover{ transform:translateY(-1px); background:rgba(255,255,255,.24); }
+.dh-act:first-child:hover{ background:#fff; box-shadow:0 8px 18px rgba(0,0,0,.2); }
+.dh-act:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+
+/* شبكة الأقسام: عمود عريض وآخر أضيق، أو نصفان، أو عمود واحد */
+.dash-grid{ display:grid; grid-template-columns:minmax(0,1.65fr) minmax(0,1fr); gap:16px;
+  margin-top:16px; align-items:start; }
+.dash-grid.g2{ grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.dash-grid.g1{ grid-template-columns:minmax(0,1fr); }
+.dash-grid > .alerts-box, .dash-grid > .season-card{ margin:0; }
+@media (max-width:1100px){ .dash-grid, .dash-grid.g2{ grid-template-columns:minmax(0,1fr); } }
+
+/* رأس كل لوحة: عنوان + سطر توضيح + رابط أو رقم بارز */
+.ph{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px 16px;
+  flex-wrap:wrap; margin-bottom:12px; }
+.ph h3{ margin:0; font-size:16px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.ph h3 .ico{ color:var(--bronze); }
+.ph-sub{ margin:3px 0 0; font-size:12.5px; color:var(--muted); }
+.ph-link{ font-size:13px; font-weight:600; color:var(--bronze); display:inline-flex;
+  align-items:center; gap:4px; white-space:nowrap; padding-top:2px; }
+.ph-link:hover{ text-decoration:underline; }
+.ph-fig{ display:flex; flex-direction:column; align-items:flex-end; text-align:end; gap:1px; }
+.ph-fig b{ font-size:26px; font-weight:700; line-height:1.15; color:var(--ink);
+  font-variant-numeric:tabular-nums; }
+.ph-fig span{ font-size:12.5px; color:var(--muted); }
+.delta{ font-style:normal; font-size:12px; font-weight:600; margin-top:4px; padding:2px 9px;
+  border-radius:999px; }
+.delta.up{ color:#17734D; background:#E3F4EA; }
+.delta.down{ color:#B23A3A; background:#FBE9E7; }
+.ph-note{ margin:10px 0 0; font-size:12.5px; color:var(--muted); display:flex; gap:6px; align-items:center; }
+.ph-note .ico{ width:15px; height:15px; flex:none; }
+
+/* الرسم: أعمدة رفيعة بلون النظام، خطوط شبكة شعرية، تلميح عند المرور */
+.chart-box{ position:relative; }
+.chart-scroll{ overflow-x:auto; }
+.col-chart{ display:block; width:100%; min-width:520px; height:auto; direction:ltr;
+  font-family:var(--font); }
+.col-chart .grid{ stroke:var(--border); stroke-width:1; shape-rendering:crispEdges; }
+.col-chart .ytick{ font-size:11px; fill:var(--muted); font-variant-numeric:tabular-nums; }
+.col-chart .xlab{ font-size:11.5px; fill:var(--muted); }
+.col-chart .xyear{ font-size:10px; fill:var(--muted); opacity:.75; }
+.col-chart .cap{ font-size:11.5px; font-weight:600; fill:var(--ink); font-variant-numeric:tabular-nums; }
+.col-chart .hit{ fill:transparent; }
+.col-chart .bar{ fill:var(--bronze); opacity:.78; transition:opacity .15s; }
+.col-chart .col.now .bar, .col-chart .col.on .bar{ opacity:1; }
+.col-chart .col.on .hit{ fill:color-mix(in srgb, var(--bronze) 7%, transparent); }
+.col-chart .col.now .xlab{ fill:var(--ink); font-weight:600; }
+.col-chart .col{ cursor:default; outline:none; }
+.col-chart .col:focus-visible .hit{ stroke:var(--bronze); stroke-width:1.5; }
+.chart-tip{ position:absolute; z-index:5; transform:translate(-50%, calc(-100% - 10px));
+  pointer-events:none; display:flex; flex-direction:column; align-items:center; white-space:nowrap;
+  background:var(--sidebar); color:#fff; border-radius:10px; padding:7px 12px; font-size:12px;
+  line-height:1.5; box-shadow:0 8px 22px rgba(0,0,0,.22); }
+.chart-tip b{ font-weight:500; opacity:.8; }
+.chart-tip span{ font-weight:700; font-size:14.5px; font-variant-numeric:tabular-nums; }
+.chart-tip small{ opacity:.75; }
+.chart-table{ margin-top:6px; }
+.chart-table summary{ cursor:pointer; font-size:12.5px; color:var(--muted); font-weight:600; width:max-content; }
+.chart-table summary:hover{ color:var(--bronze); }
+.chart-table table{ margin-top:8px; box-shadow:none; }
+
+/* حالة فارغة لطيفة بدل «لا بيانات» */
+.empty-state{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px;
+  padding:24px 12px; color:var(--muted); }
+.empty-state .es-ic{ width:54px; height:54px; border-radius:16px; display:grid; place-items:center;
+  background:var(--soft); color:var(--bronze); margin-bottom:4px; }
+.empty-state .es-ic .ico{ width:26px; height:26px; vertical-align:0; }
+.empty-state b{ color:var(--ink); font-size:15px; }
+.empty-state p{ margin:0 0 6px; font-size:13px; max-width:38ch; line-height:1.75; }
+
+/* الرحلات: مربّع عدّ تنازلي بلون البرنامج + التفاصيل */
+.trip{ display:flex; gap:12px; align-items:center; padding:9px; border-radius:14px;
+  color:var(--ink); border:1px solid transparent; transition:background-color .15s, border-color .15s; }
+.trip + .trip{ margin-top:4px; }
+.trip:hover{ background:var(--row-hover); border-color:var(--border); }
+.trip:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--focus); }
+.trip-cd{ flex:none; width:64px; min-height:64px; border-radius:14px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; line-height:1.2; color:var(--ink);
+  background:color-mix(in srgb, var(--tc) 13%, var(--panel));
+  box-shadow:inset 0 -3px 0 var(--tc); }
+.trip-cd b{ font-size:21px; font-weight:700; font-variant-numeric:tabular-nums; }
+.trip-cd small{ font-size:11px; color:var(--muted); }
+.trip-cd .ico{ width:22px; height:22px; vertical-align:0; }
+.trip-now .trip-cd{ background:var(--tc); color:var(--tf, #fff); box-shadow:none; }
+.trip-now .trip-cd small{ color:inherit; opacity:.85; }
+.trip-body{ min-width:0; flex:1; }
+.trip-name{ font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.trip-meta{ display:flex; flex-wrap:wrap; gap:3px 12px; font-size:12.5px; color:var(--muted); margin-top:3px; }
+.trip-meta span{ display:inline-flex; align-items:center; gap:4px; }
+.trip-meta .ico{ width:14px; height:14px; }
+.trip-prog{ display:flex; align-items:center; gap:8px; margin-top:7px; }
+.trip-prog .bar{ flex:1; min-width:0; height:6px; }
+.trip-prog small{ font-size:11.5px; color:var(--muted); white-space:nowrap; }
+
+/* المالية حسب البرنامج */
+.fin-panel table.data{ box-shadow:none; border-radius:12px; }
+.pct-cell{ display:flex; align-items:center; gap:8px; }
+.pct-cell .bar{ flex:1; max-width:160px; }
+.pct-cell span{ font-variant-numeric:tabular-nums; min-width:46px; }
+
+/* آخر العمليات: خطّ زمني */
+.act-list{ list-style:none; margin:0; padding:0; }
+.act-list li{ display:flex; gap:12px; padding:7px 0; position:relative; }
+.act-list li:not(:last-child)::before{ content:""; position:absolute; inset-inline-start:5px;
+  top:24px; bottom:-7px; width:2px; background:var(--border); }
+.act-dot{ flex:none; width:12px; height:12px; border-radius:50%; margin-top:6px;
+  background:var(--panel); border:3px solid var(--bronze); }
+.act-body{ min-width:0; }
+.act-what{ font-size:13.5px; line-height:1.65; display:-webkit-box; -webkit-line-clamp:2;
+  -webkit-box-orient:vertical; overflow:hidden; }
+.act-what b{ font-weight:600; }
+.act-what span{ color:var(--muted); }
+.act-body small{ font-size:12px; color:var(--muted); display:inline-flex; align-items:center; gap:4px; }
+.act-body small .ico{ width:13px; height:13px; }
+
+@media (max-width:760px){
+  .dash-hero{ padding:18px 16px; border-radius:16px; }
+  .dh-title{ font-size:21px; }
+  .dh-actions{ width:100%; }
+  .dh-act{ flex:1 1 auto; justify-content:center; }
+  .ph-fig{ align-items:flex-start; text-align:start; }
+}
+@media (prefers-reduced-motion:reduce){ .dh-act:hover{ transform:none; } }
+.chart-tip[hidden]{ display:none; }
+/* على الشاشة الضيّقة يبدأ التمرير من الأحدث (يسار الرسم) */
+.chart-scroll{ direction:ltr; }
