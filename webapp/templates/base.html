@@ -109,6 +109,7 @@
   <button type="button" class="btn primary" id="sessStay">متابعة العمل</button>
 </div>
 {% endif %}
+<template id="toastIc">{{ ic('check') }}</template>
 <script>
 function isPhone(){return window.matchMedia('(max-width:760px)').matches;}
 function toggleNav(){
@@ -140,6 +141,34 @@ document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
     f.addEventListener('submit',function(){going=true;});upd();});
   window.addEventListener('beforeunload',function(e){
     if(!going&&document.querySelector('form.needs-save.dirty')){e.preventDefault();e.returnValue='';}});})();
+/* رسائل النجاح تظهر منبثقة أعلى الصفحة ثم تختفي وحدها (المرور فوقها يوقفها).
+   الأخطاء والرسائل الدائمة (data-keep أو فيها روابط/أزرار) تبقى في مكانها. */
+(function(){
+  var ms=[].filter.call(document.querySelectorAll('.content .acc-msg.ok, .content .ok-banner'),function(m){
+    var n=m.textContent.trim().length;
+    return n&&n<=240&&!m.hasAttribute('data-keep')&&!m.closest('form')
+      &&!m.querySelector('a,button,input,select,textarea,form,table');});
+  if(!ms.length)return;
+  var box=document.createElement('div');box.className='toasts';
+  box.setAttribute('role','status');box.setAttribute('aria-live','polite');document.body.appendChild(box);
+  var chk=document.getElementById('toastIc');
+  ms.forEach(function(m){
+    var t=document.createElement('div');t.className='toast';
+    t.innerHTML='<span class="t-ic"></span><div class="t-body"></div>'
+      +'<button type="button" class="t-x" aria-label="إغلاق">×</button><i class="t-bar"></i>';
+    var lead=m.firstElementChild,first=m.firstChild;
+    var ic=(lead&&lead.matches('svg.ico')&&!(first.nodeType===3&&first.textContent.trim()))?lead:null;
+    t.querySelector('.t-ic').appendChild(ic||chk.content.cloneNode(true));
+    var body=t.querySelector('.t-body');while(m.firstChild)body.appendChild(m.firstChild);
+    m.remove();
+    var n=body.textContent.trim().length,bar=t.querySelector('.t-bar');
+    bar.style.animationDuration=Math.min(10000,Math.max(5000,3000+60*n))+'ms';
+    function close(){if(t.classList.contains('out'))return;t.classList.add('out');
+      setTimeout(function(){t.remove();if(!box.children.length)box.remove();},300);}
+    bar.addEventListener('animationend',close);
+    t.querySelector('.t-x').addEventListener('click',close);
+    box.appendChild(t);});
+})();
 {% if session_minutes %}
 /* مدّة الجلسة: النشاط في الصفحة يمدّدها، وقبل انتهائها تنبيه بالعدّ التنازلي،
    وعند انتهائها تظهر شاشة الدخول */

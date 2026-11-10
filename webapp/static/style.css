@@ -1,3 +1,21 @@
+/* خط البورتال: IBM Plex Sans Arabic (رخصة SIL OFL) مستضاف محلياً — لا يعتمد على خوادم خارجية */
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:400; font-display:swap;
+  src:url(fonts/plex-arabic-400-arabic.woff2) format('woff2'); unicode-range:U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:400; font-display:swap;
+  src:url(fonts/plex-arabic-400-latin.woff2) format('woff2'); unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:500; font-display:swap;
+  src:url(fonts/plex-arabic-500-arabic.woff2) format('woff2'); unicode-range:U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:500; font-display:swap;
+  src:url(fonts/plex-arabic-500-latin.woff2) format('woff2'); unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:600; font-display:swap;
+  src:url(fonts/plex-arabic-600-arabic.woff2) format('woff2'); unicode-range:U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:600; font-display:swap;
+  src:url(fonts/plex-arabic-600-latin.woff2) format('woff2'); unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:700; font-display:swap;
+  src:url(fonts/plex-arabic-700-arabic.woff2) format('woff2'); unicode-range:U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face{ font-family:'Plex Arabic'; font-style:normal; font-weight:700; font-display:swap;
+  src:url(fonts/plex-arabic-700-latin.woff2) format('woff2'); unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 :root{
   --bronze:#8A6E4B; --bronze-d:#6E543A; --bg:#F4F1EC; --panel:#fff;
   --border:#E6DFD3; --ink:#2C2318; --muted:#8A7E68; --sidebar:#2A211A;
@@ -654,3 +672,193 @@ html.nav-collapsed .logo-frame::after{ animation-play-state:paused; }
 .off-state{ margin:4px 0 10px; }
 .off-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px 14px; }
 .off-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; grid-column:1 / -1; }
+
+/* ======================================================================
+   تجديد الواجهة — المرحلة ١: خط عربي احترافي، أزرار وحقول وبطاقات موحّدة،
+   رسائل منبثقة، وشاشة دخول جديدة. آخر الملف عمداً ليعلو على ما قبله.
+   ====================================================================== */
+:root{
+  --font:'Plex Arabic',"Segoe UI",Tahoma,"Traditional Arabic",sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --sh-1:0 1px 2px rgba(28,24,16,.04), 0 3px 10px rgba(28,24,16,.05);
+  --sh-2:0 2px 4px rgba(28,24,16,.05), 0 12px 28px rgba(28,24,16,.10);
+  --gold:#D4A53F;
+  /* زخرفة هندسية (نجمة ثمانية) للخلفيات */
+  --pat-light:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='black' stroke-opacity='.04' stroke-width='1.1'%3E%3Cpath d='M22 22H58V58H22Z'/%3E%3Cpath d='M40 14.5L65.5 40L40 65.5L14.5 40Z'/%3E%3Cpath d='M40 0V14.5M40 65.5V80M0 40H14.5M65.5 40H80M0 0L22 22M80 0L58 22M0 80L22 58M80 80L58 58'/%3E%3Ccircle cx='40' cy='40' r='7'/%3E%3C/g%3E%3C/svg%3E");
+  --pat-white:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='white' stroke-opacity='.13' stroke-width='1.1'%3E%3Cpath d='M22 22H58V58H22Z'/%3E%3Cpath d='M40 14.5L65.5 40L40 65.5L14.5 40Z'/%3E%3Cpath d='M40 0V14.5M40 65.5V80M0 40H14.5M65.5 40H80M0 0L22 22M80 0L58 22M0 80L22 58M80 80L58 58'/%3E%3Ccircle cx='40' cy='40' r='7'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* يُعرَّف على body لأن لون النظام (--bronze) يتبدّل هناك */
+body{ --focus:color-mix(in srgb, var(--bronze) 24%, transparent);
+  font-family:var(--font); -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+button, input, select, textarea{ font-family:inherit; }
+::selection{ background:color-mix(in srgb, var(--bronze) 22%, transparent); }
+*{ scrollbar-width:thin; scrollbar-color:color-mix(in srgb, var(--muted) 40%, transparent) transparent; }
+.card .val, .card .k-value, table.data td, .acc-table td, .bell-n{ font-variant-numeric:tabular-nums; }
+.topbar h2{ font-weight:700; letter-spacing:-.1px; }
+
+/* ---- الأزرار: انتقال ناعم، ضغطة محسوسة، وحلقة تركيز بلون النظام ---- */
+.btn, .acc-btn, .pill, .menu-toggle, .pager a, .mode-opt span{
+  transition:background-color .18s var(--ease), color .18s, border-color .18s,
+    box-shadow .2s var(--ease), transform .12s var(--ease); }
+.btn:active:not(:disabled), .acc-btn:active:not(:disabled), .pill:active{ transform:translateY(1px) scale(.985); }
+.btn.primary, .btn.add-btn, .acc-btn.add, .save-btn:not(:disabled), .btn.danger{
+  background-image:linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,0));
+  box-shadow:0 1px 2px rgba(0,0,0,.12), 0 4px 12px color-mix(in srgb, var(--bronze) 24%, transparent); }
+.btn.primary:hover, .btn.add-btn:hover, .acc-btn.add:hover, .save-btn:hover:not(:disabled){
+  box-shadow:0 2px 4px rgba(0,0,0,.12), 0 8px 20px color-mix(in srgb, var(--bronze) 32%, transparent); }
+.btn.danger{ box-shadow:0 1px 2px rgba(0,0,0,.12), 0 4px 12px rgba(192,57,43,.22); }
+.btn:focus-visible, .acc-btn:focus-visible, .pill:focus-visible, .menu-toggle:focus-visible,
+.pager a:focus-visible, a.card:focus-visible, .repcard:focus-visible{
+  outline:none; box-shadow:0 0 0 3px var(--focus); }
+.nav a:focus-visible, .nav-group > summary:focus-visible{ outline:2px solid var(--gold); outline-offset:-2px; }
+@media (min-width:761px){
+  /* زرّ «بحث» في القوائم كان يتمدّد على عرض السطر */
+  .searchbar .btn.primary{ width:auto; flex:none; padding-inline:24px; }
+}
+
+/* ---- الحقول: حدّ وحلقة بلون النظام عند الكتابة ---- */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]), select, textarea{
+  transition:border-color .15s, box-shadow .15s, background-color .15s; }
+input:not([type=checkbox]):not([type=radio]):not([type=range]):focus, select:focus, textarea:focus{
+  outline:none; border-color:var(--bronze); box-shadow:0 0 0 3px var(--focus); }
+input[type=checkbox], input[type=radio]{ accent-color:var(--bronze); }
+input::placeholder, textarea::placeholder{ color:color-mix(in srgb, var(--muted) 80%, transparent); }
+
+/* ---- البطاقات والجداول: ظلّ طبقي هادئ، ورفعة خفيفة للقابل للنقر ---- */
+.card, .panel, .acc-card, fieldset.editcard, .alerts-box, .season-card, .search-item{ box-shadow:var(--sh-1); }
+table.data{ box-shadow:var(--sh-1); }
+a.card, .repcard, .pkg-card{ transition:transform .2s var(--ease), box-shadow .2s var(--ease), border-color .2s; }
+a.card:hover, .repcard:hover, .pkg-card:hover{ transform:translateY(-2px); box-shadow:var(--sh-2); }
+table.data th{ font-weight:600; font-size:13.5px; }
+table.data tbody tr td{ transition:background-color .12s; }
+
+/* ---- رسائل الصفحة: شريط جانبي يوضّح نوعها ---- */
+.acc-msg.ok, .ok-banner{ border-inline-start:4px solid #2E9E6A; }
+.acc-msg.err{ border-inline-start:4px solid #D64545; }
+
+/* ---- الشريط العلوي يبقى ظاهراً عند التمرير (الشاشات الكبيرة) ---- */
+@media (min-width:761px){
+  .topbar{ position:sticky; top:0; z-index:40;
+    background:color-mix(in srgb, var(--panel) 90%, transparent);
+    -webkit-backdrop-filter:saturate(1.4) blur(10px); backdrop-filter:saturate(1.4) blur(10px); }
+}
+/* ظهور ناعم للمحتوى عند فتح الصفحة (شفافية فقط حتى لا يتأثّر أي عنصر ثابت) */
+.content{ animation:page-in .32s ease-out both; }
+@keyframes page-in{ from{ opacity:0; } }
+
+/* ---- الرسائل المنبثقة: رسائل النجاح تظهر أعلى الصفحة ثم تختفي ---- */
+.toasts{ position:fixed; z-index:300; top:max(16px, env(safe-area-inset-top, 0px)); left:50%;
+  transform:translateX(-50%); width:min(460px, calc(100% - 32px)); display:flex;
+  flex-direction:column; gap:10px; pointer-events:none; }
+.toast{ pointer-events:auto; position:relative; overflow:hidden; display:flex; align-items:flex-start;
+  gap:11px; padding:13px 12px 14px 14px; background:var(--panel); color:var(--ink);
+  border:1px solid var(--border); border-inline-start:4px solid #2E9E6A; border-radius:14px;
+  box-shadow:0 16px 40px rgba(20,28,24,.18), 0 2px 6px rgba(20,28,24,.08);
+  font-size:14px; font-weight:500; line-height:1.65; animation:toast-in .38s var(--ease) both; }
+.toast .t-ic{ flex:none; width:28px; height:28px; border-radius:50%; display:grid; place-items:center;
+  background:#E3F4EA; color:#1E8A5A; }
+.toast .t-ic .ico{ width:16px; height:16px; vertical-align:0; }
+.toast .t-body{ flex:1; min-width:0; padding-top:2px; }
+.toast .t-x{ flex:none; background:none; border:0; color:var(--muted); cursor:pointer; font-size:20px;
+  line-height:1; padding:2px 6px; border-radius:8px; }
+.toast .t-x:hover{ background:var(--soft); color:var(--ink); }
+.toast .t-bar{ position:absolute; inset-inline:0; bottom:0; height:3px; background:#2E9E6A;
+  opacity:.5; transform-origin:right; animation:toast-bar 6s linear forwards; }
+.toast:hover .t-bar{ animation-play-state:paused; }
+.toast.out{ animation:toast-out .28s ease-in forwards; }
+@keyframes toast-in{ from{ opacity:0; transform:translateY(-14px) scale(.97); } }
+@keyframes toast-out{ to{ opacity:0; transform:translateY(-10px) scale(.97); } }
+@keyframes toast-bar{ to{ transform:scaleX(0); } }
+@media (prefers-reduced-motion:reduce){
+  .content, .toast, .toast.out{ animation-name:none; }
+  a.card:hover, .repcard:hover, .pkg-card:hover{ transform:none; }
+}
+
+/* ---- صفحات الدخول والاستعادة: خلفية بزخرفة هندسية وبطاقة أنعم ---- */
+.login-wrap{ background:
+  radial-gradient(900px 520px at 85% -10%, color-mix(in srgb, var(--bronze) 15%, transparent), transparent 62%),
+  radial-gradient(700px 420px at 5% 110%, color-mix(in srgb, var(--gold) 13%, transparent), transparent 60%),
+  var(--pat-light), var(--bg); background-size:auto, auto, 80px 80px, auto; }
+.login-card{ border-radius:22px; border-color:color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow:0 1px 2px rgba(0,0,0,.04), 0 28px 64px -18px color-mix(in srgb, var(--bronze-d) 38%, transparent); }
+.login-card h1{ font-weight:700; }
+.brand-dot{ background:linear-gradient(145deg, color-mix(in srgb, var(--bronze) 72%, #fff), var(--bronze-d)); }
+
+/* ---- شاشة الدخول: لوحة الهوية بجانب النموذج ---- */
+.login-wrap.login-split{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);
+  align-items:stretch; justify-content:stretch; background:var(--panel); }
+.ls-form{ display:flex; align-items:center; justify-content:center;
+  padding:40px max(20px, env(safe-area-inset-left, 0px)); background:var(--panel); }
+.login-split .login-card{ width:min(400px, 100%); padding:0; border:0; background:none; box-shadow:none; }
+.lc-head{ margin-bottom:22px; }
+.lc-head h1{ text-align:start; font-size:27px; margin:0 0 6px; }
+.lc-head p{ margin:0; color:var(--muted); font-size:14.5px; }
+.inp{ position:relative; }
+.inp > .ico{ position:absolute; inset-inline-start:14px; top:50%; transform:translateY(-50%);
+  width:18px; height:18px; color:var(--muted); pointer-events:none; transition:color .15s; }
+.inp:focus-within > .ico{ color:var(--bronze); }
+.field .inp input{ padding-inline-start:44px; height:50px; background:var(--soft); border-color:transparent; }
+.field .inp input:focus{ background:#fff; }
+.inp input#password{ padding-inline-end:48px; }
+.inp-eye{ position:absolute; inset-inline-end:6px; top:50%; transform:translateY(-50%);
+  display:grid; place-items:center; width:38px; height:38px; border:0; border-radius:10px;
+  background:none; color:var(--muted); cursor:pointer; }
+.inp-eye:hover{ background:color-mix(in srgb, var(--bronze) 10%, transparent); color:var(--ink); }
+.inp-eye[aria-pressed=true]{ color:var(--bronze); }
+.inp-eye .ico{ width:19px; height:19px; vertical-align:0; }
+.login-split .btn.primary{ height:52px; display:flex; align-items:center; justify-content:center;
+  gap:8px; font-size:16.5px; margin-top:4px; }
+.login-split .btn.primary .ico{ transition:transform .2s var(--ease); }
+.login-split .btn.primary:hover .ico{ transform:translateX(-4px); }
+.btn.primary.loading{ pointer-events:none; opacity:.85; }
+.lc-links{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;
+  margin-top:18px; font-size:13.5px; color:var(--muted); }
+.lc-links a{ color:var(--bronze); font-weight:600; }
+.lc-links a:hover{ text-decoration:underline; }
+.lc-secure{ display:inline-flex; align-items:center; gap:6px; }
+.lc-secure .ico{ width:15px; height:15px; }
+
+.ls-brand{ position:relative; overflow:hidden; isolation:isolate; color:#fff; display:flex;
+  flex-direction:column; justify-content:center; padding:56px clamp(28px, 5vw, 76px);
+  background:linear-gradient(155deg, var(--bronze) 0%, var(--bronze-d) 48%, var(--sidebar) 100%); }
+.ls-brand::before{ content:""; position:absolute; inset:0; z-index:-1; background:var(--pat-white) 0 0 / 84px 84px;
+  -webkit-mask-image:radial-gradient(120% 90% at 20% 15%, #000 0%, transparent 75%);
+          mask-image:radial-gradient(120% 90% at 20% 15%, #000 0%, transparent 75%); }
+.ls-brand::after{ content:""; position:absolute; z-index:-1; width:520px; aspect-ratio:1; border-radius:50%;
+  left:-160px; bottom:-220px; background:radial-gradient(closest-side, rgba(212,165,63,.32), transparent);
+  animation:lb-glow 9s ease-in-out infinite alternate; }
+@keyframes lb-glow{ to{ transform:translate(60px,-40px) scale(1.12); } }
+.lb-inner{ position:relative; max-width:470px; }
+.ls-brand .logo-frame{ margin:0 0 34px; max-width:212px; }
+.ls-brand .logo-img{ padding:16px 18px; }
+.lb-kicker{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+  letter-spacing:.3px; padding:6px 12px; border-radius:999px; margin-bottom:16px;
+  background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2); }
+.lb-kicker .ico{ width:14px; height:14px; color:#F4D58D; }
+.lb-title{ font-size:clamp(26px, 2.6vw, 36px); line-height:1.5; font-weight:700; margin:0 0 14px;
+  text-wrap:balance; }
+.lb-title em{ font-style:normal; color:#F4D58D; }
+.lb-sub{ font-size:15.5px; line-height:1.95; margin:0 0 30px; color:rgba(255,255,255,.86); max-width:44ch; }
+.lb-points{ list-style:none; margin:0; padding:0; display:grid; gap:13px; }
+.lb-points li{ display:flex; align-items:center; gap:12px; font-size:14.5px; font-weight:500; }
+.lp-ic{ width:38px; height:38px; flex:none; border-radius:12px; display:grid; place-items:center;
+  background:rgba(255,255,255,.11); border:1px solid rgba(255,255,255,.18); }
+.lp-ic .ico{ width:18px; height:18px; vertical-align:0; color:#F4D58D; }
+.lb-foot{ position:absolute; bottom:22px; inset-inline:clamp(28px, 5vw, 76px); font-size:12.5px;
+  color:rgba(255,255,255,.6); display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+@media (max-width:900px){
+  .login-wrap.login-split{ grid-template-columns:1fr; grid-template-rows:auto 1fr; }
+  .ls-brand{ order:-1; padding:30px 20px 46px; text-align:center; align-items:center; }
+  .ls-brand .logo-frame{ margin:0 auto 14px; max-width:168px; }
+  .ls-brand .logo-img{ padding:12px 14px; }
+  .lb-title{ font-size:20px; margin:0; }
+  .lb-kicker, .lb-sub, .lb-points, .lb-foot{ display:none; }
+  .ls-form{ margin-top:-22px; border-radius:24px 24px 0 0; position:relative; z-index:1;
+    align-items:flex-start; padding-top:30px; }
+  .lc-head h1{ font-size:23px; }
+}
+@media (prefers-reduced-motion:reduce){ .ls-brand::after{ animation:none; } }
+/* الحقل الإلزامي لا يُلوَّن بالأحمر قبل أن يلمسه المستخدم */
+input:invalid, select:invalid, textarea:invalid{ border-color:var(--border); }
+input:user-invalid, select:user-invalid, textarea:user-invalid{ border-color:#D9786B; }
+.lb-inner{ margin-inline:auto; }

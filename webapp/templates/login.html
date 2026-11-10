@@ -6,30 +6,66 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 {% set pwa_color = '#8A6E4B' if selected_mode == 'hajj' else '#13795B' %}{% include "_pwa_head.html" %}
 </head><body class="mode-{{ selected_mode }}">
-<div class="login-wrap">
-  <form class="login-card" method="post" autocomplete="on">
-    <div class="brand-dot" id="modeIcon">{% for val,lbl,icon in modes %}{% if val == selected_mode %}{{ icon|iconize }}{% endif %}{% endfor %}</div>
-    <h1>المصطفى للحج والعمرة</h1>
-    <p class="sub">تسجيل الدخول إلى لوحة التحكم</p>
-    {% if error %}<div class="err">{{ error|iconize }}</div>{% endif %}
-    {% if request.args.get('expired') %}<div class="err" style="background:#fdf6e3;color:#7a5a00;border-color:#ecd9a0">{{ ic('clock') }} انتهت الجلسة لعدم النشاط — سجّل الدخول من جديد.</div>{% endif %}
-    {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
-    {% if request.args.get('reset') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} حُفظت كلمة المرور الجديدة — سجّل الدخول بها.</div>{% endif %}
-    {% include "_mode_pick.html" %}
-    <div class="field">
-      <label for="username">اسم المستخدم</label>
-      <input id="username" name="username" autofocus autocomplete="username">
+<div class="login-wrap login-split">
+  <div class="ls-form">
+    <form class="login-card" method="post" autocomplete="on" id="loginForm">
+      <div class="lc-head">
+        <h1>أهلاً بعودتك</h1>
+        <p>سجّل الدخول إلى لوحة تحكم المصطفى للحج والعمرة</p>
+      </div>
+      {% if error %}<div class="err">{{ error|iconize }}</div>{% endif %}
+      {% if request.args.get('expired') %}<div class="err" style="background:#fdf6e3;color:#7a5a00;border-color:#ecd9a0">{{ ic('clock') }} انتهت الجلسة لعدم النشاط — سجّل الدخول من جديد.</div>{% endif %}
+      {% if request.args.get('restored') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} استُعيدت النسخة الاحتياطية — سجّل الدخول من جديد.</div>{% endif %}
+      {% if request.args.get('reset') %}<div class="err" style="background:#e6f3ec;color:#0B5D3B;border-color:#b9dcc8">{{ ic('check') }} حُفظت كلمة المرور الجديدة — سجّل الدخول بها.</div>{% endif %}
+      {% include "_mode_pick.html" %}
+      <div class="field">
+        <label for="username">اسم المستخدم</label>
+        <div class="inp">{{ ic('user') }}<input id="username" name="username" autofocus autocomplete="username"></div>
+      </div>
+      <div class="field">
+        <label for="password">كلمة المرور</label>
+        <div class="inp">{{ ic('lock') }}<input id="password" name="password" type="password" autocomplete="current-password">
+          <button type="button" class="inp-eye" id="pwEye" aria-label="إظهار كلمة المرور" aria-pressed="false" title="إظهار كلمة المرور">{{ ic('eye') }}</button></div>
+      </div>
+      <label class="remember">
+        <input type="checkbox" name="remember" value="1"> تذكّرني على هذا الجهاز
+      </label>
+      <button class="btn primary" type="submit" id="loginBtn"><span>دخول</span>{{ ic('arrow-left') }}</button>
+      <div class="lc-links">
+        <a href="{{ url_for('forgot') }}">نسيت كلمة المرور؟</a>
+        <span class="lc-secure">{{ ic('lock') }} اتصال آمن · بيانات مشفّرة</span>
+      </div>
+    </form>
+  </div>
+  <aside class="ls-brand">
+    <div class="lb-inner">
+      <span class="logo-frame"><img class="logo-img" src="{{ url_for('static', filename='logo.png') }}" alt="المصطفى للحج والعمرة"></span>
+      <div class="lb-kicker">{{ ic('sparkles') }} بوابة فريق العمل</div>
+      <h2 class="lb-title">رحلة ضيوف الرحمن<br><em>تبدأ بتنظيمٍ دقيق</em></h2>
+      <p class="lb-sub">السجلّات والبرامج والتحصيل والمستندات في مكانٍ واحد —
+        لخدمةٍ أسرع وأدقّ للحجاج والمعتمرين.</p>
+      <ul class="lb-points">
+        <li><span class="lp-ic">{{ ic('lock') }}</span> بيانات مشفّرة بالكامل</li>
+        <li><span class="lp-ic">{{ ic('shield') }}</span> دخول بخطوتين وسجلّ تدقيق لكل عملية</li>
+        <li><span class="lp-ic">{{ ic('archive') }}</span> نسخ احتياطي يومي تلقائي</li>
+      </ul>
     </div>
-    <div class="field">
-      <label for="password">كلمة المرور</label>
-      <input id="password" name="password" type="password" autocomplete="current-password">
-    </div>
-    <label class="remember">
-      <input type="checkbox" name="remember" value="1"> تذكّرني على هذا الجهاز
-    </label>
-    <button class="btn primary" type="submit">دخول</button>
-    <p class="sub" style="margin-top:14px">
-      <a href="{{ url_for('forgot') }}">نسيت كلمة المرور؟</a></p>
-  </form>
+    <div class="lb-foot"><span>© المصطفى للحج والعمرة</span><span>AL MUSTAFA HAJJ &amp; UMRAH</span></div>
+  </aside>
 </div>
+<script>
+(function(){
+  var eye=document.getElementById('pwEye'),pw=document.getElementById('password'),
+      btn=document.getElementById('loginBtn'),lbl=btn.querySelector('span');
+  eye.addEventListener('click',function(){
+    var show=pw.type==='password';pw.type=show?'text':'password';
+    eye.setAttribute('aria-pressed',show?'true':'false');
+    eye.setAttribute('aria-label',show?'إخفاء كلمة المرور':'إظهار كلمة المرور');
+    eye.title=eye.getAttribute('aria-label');pw.focus();});
+  document.getElementById('loginForm').addEventListener('submit',function(){
+    btn.classList.add('loading');lbl.textContent='جارٍ الدخول…';});
+  /* عند الرجوع للصفحة من ذاكرة المتصفّح يعود الزرّ لحالته */
+  window.addEventListener('pageshow',function(){btn.classList.remove('loading');lbl.textContent='دخول';});
+})();
+</script>
 </body></html>

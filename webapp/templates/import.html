@@ -3,7 +3,7 @@
 {% block heading %}{{ ic('import') }} استيراد من إكسل{% endblock %}
 {% block subhead %}<a class="pill" href="{{ url_for('hujjaj') }}">{{ ic('arrow-left') }} {{ noun }}</a>{% endblock %}
 {% block content %}
-{% if result %}<div class="acc-msg ok">{{ result }}</div>{% endif %}
+{% if result %}<div class="acc-msg ok" data-keep>{{ result }}</div>{% endif %}
 {% if notes %}
 <div class="acc-msg" style="background:#fff8ec;color:#8A6E4B;border:1px solid #e7d3a8">
   {% for n in notes %}<div>{{ n }}</div>{% endfor %}

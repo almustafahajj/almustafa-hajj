@@ -1677,7 +1677,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-04 · تغيير كلمة المرور وانتهاؤها + تنبيه جهاز جديد + عرض موسم سابق + healthz"
+_BUILD_TAG = "2026-11-10 · واجهة جديدة: خط عربي احترافي + شاشة دخول جديدة + رسائل منبثقة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -1685,6 +1685,7 @@ _SW_JS = r"""// عامل خدمة البورتال: يحفظ الملفّات ا
 // الفتح، ولا يحفظ أي صفحة فيها بيانات. بلا اتصال تظهر صفحة توضيحية.
 const CACHE = 'almustafa-__BUILD__';
 const ASSETS = ['/static/style.css', '/static/logo.png', '/static/icons/icon-192.png',
+                '/static/fonts/plex-arabic-400-arabic.woff2', '/static/fonts/plex-arabic-700-arabic.woff2',
                 '/static/icons/icon-512.png', '/static/manifest.webmanifest'];
 const OFFLINE = '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">' +
   '<meta name="viewport" content="width=device-width, initial-scale=1"><title>لا يوجد اتصال</title></head>' +
