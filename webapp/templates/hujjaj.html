@@ -9,6 +9,8 @@
 {% elif _m in ['notfound', 'error'] %}<div class="acc-msg err">تعذّر الحذف: تغيّر الكشف أو تعذّر الحفظ — افتح السجلّ من جديد وحاول مرّة أخرى.</div>{% endif %}
 <form method="get">
   {% if pay %}<input type="hidden" name="pay" value="{{ pay }}">{% endif %}
+  {% if grp %}<input type="hidden" name="grp" value="{{ grp }}">{% endif %}
+  {% if need %}<input type="hidden" name="need" value="1">{% endif %}
   <div class="searchbar">
     <input name="q" value="{{ q }}" placeholder="بحث بالاسم أو رقم الجواز أو الهاتف…" autofocus>
     <button class="btn primary" type="submit">بحث</button>
@@ -57,6 +59,12 @@
 </nav>
 {% endif %}
 
+{% if grp or need %}
+<div class="scope-note">{{ ic('alert') }}
+  <span>تعرض الآن {% if need %}<b>من تنقصهم بيانات السفر</b>{% else %}السجلّات{% endif %}{% if grp %} في «<b>{{ grp }}</b>»{% endif %}
+    — أكمل البيانات من زرّ التعديل في كل سطر.</span>
+  <a href="{{ url_for('hujjaj') }}">عرض الكل {{ ic('arrow-left') }}</a></div>
+{% endif %}
 <div class="panel list-panel">
 <table class="data list-table">
   <thead><tr>
@@ -69,7 +77,8 @@
       <td class="num">{{ loop.index + offset }}</td>
       <td><a class="who" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">
         <span class="av av{{ r.hue }}" aria-hidden="true">{{ r.initial }}</span>
-        <span class="who-t"><b>{{ r.name }}</b>{% if r.name_en %}<small dir="ltr">{{ r.name_en }}</small>{% endif %}</span></a></td>
+        <span class="who-t"><b>{{ r.name }}</b>{% if r.name_en %}<small dir="ltr">{{ r.name_en }}</small>{% endif %}
+          {% if r.missing %}<small class="miss">ينقص: {{ r.missing|join('، ') }}</small>{% endif %}</span></a></td>
       <td><span dir="ltr" class="mono">{{ r.passport }}</span></td>
       <td>{{ r.program }}</td>
       <td><span dir="ltr">{{ r.phone }}</span></td>

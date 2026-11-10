@@ -12,6 +12,18 @@ from datetime import date, timedelta
 _LEVELS = {"danger": 0, "warn": 1, "info": 2}
 SOON_DAYS = 14          # «مغادرة قريبة»
 PAY_DAYS = 30           # متابعة السداد قبل المغادرة بشهر
+DATA_DAYS = 21          # تنبيه نقص البيانات قبل المغادرة بثلاثة أسابيع
+
+# بيانات لا بدّ منها قبل السفر (الحقل، التسمية) — الحج يزيد التصريح والتطعيم
+_NEEDS = (("passport_number", "رقم الجواز"), ("expiry_date", "انتهاء الجواز"),
+          ("visa_number", "التأشيرة"), ("phone", "الهاتف"))
+_NEEDS_HAJJ = _NEEDS + (("permit_status", "التصريح"), ("vaccination", "التطعيم"))
+
+
+def missing_fields(rec, mode: str = "umrah") -> list:
+    """تسميات البيانات الناقصة في السجلّ (فارغة إن كان مكتملاً)."""
+    needs = _NEEDS_HAJJ if mode == "hajj" else _NEEDS
+    return [lbl for key, lbl in needs if not str(getattr(rec, key, "") or "").strip()]
 
 
 def _d(text):
@@ -50,15 +62,29 @@ def _a(level, icon, text, kind, ref="", when=None) -> dict:
             "date": when.isoformat() if when else ""}
 
 
-def _common(out, label, ref, recs, dep, today, kind):
-    """مغادرة قريبة + جوازات + سداد — مشتركة بين برامج الحج والعمرة."""
+def _common(out, label, ref, recs, dep, today, kind, mode="umrah"):
+    """مغادرة قريبة + بيانات ناقصة + جوازات + سداد — مشتركة بين الحج والعمرة."""
     if dep is None:
         return
     days = (dep - today).days
+    when = "اليوم" if days == 0 else "غداً" if days == 1 else f"بعد {days} يوماً"
     if 0 <= days <= SOON_DAYS:
-        when = "اليوم" if days == 0 else "غداً" if days == 1 else f"بعد {days} يوماً"
         out.append(_a("info", "✈️", f"مغادرة «{label}» {when} ({dep.isoformat()}) — "
                       f"{len(recs)} شخصاً", kind, ref, dep))
+    if 0 <= days <= DATA_DAYS:
+        tally: dict = {}
+        people = 0
+        for r in recs:
+            miss = missing_fields(r, mode)
+            if miss:
+                people += 1
+                for m in miss:
+                    tally[m] = tally.get(m, 0) + 1
+        if people:
+            what = "، ".join(f"{m} {n}" for m, n in sorted(tally.items(), key=lambda kv: -kv[1]))
+            out.append(_a("danger" if days <= 7 else "warn", "📋",
+                          f"بيانات ناقصة قبل مغادرة «{label}» {when}: {people} شخصاً ({what})",
+                          "missing", ref, dep))
     bad = sum(1 for r in recs if _passport_bad(r, dep, today))
     if bad:
         out.append(_a("warn", "🛂", f"{bad} جوازاً في «{label}» منتهٍ أو ينتهي قبل ٦ "
@@ -105,7 +131,7 @@ def umrah_alerts(records, settings, today: date | None = None) -> list:
                 elif left <= 2 and avail >= 5:
                     out.append(_a("warn", "🛏", f"تبقّت {left} غرفة فقط في فندق {city} — {tag}",
                                   "program", t.code, dep))
-        _common(out, label, t.code, recs, dep, today, "program")
+        _common(out, label, t.code, recs, dep, today, "program", "umrah")
     return _sorted(out)
 
 
@@ -120,7 +146,7 @@ def hajj_alerts(records, settings, today: date | None = None) -> list:
             continue
         recs = [r for r in records if str(getattr(r, "program", "") or "") == name]
         if recs:
-            _common(out, name, name, recs, dep, today, "travel")
+            _common(out, name, name, recs, dep, today, "travel", "hajj")
     return _sorted(out)
 
 

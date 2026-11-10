@@ -87,7 +87,8 @@
       </div>
       <form class="tb-search" method="get" action="{{ url_for('search_page') }}" role="search">
         <input name="q" value="{{ search_q }}" placeholder="🔎 بحث سريع: اسم، جواز، هاتف، رقم مرجعي، برنامج، عرض سعر…"
-               aria-label="بحث سريع" autocomplete="off">
+               aria-label="بحث سريع" autocomplete="off" id="tbSearch">
+        <span class="tb-kbd" aria-hidden="true"><kbd>Ctrl</kbd> <kbd>K</kbd></span>
       </form>
       <div class="actions">
         <a class="pill bell {{ 'has' if alert_count }}" href="{{ url_for('notifications') }}"
@@ -110,6 +111,21 @@
 </div>
 {% endif %}
 <template id="toastIc">{{ ic('check') }}</template>
+{# ---- لوحة البحث السريع (Ctrl+K): أي معتمر أو برنامج أو صفحة أو إجراء ---- #}
+<div class="cmdk" id="cmdk" hidden>
+  <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="البحث السريع">
+    <div class="cmdk-head">{{ ic('search') }}
+      <input id="cmdkInput" type="text" autocomplete="off" spellcheck="false" role="combobox"
+             aria-expanded="true" aria-controls="cmdkList" aria-autocomplete="list"
+             placeholder="ابحث عن معتمر أو برنامج أو صفحة أو إجراء…">
+      <kbd class="cmdk-esc">Esc</kbd></div>
+    <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="النتائج"></div>
+    <div class="cmdk-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> للتنقّل</span><span><kbd>Enter</kbd> للفتح</span>
+      <span><kbd>Esc</kbd> للإغلاق</span><span class="cmdk-tip">جرّب: اسماً، رقم جواز، «لم يدفع»، «تقويم»</span></div>
+  </div>
+</div>
+<script type="application/json" id="cmdData">{{ cmd_items|tojson }}</script>
+<template id="cmdIcons">{% for n in (cmd_items|map(attribute='i')|list + ['user','folder','package','receipt','calculator','archive','search','arrow-left'])|unique %}<span data-i="{{ n }}">{{ ic(n) }}</span>{% endfor %}</template>
 <script>
 function isPhone(){return window.matchMedia('(max-width:760px)').matches;}
 function toggleNav(){
@@ -168,6 +184,82 @@ document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
     bar.addEventListener('animationend',close);
     t.querySelector('.t-x').addEventListener('click',close);
     box.appendChild(t);});
+})();
+/* لوحة البحث السريع: Ctrl+K (أو ⌘K أو «/») أو الضغط على خانة البحث العلوية.
+   الصفحات والإجراءات تُطابَق فوراً في المتصفّح، والمعتمرون والبرامج من الخادم. */
+(function(){
+  var ov=document.getElementById('cmdk');if(!ov)return;
+  var inp=document.getElementById('cmdkInput'),list=document.getElementById('cmdkList'),
+      tpl=document.getElementById('cmdIcons'),tb=document.getElementById('tbSearch'),data=[];
+  try{data=JSON.parse(document.getElementById('cmdData').textContent||'[]');}catch(e){}
+  function norm(t){return String(t||'').toLowerCase().replace(/[ً-ٰٟـ]/g,'')
+    .replace(/[أإآٱ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/ؤ/g,'و').replace(/ئ/g,'ي')
+    .replace(/\s+/g,' ').trim();}
+  data.forEach(function(d){d.n=norm(d.t+' '+d.k);});
+  function icon(n){var s=tpl.content.querySelector('[data-i="'+n+'"]')||tpl.content.querySelector('[data-i="search"]');
+    return s?s.innerHTML:'';}
+  var items=[],act=0,ctl=null,timer=null,remote=null,loading=false;
+  function local(q){
+    if(!q)return data.filter(function(d){return d.g==='إجراءات سريعة';}).slice(0,5)
+      .concat(data.filter(function(d){return d.g!=='إجراءات سريعة';}).slice(0,6));
+    var parts=q.split(' ');
+    return data.filter(function(d){return parts.every(function(p){return d.n.indexOf(p)>=0;});}).slice(0,8);}
+  function sec(title){var h=document.createElement('div');h.className='cmdk-sec';h.textContent=title;
+    h.setAttribute('role','presentation');list.appendChild(h);}
+  function add(it){var a=document.createElement('a');a.className='cmdk-item';a.href=it.u;
+    a.id='cmdk-'+items.length;a.setAttribute('role','option');
+    var ci=document.createElement('span');ci.className='ci';ci.innerHTML=icon(it.i);
+    var ct=document.createElement('span');ct.className='ct';
+    var b=document.createElement('b');b.textContent=it.t;ct.appendChild(b);
+    if(it.s){var sm=document.createElement('small');sm.textContent=it.s;ct.appendChild(sm);}
+    var go=document.createElement('span');go.className='go';go.innerHTML=icon('arrow-left');
+    a.appendChild(ci);a.appendChild(ct);a.appendChild(go);
+    var i=items.length;a.addEventListener('mousemove',function(){if(act!==i)setAct(i,false);});
+    list.appendChild(a);items.push(a);}
+  function setAct(i,scroll){if(!items.length)return;act=(i+items.length)%items.length;
+    items.forEach(function(el,k){el.classList.toggle('on',k===act);el.setAttribute('aria-selected',k===act?'true':'false');});
+    inp.setAttribute('aria-activedescendant',items[act].id);
+    if(scroll!==false)items[act].scrollIntoView({block:'nearest'});}
+  function render(){
+    var raw=inp.value.trim(),q=norm(raw);list.innerHTML='';items=[];
+    if(remote&&remote.q===raw)remote.groups.forEach(function(g){
+      sec(g.title+(g.total>g.items.length?' ('+g.total+')':''));g.items.forEach(add);});
+    var loc=local(q),groups={};
+    loc.forEach(function(d){(groups[d.g]=groups[d.g]||[]).push(d);});
+    Object.keys(groups).forEach(function(g){sec(q?g:(g==='الصفحات'?'صفحات مقترحة':g));groups[g].forEach(add);});
+    if(raw.length>=2){sec('بحث شامل');
+      add({t:'كل النتائج عن «'+raw+'»',s:'صفحة البحث الكاملة',u:'{{ url_for("search_page") }}?q='+encodeURIComponent(raw),i:'search'});}
+    if(loading&&raw.length>=2){var l=document.createElement('div');l.className='cmdk-loading';
+      l.textContent='جارٍ البحث في السجلّات…';list.insertBefore(l,list.firstChild);}
+    if(!items.length){var e=document.createElement('div');e.className='cmdk-empty';
+      e.textContent=raw?'لا نتائج — اكتب حرفين على الأقل للبحث في السجلّات':'ابدأ الكتابة للبحث';list.appendChild(e);}
+    setAct(0);}
+  function fetchRemote(){var raw=inp.value.trim();
+    if(ctl)ctl.abort();if(raw.length<2){loading=false;render();return;}
+    ctl=window.AbortController?new AbortController():null;loading=true;render();
+    fetch('{{ url_for("search_suggest") }}?q='+encodeURIComponent(raw),
+          {credentials:'same-origin',signal:ctl?ctl.signal:undefined})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){loading=false;if(j&&j.q===inp.value.trim()){remote=j;}render();})
+      .catch(function(e){if(e&&e.name==='AbortError')return;loading=false;render();});}
+  function open(v){if(!ov.hidden)return;ov.hidden=false;document.documentElement.classList.add('cmdk-open');
+    inp.value=v||'';remote=null;render();inp.focus();if(inp.value.trim().length>=2)fetchRemote();}
+  function close(){ov.hidden=true;document.documentElement.classList.remove('cmdk-open');if(ctl)ctl.abort();}
+  window.openCmdk=open;
+  inp.addEventListener('input',function(){render();clearTimeout(timer);timer=setTimeout(fetchRemote,180);});
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'){e.preventDefault();setAct(act+1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();setAct(act-1);}
+    else if(e.key==='Enter'){e.preventDefault();if(items[act])location.href=items[act].href;}
+    else if(e.key==='Escape'){e.preventDefault();close();}
+    else if(e.key==='Tab'){e.preventDefault();setAct(act+(e.shiftKey?-1:1));}});
+  ov.addEventListener('mousedown',function(e){if(e.target===ov)close();});
+  document.addEventListener('keydown',function(e){
+    var k=(e.key||'').toLowerCase();
+    if((e.ctrlKey||e.metaKey)&&(k==='k'||e.code==='KeyK')){e.preventDefault();ov.hidden?open(''):close();return;}
+    var t=e.target,typing=t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    if(k==='/'&&!typing&&ov.hidden){e.preventDefault();open('');}});
+  if(tb){tb.addEventListener('focus',function(){var v=tb.value;tb.blur();open(v);});}
 })();
 {% if session_minutes %}
 /* مدّة الجلسة: النشاط في الصفحة يمدّدها، وقبل انتهائها تنبيه بالعدّ التنازلي،

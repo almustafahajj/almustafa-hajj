@@ -1718,6 +1718,7 @@ def _ctx() -> dict:
         alert_count=_alert_count(),
         nav_badges=_nav_badges(),
         session_minutes=_session_minutes() if s is not None else 0,
+        cmd_items=_cmd_items(),
         search_q=(request.args.get("q") or "") if request.endpoint == "search_page" else "")
 
 
@@ -1725,7 +1726,8 @@ def _nav_badges() -> dict:
     """رقم على أيقونة كل قسم في القائمة بما يحتاج انتباهاً (تحذير/عاجل)."""
     if _sess() is None:
         return {}
-    section = {"program": "ops", "travel": "ops", "finance": "fin", "quality": "reports"}
+    section = {"program": "ops", "travel": "ops", "finance": "fin", "quality": "reports",
+               "missing": "people"}
     out: dict = {}
     try:
         for a in _alerts():
@@ -1801,6 +1803,8 @@ def _alert_link(a: dict) -> str:
         return url_for("quality_report")
     if k == "travel":
         return url_for("travel_list")
+    if k == "missing":                    # من تنقصهم بيانات في هذا البرنامج بالضبط
+        return url_for("hujjaj", grp=ref, need=1)
     return url_for("dashboard")
 
 
@@ -1813,39 +1817,124 @@ def notifications():
                            items=items, **_ctx())
 
 
+def _search_groups(q: str) -> list:
+    """نتائج البحث الشامل مع رابط كل نتيجة (لصفحة البحث ولوحة البحث السريع)."""
+    from webapp import search as _sr
+    records = _load_records()
+    try:
+        docs = storage.load_documents(session=_sess())
+    except Exception:                              # noqa: BLE001
+        docs = []
+    groups = _sr.search(q, records, storage.load_settings(), _mode(), docs)
+    for g in groups:
+        for it in g["items"]:
+            k, ref = it["kind"], it["ref"]
+            if k == "record":
+                it["link"] = url_for("hujjaj_edit", idx=ref, fp=_rec_token(records[ref]))
+                it["extra"] = url_for("record_docs", idx=ref, fp=_rec_token(records[ref]))
+            elif k == "program":
+                it["link"] = url_for("program_edit", code=ref)
+            elif k == "package":
+                it["link"] = url_for("programs", package=ref)
+            elif k == "quote":
+                it["link"] = url_for("quote_edit", code=ref[0], num=ref[1])
+            elif k == "pricing":
+                it["link"] = url_for("pricing_edit", num=ref)
+            elif k == "archive":
+                it["link"] = url_for("archive_pdf", doc_id=ref)
+    return groups
+
+
+_SUGGEST_ICON = {"record": "user", "program": "folder", "package": "package",
+                 "quote": "receipt", "pricing": "calculator", "archive": "archive"}
+
+
+@app.get("/search/suggest")
+def search_suggest():
+    """اقتراحات لوحة البحث السريع (Ctrl+K) أثناء الكتابة — JSON، ٦ لكل مجموعة."""
+    if _sess() is None:
+        return {"groups": [], "login": True}, 401
+    q = (request.args.get("q") or "").strip()[:80]
+    out = []
+    if len(q) >= 2:
+        for g in _search_groups(q):
+            out.append({"title": g["title"], "total": g["total"],
+                        "items": [{"t": it["title"], "s": it.get("sub", ""),
+                                   "u": it["link"], "i": _SUGGEST_ICON.get(it["kind"], "search")}
+                                  for it in g["items"][:6]]})
+    return {"q": q, "groups": out, "all": url_for("search_page", q=q)}
+
+
+def _cmd(t, k, u, i, g) -> dict:
+    return {"t": t, "k": k, "u": u, "i": i, "g": g}
+
+
+def _cmd_items() -> list:
+    """صفحات البورتال وإجراءاته السريعة للوحة البحث (حسب الصلاحية والنظام).
+    كل عنصر: t العنوان، k كلمات مساعدة للمطابقة، u الرابط، i الأيقونة، g المجموعة."""
+    s = _sess()
+    if s is None:
+        return []
+    um = _mode() == app_mode.UMRAH
+    to = app_mode.HAJJ if um else app_mode.UMRAH
+    A, P = "إجراءات سريعة", "الصفحات"
+    items = []
+    if s.can_edit:
+        items += [_cmd("إضافة سجلّ جديد", "اضافه جديد معتمر حاج", url_for("hujjaj_new"), "plus", A),
+                  _cmd("قراءة جواز بالكاميرا", "مسح صوره جواز", url_for("hujjaj_scan"), "camera", A)]
+    items += [
+        _cmd("من لم يدفع شيئاً", "سداد متاخر تحصيل", url_for("hujjaj", pay="none"), "alert", A),
+        _cmd("من سدّد جزئياً", "سداد جزئي متبقي", url_for("hujjaj", pay="part"), "hourglass", A),
+        _cmd("من تنقصهم بيانات السفر", "ناقص تاشيره جواز هاتف", url_for("hujjaj", need=1), "clipboard", A),
+        _cmd("التبديل إلى نظام " + app_mode.theme(to)["noun"], "تبديل نظام حج عمره",
+             url_for("switch", mode=to, t=_csrf_token()), "swap", A),
+        _cmd("لوحة التحكم", "الرئيسيه ملخص", url_for("dashboard"), "grid", P),
+        _cmd("السجلّات والبيانات", "قائمه معتمرين حجاج كشف", url_for("hujjaj"), "users", P),
+        _cmd("المستندات", "سند فاتوره عقد فاوتشر", url_for("documents"), "file-text", P),
+        _cmd("أرشيف المستندات", "ارشيف", url_for("archive"), "archive", P),
+        _cmd("المجموعات والمرشدون", "مرشد مجموعه", url_for("groups_page"), "users", P)]
+    if um:
+        items.append(_cmd("برامج العمرة", "رحلات باقات طيران فنادق", url_for("programs"), "briefcase", P))
+    else:
+        items += [_cmd("مواعيد وتعليمات السفر", "سفر طيران برامج", url_for("travel_list"), "plane", P),
+                  _cmd("تسكين المخيمات", "مخيم خيام منى عرفات", url_for("camps_page"), "tent", P)]
+    items += [
+        _cmd("إشغال الغرف", "تسكين فنادق غرف", url_for("occupancy"), "bed", P),
+        _cmd("تقويم الرحلات", "تقويم مواعيد مغادره عوده", url_for("calendar_page"), "calendar", P),
+        _cmd("المالية والتحصيل", "دفعات سداد مبالغ ايصال", url_for("finance"), "wallet", P)]
+    if s.can_edit:
+        items.append(_cmd("المصروفات والمحاسبة", "مصاريف محاسبه", url_for("expenses_page"), "receipt", P))
+    items += [
+        _cmd("التسعير والعروض", "عرض سعر تسعيره", url_for("offers"), "calculator", P),
+        _cmd("التقارير والكشوف", "تقرير كشف طباعه", url_for("reports"), "printer", P),
+        _cmd("الرسوم البيانية", "رسوم احصاءات", url_for("charts"), "chart", P),
+        _cmd("فحص الجودة والجاهزية", "جوده جاهزيه نواقص", url_for("quality_report"), "check", P),
+        _cmd("الإشعارات", "تنبيهات", url_for("notifications"), "bell", P),
+        _cmd("تحديد الموسم", "موسم سنه", url_for("season_page"), "calendar", P),
+        _cmd("رسائل واتساب", "واتس رسائل", url_for("whatsapp_page"), "chat", P)]
+    if s.can_edit:
+        items.append(_cmd("استيراد من إكسل", "اكسل استيراد ملف", url_for("data_import"), "import", P))
+    if s.is_admin:
+        items += [
+            _cmd("إدارة الحسابات", "مستخدمين صلاحيات حسابات", url_for("accounts"), "shield", P),
+            _cmd("الجلسات النشطة", "جلسات اجهزه", url_for("sessions_page"), "phone-device", P),
+            _cmd("سجلّ التدقيق", "سجل عمليات تدقيق", url_for("audit_log"), "history", P),
+            _cmd("النسخ الاحتياطي", "نسخه احتياطيه استعاده", url_for("backup_page"), "download", P)]
+    items += [
+        _cmd("تغيير كلمة المرور", "كلمه سر باسورد", url_for("account_password"), "key", P),
+        _cmd("الدخول بخطوتين", "تحقق رمز", url_for("account_2fa"), "shield", P),
+        _cmd("تسجيل الخروج", "خروج", url_for("logout", t=_csrf_token()), "logout", P)]
+    return items
+
+
 @app.get("/search")
 def search_page():
     """البحث السريع الشامل (خانة أعلى كل صفحة)."""
     if _sess() is None:
         return redirect(url_for("login"))
-    from webapp import search as _sr
     q = (request.args.get("q") or "").strip()
-    groups = []
+    groups = _search_groups(q) if q else []
     if q:
-        records = _load_records()
-        try:
-            docs = storage.load_documents(session=_sess())
-        except Exception:                          # noqa: BLE001
-            docs = []
-        groups = _sr.search(q, records, storage.load_settings(), _mode(), docs)
-        for g in groups:
-            for it in g["items"]:
-                k, ref = it["kind"], it["ref"]
-                if k == "record":
-                    it["link"] = url_for("hujjaj_edit", idx=ref,
-                                         fp=_rec_token(records[ref]))
-                    it["extra"] = url_for("record_docs", idx=ref,
-                                          fp=_rec_token(records[ref]))
-                elif k == "program":
-                    it["link"] = url_for("program_edit", code=ref)
-                elif k == "package":
-                    it["link"] = url_for("programs", package=ref)
-                elif k == "quote":
-                    it["link"] = url_for("quote_edit", code=ref[0], num=ref[1])
-                elif k == "pricing":
-                    it["link"] = url_for("pricing_edit", num=ref)
-                elif k == "archive":
-                    it["link"] = url_for("archive_pdf", doc_id=ref)
         # نتيجة واحدة فقط ← افتحها مباشرة
         if len(groups) == 1 and groups[0]["total"] == 1:
             return redirect(groups[0]["items"][0]["link"])
@@ -1884,7 +1973,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-10 · قائمة المعتمرين: حالة السداد + التصفية بالسداد + أزرار أخفّ"
+_BUILD_TAG = "2026-11-10 · بحث سريع Ctrl+K + تنبيه البيانات الناقصة قبل المغادرة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2466,6 +2555,9 @@ def _list_filtered(records, gattr, ignore_pay: bool = False):
     pay = "" if ignore_pay else (request.args.get("pay") or "").strip()
     if pay not in _PAY_STATES:
         pay = ""
+    grp = (request.args.get("grp") or "").strip()          # برنامج/رحلة بعينها
+    need = request.args.get("need") == "1"                 # من تنقصهم بيانات السفر
+    from webapp.alerts import missing_fields
     out = []
     for i, r in enumerate(records):
         if q and q not in " ".join(str(getattr(r, k, "") or "") for k in
@@ -2477,6 +2569,10 @@ def _list_filtered(records, gattr, ignore_pay: bool = False):
                for key, val in sel.items()):
             continue
         if pay and _pay_state(r) != pay:
+            continue
+        if grp and str(getattr(r, gattr, "") or "").strip() != grp:
+            continue
+        if need and not missing_fields(r, _mode()):
             continue
         out.append((i, r))
     if sort:
@@ -2536,6 +2632,9 @@ def hujjaj():
     sort = (request.args.get("sort") or "").strip()
 
     indexed = _list_filtered(records, gattr)        # بحث + فلاتر + ترتيب
+    from webapp.alerts import missing_fields
+    grp = (request.args.get("grp") or "").strip()
+    need = request.args.get("need") == "1"
     pay = (request.args.get("pay") or "").strip()
     pay = pay if pay in _PAY_STATES else ""
     # أعداد أزرار السداد: على نتيجة البحث والفلاتر الأخرى (قبل تصفية السداد)
@@ -2577,18 +2676,25 @@ def hujjaj():
             "pay_cls": _PAY_STATES[ps][1] if ps else "",
             "pay_icon": _PAY_STATES[ps][2] if ps else "",
             "pct": max(0, min(100, round((value - rem) * 100 / value))) if value > 0 else 0,
+            "missing": missing_fields(r, _mode()) if need else [],
         })
     qs = {"q": q, "sort": sort}                     # لحفظ الفلاتر عبر الصفحات
     for key, val in sel.items():
         qs["flt_" + key] = val
+    if grp:
+        qs["grp"] = grp
+    if need:
+        qs["need"] = 1
     qs_nopay = dict(qs)
     if pay:
         qs["pay"] = pay
     pay_states = [(k, lbl, cls, icon) for k, (lbl, cls, icon) in _PAY_STATES.items()]
     return render_template("hujjaj.html", active="hujjaj", rows=rows, q=q,
                            filteropts=filteropts, sel=sel, sort=sort,
-                           sortfields=_SORT_FIELDS, any_filter=bool(sel or sort or pay),
+                           sortfields=_SORT_FIELDS,
+                           any_filter=bool(sel or sort or pay or grp or need),
                            qs=qs, qs_nopay=qs_nopay, pay=pay, pay_states=pay_states,
+                           grp=grp, need=need,
                            counts=counts, total=total, page=page, pages=pages,
                            offset=offset, **_ctx())
 

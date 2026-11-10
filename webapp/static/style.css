@@ -1091,3 +1091,70 @@ table.data.list-table{ overflow:clip; }   /* لا overflow:hidden وإلّا ص�
   .row-acts{ text-align:start; }
   .icon-btn{ opacity:1; background:var(--soft); border-color:var(--border); }
 }
+
+/* ======================================================================
+   المرحلة ٤: لوحة البحث السريع (Ctrl+K) + عرض «من تنقصهم بيانات السفر»
+   ====================================================================== */
+kbd{ font-family:var(--font); font-size:11px; font-weight:600; line-height:1.5; color:var(--muted);
+  background:var(--panel); border:1px solid var(--border); border-bottom-width:2px;
+  border-radius:6px; padding:0 6px; white-space:nowrap; }
+.tb-search{ position:relative; }
+.tb-search input{ padding-inline-end:84px; cursor:pointer; }
+.tb-kbd{ position:absolute; left:10px; top:50%; transform:translateY(-50%);   /* يسار الخانة (نهايتها في العربية) */
+  pointer-events:none; display:flex; gap:3px; direction:ltr; }
+@media (max-width:760px){ .tb-kbd{ display:none; } .tb-search input{ padding-inline-end:16px; } }
+
+html.cmdk-open{ overflow:hidden; }
+.cmdk{ position:fixed; inset:0; z-index:400; display:flex; justify-content:center; align-items:flex-start;
+  padding:10vh 16px 16px; background:rgba(14,22,18,.45);
+  -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); animation:cmdk-fade .15s ease-out; }
+.cmdk[hidden]{ display:none; }
+.cmdk-box{ width:min(640px, 100%); max-height:min(72vh, 580px); display:flex; flex-direction:column;
+  background:var(--panel); border:1px solid var(--border); border-radius:18px; overflow:hidden;
+  box-shadow:0 30px 80px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.12);
+  animation:cmdk-pop .2s var(--ease); }
+@keyframes cmdk-fade{ from{ opacity:0; } }
+@keyframes cmdk-pop{ from{ opacity:0; transform:translateY(-8px) scale(.98); } }
+.cmdk-head{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--border); }
+.cmdk-head > .ico{ width:20px; height:20px; color:var(--bronze); flex:none; }
+.cmdk-head input{ flex:1; min-width:0; font:inherit; font-size:17px; color:var(--ink); padding:4px 0;
+  background:none; border:0 !important; box-shadow:none !important; outline:none; }
+.cmdk-list{ overflow-y:auto; overscroll-behavior:contain; padding:4px 8px 10px; }
+.cmdk-sec{ font-size:11.5px; font-weight:600; color:var(--muted); padding:12px 10px 4px; }
+.cmdk-item{ display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:12px;
+  color:var(--ink); scroll-margin:8px; }
+.cmdk-item .ci{ flex:none; width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+  background:var(--soft); color:var(--bronze); transition:background-color .12s, color .12s; }
+.cmdk-item .ci .ico{ width:17px; height:17px; vertical-align:0; }
+.cmdk-item .ct{ flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.45; }
+.cmdk-item .ct b{ font-weight:600; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cmdk-item .ct small{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cmdk-item .go{ flex:none; color:var(--muted); opacity:0; transition:opacity .12s; }
+.cmdk-item .go .ico{ width:16px; height:16px; }
+.cmdk-item.on{ background:color-mix(in srgb, var(--bronze) 10%, transparent); }
+.cmdk-item.on .ci{ background:var(--bronze); color:#fff; }
+.cmdk-item.on .go{ opacity:1; }
+.cmdk-empty{ padding:28px 12px; text-align:center; color:var(--muted); font-size:14px; }
+.cmdk-loading{ display:flex; align-items:center; gap:8px; padding:10px 10px 2px; font-size:12.5px; color:var(--muted); }
+.cmdk-loading::before{ content:""; width:12px; height:12px; border-radius:50%; flex:none;
+  border:2px solid var(--border); border-top-color:var(--bronze); animation:spin .7s linear infinite; }
+.cmdk-foot{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 16px; padding:9px 16px;
+  border-top:1px solid var(--border); background:var(--soft); font-size:12px; color:var(--muted); }
+.cmdk-foot .cmdk-tip{ margin-inline-start:auto; }
+@media (max-width:760px){
+  .cmdk{ padding:10px; }
+  .cmdk-box{ max-height:calc(100dvh - 20px); }
+  .cmdk-foot, .cmdk-esc{ display:none; }
+}
+@media (prefers-reduced-motion:reduce){ .cmdk, .cmdk-box{ animation:none; } }
+
+/* قائمة «من تنقصهم بيانات السفر» */
+.scope-note{ display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-top:14px;
+  padding:11px 14px; border-radius:12px; font-size:14px;
+  background:#FDF3E1; color:#6B4A00; border:1px solid #F0D9A8; border-inline-start:4px solid #E0A12B; }
+.scope-note > .ico{ color:#C27C0E; flex:none; }
+.scope-note span{ flex:1; min-width:200px; }
+.scope-note a{ font-weight:600; color:#6B4A00; display:inline-flex; align-items:center; gap:4px; }
+.scope-note a:hover{ text-decoration:underline; }
+.who-t small.miss{ align-self:flex-start; color:#B23A3A; font-weight:600; }
+@keyframes spin{ to{ transform:rotate(360deg); } }
