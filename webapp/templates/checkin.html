@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}تسجيل الحضور — المصطفى{% endblock %}
+{% block heading %}{{ ic('check') }} تسجيل الحضور{% endblock %}
+{% block subhead %}<div class="season">امسح رمز «رحلتي» من الجوال أو رقم الجواز — أو اضغط «حضر» بجانب الاسم</div>{% endblock %}
+{% block content %}
+<form method="get" class="ck-top" id="ckScope">
+  <div class="seg ck-stages" role="group" aria-label="المرحلة">
+    {% for s in stages %}<button type="submit" name="stage" value="{{ s }}" aria-pressed="{{ 'true' if s == stage else 'false' }}">{{ ic(['plane','hotel','bus','landing'][loop.index0]) }} {{ s }}</button>{% endfor %}
+  </div>
+  <input type="hidden" name="stage" value="{{ stage }}">
+  <label class="ck-grp">{{ ic('briefcase') }}
+    <select name="grp" onchange="this.form.submit()" aria-label="البرنامج">
+      <option value="">كل {{ noun }}</option>
+      {% for g, label in groups %}<option value="{{ g }}" {{ 'selected' if g == grp }}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+
+<section class="ck-hero" data-stage="{{ stage }}" data-grp="{{ grp }}" data-edit="{{ '1' if can_edit else '' }}">
+  <div class="ck-count">
+    <svg viewBox="0 0 36 36" class="ck-ring" aria-hidden="true">
+      <circle cx="18" cy="18" r="15.9" class="r-bg"/>
+      <circle cx="18" cy="18" r="15.9" class="r-fg" pathLength="100" id="ckArc"
+              style="stroke-dasharray:{{ ((present / total * 100) if total else 0)|round(1) }} 100"/>
+    </svg>
+    <div class="ck-num"><b id="ckPresent">{{ present }}</b><span>من <b id="ckTotal">{{ total }}</b></span></div>
+  </div>
+  <div class="ck-meta">
+    <h3>{{ stage }}{% if grp %} · {{ grp_label }}{% endif %}</h3>
+    <p><span class="ok">{{ ic('check') }} حضر <b id="ckP2">{{ present }}</b></span>
+       <span class="miss">{{ ic('alert') }} باقٍ <b id="ckLeft">{{ total - present }}</b></span></p>
+    <a class="btn ghost sm" target="_blank" href="{{ url_for('checkin_report', grp=grp) }}">{{ ic('printer') }} تقرير الحضور</a>
+  </div>
+</section>
+
+{% if can_edit %}
+<section class="ck-scan">
+  <div class="ck-cam" id="ckCam" hidden>
+    <video id="ckVideo" playsinline muted></video>
+    <span class="ck-frame" aria-hidden="true"><i></i></span>
+    <button type="button" class="ck-stop" id="ckStop" aria-label="إيقاف الكاميرا">{{ ic('x') }}</button>
+  </div>
+  <div class="ck-bar">
+    <button type="button" class="btn primary" id="ckStart">{{ ic('camera') }} مسح بالكاميرا</button>
+    <form id="ckManual" class="ck-manual" autocomplete="off">
+      <input id="ckCode" type="text" inputmode="text" placeholder="أو اكتب رقم الجواز / الرقم المرجعي ثم Enter" aria-label="رقم الجواز">
+      <button type="submit" class="btn ghost" aria-label="تسجيل">{{ ic('check') }}</button>
+    </form>
+  </div>
+  <div class="ck-result" id="ckResult" role="status" aria-live="assertive" hidden></div>
+</section>
+{% endif %}
+
+<section class="ck-lists">
+  <div class="ck-tabs" role="tablist">
+    <button type="button" role="tab" aria-selected="true" data-t="absent">{{ ic('alert') }} لم يحضروا <b id="tAbs">{{ total - present }}</b></button>
+    <button type="button" role="tab" aria-selected="false" data-t="present">{{ ic('check') }} حضروا <b id="tPre">{{ present }}</b></button>
+    <label class="ck-find">{{ ic('search') }}<input type="search" id="ckFind" placeholder="ابحث بالاسم…" aria-label="بحث"></label>
+  </div>
+  <ul class="ck-list" id="ckList">
+    {% for p in people %}
+    <li class="ck-row{{ ' here' if p.time }}" data-idx="{{ p.idx }}" data-fp="{{ p.fp }}" data-name="{{ p.name }}">
+      <span class="av av{{ p.tone }}">{{ p.init }}</span>
+      <span class="ck-who"><b>{{ p.name }}</b><small dir="ltr">{{ p.passport }}</small></span>
+      <span class="ck-time" dir="ltr">{{ p.time }}</span>
+      {% if p.tel %}<a class="icon-btn" href="tel:{{ p.tel }}" aria-label="اتصال بـ {{ p.name }}">{{ ic('phone') }}</a>{% endif %}
+      {% if can_edit %}
+      <button type="button" class="ck-mark btn primary sm">{{ ic('check') }} حضر</button>
+      <button type="button" class="ck-undo icon-btn" aria-label="إلغاء حضور {{ p.name }}" title="إلغاء الحضور">{{ ic('undo') }}</button>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="empty-state" id="ckEmpty" hidden><span class="es-ic">{{ ic('check') }}</span><b id="ckEmptyT">حضر الجميع</b></div>
+</section>
+<template id="ckIcOk">{{ ic('check') }}</template>
+<template id="ckIcErr">{{ ic('alert') }}</template>
+<script>
+(function(){
+  var hero=document.querySelector('.ck-hero'), STAGE=hero.dataset.stage, GRP=hero.dataset.grp, EDIT=!!hero.dataset.edit;
+  var list=document.getElementById('ckList'), tab='absent', q='';
+  function norm(t){return String(t||'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').toLowerCase();}
+  function render(){
+    var shown=0;
+    list.querySelectorAll('.ck-row').forEach(function(r){
+      var here=r.classList.contains('here'), ok=(tab==='present')===here && (!q||norm(r.dataset.name).indexOf(q)>=0);
+      r.hidden=!ok; if(ok) shown++;});
+    var e=document.getElementById('ckEmpty'); e.hidden=!!shown;
+    document.getElementById('ckEmptyT').textContent = q ? 'لا نتائج' : (tab==='absent' ? 'حضر الجميع' : 'لم يُسجَّل أحد بعد');
+  }
+  function counts(p,t){
+    ['ckPresent','ckP2','tPre'].forEach(function(id){document.getElementById(id).textContent=p;});
+    ['ckLeft','tAbs'].forEach(function(id){document.getElementById(id).textContent=t-p;});
+    document.getElementById('ckTotal').textContent=t;
+    document.getElementById('ckArc').style.strokeDasharray=(t?Math.round(1000*p/t)/10:0)+' 100';
+  }
+  document.querySelectorAll('.ck-tabs [data-t]').forEach(function(b){b.addEventListener('click',function(){
+    tab=b.dataset.t; document.querySelectorAll('.ck-tabs [data-t]').forEach(function(x){x.setAttribute('aria-selected',x===b);}); render();});});
+  document.getElementById('ckFind').addEventListener('input',function(){q=norm(this.value.trim());render();});
+  render();
+  if(!EDIT) return;
+  var res=document.getElementById('ckResult'), rt;
+  function show(kind,text){res.className='ck-result '+kind;
+    res.innerHTML=document.getElementById(kind==='bad'?'ckIcErr':'ckIcOk').innerHTML+'<span></span>';
+    res.querySelector('span').textContent=text; res.hidden=false; clearTimeout(rt); rt=setTimeout(function(){res.hidden=true;},4500);}
+  var actx=null;
+  function beep(ok){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();var o=actx.createOscillator(),g=actx.createGain();
+    o.frequency.value=ok?880:220;g.gain.value=.08;o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+(ok?.12:.3));}catch(e){}
+    if(navigator.vibrate) navigator.vibrate(ok?60:[80,60,80]);}
+  function apply(d){
+    var row=list.querySelector('.ck-row[data-idx="'+d.idx+'"]');
+    if(row){row.dataset.fp=d.fp; row.classList.toggle('here',!d.undo); row.querySelector('.ck-time').textContent=d.undo?'':d.time;
+      row.classList.add('flash'); setTimeout(function(){row.classList.remove('flash');},900);}
+    counts(d.present,d.total); render();
+  }
+  function mark(body){
+    body.stage=STAGE; body.grp=GRP;
+    return fetch('{{ url_for("checkin_mark") }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){return r.json();}).then(function(d){
+        if(!d.ok){show('bad',d.msg||'تعذّر التسجيل');beep(false);return d;}
+        apply(d);
+        if(d.undo) show('warn','أُلغي حضور '+d.name);
+        else if(d.already) {show('warn',d.name+' — مسجّل مسبقاً ('+d.time+')');beep(true);}
+        else {show('ok',d.name+' — سُجّل حضوره '+d.time);beep(true);}
+        return d;
+      }).catch(function(){show('bad','لا اتصال — أعد المحاولة');beep(false);});
+  }
+  list.addEventListener('click',function(e){
+    var row=e.target.closest('.ck-row'); if(!row) return;
+    if(e.target.closest('.ck-mark')) mark({idx:+row.dataset.idx, fp:row.dataset.fp});
+    else if(e.target.closest('.ck-undo')) mark({idx:+row.dataset.idx, fp:row.dataset.fp, undo:true});
+  });
+  document.getElementById('ckManual').addEventListener('submit',function(e){e.preventDefault();
+    var i=document.getElementById('ckCode'), v=i.value.trim(); if(!v) return; i.value=''; mark({code:v});});
+  /* المسح بالكاميرا: BarcodeDetector إن وُجد، وإلّا مكتبة jsQR (تُحمَّل عند الحاجة فقط) */
+  var cam=document.getElementById('ckCam'), video=document.getElementById('ckVideo'), stream=null, timer=null,
+      det=null, canvas=document.createElement('canvas'), ctx=canvas.getContext('2d',{willReadFrequently:true}), last='', lastAt=0, busy=false;
+  function loadJsQR(){return new Promise(function(ok,no){if(window.jsQR) return ok();
+    var s=document.createElement('script');s.src='{{ url_for("static", filename="vendor/jsQR.js") }}';s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
+  function stop(){if(timer) clearInterval(timer); timer=null; if(stream) stream.getTracks().forEach(function(t){t.stop();}); stream=null; cam.hidden=true;
+    document.getElementById('ckStart').hidden=false;}
+  function found(v){var now=Date.now(); if(!v||busy||(v===last&&now-lastAt<5000)) return; last=v; lastAt=now; busy=true;
+    cam.classList.add('hit'); setTimeout(function(){cam.classList.remove('hit');},500);
+    mark({code:v}).then(function(){busy=false;},function(){busy=false;});}
+  function tick(){
+    if(!video.videoWidth) return;
+    if(det){ det.detect(video).then(function(c){ if(c&&c.length) found(c[0].rawValue); }).catch(function(){}); return; }
+    var w=Math.min(640,video.videoWidth), h=Math.round(w*video.videoHeight/video.videoWidth);
+    canvas.width=w; canvas.height=h; ctx.drawImage(video,0,0,w,h);
+    var r=window.jsQR(ctx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:'dontInvert'}); if(r&&r.data) found(r.data);
+  }
+  document.getElementById('ckStart').addEventListener('click',function(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){show('bad','المتصفّح لا يسمح بالكاميرا — استعمل الإدخال اليدوي');return;}
+    var prep=('BarcodeDetector' in window)?BarcodeDetector.getSupportedFormats().then(function(f){
+      if(f.indexOf('qr_code')<0) throw 0; det=new BarcodeDetector({formats:f.filter(function(x){return ['qr_code','code_128','code_39','pdf417','data_matrix'].indexOf(x)>=0;})});
+    }).catch(function(){det=null;return loadJsQR();}):loadJsQR();
+    prep.then(function(){return navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});})
+      .then(function(s){stream=s; video.srcObject=s; video.play(); cam.hidden=false; document.getElementById('ckStart').hidden=true;
+        timer=setInterval(tick,250);})
+      .catch(function(){show('bad','لم يُسمح بالكاميرا — اسمح بها من إعدادات المتصفّح أو استعمل الإدخال اليدوي');});
+  });
+  document.getElementById('ckStop').addEventListener('click',stop);
+  window.addEventListener('pagehide',stop);
+})();
+</script>
+{% endblock %}

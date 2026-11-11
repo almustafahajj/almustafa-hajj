@@ -131,6 +131,17 @@
   </section>
   {% endif %}
 
+  {% if checkin_qr and trip.status.state in ['before', 'during', 'unknown'] %}
+  <section class="tp-sec">
+    <h2>{{ ic('qr') }} رمز الحضور</h2>
+    <article class="tp-qr">
+      <div class="tp-qr-code">{{ checkin_qr }}</div>
+      <p><b>اعرضه على المرشد</b>عند التجمّع في المطار أو الفندق أو الحافلة ليُسجَّل حضورك بلمح البصر.
+        <small>ارفع سطوع الشاشة إن تعذّرت قراءته.</small></p>
+    </article>
+  </section>
+  {% endif %}
+
   {% if docs %}
   <section class="tp-sec">
     <h2>{{ ic('file-text') }} مستنداتك</h2>

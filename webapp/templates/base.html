@@ -18,15 +18,16 @@
       <a class="navlink toplink {{ 'active' if active=='dashboard' }}" href="{{ url_for('dashboard') }}">
         {{ ring('grid', 25, '#8A6E4B', 'ng-ring', badge=None, glyph='gold') }} لوحة التحكم</a>
 
-      <details class="nav-group" {% if active in ['hujjaj','documents','archive','groups'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['hujjaj','documents','archive','groups','bookings'] %}open{% endif %}>
         <summary>{{ ring('users', 25, '#2C5AA0', 'ng-ring', badge=nav_badges.get('people'), glyph='gold') }} {{ noun }}</summary>
         <a class="navlink {{ 'active' if active=='hujjaj' }}" href="{{ url_for('hujjaj') }}">السجلّات والبيانات</a>
         <a class="navlink {{ 'active' if active=='documents' }}" href="{{ url_for('documents') }}">المستندات</a>
         <a class="navlink {{ 'active' if active=='archive' }}" href="{{ url_for('archive') }}">أرشيف المستندات</a>
         <a class="navlink {{ 'active' if active=='groups' }}" href="{{ url_for('groups_page') }}">المجموعات والمرشدون</a>
+        <a class="navlink {{ 'active' if active=='bookings' }}" href="{{ url_for('bookings') }}">طلبات الحجز{% if book_new %} <span class="nav-count">{{ book_new }}</span>{% endif %}</a>
       </details>
 
-      <details class="nav-group" {% if active in ['programs','travel','camps','occupancy','calendar'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['programs','travel','camps','occupancy','calendar','checkin'] %}open{% endif %}>
         <summary>{{ ring('briefcase', 25, '#2E7D5B', 'ng-ring', badge=nav_badges.get('ops'), glyph='gold') }} العمليات</summary>
         {% if mode=='umrah' %}<a class="navlink {{ 'active' if active=='programs' and not package }}" href="{{ url_for('programs') }}">برامج العمرة</a>
         {% for p in packages %}<a class="navlink subnav {{ 'active' if active=='programs' and package==p }}" href="{{ url_for('programs', package=p) }}">{{ ic('package') }} {{ p }}</a>{% endfor %}{% endif %}
@@ -34,11 +35,13 @@
         {% if mode=='hajj' %}<a class="navlink {{ 'active' if active=='camps' }}" href="{{ url_for('camps_page') }}">تسكين المخيمات</a>{% endif %}
         <a class="navlink {{ 'active' if active=='occupancy' }}" href="{{ url_for('occupancy') }}">إشغال الغرف</a>
         <a class="navlink {{ 'active' if active=='calendar' }}" href="{{ url_for('calendar_page') }}">تقويم الرحلات</a>
+        <a class="navlink {{ 'active' if active=='checkin' }}" href="{{ url_for('checkin_page') }}">تسجيل الحضور</a>
       </details>
 
-      <details class="nav-group" {% if active in ['finance','expenses','offers'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['finance','expenses','offers','remind'] %}open{% endif %}>
         <summary>{{ ring('wallet', 25, '#B26A00', 'ng-ring', badge=nav_badges.get('fin'), glyph='gold') }} المالية والعروض</summary>
         <a class="navlink {{ 'active' if active=='finance' }}" href="{{ url_for('finance') }}">المالية والتحصيل</a>
+        <a class="navlink {{ 'active' if active=='remind' }}" href="{{ url_for('finance_remind') }}">حملة التحصيل بالواتساب</a>
         {% if can_edit %}<a class="navlink {{ 'active' if active=='expenses' }}" href="{{ url_for('expenses_page') }}">المصروفات والمحاسبة</a>{% endif %}
         <a class="navlink {{ 'active' if active=='offers' }}" href="{{ url_for('offers') }}">التسعير والعروض</a>
       </details>
@@ -103,13 +106,13 @@
   </div>
 </div>
 {# ---- شريط سفلي للجوال: الرئيسية، الأشخاص، البحث، التحصيل، المزيد ---- #}
-{% set _bb_people = active in ['hujjaj','documents','archive','groups'] %}
-{% set _bb_fin = active in ['finance','expenses','offers'] %}
+{% set _bb_people = active in ['hujjaj','documents','archive','groups','bookings'] %}
+{% set _bb_fin = active in ['finance','expenses','offers','remind'] %}
 <nav class="bbar" aria-label="التنقّل السريع">
   <a class="bb-it{{ ' on' if active == 'dashboard' }}" href="{{ url_for('dashboard') }}"{% if active == 'dashboard' %} aria-current="page"{% endif %}>
     <span class="bb-ic">{{ ic('grid') }}</span><span>الرئيسية</span></a>
   <a class="bb-it{{ ' on' if _bb_people }}" href="{{ url_for('hujjaj') }}"{% if _bb_people %} aria-current="page"{% endif %}>
-    <span class="bb-ic">{{ ic('users') }}{% if nav_badges.get('people') %}<i class="bb-dot"></i>{% endif %}</span><span>{{ noun }}</span></a>
+    <span class="bb-ic">{{ ic('users') }}{% if nav_badges.get('people') or book_new %}<i class="bb-dot"></i>{% endif %}</span><span>{{ noun }}</span></a>
   <button class="bb-it bb-search" type="button" onclick="window.openCmdk&&openCmdk('')" aria-label="بحث سريع">
     <span class="bb-ic">{{ ic('search') }}</span><span>بحث</span></button>
   <a class="bb-it{{ ' on' if _bb_fin }}" href="{{ url_for('finance') }}"{% if _bb_fin %} aria-current="page"{% endif %}>

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}حملة التحصيل — المصطفى{% endblock %}
+{% block heading %}{{ ic('chat') }} حملة التحصيل بالواتساب{% endblock %}
+{% block subhead %}<div class="season">من عليه مبلغ متبقٍّ — الأقرب مغادرةً أولاً. اضغط «تذكير» فيفتح واتساب برسالة جاهزة باسمه ومبلغه</div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
+{% if err %}<div class="acc-msg err" data-keep>{{ err|iconize }}</div>{% endif %}
+
+<section class="rm-sum">
+  <div class="rs-card"><span class="rs-ic warn">{{ ic('users') }}</span><span><b>{{ rows|length }}</b><small>بحاجة لتذكير</small></span></div>
+  <div class="rs-card"><span class="rs-ic">{{ ic('wallet') }}</span><span><b>{{ total or '0' }}</b><small>درهم متبقٍّ عليهم</small></span></div>
+  <div class="rs-card"><span class="rs-ic ok">{{ ic('check') }}</span><span><b id="rsDone">{{ done_today }}</b><small>ذُكّروا اليوم</small></span></div>
+</section>
+
+<form method="get" class="rm-filters">
+  <div class="seg" role="group" aria-label="المغادرة خلال">
+    {% for v, lbl in [('7', 'أسبوع'), ('14', 'أسبوعين'), ('30', 'شهر'), ('all', 'الكل')] %}
+    <button type="submit" name="within" value="{{ v }}" aria-pressed="{{ 'true' if within == v else 'false' }}">{{ lbl }}</button>
+    {% endfor %}
+  </div>
+  <input type="hidden" name="within" value="{{ within }}">
+  <label class="ck-grp">{{ ic('briefcase') }}
+    <select name="grp" onchange="this.form.submit()" aria-label="البرنامج">
+      <option value="">كل البرامج</option>
+      {% for g, label in groups %}<option value="{{ g }}" {{ 'selected' if g == grp }}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <label class="rb-chk"><input type="checkbox" name="fresh" value="1" {{ 'checked' if fresh }} onchange="this.form.submit()"> من لم يُذكَّر خلال ٣ أيام</label>
+</form>
+
+{% if rows %}
+<ul class="rm-list" id="rmList">
+  {% for r in rows %}
+  <li class="rm-row{{ ' urgent' if r.urgent }}{{ ' done' if r.ago == 0 }}" data-uid="{{ r.uid }}">
+    <div class="rm-who">
+      <b>{{ r.name }}</b>
+      <span class="rm-chips">
+        <span class="rm-chip">{{ ic('briefcase') }} {{ r.prog }}</span>
+        <span class="rm-chip when{{ ' hot' if r.urgent }}">{{ ic('takeoff') }} {{ r.when }}{% if r.dep_txt %} · {{ r.dep_txt }}{% endif %}</span>
+        {% if not r.has_link %}<span class="rm-chip muted" title="أنشئ له رابط «رحلتي» من صفحة مستنداته ليُضاف للرسالة">{{ ic('link') }} بلا رابط رحلتي</span>{% endif %}
+      </span>
+    </div>
+    <div class="rm-money">
+      <b>{{ r.left }}</b><small>درهم متبقٍّ</small>
+      <div class="pay-bar" title="مدفوع {{ r.pct }}%"><i class="pb-{{ 'warn' if r.pct else 'crit' }}" style="width:{{ r.pct }}%"></i></div>
+    </div>
+    <div class="rm-act">
+      <span class="rm-last">{% if r.ago == 0 %}{{ ic('check') }} ذُكّر اليوم{% elif r.ago is not none %}ذُكّر قبل {{ r.ago }} {{ 'يوم' if r.ago == 1 else ('يومين' if r.ago == 2 else 'أيام') }}{% else %}لم يُذكَّر{% endif %}</span>
+      {% if r.wa %}
+      <a class="btn wa-btn sm" href="{{ r.wa }}" target="_blank" rel="noopener" {% if not can_edit %}data-ro="1"{% endif %}>{{ ic('chat') }} تذكير</a>
+      {% else %}<span class="btn ghost sm" aria-disabled="true" title="لا هاتف صالح في السجلّ">{{ ic('phone') }} بلا هاتف</span>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty-state"><span class="es-ic">{{ ic('check') }}</span><b>لا أحد بحاجة لتذكير هنا</b>
+  <span>{% if within != 'all' %}لا مبالغ متبقّية لمن يغادر خلال المدّة المختارة — جرّب «الكل».{% else %}كل المبالغ مسدَّدة.{% endif %}</span></div>
+{% endif %}
+
+<details class="panel rm-tpl"{% if err %} open{% endif %}>
+  <summary>{{ ic('pen') }} نصّ رسالة التذكير{% if not is_default %} <span class="rm-chip">مخصّص</span>{% endif %}</summary>
+  <div class="rm-tpl-body">
+    {% if can_edit %}
+    <form method="post" class="needs-save acc-form">
+      <textarea name="tpl" rows="7" maxlength="1200" dir="rtl">{{ tpl }}</textarea>
+      <p class="hint-note">الكلمات بين القوسين تُستبدل تلقائياً: {% for k in keys %}<code>{{ k }}</code> {% endfor %}
+        — و«{الرابط}» رابط صفحة «رحلتي» إن وُجد (وإلا يُحذف سطره).</p>
+      <div class="off-bar">
+        <button class="acc-btn save-btn" type="submit">{{ ic('check') }} حفظ</button>
+        {% if not is_default %}<button class="btn ghost sm" type="submit" name="reset" value="1">إعادة النصّ الافتراضي</button>{% endif %}
+      </div>
+    </form>
+    {% else %}<pre class="rm-pre">{{ tpl }}</pre>{% endif %}
+    <div class="rm-preview" aria-label="معاينة الرسالة"><small>معاينة:</small><div class="bubble">{{ sample }}</div></div>
+  </div>
+</details>
+<script>
+(function(){
+  var list=document.getElementById('rmList'); if(!list) return;
+  var done=document.getElementById('rsDone');
+  list.addEventListener('click',function(e){
+    var a=e.target.closest('a.wa-btn'); if(!a||a.dataset.ro) return;
+    var row=a.closest('.rm-row'); if(!row||!row.dataset.uid) return;
+    fetch('{{ url_for("finance_remind_mark") }}',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uid:row.dataset.uid}),keepalive:true}).then(function(r){
+        if(!r.ok) return;
+        if(!row.classList.contains('done')){row.classList.add('done');done.textContent=(+done.textContent||0)+1;}
+        row.querySelector('.rm-last').textContent='✓ ذُكّر اليوم';
+      }).catch(function(){});
+  });
+})();
+</script>
+{% endblock %}

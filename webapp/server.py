@@ -1459,7 +1459,7 @@ def backup_restore():
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
              "forgot", "reset_password", "session_status", "session_ping",
-             "verify_doc", "person_page"}
+             "verify_doc", "person_page", "public_trips", "public_trip_request"}
 
 
 _PW_FREE = _2FA_FREE | {"account_password", "session_ping", "healthz"}
@@ -1728,6 +1728,7 @@ def _ctx() -> dict:
         nav_badges=_nav_badges(),
         session_minutes=_session_minutes() if s is not None else 0,
         cmd_items=_cmd_items(),
+        book_new=_book_new_count() if s is not None else 0,
         search_q=(request.args.get("q") or "") if request.endpoint == "search_page" else "")
 
 
@@ -1901,7 +1902,8 @@ def _cmd_items() -> list:
         _cmd("السجلّات والبيانات", "قائمه معتمرين حجاج كشف", url_for("hujjaj"), "users", P),
         _cmd("المستندات", "سند فاتوره عقد فاوتشر", url_for("documents"), "file-text", P),
         _cmd("أرشيف المستندات", "ارشيف", url_for("archive"), "archive", P),
-        _cmd("المجموعات والمرشدون", "مرشد مجموعه", url_for("groups_page"), "users", P)]
+        _cmd("المجموعات والمرشدون", "مرشد مجموعه", url_for("groups_page"), "users", P),
+        _cmd("طلبات الحجز", "حجز طلبات عملاء جدد موقع", url_for("bookings"), "send", P)]
     if um:
         items.append(_cmd("برامج العمرة", "رحلات باقات طيران فنادق", url_for("programs"), "briefcase", P))
     else:
@@ -1910,7 +1912,9 @@ def _cmd_items() -> list:
     items += [
         _cmd("إشغال الغرف", "تسكين فنادق غرف", url_for("occupancy"), "bed", P),
         _cmd("تقويم الرحلات", "تقويم مواعيد مغادره عوده", url_for("calendar_page"), "calendar", P),
-        _cmd("المالية والتحصيل", "دفعات سداد مبالغ ايصال", url_for("finance"), "wallet", P)]
+        _cmd("تسجيل الحضور", "حضور مسح باركود كاميرا مطار فندق باص تجمع", url_for("checkin_page"), "check", P),
+        _cmd("المالية والتحصيل", "دفعات سداد مبالغ ايصال", url_for("finance"), "wallet", P),
+        _cmd("حملة التحصيل بالواتساب", "تذكير متبقي واتس سداد تحصيل", url_for("finance_remind"), "chat", P)]
     if s.can_edit:
         items.append(_cmd("المصروفات والمحاسبة", "مصاريف محاسبه", url_for("expenses_page"), "receipt", P))
     items += [
@@ -1982,7 +1986,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-11 · شريط سفلي للجوال + حركات ناعمة + لمسة موسمية + معاينات التقارير"
+_BUILD_TAG = "2026-11-11 · تسجيل الحضور بالمسح + حملة التحصيل بالواتساب + صفحة البرامج العامة وطلبات الحجز"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3010,7 +3014,11 @@ def person_page(token):
     docs = [(url_for("verify_doc", token=tk), _DOC_TITLES.get(d.get("kind"), ("مستند", ""))[0],
              d.get("number", ""), d.get("kind", "")) for tk, d in public.person_docs(mode, p.get("uid"))]
     co = settings.get("company") if isinstance(settings.get("company"), dict) else {}
+    code = _checkin_code(mode, str(p.get("uid") or ""))
+    from markupsafe import Markup
+    checkin_qr = Markup(_qr_svg(code)) if code else ""
     return render_template("public_person.html", p=p, trip=trip, guide=guide,
+                           checkin_qr=checkin_qr,
                            phones=phones, docs=docs, mode=mode,
                            co_name=co.get("name_ar") or "المصطفى للحج والعمرة",
                            noun="الحاج" if mode == app_mode.HAJJ else "المعتمر")
@@ -3021,6 +3029,496 @@ def _person_info(rec) -> dict:
     name = rec.full_name_ar or rec.full_name_en or ""
     return {"first": (name.split() or [""])[0], "group": getattr(rec, _group_attr(), "") or "",
             "room": rec.room_type or "", "team": str(getattr(rec, "group", "") or "").strip()}
+
+
+# ==================== صفحة البرامج العامة وطلبات الحجز ======================
+_BOOK_LOCK = threading.Lock()
+_BOOK_HITS: dict = {}                    # عنوان IP ← أوقات الطلبات (حدّ الإرسال)
+_BOOK_STATUS = {"new": ("جديد", "warn"), "contacted": ("تم التواصل", "info"),
+                "converted": ("صار سجلّاً", "good"), "rejected": ("مؤرشف", "muted")}
+_BOOK_ROOMS = ("رباعي", "ثلاثي", "ثنائي", "مفرد")
+
+
+def _book_path():
+    from hajj_app.paths import data_dir
+    return data_dir() / "booking_requests.enc"
+
+
+def _book_fernet():
+    import base64 as _b64
+    from cryptography.fernet import Fernet
+    key = hashlib.sha256((_session_secret() + "|booking-requests").encode("utf-8")).digest()
+    return Fernet(_b64.urlsafe_b64encode(key))
+
+
+def _book_load() -> list:
+    """طلبات الحجز (مشفّرة على القرص بمفتاح الخادم — فيها أسماء وهواتف)."""
+    import json as _json
+    p = _book_path()
+    if not p.is_file():
+        return []
+    try:
+        data = _json.loads(_book_fernet().decrypt(p.read_bytes()).decode("utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:                              # noqa: BLE001
+        return []
+
+
+def _book_save(items: list) -> None:
+    import json as _json
+    p = _book_path()
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(_book_fernet().encrypt(_json.dumps(items, ensure_ascii=False).encode("utf-8")))
+    os.replace(tmp, p)
+
+
+def _public_cfg(settings) -> dict:
+    cfg = settings.get("public_page") if isinstance(settings.get("public_page"), dict) else {}
+    return {"published": [str(x) for x in (cfg.get("published") or [])],
+            "intro": str(cfg.get("intro") or ""), "seats": dict(cfg.get("seats") or {})}
+
+
+def _public_programs(mode: str, settings, today) -> list:
+    """برامج النظام المنشورة للعامّة القادمة (لا ماضية): بطاقات بلا أي بيانات أشخاص."""
+    from webapp.alerts import _d
+    cfg = _public_cfg(settings)
+    out = []
+
+    def price_txt(vals):
+        nums = []
+        for v in vals:
+            try:
+                n = float(str(v or "").replace(",", "").strip())
+                if n > 0:
+                    nums.append(n)
+            except ValueError:
+                pass
+        return format_amount(min(nums)) if nums else ""
+    if mode == app_mode.UMRAH:
+        from hajj_app import umrah
+        for t in umrah.load_trips(settings):
+            if t.code not in cfg["published"]:
+                continue
+            d0, d1 = _d(t.depart_date), _d(t.return_date)
+            if d0 and d0 < today:
+                continue
+            out.append({"mode": mode, "key": t.code, "name": t.name or t.code,
+                        "d0": d0, "dep": _day_txt(d0, today) if d0 else "يُحدَّد لاحقاً",
+                        "ret": _day_txt(d1, today) if d1 else "",
+                        "nights": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
+                        "airline": t.airline, "city": t.depart_city,
+                        "hotels": [h for h in (
+                            ("kaaba", "مكة المكرمة", t.makkah_hotel, _nights_txt(t.makkah_nights) if t.makkah_nights else ""),
+                            ("moon", "المدينة المنورة", t.madinah_hotel, _nights_txt(t.madinah_nights) if t.madinah_nights else ""))
+                            if h[2]],
+                        "price": price_txt([t.price_quad, t.price_triple, t.price_double, t.price_single]),
+                        "rooms": [n for n, _p in umrah.trip_room_prices(t) if n in _BOOK_ROOMS],
+                        "left": cfg["seats"].get(t.code)})
+    else:
+        from hajj_app import programs as hp
+        for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
+            if nm not in cfg["published"]:
+                continue
+            d0, d1 = _d(pr.travel_date), _d(pr.return_date)
+            if d0 and d0 < today:
+                continue
+            out.append({"mode": mode, "key": nm, "name": f"الحج — {nm}", "d0": d0,
+                        "dep": _day_txt(d0, today) if d0 else "يُحدَّد لاحقاً",
+                        "ret": _day_txt(d1, today) if d1 else "",
+                        "nights": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
+                        "airline": pr.carrier, "city": pr.departure_airport,
+                        "hotels": [("kaaba", "الفندق", pr.hotel, "")] if pr.hotel else [],
+                        "price": price_txt([pr.cost_quad, pr.cost_triple, pr.cost_double, pr.cost_single]),
+                        "rooms": list(_BOOK_ROOMS), "left": cfg["seats"].get(nm)})
+    return out
+
+
+def _all_public_programs() -> tuple:
+    """البرامج المنشورة في النظامين + مقدّمة الصفحة وبيانات الشركة (للصفحة العامة)."""
+    today = datetime.now(_UAE).date()
+    cur = app_mode.get_mode()
+    progs, intro, co = [], "", {}
+    try:
+        for m in (app_mode.UMRAH, app_mode.HAJJ):
+            app_mode.set_mode(m)
+            st = storage.load_settings()
+            progs += _public_programs(m, st, today)
+            intro = intro or _public_cfg(st)["intro"]
+            if not co and isinstance(st.get("company"), dict):
+                co = st["company"]
+    finally:
+        app_mode.set_mode(cur)
+    progs.sort(key=lambda x: (x["d0"] is None, x["d0"] or today))
+    return progs, intro, co
+
+
+def _update_public_seats(settings, counts: dict) -> None:
+    """يحفظ المقاعد المتبقّية للبرامج المنشورة (لقطة للصفحة العامة — الكشف مشفّر)."""
+    cfg = settings.get("public_page") if isinstance(settings.get("public_page"), dict) else None
+    if not cfg or not cfg.get("published"):
+        return
+    old = dict(cfg.get("seats") or {})
+    seats = {k: v for k, v in old.items() if k in cfg["published"]}
+    seats.update({k: v for k, v in counts.items() if k in cfg["published"]})
+    if seats != old:
+        cfg["seats"] = seats
+        try:
+            storage.save_settings(settings)
+        except Exception:                          # noqa: BLE001
+            pass
+
+
+def _seat_counts(records, settings) -> dict:
+    """المقاعد المتبقّية لكل برنامج (السعة − المسجّلون غير الملغين)، أو None بلا سعة."""
+    out = {}
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        for t in umrah.load_trips(settings):
+            try:
+                cap = int(float(str(t.capacity or "").strip() or 0))
+            except ValueError:
+                cap = 0
+            n = sum(1 for r in umrah.trip_pilgrims(records, t.code)
+                    if str(r.status or "").strip() != "ملغى")
+            out[t.code] = (cap - n) if cap else None
+    return out
+
+
+@app.get("/trips")
+def public_trips():
+    """الصفحة العامة: البرامج المنشورة ونموذج «احجز مقعدك» — بلا دخول."""
+    progs, intro, co = _all_public_programs()
+    co = {**{"name_ar": "المصطفى للحج والعمرة"}, **{k: v for k, v in co.items() if v}}
+    wa = ""
+    if co.get("phone"):
+        from hajj_app import whatsapp as _wa
+        wa = _wa.wa_link(co["phone"], "السلام عليكم، أرغب بالاستفسار عن برامجكم") or ""
+    return render_template("public_trips.html", progs=progs, intro=intro, co=co, wa=wa,
+                           rooms=_BOOK_ROOMS, sent=request.args.get("sent"),
+                           err=request.args.get("err", ""),
+                           pick=request.args.get("p", ""))
+
+
+@app.post("/trips/request")
+def public_trip_request():
+    """يستقبل طلب حجز من الصفحة العامة (تحقّق + حدّ إرسال + حقل فخّ للروبوتات)."""
+    import secrets as _secrets
+    import time as _time
+    f = request.form
+    back = url_for("public_trips")
+    if (f.get("website") or "").strip():               # حقل مخفيّ لا يملؤه إلا الروبوت
+        return redirect(back + "?sent=1#done")
+    ip = request.remote_addr or "?"
+    now = _time.time()
+    hits = [t for t in _BOOK_HITS.get(ip, []) if now - t < 600]
+    if len(hits) >= 5:
+        return redirect(url_for("public_trips", err="كثرت الطلبات من جهازك — حاول بعد قليل") + "#book")
+    key = (f.get("program") or "").strip()
+    progs, _i, _c = _all_public_programs()
+    prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == key), None)
+    name = " ".join((f.get("name") or "").split())[:80]
+    phone = re.sub(r"[^\d+]", "", (f.get("phone") or "").translate(
+        str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")))[:16]
+    try:
+        count = max(1, min(20, int(f.get("count") or 1)))
+    except ValueError:
+        count = 1
+    room = (f.get("room") or "").strip()
+    room = room if room in _BOOK_ROOMS else ""
+    note = (f.get("note") or "").strip()[:300]
+    err = ("اختر البرنامج" if not prog else "اكتب الاسم الكامل" if len(name) < 5
+           else "اكتب رقم هاتف صحيحاً" if len(re.sub(r"\D", "", phone)) < 8 else "")
+    if err:
+        return redirect(url_for("public_trips", err=err, p=key) + "#book")
+    _BOOK_HITS[ip] = hits + [now]
+    item = {"id": _secrets.token_hex(6), "ts": datetime.now(_UAE).replace(microsecond=0).isoformat(),
+            "mode": prog["mode"], "key": prog["key"], "prog": prog["name"], "dep": prog["dep"],
+            "name": name, "phone": phone, "count": count, "room": room, "note": note,
+            "status": "new"}
+    with _BOOK_LOCK:
+        items = _book_load()
+        items.append(item)
+        _book_save(items[-2000:])
+    return redirect(back + "?sent=1#done")
+
+
+def _book_new_count() -> int:
+    try:
+        return sum(1 for x in _book_load() if x.get("status") == "new")
+    except Exception:                              # noqa: BLE001
+        return 0
+
+
+@app.route("/bookings", methods=["GET", "POST"])
+def bookings():
+    """طلبات الحجز الواردة من الصفحة العامة + إعدادات النشر (البرامج المعروضة)."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    settings = storage.load_settings()
+    if request.method == "POST":                       # إعدادات النشر — للمدير (زرّ صريح)
+        if not s.is_admin:
+            return redirect(url_for("bookings"))
+        cfg = settings.get("public_page") if isinstance(settings.get("public_page"), dict) else {}
+        cfg["published"] = [x for x in request.form.getlist("pub") if x][:60]
+        cfg["intro"] = (request.form.get("intro") or "").strip()[:400]
+        settings["public_page"] = cfg
+        storage.save_settings(settings)
+        _update_public_seats(settings, _seat_counts(_load_records(), settings))
+        _audit("إعدادات صفحة البرامج العامة", f"{len(cfg['published'])} برنامج منشور")
+        session["acc_msg"] = "حُفظت إعدادات الصفحة العامة."
+        return redirect(url_for("bookings") + "#publish")
+    _update_public_seats(settings, _seat_counts(_load_records(), settings))
+    show = request.args.get("show", "open")
+    items = list(reversed(_book_load()))
+    counts = {k: sum(1 for x in items if x.get("status") == k) for k in _BOOK_STATUS}
+    if show == "open":
+        items = [x for x in items if x.get("status") in ("new", "contacted")]
+    elif show in _BOOK_STATUS:
+        items = [x for x in items if x.get("status") == show]
+    from hajj_app import whatsapp as _wa
+    now = datetime.now(_UAE)
+    for x in items:
+        x["wa"] = _wa.wa_link(x.get("phone"), f"السلام عليكم {x.get('name', '').split(' ')[0]}، "
+                              f"شكراً لطلبكم حجز «{x.get('prog', '')}» — معكم المصطفى للحج والعمرة.",
+                              str(settings.get("whatsapp_cc") or "971"))
+        try:
+            mins = int((now - datetime.fromisoformat(x["ts"])).total_seconds() // 60)
+        except (KeyError, ValueError, TypeError):
+            mins = 0
+        x["ago"] = ("الآن" if mins < 2 else f"قبل {mins} دقيقة" if mins < 60 else
+                    f"قبل {mins // 60} ساعة" if mins < 1440 else f"قبل {mins // 1440} يوم")
+        x["st_lbl"], x["st_cls"] = _BOOK_STATUS.get(x.get("status"), ("—", "muted"))
+        x["here"] = x.get("mode") == _mode()
+    # البرامج القابلة للنشر في هذا النظام
+    cfg = _public_cfg(settings)
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        options = [(t.code, f"{t.code} — {t.name}" if t.name else t.code, t.depart_date)
+                   for t in umrah.load_trips(settings)]
+    else:
+        from hajj_app import programs as hp
+        options = [(nm, nm, pr.travel_date) for nm, pr in
+                   zip(hp.PROGRAM_NAMES, hp.load_programs(settings))]
+    msg, err = session.pop("acc_msg", None), session.pop("acc_err", None)
+    return render_template("bookings.html", active="bookings", items=items, show=show,
+                           counts=counts, cfg=cfg, options=options, msg=msg, err=err,
+                           public_url=url_for("public_trips", _external=True),
+                           other_mode_new=sum(1 for x in _book_load()
+                                              if x.get("status") == "new" and x.get("mode") != _mode()),
+                           **_ctx())
+
+
+@app.post("/bookings/<bid>/<action>")
+def booking_action(bid, action):
+    """تغيير حالة طلب: تم التواصل / أرشفة / إعادة فتح / تحويل إلى سجلّ."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if not s.can_edit or action not in ("contacted", "rejected", "new", "convert"):
+        return redirect(url_for("bookings"))
+    with _BOOK_LOCK:
+        items = _book_load()
+        it = next((x for x in items if x.get("id") == bid), None)
+        if it is None:
+            return redirect(url_for("bookings"))
+        if action != "convert":
+            it["status"] = action
+            it["by"] = s.username
+            _book_save(items)
+            return redirect(url_for("bookings", show=request.args.get("show", "open")))
+        if it.get("mode") != _mode():
+            session["acc_err"] = ("هذا الطلب لنظام " + app_mode.theme(it.get("mode"))["noun"]
+                                  + " — بدّل النظام ثم حوّله.")
+            return redirect(url_for("bookings"))
+        if it.get("status") == "converted":
+            return redirect(url_for("bookings"))
+        import uuid
+        from hajj_app.mrz import PassportData
+        rec = PassportData(full_name_ar=it.get("name", ""), phone=it.get("phone", ""),
+                           source_file="طلب حجز من الموقع", uid=uuid.uuid4().hex,
+                           notes=(f"طلب حجز {it.get('count', 1)} أشخاص" if int(it.get("count") or 1) > 1
+                                  else "طلب حجز") + (f" — {it['note']}" if it.get("note") else ""))
+        if _mode() == app_mode.UMRAH:
+            rec.trip = it.get("key", "")
+            if it.get("room"):
+                rec.room_type = it["room"]
+            _umrah_fill_price(rec)
+        else:
+            rec.program = it.get("key", "")
+        with _UID_LOCK:
+            records = _load_records()
+            records.append(rec)
+            storage.save_records(records, session=s)
+        it["status"], it["by"], it["uid"] = "converted", s.username, rec.uid
+        _book_save(items)
+    _audit("تحويل طلب حجز إلى سجلّ", it.get("name", ""))
+    idx = len(records) - 1
+    return redirect(url_for("hujjaj_edit", idx=idx, fp=_rec_token(rec)))
+
+
+# ==================== تسجيل الحضور بالمسح (المطار/الفندق/الباص/العودة) ====
+_CHECK_STAGES = ("المطار", "الفندق", "الباص", "العودة")
+_CHECK_RE = re.compile(r"^MSTF-(hajj|umrah)-([\w-]{3,64})$")
+
+
+def _checkin_code(mode: str, uid: str) -> str:
+    """رمز الحضور الشخصي (في QR صفحة «رحلتي»): الوضع + المعرّف الثابت — لا بيانات."""
+    return f"MSTF-{mode}-{uid}" if uid else ""
+
+
+def _qr_svg(data: str, px: int = 6) -> str:
+    """رمز QR كـ SVG مضغوط (مسار واحد) — يُرسم على الخادم بلا مكتبات خارجية."""
+    from reportlab.graphics.barcode import qrencoder
+    q = qrencoder.QRCode(None, qrencoder.QRErrorCorrectLevel.M)
+    q.addData(data)
+    q.make()
+    n = q.getModuleCount()
+    path = "".join(f"M{c + 4},{r + 4}h1v1h-1z" for r in range(n) for c in range(n)
+                   if q.isDark(r, c))
+    size = n + 8
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" '
+            f'width="{size * px}" height="{size * px}" shape-rendering="crispEdges" '
+            f'role="img" aria-label="رمز الحضور"><rect width="{size}" height="{size}" fill="#fff"/>'
+            f'<path d="{path}" fill="#111"/></svg>')
+
+
+def _checkin_find(records, code: str):
+    """يعيد (الموضع، رسالة خطأ) لنصّ ممسوح: رمز «رحلتي»، أو رقم الجواز/المرجع، أو
+    نصّ بطاقة قديمة فيه «الجواز: …»."""
+    t = str(code or "").strip()
+    if not t:
+        return None, "لم يُقرأ شيء"
+    m = _CHECK_RE.match(t)
+    if m:
+        if m.group(1) != _mode():
+            return None, ("هذا رمز نظام " + app_mode.theme(m.group(1))["noun"]
+                          + " — بدّل النظام أولاً")
+        uid = m.group(2)
+        j = next((i for i, r in enumerate(records)
+                  if str(getattr(r, "uid", "") or "") == uid), None)
+        return (j, None) if j is not None else (None, "الرمز لا يطابق أي سجلّ (حُذف؟)")
+    m = re.search(r"الجواز[:\s]+([A-Za-z0-9]+)", t)
+    key = (m.group(1) if m else t).strip().upper()
+    for i, r in enumerate(records):
+        if str(r.passport_number or "").strip().upper() == key \
+                or str(r.reference_number or "").strip().upper() == key:
+            return i, None
+    return None, f"لم يُعثر على «{t[:40]}»"
+
+
+def _checkin_scope(records, grp: str) -> list:
+    """من يُنتظر حضورهم: سجلّات البرنامج المختار (أو الكل) عدا الملغاة."""
+    gattr = _group_attr()
+    return [(i, r) for i, r in enumerate(records)
+            if str(getattr(r, "status", "") or "").strip() != "ملغى"
+            and (not grp or str(getattr(r, gattr, "") or "") == grp)]
+
+
+def _checkin_groups(records) -> list:
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        return [(t.code, f"{t.code} — {t.name}" if t.name else t.code)
+                for t in umrah.load_trips(storage.load_settings())]
+    from hajj_app import programs as hp
+    used = {str(r.program or "") for r in records}
+    return [(n, n) for n in hp.PROGRAM_NAMES if n in used]
+
+
+@app.get("/checkin")
+def checkin_page():
+    """تسجيل الحضور: مسح رمز «رحلتي» أو الجواز بكاميرا الجوال، أو الضغط على الاسم."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    stage = request.args.get("stage") or _CHECK_STAGES[0]
+    if stage not in _CHECK_STAGES:
+        stage = _CHECK_STAGES[0]
+    records = _load_records()
+    groups = _checkin_groups(records)
+    grp = (request.args.get("grp") or "").strip()
+    if grp and grp not in [g for g, _l in groups]:
+        grp = ""
+    people = []
+    for i, r in _checkin_scope(records, grp):
+        name = r.full_name_ar or r.full_name_en or r.passport_number or "—"
+        ck = r.checkins if isinstance(r.checkins, dict) else {}
+        people.append({"idx": i, "fp": _rec_token(r), "name": name,
+                       "init": (name.split() or ["؟"])[0][:1], "tone": sum(map(ord, name)) % 6,
+                       "phone": str(r.phone or ""), "passport": str(r.passport_number or ""),
+                       "time": str(ck.get(stage, "") or "")[-5:],
+                       "tel": re.sub(r"[^\d+]", "", str(r.phone or ""))})
+    present = sum(1 for p in people if p["time"])
+    return render_template("checkin.html", active="checkin", stages=_CHECK_STAGES,
+                           stage=stage, groups=groups, grp=grp, people=people,
+                           grp_label=dict(groups).get(grp, grp),
+                           present=present, total=len(people), **_ctx())
+
+
+@app.post("/checkin/mark")
+def checkin_mark():
+    """يسجّل حضور شخص (أو يلغيه) في مرحلة — من مسح رمز أو من الضغط على اسمه."""
+    s = _sess()
+    if s is None:
+        return {"ok": False, "msg": "انتهت الجلسة — ادخل من جديد"}, 401
+    if not s.can_edit:
+        return {"ok": False, "msg": "صلاحيتك اطّلاع فقط"}, 403
+    data = request.get_json(silent=True) or {}
+    stage = str(data.get("stage") or "")
+    if stage not in _CHECK_STAGES:
+        return {"ok": False, "msg": "مرحلة غير معروفة"}, 400
+    grp = str(data.get("grp") or "").strip()
+    undo = bool(data.get("undo"))
+    with _UID_LOCK:
+        records = _load_records()
+        if data.get("code"):
+            j, err = _checkin_find(records, str(data.get("code"))[:200])
+        else:
+            try:
+                j = _resolve_idx(records, int(data.get("idx")), str(data.get("fp") or ""))
+            except (TypeError, ValueError):
+                j = None
+            err = None if j is not None else "تغيّر الكشف — حدّث الصفحة"
+        if j is None:
+            return {"ok": False, "msg": err}
+        rec = records[j]
+        name = rec.full_name_ar or rec.full_name_en or rec.passport_number or "—"
+        gval = str(getattr(rec, _group_attr(), "") or "")
+        if grp and gval != grp:
+            return {"ok": False, "msg": f"{name} ليس في هذا البرنامج ({gval or 'بلا برنامج'})",
+                    "name": name}
+        if not isinstance(rec.checkins, dict):
+            rec.checkins = {}
+        already = stage in rec.checkins
+        if undo:
+            rec.checkins.pop(stage, None)
+        elif not already:
+            rec.checkins[stage] = datetime.now(_UAE).strftime("%Y-%m-%d %H:%M")
+        if undo or not already:
+            storage.save_records(records, session=s)
+            if undo:
+                _audit("إلغاء تسجيل حضور", f"{name} — {stage}")
+        scope = _checkin_scope(records, grp)
+        present = sum(1 for _i, r in scope if stage in (r.checkins or {}))
+    return {"ok": True, "name": name, "already": already and not undo, "undo": undo,
+            "time": str(rec.checkins.get(stage, "") or "")[-5:], "idx": j,
+            "fp": _rec_token(rec), "present": present, "total": len(scope)}
+
+
+@app.get("/checkin/report.pdf")
+def checkin_report():
+    """تقرير الحضور (PDF): كل شخص × كل مرحلة، للبرنامج المختار أو الكل."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io
+    records = _load_records()
+    grp = (request.args.get("grp") or "").strip()
+    recs = [r for _i, r in _checkin_scope(records, grp)]
+    title = "تقرير الحضور" + (f" — {grp}" if grp else "")
+    return _pdf_response(
+        lambda p: pdf_io.export_attendance_pdf(recs, p, stages=list(_CHECK_STAGES),
+                                               season=_season(), title=title),
+        "attendance.pdf")
 
 
 @app.post("/hujjaj/<int:idx>/link")
@@ -4853,6 +5351,7 @@ def programs():
         others = [r for r in rows if not r["package"]]
         rows = [r for r in rows if r["package"] == package]
     groups = _program_groups(rows) if package else []
+    _update_public_seats(settings, _seat_counts(records, settings))
     return render_template("programs.html", active="programs", rows=rows,
                            package=package, others=others, groups=groups,
                            msg=request.args.get("msg", ""), **_ctx())
@@ -6389,6 +6888,155 @@ def expenses_page():
 
 
 # ============================ المالية والتحصيل =============================
+# ==================== حملة التحصيل بالواتساب ===============================
+_REMIND_TPL = ("السلام عليكم {الاسم}،\n"
+               "نذكّركم بالمبلغ المتبقّي {المتبقّي} درهم لبرنامج {البرنامج}"
+               " (المغادرة {المغادرة}).\n"
+               "نرجو إتمام السداد قبل السفر، ونحن في خدمتكم لأي استفسار.\n"
+               "{الرابط}\n"
+               "مع تحيات المصطفى للحج والعمرة.")
+_REMIND_KEYS = ("{الاسم}", "{المتبقّي}", "{البرنامج}", "{المغادرة}", "{الرابط}")
+
+
+def _trip_departures(settings) -> dict:
+    """تاريخ مغادرة كل برنامج واسمه: {الرمز/الاسم: (التاريخ، الاسم المعروض)}."""
+    from webapp.alerts import _d
+    out = {}
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        for t in umrah.load_trips(settings):
+            out[t.code] = (_d(t.depart_date), f"{t.code} {t.name}".strip())
+    else:
+        from hajj_app import programs as hp
+        for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
+            out[nm] = (_d(pr.travel_date), nm)
+    return out
+
+
+def _remind_text(tpl: str, rec, prog: str, dep_txt: str, link: str) -> str:
+    name = " ".join((rec.full_name_ar or rec.full_name_en or "").split()[:2])
+    vals = {"{الاسم}": name, "{المتبقّي}": format_amount(max(0.0, remaining_amount(rec))) or "0",
+            "{البرنامج}": prog or "", "{المغادرة}": dep_txt or "—", "{الرابط}": link}
+    out = str(tpl or "")
+    for k, v in vals.items():
+        out = out.replace(k, v)
+    out = re.sub(r"[ \t]*\(المغادرة —\)", "", out)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(ln.rstrip() for ln in out.split("\n"))).strip()
+
+
+@app.route("/finance/remind", methods=["GET", "POST"])
+def finance_remind():
+    """حملة التحصيل: من عليه مبلغ متبقٍّ مرتّباً بقرب مغادرته، وبجانب كلٍّ زرّ واتساب
+    برسالة جاهزة باسمه ومبلغه ورابط «رحلتي» — ويُعلَّم «ذُكّر» عند الضغط."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    settings = storage.load_settings()
+    if request.method == "POST":                     # حفظ نصّ الرسالة (زرّ صريح)
+        if not s.can_edit:
+            return redirect(url_for("finance_remind"))
+        if request.form.get("reset"):
+            settings.pop("remind_tpl", None)
+            msg = "أُعيد النصّ الافتراضي."
+        else:
+            tpl = (request.form.get("tpl") or "").strip()[:1200]
+            if not tpl:
+                session["acc_err"] = "اكتب نصّ الرسالة."
+                return redirect(url_for("finance_remind", **request.args))
+            settings["remind_tpl"] = tpl
+            msg = "حُفظ نصّ رسالة التذكير."
+        storage.save_settings(settings)
+        _audit("تعديل رسالة تذكير التحصيل", "")
+        session["acc_msg"] = msg
+        return redirect(url_for("finance_remind", **request.args))
+    from webapp import public
+    from hajj_app import whatsapp as _wa
+    from hajj_app.mrz import PassportData as _PD
+    tpl = str(settings.get("remind_tpl") or _REMIND_TPL)
+    cc = str(settings.get("whatsapp_cc") or "971")
+    deps = _trip_departures(settings)
+    reminded = settings.get("reminders") if isinstance(settings.get("reminders"), dict) else {}
+    today = datetime.now(_UAE).date()
+    within = request.args.get("within", "30")
+    if within not in ("7", "14", "30", "all"):
+        within = "30"
+    grp = (request.args.get("grp") or "").strip()
+    fresh = request.args.get("fresh") == "1"
+    gattr = _group_attr()
+    rows, total = [], 0.0
+    for i, r in enumerate(_load_records()):
+        left = remaining_amount(r)
+        if left <= 0.005 or str(r.status or "").strip() == "ملغى":
+            continue
+        g = str(getattr(r, gattr, "") or "")
+        if grp and g != grp:
+            continue
+        dep, prog = deps.get(g, (None, g))
+        days = (dep - today).days if dep else None
+        if days is not None and days < -1:
+            continue                                   # سافر وعاد — يُتابع من المالية
+        if within != "all" and (days is None or days > int(within)):
+            continue
+        uid = str(getattr(r, "uid", "") or "")
+        last = str(reminded.get(uid, "") or "")
+        ago = None
+        if last:
+            try:
+                ago = (today - datetime.fromisoformat(last).date()).days
+            except ValueError:
+                ago = None
+        if fresh and ago is not None and ago < 3:
+            continue
+        tok = public.find_person(_mode(), uid) if uid else None
+        link = url_for("person_page", token=tok, _external=True) if tok else ""
+        dep_txt = _day_txt(dep, today) if dep else ""
+        text = _remind_text(tpl, r, prog, dep_txt, link)
+        total_v = stats._amount(r.program_value)
+        rows.append({
+            "idx": i, "uid": uid, "name": r.full_name_ar or r.full_name_en or "—",
+            "prog": prog or "—", "days": days, "dep_txt": dep_txt,
+            "when": ("اليوم" if days == 0 else "غداً" if days == 1 else
+                     f"بعد {days} {_days_unit(days)}" if days and days > 1 else
+                     "سافر" if days is not None and days < 0 else "بلا تاريخ"),
+            "urgent": days is not None and days <= 7,
+            "left": format_amount(left), "left_v": left,
+            "pct": max(0, min(100, round(100 * (total_v - left) / total_v))) if total_v > 0 else 0,
+            "phone": str(r.phone or ""), "wa": _wa.wa_link(r.phone, text, cc) if r.phone else None,
+            "ago": ago, "has_link": bool(tok)})
+        total += left
+    rows.sort(key=lambda x: (x["days"] is None, x["days"] if x["days"] is not None else 0,
+                             -x["left_v"]))
+    msg, err = session.pop("acc_msg", None), session.pop("acc_err", None)
+    return render_template(
+        "remind.html", active="remind", rows=rows, total=format_amount(total),
+        groups=_checkin_groups(_load_records()), grp=grp, within=within, fresh=fresh,
+        tpl=tpl, keys=_REMIND_KEYS, is_default=tpl == _REMIND_TPL,
+        done_today=sum(1 for x in rows if x["ago"] == 0), msg=msg, err=err,
+        sample=_remind_text(tpl, _PD(full_name_ar="أحمد محمد", program_value="6500",
+                                     paid_amount="4000"), "عمرة رجب", "1 ديسمبر",
+                            "https://…/p/…"), **_ctx())
+
+
+@app.post("/finance/remind/mark")
+def finance_remind_mark():
+    """يعلّم أن الشخص ذُكّر اليوم (يُستدعى عند ضغط زرّ واتساب)."""
+    s = _sess()
+    if s is None:
+        return {"ok": False}, 401
+    if not s.can_edit:
+        return {"ok": False}, 403
+    uid = str((request.get_json(silent=True) or {}).get("uid") or "")[:80]
+    if not uid:
+        return {"ok": False}, 400
+    with _UID_LOCK:
+        settings = storage.load_settings()
+        rem = settings.get("reminders") if isinstance(settings.get("reminders"), dict) else {}
+        rem[uid] = datetime.now(_UAE).replace(microsecond=0).isoformat()
+        settings["reminders"] = rem
+        storage.save_settings(settings)
+    return {"ok": True}
+
+
 @app.get("/finance")
 def finance():
     if _sess() is None:

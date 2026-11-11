@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}طلبات الحجز — المصطفى{% endblock %}
+{% block heading %}{{ ic('send') }} طلبات الحجز{% endblock %}
+{% block subhead %}<div class="season">من الصفحة العامة للبرامج — <a href="{{ public_url }}" target="_blank" rel="noopener" dir="ltr">{{ public_url }}</a></div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
+{% if err %}<div class="acc-msg err" data-keep>{{ err|iconize }}</div>{% endif %}
+{% if other_mode_new %}<div class="scope-note">{{ ic('info') }}<span>يوجد {{ other_mode_new }} طلب جديد في النظام الآخر — بدّل النظام لتحويله إلى سجلّ.</span></div>{% endif %}
+
+<nav class="pay-chips bk-chips" aria-label="تصفية الطلبات">
+  {% for k, lbl in [('open', 'المفتوحة'), ('new', 'جديد'), ('contacted', 'تم التواصل'), ('converted', 'صار سجلّاً'), ('rejected', 'مؤرشف'), ('all', 'الكل')] %}
+  <a class="chip{{ ' on' if show == k }}" href="{{ url_for('bookings', show=k) }}">{{ lbl }}
+    {% if k in counts %}<b>{{ counts[k] }}</b>{% elif k == 'open' %}<b>{{ counts.new + counts.contacted }}</b>{% endif %}</a>
+  {% endfor %}
+</nav>
+
+{% if items %}
+<div class="bk-list">
+  {% for x in items %}
+  <article class="bk-card st-{{ x.status }}">
+    <header>
+      <span class="av av{{ (x.name|length) % 6 }}">{{ x.name[:1] }}</span>
+      <div class="bk-who"><b>{{ x.name }}</b><span dir="ltr">{{ x.phone }}</span></div>
+      <span class="bk-st {{ x.st_cls }}">{{ x.st_lbl }}</span>
+    </header>
+    <ul class="bk-facts">
+      <li>{{ ic('briefcase') }} {{ x.prog }}{% if x.dep %} <small>· {{ x.dep }}</small>{% endif %}</li>
+      <li>{{ ic('users') }} {{ x.count }} {{ 'شخص' if x.count == 1 else 'أشخاص' }}{% if x.room %} · {{ ic('bed') }} {{ x.room }}{% endif %}</li>
+      {% if x.note %}<li class="bk-note">{{ ic('pen') }} {{ x.note }}</li>{% endif %}
+      <li class="muted">{{ ic('clock') }} {{ x.ago }}{% if x.by %} · {{ x.by }}{% endif %}</li>
+    </ul>
+    <footer>
+      {% if x.wa %}<a class="btn wa-btn sm" href="{{ x.wa }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>{% endif %}
+      <a class="icon-btn" href="tel:{{ x.phone }}" aria-label="اتصال بـ {{ x.name }}">{{ ic('phone') }}</a>
+      {% if can_edit %}
+        {% if x.status == 'new' %}<form method="post" class="inline" action="{{ url_for('booking_action', bid=x.id, action='contacted', show=show) }}"><button class="btn ghost sm" type="submit">{{ ic('check') }} تم التواصل</button></form>{% endif %}
+        {% if x.status in ['new', 'contacted'] %}
+          {% if x.here %}<form method="post" class="inline" action="{{ url_for('booking_action', bid=x.id, action='convert') }}"><button class="btn primary sm" type="submit">{{ ic('plus') }} تحويل إلى سجلّ</button></form>{% endif %}
+          <form method="post" class="inline" action="{{ url_for('booking_action', bid=x.id, action='rejected', show=show) }}"><button class="icon-btn" type="submit" title="أرشفة الطلب" aria-label="أرشفة طلب {{ x.name }}">{{ ic('archive') }}</button></form>
+        {% elif x.status == 'rejected' %}<form method="post" class="inline" action="{{ url_for('booking_action', bid=x.id, action='new', show=show) }}"><button class="btn ghost sm" type="submit">{{ ic('undo') }} إعادة فتح</button></form>{% endif %}
+      {% endif %}
+    </footer>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state"><span class="es-ic">{{ ic('send') }}</span><b>لا طلبات هنا</b>
+  <span>انشر برامجك في الصفحة العامة وشارك رابطها في وسائل التواصل — تصل الطلبات هنا.</span></div>
+{% endif %}
+
+{% if is_admin %}
+<section class="panel bk-pub" id="publish">
+  <h3>{{ ic('globe') }} الصفحة العامة للبرامج</h3>
+  <p class="muted">اختر برامج {{ noun }} التي تظهر للعامّة. تظهر التواريخ والفنادق والسعر الأدنى والمقاعد المتبقّية فقط — لا أي بيانات أشخاص.
+    البرامج التي غادرت تختفي وحدها.</p>
+  <form method="post" class="needs-save acc-form">
+    <div class="bk-opts">
+      {% for key, label, dep in options %}
+      <label class="remember"><input type="checkbox" name="pub" value="{{ key }}" {{ 'checked' if key in cfg.published }}> {{ label }}{% if dep %} <span class="muted" dir="ltr">({{ dep }})</span>{% endif %}</label>
+      {% else %}<p class="muted">لا برامج بعد.</p>{% endfor %}
+    </div>
+    <label>نصّ ترحيبي أعلى الصفحة (اختياري)<textarea name="intro" rows="2" maxlength="400" placeholder="مثال: برامج عمرة رجب وشعبان — فنادق على بُعد خطوات من الحرم">{{ cfg.intro }}</textarea></label>
+    <div class="off-bar">
+      <button class="acc-btn save-btn" type="submit">{{ ic('check') }} حفظ</button>
+      <a class="btn ghost sm" href="{{ public_url }}" target="_blank" rel="noopener">{{ ic('eye') }} معاينة الصفحة العامة</a>
+      <button class="btn ghost sm" type="button" id="bkCopy" data-url="{{ public_url }}">{{ ic('copy') }} نسخ الرابط</button>
+    </div>
+  </form>
+</section>
+<script>
+(function(){var b=document.getElementById('bkCopy');if(!b)return;b.addEventListener('click',function(){
+  var u=b.dataset.url;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(function(){b.lastChild.textContent=' نُسخ ✓';},
+  function(){window.prompt('انسخ الرابط:',u);});});})();
+</script>
+{% endif %}
+{% endblock %}
