@@ -1982,7 +1982,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-11 · مستندات بهوية فاخرة + صفحة رحلتي + السجلّ كملفّ شخصي"
+_BUILD_TAG = "2026-11-11 · تقويم بأشرطة الرحلات + برامج كبطاقات + لوحة الغرف بالسحب"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3046,12 +3046,59 @@ def person_link(idx):
     return redirect(url_for("record_docs", idx=j, fp=_rec_token(rec)))
 
 
+def _cal_weeks(trips, first, today) -> tuple:
+    """أسابيع الشهر مع أشرطة الرحلات: كل رحلة شريط ممتدّ من المغادرة إلى العودة،
+    يُقسَم على الأسابيع، ويأخذ «مساراً» لا يتداخل مع غيره في الأسبوع نفسه.
+    يعيد (الأسابيع، رحلات الشهر مرتّبة للقائمة أسفل التقويم)."""
+    import calendar as _cal
+    spans = []
+    for t in trips:
+        start = t["depart"] or t["ret"]
+        end = t["ret"] or t["depart"]
+        if not start:
+            continue
+        if end < start:
+            end = start
+        spans.append((start, end, t))
+    weeks = []
+    for wk in _cal.Calendar(firstweekday=5).monthdatescalendar(first.year, first.month):
+        ws, we = wk[0], wk[-1]
+        lanes, bars = [], []
+        for start, end, t in sorted((x for x in spans if x[0] <= we and x[1] >= ws),
+                                    key=lambda x: (x[0], -(x[1] - x[0]).days)):
+            c0, c1 = max((start - ws).days, 0), min((end - ws).days, 6)
+            lane = next((i for i, last in enumerate(lanes) if last < c0), None)
+            if lane is None:
+                lanes.append(c1)
+                lane = len(lanes) - 1
+            else:
+                lanes[lane] = c1
+            bars.append({**{k: t[k] for k in ("label", "n", "color", "fg", "link", "sub")},
+                         "col": c0 + 1, "span": c1 - c0 + 1, "row": lane + 2,
+                         "head": start >= ws, "tail": end <= we,
+                         "dep": bool(t["depart"]) and ws <= t["depart"] <= we,
+                         "ret": bool(t["ret"]) and t["ret"] != t["depart"]
+                         and ws <= t["ret"] <= we})
+        weeks.append({"days": [{"day": d.day, "out": d.month != first.month,
+                                "today": d == today, "fri": d.weekday() == 4} for d in wk],
+                      "bars": bars, "lanes": len(lanes)})
+    last = (first.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    agenda = []
+    for start, end, t in sorted(spans, key=lambda x: x[0]):
+        if start <= last and end >= first:
+            nights = (end - start).days
+            agenda.append({**t, "from": _day_txt(start, today), "to": _day_txt(end, today),
+                           "nights": _nights_txt(nights), "one": start == end,
+                           "now": start <= today <= end})
+    return weeks, agenda
+
+
 @app.get("/calendar")
 def calendar_page():
-    """تقويم الرحلات: مغادرة وعودة كل برنامج على أيام الشهر، بألوان البرامج."""
+    """تقويم الرحلات: كل برنامج شريط ممتدّ من المغادرة إلى العودة بلونه، وقائمة
+    رحلات الشهر أسفله."""
     if _sess() is None:
         return redirect(url_for("login"))
-    import calendar as _cal
     from datetime import date as _date
     today = _date.today()
     try:
@@ -3061,30 +3108,15 @@ def calendar_page():
         first = today.replace(day=1)
     settings = storage.load_settings()
     records = _load_records()
-    events: dict = {}
-
-    def add(d, ev):
-        if d and d.year == first.year and d.month == first.month:
-            events.setdefault(d.day, []).append(ev)
-
-    for t in _trip_list(records, settings):
-        base = {k: t[k] for k in ("label", "n", "color", "fg", "link", "sub")}
-        add(t["depart"], dict(base, icon="🛫"))
-        add(t["ret"], dict(base, icon="🛬"))
-    weeks = []
-    for wk in _cal.Calendar(firstweekday=5).monthdayscalendar(first.year, first.month):
-        weeks.append([{"day": d, "events": events.get(d, []),
-                       "today": (d and first.replace(day=d) == today)} for d in wk])
-    prev = (first.replace(day=1) - __import__("datetime").timedelta(days=1)).replace(day=1)
-    nxt = (first.replace(day=28) + __import__("datetime").timedelta(days=4)).replace(day=1)
-    months = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
-              "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
+    weeks, agenda = _cal_weeks(_trip_list(records, settings), first, today)
+    prev = (first.replace(day=1) - timedelta(days=1)).replace(day=1)
+    nxt = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
     return render_template(
-        "calendar.html", active="calendar", weeks=weeks,
-        title=f"{months[first.month - 1]} {first.year}",
+        "calendar.html", active="calendar", weeks=weeks, agenda=agenda,
+        title=f"{_AR_MONTHS[first.month - 1]} {first.year}",
         prev=prev.strftime("%Y-%m"), next=nxt.strftime("%Y-%m"),
-        this=today.strftime("%Y-%m"),
-        total=sum(len(v) for v in events.values()), **_ctx())
+        this=today.strftime("%Y-%m"), is_this=(first == today.replace(day=1)),
+        total=len(agenda), **_ctx())
 
 
 @app.post("/documents/<kind>/manual/pdf")
@@ -4633,6 +4665,28 @@ def _prog_groups(trip) -> list:
     return groups
 
 
+def _prog_card_info(t, n: int, cap: int) -> dict:
+    """بيانات بطاقة البرنامج: التواريخ بالعربية، الليالي، امتلاء المقاعد، والحالة
+    (بعد كم يوماً / جارية / انتهت)."""
+    from webapp.alerts import _d
+    today = datetime.now(_UAE).date()
+    d0, d1 = _d(t.depart_date), _d(t.return_date)
+    out = {"dep_txt": _day_txt(d0, today) if d0 else "—",
+           "ret_txt": _day_txt(d1, today) if d1 else "—",
+           "nights_txt": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
+           "pct": min(100, round(100 * n / cap)) if cap else 0,
+           "when": "", "when_cls": ""}
+    if d0 and today < d0:
+        k = (d0 - today).days
+        out["when"] = "غداً" if k == 1 else f"بعد {k} {_days_unit(k)}"
+        out["when_cls"] = "soon" if k <= 14 else ""
+    elif d0 and today <= (d1 or d0):
+        out["when"], out["when_cls"] = "جارية الآن", "live"
+    elif d0:
+        out["when"], out["when_cls"] = "انتهت", "past"
+    return out
+
+
 @app.get("/programs")
 def programs():
     if _sess() is None:
@@ -4662,7 +4716,8 @@ def programs():
                      "shared": [p.code for p in pools[t.code] if p.code != t.code],
                      "count": n, "capacity": cap or "—",
                      "remaining": (cap - n) if cap else "—",
-                     "over": bool(cap and n > cap), "full": bool(cap and n == cap)})
+                     "over": bool(cap and n > cap), "full": bool(cap and n == cap),
+                     **_prog_card_info(t, n, cap)})
     pkg_of = {t.code: str(t.package or "").strip() for t in trips}
     for r in rows:
         r["package"] = pkg_of.get(r["code"], "")
@@ -5580,9 +5635,53 @@ def occupancy():
                      "occ": n, "status": status, "cls": cls})
     summary = {"rooms": len(rows), "full": full, "over": over,
                "free": free_beds, "unplaced": len(unplaced)}
+    board, loose = _room_board(records, rooms_raw, unplaced)
     return render_template("occupancy.html", active="occupancy", rows=rows,
                            summary=summary, pools=_occupancy_pools(records),
-                           **_ctx())
+                           board=board, loose=loose,
+                           saved=request.args.get("saved"),
+                           skipped=request.args.get("skipped"), **_ctx())
+
+
+def _room_board(records, rooms_raw, unplaced) -> tuple:
+    """لوحة الغرف المرئية: الفنادق ← أنواع الغرف ← الغرف وسكّانها (أسرّة).
+    كل ساكن يحمل موضعه ورمز سجلّه كي يُحفظ نقله عبر نموذج التسكين نفسه."""
+    from hajj_app.rooming import common_room_type, room_category
+    pos = {id(r): i for i, r in enumerate(records)}
+
+    def person(r):
+        name = r.full_name_ar or r.full_name_en or "—"
+        parts = name.split()
+        return {"idx": pos[id(r)], "fp": _rec_token(r), "name": name,
+                "short": " ".join(parts[:2]) if parts else "—",
+                "init": (parts[0][:1] if parts else "؟"),
+                "fam": str(r.family_number or "").strip(), "sex": str(r.sex or "").strip(),
+                "rt": str(r.room_type or "").strip(), "tone": sum(map(ord, name)) % 6}
+    hotels: dict = {}
+    for hotel, cap, number, occ in rooms_raw:
+        n = len(occ)
+        size = cap or n
+        rtype = common_room_type(occ)
+        people = [person(r) for r in occ]
+        fams = {p["fam"] or "—" for p in people}
+        sexes = {p["sex"] for p in people if p["sex"]}
+        room = {"hotel": hotel, "cap": size, "number": number, "rtype": rtype,
+                "people": people, "free": max(0, size - n),
+                "state": "over" if n > size else "full" if n == size else "part",
+                "mixed": len(fams) > 1 and len(sexes) > 1}
+        h = hotels.setdefault(hotel, {"name": hotel or "", "types": {}, "rooms": 0, "beds": 0, "used": 0})
+        t = h["types"].setdefault(size, {"cap": size, "label": room_category(rtype) or rtype or f"سعة {size}",
+                                         "rooms": []})
+        t["rooms"].append(room)
+        h["rooms"] += 1
+        h["beds"] += size
+        h["used"] += n
+    board = []
+    for name in sorted(hotels, key=lambda x: (x == "", x)):
+        h = hotels[name]
+        h["types"] = [h["types"][k] for k in sorted(h["types"])]
+        board.append(h)
+    return board, [person(r) for r in unplaced]
 
 
 def _occupancy_pools(records) -> list:
@@ -5671,9 +5770,12 @@ def rooming_edit():
                 n += 1
         try:
             storage.save_records(records, session=_sess())
-            _audit("تعديل التسكين يدوياً", f"{n} سجلّ")
+            _audit("تعديل التسكين يدوياً" if request.form.get("back") != "board"
+                   else "نقل بين الغرف (لوحة الغرف)", f"{n} سجلّ")
         except Exception:
             pass
+        if request.form.get("back") == "board":
+            return redirect(url_for("occupancy", saved=n, skipped=skipped) + "#board")
         return redirect(url_for("rooming_edit", saved=n, skipped=skipped))
 
     def _distinct(attr):

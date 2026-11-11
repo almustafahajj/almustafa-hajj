@@ -1,25 +1,55 @@
 {% extends "base.html" %}
 {% block title %}تقويم الرحلات — المصطفى{% endblock %}
 {% block heading %}{{ ic('calendar') }} تقويم الرحلات{% endblock %}
-{% block subhead %}<div class="season">مغادرة ({{ ic('takeoff') }}) وعودة ({{ ic('landing') }}) كل برنامج بلونه — {{ total }} حدثاً في {{ title }}</div>{% endblock %}
+{% block subhead %}<div class="season">كل برنامج شريط بلونه من المغادرة ({{ ic('takeoff') }}) إلى العودة ({{ ic('landing') }}) — {{ total }} رحلة في {{ title }}</div>{% endblock %}
 {% block content %}
 <div class="cal-nav">
-  <a class="pill" href="{{ url_for('calendar_page', m=prev) }}">{{ ic('arrow-right') }} الشهر السابق</a>
-  <h3>{{ title }}</h3>
-  <a class="pill" href="{{ url_for('calendar_page', m=next) }}">الشهر التالي {{ ic('arrow-left') }}</a>
-  <a class="pill" href="{{ url_for('calendar_page', m=this) }}">اليوم</a>
+  <a class="pill" href="{{ url_for('calendar_page', m=prev) }}" aria-label="الشهر السابق">{{ ic('arrow-right') }} السابق</a>
+  <h3>{{ title }} <span class="cal-hijri" data-m="{{ title }}"></span></h3>
+  <a class="pill" href="{{ url_for('calendar_page', m=next) }}" aria-label="الشهر التالي">التالي {{ ic('arrow-left') }}</a>
+  {% if not is_this %}<a class="pill" href="{{ url_for('calendar_page', m=this) }}">{{ ic('calendar') }} اليوم</a>{% endif %}
 </div>
-<div class="cal-grid">
-  {% for d in ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'] %}<div class="cal-head">{{ d }}</div>{% endfor %}
-  {% for wk in weeks %}{% for c in wk %}
-  {% if c.day %}
-  <div class="cal-day {{ 'today' if c.today }} {{ 'noev' if not c.events }}">
-    <div class="dn">{{ c.day }}</div>
-    {% for e in c.events %}
-    <a class="cal-ev" href="{{ e.link }}" style="--ec:{{ e.color }};--ef:{{ e.fg }}" title="{{ e.sub }}">{{ e.icon|iconize }} {{ e.label }} <small>({{ e.n }})</small></a>
+
+<div class="cal2" role="grid" aria-label="تقويم {{ title }}">
+  <div class="cal2-head" role="row">
+    {% for d, sh in [('السبت','سبت'),('الأحد','أحد'),('الاثنين','اثنين'),('الثلاثاء','ثلاثاء'),('الأربعاء','أربعاء'),('الخميس','خميس'),('الجمعة','جمعة')] %}<div role="columnheader"><span class="dl">{{ d }}</span><span class="ds" aria-hidden="true">{{ sh }}</span></div>{% endfor %}
+  </div>
+  {% for w in weeks %}
+  <div class="cal2-week" role="row" style="--lanes:{{ [w.lanes, 1]|max }}">
+    {% for d in w.days %}
+    <div class="c2-day{{ ' out' if d.out }}{{ ' today' if d.today }}{{ ' fri' if d.fri }}" style="grid-column:{{ loop.index }}" role="gridcell"><span class="dn">{{ d.day }}</span></div>
+    {% endfor %}
+    {% for b in w.bars %}
+    <a class="c2-bar{{ ' head' if b.head }}{{ ' tail' if b.tail }}" href="{{ b.link }}"
+       style="grid-column:{{ b.col }} / span {{ b.span }};grid-row:{{ b.row }};--ec:{{ b.color }};--ef:{{ b.fg }}"
+       title="{{ b.label }} — {{ b.n }} شخصاً{% if b.sub %} · {{ b.sub }}{% endif %}">
+      {% if b.dep %}{{ ic('takeoff') }}{% endif %}<span class="bl">{{ b.label }}</span><small>({{ b.n }})</small>{% if b.ret %}{{ ic('landing') }}{% endif %}
+    </a>
     {% endfor %}
   </div>
-  {% else %}<div class="cal-day empty"></div>{% endif %}
-  {% endfor %}{% endfor %}
+  {% endfor %}
 </div>
+
+<section class="cal-agenda" aria-label="رحلات {{ title }}">
+  <h3>{{ ic('plane') }} رحلات {{ title }}</h3>
+  {% for t in agenda %}
+  <a class="ag-row{{ ' now' if t.now }}" href="{{ t.link }}" style="--ec:{{ t.color }}">
+    <span class="ag-dot"></span>
+    <span class="ag-main"><b>{{ t.label }}</b>{% if t.sub %}<small>{{ t.sub }}</small>{% endif %}</span>
+    <span class="ag-dates">{% if t.one %}{{ t['from'] }}{% else %}{{ t['from'] }} {{ ic('arrow-left') }} {{ t.to }}<small>{{ t.nights }}</small>{% endif %}</span>
+    <span class="ag-n">{{ ic('users') }} {{ t.n }}{% if t.cap %}<small>/{{ t.cap }}</small>{% endif %}</span>
+    {% if t.now %}<span class="ag-live">جارية الآن</span>{% endif %}
+  </a>
+  {% else %}
+  <div class="empty-state"><span class="es-ic">{{ ic('calendar') }}</span><b>لا رحلات في {{ title }}</b>
+    <span>تنقّل بين الأشهر بالسهمين أعلاه.</span></div>
+  {% endfor %}
+</section>
+<script>
+/* الشهر الهجري المقابل بجانب العنوان */
+(function(){var h=document.querySelector('.cal-hijri');if(!h)return;
+  try{var p=location.search.match(/m=(\d{4})-(\d{1,2})/),d=p?new Date(+p[1],+p[2]-1,15):new Date();
+    var f=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{month:'long',year:'numeric'});
+    h.textContent='· '+f.format(d);}catch(e){}})();
+</script>
 {% endblock %}

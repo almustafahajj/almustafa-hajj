@@ -11,6 +11,59 @@
   <button class="btn primary" type="submit" style="width:auto">{{ ic('plus') }} إضافة باقة</button>
 </form>
 {% endif %}
+{% macro pcard(r) %}
+<article class="pcard" style="--pc:{{ r.color }};--pt:{{ r.tint }};--pi:{{ r.ink }}">
+  <header class="pc-top">
+    <span class="pc-code">{{ r.code }}</span>
+    <b class="pc-name">{{ r.name if r.name != '—' else (r.airline if r.airline != '—' else 'برنامج') }}</b>
+    {% if r.when %}<span class="pc-when {{ r.when_cls }}">{{ r.when }}</span>{% endif %}
+  </header>
+  <div class="pc-route">
+    <div class="pc-pt"><small>{{ ic('takeoff') }} المغادرة</small><b>{{ r.dep_txt }}</b></div>
+    <div class="pc-line" aria-hidden="true"><i></i>{% if r.nights_txt %}<span>{{ r.nights_txt }}</span>{% endif %}<i></i></div>
+    <div class="pc-pt"><small>{{ ic('landing') }} العودة</small><b>{{ r.ret_txt }}</b></div>
+  </div>
+  <div class="pc-facts">
+    {% if r.airline != '—' %}<span>{{ ic('plane') }} {{ r.airline }}{% if r.dcity %} · من {{ r.dcity }}{% endif %}{% if r.flights %} <bdi dir="ltr" class="muted">{{ r.flights }}</bdi>{% endif %}</span>{% endif %}
+    {% if r.makkah != '—' %}<span>{{ ic('kaaba') }} {{ r.makkah }}</span>{% endif %}
+    {% if r.madinah != '—' %}<span>{{ ic('moon') }} {{ r.madinah }}</span>{% endif %}
+  </div>
+  <div class="pc-seats">
+    <div class="pc-seat-top">
+      <span>{{ ic('users') }} <b>{{ r.count }}</b>{% if r.capacity != '—' %} من {{ r.capacity }} مقعداً{% else %} {{ 'معتمر' if r.count == 1 else 'معتمرين' }}{% endif %}</span>
+      {% if r.over %}<span class="pc-st over">{{ ic('ban') }} زيادة {{ -r.remaining }}</span>
+      {% elif r.full %}<span class="pc-st full">{{ ic('check') }} مكتمل</span>
+      {% elif r.capacity != '—' %}<span class="pc-st">متبقٍّ {{ r.remaining }}</span>{% endif %}
+    </div>
+    {% if r.capacity != '—' %}<div class="pc-bar{{ ' over' if r.over }}"><i style="width:{{ r.pct }}%"></i></div>{% endif %}
+  </div>
+  {% if r.rooms or r.shared %}
+  <div class="pc-rooms">
+    {% for city, avail, used, left in r.rooms %}<span class="{{ 'bad' if left < 0 else ('zero' if left == 0 else '') }}" title="المتاح {{ avail }} − المشغول {{ used }}">{{ ic('bed') }} {{ city }}: {% if left < 0 %}زيادة {{ -left }}{% else %}{{ left }} غرف{% endif %}</span>{% endfor %}
+    {% if r.shared %}<span class="muted" title="غرف فندق مشتركة">{{ ic('link') }} مع {{ r.shared|join('، ') }}</span>{% endif %}
+  </div>
+  {% endif %}
+  <footer class="pc-acts">
+    <a class="btn primary sm" href="{{ url_for('program_edit', code=r.code) }}">{{ ic('pen' if is_admin else 'eye') }} {{ 'تعديل' if is_admin else 'عرض' }}</a>
+    {% if not package and r.package %}<a class="pc-pkg" href="{{ url_for('programs', package=r.package) }}">{{ ic('package') }} {{ r.package }}</a>{% endif %}
+    {% if is_admin %}
+      {% if package %}<button class="icon-btn" type="submit" form="pout-{{ r.code }}" title="إخراج من الباقة (لا يُحذف البرنامج)" aria-label="إخراج {{ r.code }} من الباقة">{{ ic('back') }}</button>
+      {% else %}<button class="icon-btn del" type="submit" form="pdel-{{ r.code }}" title="حذف البرنامج" aria-label="حذف البرنامج {{ r.code }}">{{ ic('trash') }}</button>{% endif %}
+    {% endif %}
+  </footer>
+</article>
+{% endmacro %}
+
+<div class="pview-bar">
+  <div class="seg" role="group" aria-label="طريقة العرض">
+    <button type="button" data-v="cards">{{ ic('grid') }} بطاقات</button>
+    <button type="button" data-v="table">{{ ic('menu') }} جدول</button>
+  </div>
+</div>
+<div class="pview" id="pview">
+<script>(function(){var v='cards';try{v=localStorage.getItem('progView')||'cards';}catch(e){}
+  document.getElementById('pview').setAttribute('data-view', v==='table'?'table':'cards');})();</script>
+<div class="ptable">
 <table class="data">
   <thead><tr><th>الرمز</th><th>الاسم</th>{% if not package %}<th>الباقة</th>{% endif %}<th>المغادرة</th><th>العودة</th>
     <th>فندق مكة</th><th>فندق المدينة</th><th>المعتمرون</th><th>الطيران</th>
@@ -32,12 +85,12 @@
       <td>
         <a class="acc-btn add" href="{{ url_for('program_edit', code=r.code) }}">{{ 'تعديل' if is_admin else 'عرض' }}</a>
         {% if package %}{% if is_admin %}
-        <form method="post" class="inline" action="{{ url_for('program_package_assign') }}">
+        <form method="post" class="inline" action="{{ url_for('program_package_assign') }}" id="pout-{{ r.code }}">
           <input type="hidden" name="name" value="{{ package }}">
           <input type="hidden" name="remove" value="{{ r.code }}">
           <button class="acc-btn" type="submit" title="إخراج من الباقة (لا يُحذف البرنامج)">{{ ic('back') }} إخراج</button></form>{% endif %}
         {% elif is_admin %}
-        <form method="post" class="inline"
+        <form method="post" class="inline" id="pdel-{{ r.code }}"
               action="{{ url_for('program_delete', code=r.code) }}"
               onsubmit="return confirm('حذف البرنامج «{{ r.code }}» نهائياً؟');">
           <button class="acc-btn del" type="submit">{{ ic('trash') }}</button></form>
@@ -48,11 +101,11 @@
   {% if package %}
   {% for g in groups %}
     {% if not loop.first %}<tr class="pg-gap"><td colspan="12"></td></tr>{% endif %}
-    {% set g_first, g_last = loop.first, loop.last %}{% set r0 = g.rows[0] %}
+    {% set g_first, g_last = loop.first, loop.last %}{% set r0 = g.rows[0] %}{% set gi = loop.index %}
     <tr class="pg-head" style="--pc:{{ g.color }};--pf:{{ g.fg }}"><td colspan="12">
       {% if can_edit and (g.can_up or g.can_down) %}<span class="pg-move">
         {% for d, arrow, tip, show in [('up', '▲', 'تقديم البرنامج', g.can_up), ('down', '▼', 'تأخير البرنامج', g.can_down)] if show %}
-        <form method="post" class="inline" action="{{ url_for('program_package_move') }}">
+        <form method="post" class="inline" action="{{ url_for('program_package_move') }}" id="pmv-{{ gi }}-{{ d }}">
           <input type="hidden" name="name" value="{{ package }}">
           <input type="hidden" name="group" value="{{ g.key }}">
           <input type="hidden" name="dir" value="{{ d }}">
@@ -85,6 +138,39 @@
   {% endif %}
   </tbody>
 </table>
+</div>
+<div class="pcards-wrap">
+{% if package %}
+  {% for g in groups %}
+  <section class="pc-group" style="--pc:{{ g.color }};--pf:{{ g.fg }}">
+    <h3 class="pcg-head">
+      <span class="pcg-t">{% if g.fixed %}البرنامج {{ g.ordinal }}{% else %}{% if g.show_num %}البرنامج {{ g.ordinal }} · {% endif %}{% if g.airline %}{{ ic('plane') }} {{ g.airline }}{% if g.city %} من {{ g.city }}{% endif %}{% else %}{{ g.rows[0].name if g.rows[0].name != '—' else g.rows[0].code }}{% endif %}{% endif %}</span>
+      <span class="pcg-meta">{{ ic('users') }} {{ g.count }}{% if g.capacity %} · {{ ic('seat') }} متبقٍّ {{ g.seats_left }} من {{ g.capacity }}{% endif %}</span>
+      {% if can_edit and (g.can_up or g.can_down) %}<span class="pcg-move">
+        {% if g.can_up %}<button type="submit" form="pmv-{{ loop.index }}-up" title="تقديم البرنامج" aria-label="تقديم">▲</button>{% endif %}
+        {% if g.can_down %}<button type="submit" form="pmv-{{ loop.index }}-down" title="تأخير البرنامج" aria-label="تأخير">▼</button>{% endif %}
+      </span>{% endif %}
+    </h3>
+    <div class="pcards">{% for r in g.rows %}{{ pcard(r) }}{% endfor %}</div>
+  </section>
+  {% else %}
+  <div class="empty-state"><span class="es-ic">{{ ic('package') }}</span><b>لا برامج في هذه الباقة بعد</b>
+    <span>أضف من البرامج المسجّلة أدناه، أو «برنامج جديد في هذه الباقة».</span></div>
+  {% endfor %}
+{% else %}
+  <div class="pcards">{% for r in rows %}{{ pcard(r) }}{% endfor %}</div>
+  {% if not rows %}<div class="empty-state"><span class="es-ic">{{ ic('folder') }}</span><b>لا برامج بعد</b>
+    <span>أنشئ أوّل برنامج من «برنامج جديد».</span></div>{% endif %}
+{% endif %}
+</div>
+</div>
+<script>
+(function(){var w=document.getElementById('pview'),bs=document.querySelectorAll('.pview-bar [data-v]');
+  function set(v){w.setAttribute('data-view',v);bs.forEach(function(b){b.setAttribute('aria-pressed',b.dataset.v===v);});
+    try{localStorage.setItem('progView',v);}catch(e){}}
+  bs.forEach(function(b){b.addEventListener('click',function(){set(b.dataset.v);});});
+  set(w.getAttribute('data-view'));})();
+</script>
 
 {% if package and can_edit %}
 <fieldset class="editcard" style="margin-top:16px">

@@ -119,12 +119,17 @@ print("[ok] رابط المعتمر: إنشاء/واتساب/بيانات حيّ
 
 # ---- 3) تقويم الرحلات ----
 page = c.get("/calendar", query_string={"m": T.strftime("%Y-%m")}).get_data(as_text=True)
-assert page.count("🛫 U1 البرنامج الأول") == 1 and page.count("🛬 U1 البرنامج الأول") == 1
-assert "(1)" in page and 'href="/programs/U1"' in page and "#1B5E20" in page
+grid = page.split('class="cal2"')[1].split('class="cal-agenda"')[0]
+bars = re.findall(r'<a class="c2-bar[^"]*" href="/programs/U1"', grid)
+assert bars and grid.count('<span class="bl">U1 البرنامج الأول</span>') == len(bars), "شريط لكل أسبوع"
+assert 'class="c2-bar head' in grid and " tail" in grid and "--ec:#1B5E20" in grid
+assert grid.count("🛫") == 1 and grid.count("🛬") == 1, "المغادرة والعودة مرّة واحدة"
+agenda = page.split('class="cal-agenda"')[1]
+assert "U1 البرنامج الأول" in agenda and "(1)" in grid and "10 ليالٍ" in agenda
 nxt = (T.replace(day=28) + timedelta(days=4)).strftime("%Y-%m")
 assert f"m={nxt}" in page
 assert "U1" not in c.get("/calendar", query_string={"m": nxt}).get_data(as_text=True) \
-    .split("cal-grid")[1]
+    .split('class="cal2"')[1]
 assert c.get("/calendar?m=خطأ").status_code == 200
 c.get("/switch/hajj")
 assert c.get("/calendar").status_code == 200

@@ -5,6 +5,7 @@
   غرف: {{ summary.rooms }} · مكتملة: {{ summary.full }} · متجاوِزة: {{ summary.over }}
   · أسرّة شاغرة: {{ summary.free }} · بلا غرفة: {{ summary.unplaced }}</div>{% endblock %}
 {% block content %}
+{% macro rooms_n(n) %}{{ 'غرفة واحدة' if n == 1 else ('غرفتان' if n == 2 else (n ~ (' غرف' if n <= 10 else ' غرفة'))) }}{% endmacro %}
 <div class="formbar" style="margin-bottom:12px">
   <a class="btn primary" target="_blank" href="{{ url_for('rooming_cards_pdf') }}">{{ ic('hotel') }} بطاقات الغرف (طباعة)</a>
   <a class="btn ghost" target="_blank" href="{{ url_for('rooming_pdf') }}">{{ ic('file-text') }} كشف مجمّع (PDF)</a>
@@ -31,9 +32,26 @@
   من البرنامج الأساسي، والمشغول مجموع غرف معتمريها جميعاً.</p>
 </div>
 {% endif %}
+{% if saved is not none %}<div class="acc-msg ok">{{ ic('check') }} حُفظ التسكين ({{ saved }} سجلّ نُقل).</div>{% endif %}
+{% if skipped and skipped != '0' %}<div class="acc-msg err" data-keep>تُخطّي {{ skipped }} سجلّ تغيّر منذ فتحت الصفحة — افتحها من جديد لنقله.</div>{% endif %}
 {% if not rows %}
-<div class="acc-msg">لا توجد غرف مسكّنة بعد (لا نوع غرفة/رقم في السجلات).</div>
+<div class="empty-state"><span class="es-ic">{{ ic('bed') }}</span><b>لا توجد غرف مسكّنة بعد</b>
+  <span>حدّد نوع الغرفة ورقمها في السجلّات أو من «تعديل التسكين يدوياً».</span></div>
 {% else %}
+<div class="pview-bar rb-bar" id="board">
+  <div class="rb-tools">
+    <label class="rb-search">{{ ic('search') }}<input type="search" id="rbQ" placeholder="ابحث عن اسم أو رقم غرفة…" aria-label="بحث في الغرف"></label>
+    <label class="rb-chk"><input type="checkbox" id="rbFree"> غير المكتملة فقط</label>
+  </div>
+  <div class="seg" role="group" aria-label="طريقة العرض">
+    <button type="button" data-v="cards">{{ ic('grid') }} لوحة الغرف</button>
+    <button type="button" data-v="table">{{ ic('menu') }} جدول</button>
+  </div>
+</div>
+<div class="pview" id="rview">
+<script>(function(){var v='cards';try{v=localStorage.getItem('roomView')||'cards';}catch(e){}
+  document.getElementById('rview').setAttribute('data-view', v==='table'?'table':'cards');})();</script>
+<div class="ptable">
 <div class="panel">
 <table class="data">
   <thead><tr><th>الفندق</th><th>الغرفة</th><th>السعة</th><th>المشغول</th><th>الحالة</th></tr></thead>
@@ -50,5 +68,168 @@
   </tbody>
 </table>
 </div>
+</div>
+<div class="pcards-wrap rboard{{ ' editable' if can_edit }}" id="rboard">
+  {% if can_edit %}<p class="rb-hint">{{ ic('info') }} اسحب الاسم إلى غرفة أخرى من النوع نفسه — أو اضغط الاسم ثم الغرفة. لا يُحفظ شيء حتى تضغط «حفظ التسكين».</p>{% endif %}
+  {% for h in board %}
+  <section class="rb-hotel">
+    <h3 class="rb-hh">{{ ic('hotel') }} {{ h.name or 'بلا فندق محدّد' }}
+      <span>{{ rooms_n(h.rooms) }} · {{ h.used }} من {{ h.beds }} سريراً مشغول</span></h3>
+    {% for t in h.types %}
+    <div class="rb-type">
+      <h4>{{ t.label }} <small>{{ rooms_n(t.rooms|length) }}</small></h4>
+      <div class="rb-grid">
+        {% for r in t.rooms %}
+        <article class="rm rm-{{ r.state }}" data-hotel="{{ r.hotel }}" data-cap="{{ r.cap }}"
+                 data-number="{{ r.number }}" data-rtype="{{ r.rtype }}">
+          <header class="rm-h">
+            <b>غرفة <bdi>{{ r.number }}</bdi></b>
+            <span class="rm-warn" {% if not r.mixed %}hidden{% endif %} title="عائلات مختلفة من الجنسين في غرفة واحدة">{{ ic('alert') }}</span>
+            <span class="rm-cnt"><i>{{ r.people|length }}</i>/{{ r.cap }}</span>
+          </header>
+          <div class="rm-beds">
+            {% for p in r.people %}
+            <button type="button" class="bed occ" data-idx="{{ p.idx }}" data-fp="{{ p.fp }}" data-rt="{{ p.rt }}"
+                    data-fam="{{ p.fam }}" data-sex="{{ p.sex }}" title="{{ p.name }}{% if p.fam %} · عائلة {{ p.fam }}{% endif %}"
+                    {% if can_edit %}draggable="true"{% endif %}>
+              <span class="av av{{ p.tone }}">{{ p.init }}</span><span class="nm">{{ p.short }}</span>{% if p.fam %}<small>ع {{ p.fam }}</small>{% endif %}
+            </button>
+            {% endfor %}
+            {% for _ in range(r.free) %}<span class="bed empty">{{ ic('bed') }} شاغر</span>{% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+        {% if can_edit %}
+        <article class="rm rm-new" data-hotel="{{ h.name }}" data-cap="{{ t.cap }}" data-number="" data-rtype="">
+          <span>{{ ic('plus') }} غرفة {{ t.label }} جديدة</span><small>أفلِت هنا لفتح غرفة برقم جديد</small>
+        </article>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+  {% if loose %}
+  <section class="rb-hotel rb-loose">
+    <h3 class="rb-hh">{{ ic('users') }} بلا غرفة <span>{{ loose|length }} — حدّد نوع الغرفة من صفحة السجلّ أو «تعديل التسكين يدوياً»</span></h3>
+    <div class="rb-loose-list">{% for p in loose[:60] %}<span class="bed occ static"><span class="av av{{ p.tone }}">{{ p.init }}</span><span class="nm">{{ p.short }}</span></span>{% endfor %}
+      {% if loose|length > 60 %}<span class="muted">و{{ loose|length - 60 }} آخرون…</span>{% endif %}</div>
+  </section>
+  {% endif %}
+</div>
+</div>
+{% if can_edit %}
+<form method="post" action="{{ url_for('rooming_edit') }}" id="rbForm" class="rb-save" hidden>
+  <input type="hidden" name="back" value="board">
+  <div id="rbFields" hidden></div>
+  <span class="rb-n">{{ ic('alert') }} <b id="rbCount">0</b> نقل غير محفوظ</span>
+  <button class="btn primary" type="submit">{{ ic('save') }} حفظ التسكين</button>
+  <a class="btn ghost" href="{{ url_for('occupancy') }}#board">تراجع</a>
+</form>
+{% endif %}
+<div class="rb-toast" id="rbToast" role="status" aria-live="polite" hidden></div>
+<template id="rbBed">{{ ic('bed') }}</template>
+<script>
+(function(){
+  var w=document.getElementById('rview'),bs=document.querySelectorAll('.rb-bar [data-v]');
+  function setv(v){w.setAttribute('data-view',v);bs.forEach(function(b){b.setAttribute('aria-pressed',b.dataset.v===v);});
+    try{localStorage.setItem('roomView',v);}catch(e){}}
+  bs.forEach(function(b){b.addEventListener('click',function(){setv(b.dataset.v);});});
+  setv(w.getAttribute('data-view'));
+  var board=document.getElementById('rboard'), q=document.getElementById('rbQ'), fr=document.getElementById('rbFree');
+  function norm(t){return (t||'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').toLowerCase();}
+  function filter(){
+    var t=norm(q.value.trim()), only=fr.checked;
+    board.querySelectorAll('.rm:not(.rm-new)').forEach(function(rm){
+      var hit=!t || norm(rm.textContent).indexOf(t)>=0, open=!only || rm.classList.contains('rm-part');
+      rm.hidden=!(hit&&open);
+      rm.querySelectorAll('.bed.occ').forEach(function(b){b.classList.toggle('hit', !!t && norm(b.title).indexOf(t)>=0);});
+    });
+    board.querySelectorAll('.rb-type').forEach(function(tp){
+      tp.hidden=!!(t||only) && !tp.querySelector('.rm:not(.rm-new):not([hidden])');});
+  }
+  q.addEventListener('input',filter); fr.addEventListener('change',filter);
+  if(!board.classList.contains('editable')) return;
+  var form=document.getElementById('rbForm'), fields=document.getElementById('rbFields'),
+      cnt=document.getElementById('rbCount'), toast=document.getElementById('rbToast'),
+      BED=document.getElementById('rbBed').innerHTML, moves={}, sel=null, saving=false, tt;
+  function say(m){toast.textContent=m;toast.hidden=false;clearTimeout(tt);tt=setTimeout(function(){toast.hidden=true;},3600);}
+  function bare(t){return (t||'').replace(/\s*\d+\s*/g,' ').trim();}
+  function refresh(rm){
+    if(rm.classList.contains('rm-new')) return;
+    var beds=rm.querySelector('.rm-beds'), occ=beds.querySelectorAll('.bed.occ'), cap=+rm.dataset.cap, n=occ.length;
+    beds.querySelectorAll('.bed.empty').forEach(function(e){e.remove();});
+    for(var i=n;i<cap;i++){var e=document.createElement('span');e.className='bed empty';e.innerHTML=BED+' شاغر';beds.appendChild(e);}
+    rm.querySelector('.rm-cnt i').textContent=n;
+    rm.classList.remove('rm-part','rm-full','rm-over');
+    rm.classList.add(n>cap?'rm-over':n===cap?'rm-full':'rm-part');
+    var fams={},sexes={};occ.forEach(function(b){fams[b.dataset.fam||'—']=1;if(b.dataset.sex)sexes[b.dataset.sex]=1;});
+    rm.querySelector('.rm-warn').hidden=!(Object.keys(fams).length>1&&Object.keys(sexes).length>1);
+  }
+  function nextNum(hotel,cap){
+    var mx=0;board.querySelectorAll('.rm:not(.rm-new)').forEach(function(r){
+      if(r.dataset.hotel===hotel&&r.dataset.cap===cap){var m=/^(\d+)/.exec(r.dataset.number);if(m)mx=Math.max(mx,+m[1]);}});
+    return String(mx+1);
+  }
+  function newRoom(ghost, chip){
+    var num=nextNum(ghost.dataset.hotel, ghost.dataset.cap);
+    var rm=document.createElement('article');
+    rm.className='rm rm-part rm-fresh';
+    rm.dataset.hotel=ghost.dataset.hotel; rm.dataset.cap=ghost.dataset.cap; rm.dataset.number=num;
+    rm.dataset.rtype=bare(chip.dataset.rt)||chip.dataset.rt;
+    rm.innerHTML='<header class="rm-h"><b>غرفة <bdi></bdi></b><span class="rm-warn" hidden>!</span>'
+      +'<span class="rm-cnt"><i>0</i>/'+ghost.dataset.cap+'</span></header><div class="rm-beds"></div>';
+    rm.querySelector('bdi').textContent=num;
+    ghost.parentNode.insertBefore(rm, ghost);
+    return rm;
+  }
+  function move(chip, rm){
+    var from=chip.closest('.rm');
+    if(!rm || rm===from) return;
+    if(rm.dataset.cap!==from.dataset.cap){
+      say('النقل هنا بين غرف النوع نفسه فقط — تغيير نوع الغرفة يغيّر السعر، فعدّله من صفحة السجلّ.'); return; }
+    if(rm.classList.contains('rm-new')) rm=newRoom(rm, chip);
+    var beds=rm.querySelector('.rm-beds');
+    beds.insertBefore(chip, beds.querySelector('.bed.empty'));
+    chip.classList.add('moved');
+    moves[chip.dataset.idx]={fp:chip.dataset.fp, hotel:rm.dataset.hotel,
+      rtype:rm.dataset.rtype||bare(chip.dataset.rt)||chip.dataset.rt, rnum:rm.dataset.number};
+    refresh(from); refresh(rm);
+    var n=Object.keys(moves).length; cnt.textContent=n; form.hidden=!n;
+    if(+rm.querySelector('.rm-cnt i').textContent > +rm.dataset.cap) say('تجاوزت الغرفة '+rm.dataset.number+' سعتها.');
+  }
+  function clearSel(){ if(sel){sel.classList.remove('sel');sel=null;} board.classList.remove('picking'); }
+  board.addEventListener('click',function(e){
+    var chip=e.target.closest('.bed.occ:not(.static)'), rm=e.target.closest('.rm');
+    if(chip && !(sel && sel!==chip && rm && rm!==sel.closest('.rm'))){
+      if(sel===chip){clearSel();return;}
+      clearSel(); sel=chip; chip.classList.add('sel'); board.classList.add('picking');
+      say('اختر الغرفة التي تنقل إليها «'+chip.title.split(' · ')[0]+'» — أو Esc للإلغاء.'); return; }
+    if(sel && rm){ var c=sel; clearSel(); move(c, rm); }
+  });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') clearSel(); });
+  var drag=null;
+  board.addEventListener('dragstart',function(e){var c=e.target.closest('.bed.occ');if(!c)return;drag=c;clearSel();
+    c.classList.add('dragging');e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',c.dataset.idx);}catch(_){}
+    board.classList.add('dragging-on');});
+  board.addEventListener('dragend',function(){if(drag)drag.classList.remove('dragging');drag=null;board.classList.remove('dragging-on');
+    board.querySelectorAll('.rm.over-ok,.rm.over-no').forEach(function(r){r.classList.remove('over-ok','over-no');});});
+  board.addEventListener('dragover',function(e){var rm=e.target.closest('.rm');if(!rm||!drag)return;
+    var ok=rm.dataset.cap===drag.closest('.rm').dataset.cap; rm.classList.toggle('over-ok',ok); rm.classList.toggle('over-no',!ok);
+    if(ok){e.preventDefault();e.dataTransfer.dropEffect='move';}});
+  board.addEventListener('dragleave',function(e){var rm=e.target.closest('.rm');if(rm&&!rm.contains(e.relatedTarget))rm.classList.remove('over-ok','over-no');});
+  board.addEventListener('drop',function(e){var rm=e.target.closest('.rm');if(!rm||!drag)return;e.preventDefault();
+    rm.classList.remove('over-ok','over-no');var c=drag;move(c, rm);});
+  form.addEventListener('submit',function(){
+    fields.innerHTML='';
+    Object.keys(moves).forEach(function(i){var m=moves[i];
+      [['fp_',m.fp],['hotel_',m.hotel],['rtype_',m.rtype],['rnum_',m.rnum]].forEach(function(p){
+        var inp=document.createElement('input');inp.type='hidden';inp.name=p[0]+i;inp.value=p[1];fields.appendChild(inp);});});
+    saving=true;
+  });
+  window.addEventListener('beforeunload',function(e){
+    if(Object.keys(moves).length && !saving){e.preventDefault();e.returnValue='';}});
+})();
+</script>
 {% endif %}
 {% endblock %}
