@@ -1,81 +1,51 @@
 {% extends "base.html" %}
 {% block title %}التقارير — المصطفى{% endblock %}
 {% block heading %}{{ ic('file-text') }} التقارير والتصدير{% endblock %}
-{% block subhead %}<div class="season">{{ count }} سجلّ في الموسم الحالي</div>{% endblock %}
+{% block subhead %}<div class="season">{{ count }} سجلّ في الموسم الحالي — المعاينات ببيانات تجريبية توضّح شكل كل تقرير</div>{% endblock %}
 {% block content %}
-<div class="repgrid">
-  <a class="repcard" target="_blank" href="{{ url_for('rep_pilgrims_pdf') }}">
-    <div class="ic" style="background:#fbe4e0;color:#C0392B">{{ ic('file-text') }}</div>
-    <div><div class="t">كشف {{ noun }} (PDF)</div>
-      <div class="d">جدول كامل بكل السجلات — جاهز للطباعة.</div></div>
-  </a>
-  <a class="repcard" href="{{ url_for('rep_pilgrims_xlsx') }}">
-    <div class="ic" style="background:#e6f1e9;color:#2E7D5B">{{ ic('chart') }}</div>
-    <div><div class="t">كشف {{ noun }} (إكسل)</div>
-      <div class="d">ملف Excel قابل للتعديل والفرز.</div></div>
-  </a>
-  <a class="repcard" target="_blank" href="{{ url_for('rep_financial_pdf') }}">
-    <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ ic('wallet') }}</div>
-    <div><div class="t">الإحصاءات والملخّص المالي (PDF)</div>
-      <div class="d">المحصّل والمتبقّي والتوزيعات والمتأخّرات.</div></div>
-  </a>
-  <a class="repcard" target="_blank" href="{{ url_for('rep_airline_pdf') }}">
-    <div class="ic" style="background:#e8eef8;color:#2C5AA0">{{ ic('plane') }}</div>
-    <div><div class="t">كشف الطيران (Manifest)</div>
-      <div class="d">كشف طيران إنجليزي بكل السجلات — لشركة الطيران.</div></div>
-  </a>
-  <a class="repcard" target="_blank" href="{{ url_for('rep_cards_pdf') }}">
-    <div class="ic" style="background:#fbf0dc;color:#B26A00">{{ ic('id-card') }}</div>
-    <div><div class="t">بطاقات {{ noun }}</div>
-      <div class="d">بطاقات بمقاس موحّد للطباعة والقصّ.</div></div>
-  </a>
+{% macro rcard(href, thumb, icon, bg, fg, title, desc, tag='PDF', blank=True, land=False) %}
+<a class="repcard rc2" href="{{ href }}"{% if blank %} target="_blank"{% endif %}>
+  <span class="rep-thumb{{ ' land' if land }}{{ ' ' ~ thumb if thumb in ['xl', 'edit'] }}">
+    {% if thumb == 'xl' %}<span class="xl-grid" aria-hidden="true">{% for i in range(36) %}<i></i>{% endfor %}</span>
+    {% elif thumb == 'edit' %}<span class="ic" style="background:{{ bg }};color:{{ fg }}">{{ ic(icon) }}</span>
+    {% else %}<img src="{{ url_for('report_preview', kind=thumb, v=tv) }}" alt="معاينة {{ title }}" loading="lazy"
+         onload="this.parentNode.classList.add('ok')" onerror="this.parentNode.classList.add('nothumb')">
+    <span class="rt-ph" aria-hidden="true">{{ ic(icon) }}</span>{% endif %}
+    <span class="rt-tag">{{ tag }}</span>
+  </span>
+  <span class="rc-body">
+    <span class="ic" style="background:{{ bg }};color:{{ fg }}">{{ ic(icon) }}</span>
+    <span><span class="t">{{ title }}</span><span class="d">{{ desc }}</span></span>
+    <span class="rc-go">{{ ic('arrow-left') }}</span>
+  </span>
+</a>
+{% endmacro %}
+
+<div class="repgrid thumbs">
+  {{ rcard(url_for('rep_pilgrims_pdf'), 'pilgrims', 'file-text', '#fbe4e0', '#C0392B', 'كشف ' ~ noun ~ ' (PDF)', 'جدول كامل بكل السجلات — جاهز للطباعة.', land=True) }}
+  {{ rcard(url_for('rep_pilgrims_xlsx'), 'xl', 'chart', '#e6f1e9', '#2E7D5B', 'كشف ' ~ noun ~ ' (إكسل)', 'ملف Excel قابل للتعديل والفرز.', tag='Excel', blank=False) }}
+  {{ rcard(url_for('rep_financial_pdf'), 'financial', 'wallet', '#efe6d6', '#8A6E4B', 'الإحصاءات والملخّص المالي (PDF)', 'المحصّل والمتبقّي والتوزيعات والمتأخّرات.') }}
+  {{ rcard(url_for('rep_airline_pdf'), 'airline', 'plane', '#e8eef8', '#2C5AA0', 'كشف الطيران (Manifest)', 'كشف طيران إنجليزي بكل السجلات — لشركة الطيران.', land=True) }}
+  {{ rcard(url_for('rep_cards_pdf'), 'cards', 'id-card', '#fbf0dc', '#B26A00', 'بطاقات ' ~ noun, 'بطاقات بمقاس موحّد للطباعة والقصّ.') }}
   {% if mode=='hajj' and can_edit %}
-  <a class="repcard" href="{{ url_for('cards_back') }}">
-    <div class="ic" style="background:#fbf0dc;color:#B26A00">{{ ic('pencil') }}</div>
-    <div><div class="t">تعديل خلف البطاقة</div>
-      <div class="d">طبيب/واعظ الحملة والإداريون والطوارئ — أضف أو احذف أو عدّل.</div></div>
-  </a>
+  {{ rcard(url_for('cards_back'), 'edit', 'pencil', '#fbf0dc', '#B26A00', 'تعديل خلف البطاقة', 'طبيب/واعظ الحملة والإداريون والطوارئ — أضف أو احذف أو عدّل.', tag='إعداد', blank=False) }}
   {% endif %}
-  <a class="repcard" target="_blank" href="{{ url_for('rep_stickers_pdf') }}">
-    <div class="ic" style="background:#f1e4f0;color:#8E44AD">{{ ic('tag') }}</div>
-    <div><div class="t">ملصقات الحقائب</div>
-      <div class="d">استيكرات بأسماء {{ noun }} على شبكة A4 للطباعة واللصق.</div></div>
-  </a>
+  {{ rcard(url_for('rep_stickers_pdf'), 'stickers', 'tag', '#f1e4f0', '#8E44AD', 'ملصقات الحقائب', 'استيكرات بأسماء ' ~ noun ~ ' على شبكة A4 للطباعة واللصق.') }}
   {% if mode=='umrah' %}
-  <a class="repcard" target="_blank" href="{{ url_for('rep_transport_pdf') }}">
-    <div class="ic" style="background:#e6f1e9;color:#2E7D5B">{{ ic('bus') }}</div>
-    <div><div class="t">كشف المواصلات</div>
-      <div class="d">توزيع المعتمرين على المركبات مع الفندق.</div></div>
-  </a>
+  {{ rcard(url_for('rep_transport_pdf'), 'transport', 'bus', '#e6f1e9', '#2E7D5B', 'كشف المواصلات', 'توزيع المعتمرين على المركبات مع الفندق.') }}
   {% endif %}
-  <a class="repcard" target="_blank" href="{{ url_for('rep_itinerary_pdf') }}">
-    <div class="ic" style="background:#efe6d6;color:#6E543A">{{ ic('calendar') }}</div>
-    <div><div class="t">جدول المناسك</div>
-      <div class="d">الجدول الزمني المحفوظ (يوم/نشاط/مكان).</div></div>
-  </a>
+  {{ rcard(url_for('rep_itinerary_pdf'), 'itinerary', 'calendar', '#efe6d6', '#6E543A', 'جدول المناسك', 'الجدول الزمني المحفوظ (يوم/نشاط/مكان).') }}
 </div>
 
 {% if can_edit %}
-<h3 style="margin:22px 0 10px">{{ ic('receipt') }} توليد جماعي للمستندات (كل السجلات في ملف واحد)</h3>
-<div class="repgrid">
-  <a class="repcard" target="_blank" href="{{ url_for('rep_bulk_docs', kind='receipt') }}">
-    <div class="ic" style="background:#e6f1e9;color:#2E7D5B">{{ ic('receipt') }}</div>
-    <div><div class="t">سندات القبض — للجميع</div>
-      <div class="d">سند قبض لكل سجلّ برقم متسلسل، مدمجة في PDF واحد.</div></div>
-  </a>
-  <a class="repcard" target="_blank" href="{{ url_for('rep_bulk_docs', kind='invoice') }}">
-    <div class="ic" style="background:#e8eef8;color:#2C5AA0">{{ ic('receipt') }}</div>
-    <div><div class="t">الفواتير — للجميع</div>
-      <div class="d">فاتورة ضريبية لكل سجلّ، مدمجة في PDF واحد.</div></div>
-  </a>
-  <a class="repcard" target="_blank" href="{{ url_for('rep_bulk_docs', kind='contract') }}">
-    <div class="ic" style="background:#efe6d6;color:#8A6E4B">{{ ic('scroll') }}</div>
-    <div><div class="t">العقود — للجميع</div>
-      <div class="d">عقد لكل سجلّ، مدمجة في PDF واحد.</div></div>
-  </a>
+<h3 class="rep-h">{{ ic('receipt') }} توليد جماعي للمستندات (كل السجلات في ملف واحد)</h3>
+<div class="repgrid thumbs">
+  {{ rcard(url_for('rep_bulk_docs', kind='receipt'), 'receipt', 'receipt', '#e6f1e9', '#2E7D5B', 'سندات القبض — للجميع', 'سند قبض لكل سجلّ برقم متسلسل، مدمجة في PDF واحد.', land=True) }}
+  {{ rcard(url_for('rep_bulk_docs', kind='invoice'), 'invoice', 'receipt', '#e8eef8', '#2C5AA0', 'الفواتير — للجميع', 'فاتورة ضريبية لكل سجلّ، مدمجة في PDF واحد.') }}
+  {{ rcard(url_for('rep_bulk_docs', kind='contract'), 'contract', 'scroll', '#efe6d6', '#8A6E4B', 'العقود — للجميع', 'عقد لكل سجلّ، مدمجة في PDF واحد.') }}
 </div>
 {% endif %}
 <p class="hint-note">تقارير الـ PDF تُفتح كمعاينة في تبويب جديد (ومنها تطبع أو
-  تحفظ). ملف إكسل يُنزَّل مباشرةً. تقارير التسكين ومواعيد السفر (لكل برنامج)
-  والحضور ستُضاف تباعاً.</p>
+  تحفظ). ملف إكسل يُنزَّل مباشرةً. الصور المصغّرة مولّدة ببيانات تجريبية لتوضيح الشكل فقط،
+  والتقرير الفعلي يحمل بيانات {{ noun }} الحقيقية.</p>
 {% endblock %}

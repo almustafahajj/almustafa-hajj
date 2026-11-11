@@ -102,6 +102,22 @@
     <div class="content">{% block content %}{% endblock %}</div>
   </div>
 </div>
+{# ---- شريط سفلي للجوال: الرئيسية، الأشخاص، البحث، التحصيل، المزيد ---- #}
+{% set _bb_people = active in ['hujjaj','documents','archive','groups'] %}
+{% set _bb_fin = active in ['finance','expenses','offers'] %}
+<nav class="bbar" aria-label="التنقّل السريع">
+  <a class="bb-it{{ ' on' if active == 'dashboard' }}" href="{{ url_for('dashboard') }}"{% if active == 'dashboard' %} aria-current="page"{% endif %}>
+    <span class="bb-ic">{{ ic('grid') }}</span><span>الرئيسية</span></a>
+  <a class="bb-it{{ ' on' if _bb_people }}" href="{{ url_for('hujjaj') }}"{% if _bb_people %} aria-current="page"{% endif %}>
+    <span class="bb-ic">{{ ic('users') }}{% if nav_badges.get('people') %}<i class="bb-dot"></i>{% endif %}</span><span>{{ noun }}</span></a>
+  <button class="bb-it bb-search" type="button" onclick="window.openCmdk&&openCmdk('')" aria-label="بحث سريع">
+    <span class="bb-ic">{{ ic('search') }}</span><span>بحث</span></button>
+  <a class="bb-it{{ ' on' if _bb_fin }}" href="{{ url_for('finance') }}"{% if _bb_fin %} aria-current="page"{% endif %}>
+    <span class="bb-ic">{{ ic('wallet') }}{% if nav_badges.get('fin') %}<i class="bb-dot"></i>{% endif %}</span><span>التحصيل</span></a>
+  <button class="bb-it" type="button" onclick="toggleNav()" aria-label="القائمة الكاملة">
+    <span class="bb-ic">{{ ic('menu') }}{% if alert_count %}<i class="bb-dot"></i>{% endif %}</span><span>المزيد</span></button>
+</nav>
+<div class="navbar-progress" id="navProg" aria-hidden="true"></div>
 {% if session_minutes %}
 <div class="sess-warn" id="sessWarn" role="alertdialog" aria-live="assertive" hidden>
   {{ ic('clock') }}
@@ -295,5 +311,57 @@ document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
     if(box.hidden?now-act>lim-warn-30000:true)check();   /* أثناء التنبيه: مزامنة مع النوافذ الأخرى */
   },15000);})();
 {% endif %}
+</script>
+<script>
+/* حركات دقيقة: شريط تقدّم أعلى الصفحة عند الانتقال، ظهور متتابع للبطاقات،
+   والأرقام تعدّ صعوداً في لوحة التحكم — وكلها تُلغى لمن يفضّل تقليل الحركة. */
+(function(){
+  var calm=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var bar=document.getElementById('navProg'),t1,t2;
+  function start(){ if(!bar) return; clearTimeout(t1); clearTimeout(t2);
+    t1=setTimeout(function(){ bar.className='navbar-progress go'; },120);
+    t2=setTimeout(function(){ bar.className='navbar-progress'; },15000); }
+  function stop(){ if(!bar) return; clearTimeout(t1); clearTimeout(t2); bar.className='navbar-progress'; }
+  document.addEventListener('click',function(e){
+    if(e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey) return;
+    var a=e.target.closest('a[href]'); if(!a) return;
+    var h=a.getAttribute('href')||'';
+    if(a.target||a.hasAttribute('download')||h.charAt(0)==='#'||/^(mailto|tel|javascript|https?:\/\/wa\.me)/i.test(h)) return;
+    if(a.origin&&a.origin!==location.origin) return;
+    if(/\.(pdf|xlsx|zip|png|jpg)(\?|$)/i.test(a.pathname)) return;
+    if(a.pathname===location.pathname&&a.search===location.search&&a.hash) return;
+    start();
+  });
+  document.addEventListener('submit',function(e){
+    var f=e.target; if(e.defaultPrevented||f.target) return;
+    setTimeout(function(){ if(!e.defaultPrevented) start(); },0);
+  });
+  window.addEventListener('pageshow',stop);
+  if(calm) return;
+  /* ظهور متتابع لبطاقات الشبكات */
+  ['.kpis','.repgrid','.pcards','.rb-grid','.dash-grid','.tp-hotels'].forEach(function(sel){
+    document.querySelectorAll(sel).forEach(function(g){
+      g.classList.add('stagger');
+      [].forEach.call(g.children,function(c,i){ c.style.setProperty('--i', Math.min(i,12)); });
+    });
+  });
+  /* عدّ تصاعدي لأرقام مؤشّرات لوحة التحكم */
+  var vals=document.querySelectorAll('.kpi .val, .ph-fig b');
+  vals.forEach(function(el){
+    var txt=el.textContent, m=txt.match(/[\d][\d,]*(\.\d+)?/);
+    if(!m) return;
+    var raw=m[0], target=parseFloat(raw.replace(/,/g,'')), dec=(m[1]||'').length-1;
+    if(!(target>0)) return;
+    if(dec<0) dec=0;
+    var pre=txt.slice(0,m.index), post=txt.slice(m.index+raw.length), comma=raw.indexOf(',')>=0||target>=1000;
+    var t0=null, dur=Math.min(1100, 500+Math.log10(target+1)*160);
+    function fmt(v){ var s=v.toFixed(dec); if(comma){ var p=s.split('.'); p[0]=p[0].replace(/\B(?=(\d{3})+(?!\d))/g,','); s=p.join('.'); } return s; }
+    el.style.fontVariantNumeric='tabular-nums';
+    function step(ts){ if(t0===null) t0=ts; var k=Math.min(1,(ts-t0)/dur), e=1-Math.pow(1-k,3);
+      el.textContent=pre+fmt(target*e)+post; if(k<1) requestAnimationFrame(step); else el.textContent=txt; }
+    el.textContent=pre+fmt(0)+post;
+    requestAnimationFrame(step);
+  });
+})();
 </script>
 </body></html>

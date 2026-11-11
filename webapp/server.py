@@ -1982,7 +1982,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-11 · تقويم بأشرطة الرحلات + برامج كبطاقات + لوحة الغرف بالسحب"
+_BUILD_TAG = "2026-11-11 · شريط سفلي للجوال + حركات ناعمة + لمسة موسمية + معاينات التقارير"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3825,9 +3825,129 @@ def _tmp(suffix):
 def reports():
     if _sess() is None:
         return redirect(url_for("login"))
+    import hashlib as _h
+    import json as _json
     records = _load_records()
+    co = storage.load_settings().get("company") or {}
+    tv = _h.sha1((_BUILD_TAG + _json.dumps(co, sort_keys=True, ensure_ascii=False))
+                 .encode("utf-8")).hexdigest()[:8]
     return render_template("reports.html", active="reports",
-                           count=len(records), **_ctx())
+                           count=len(records), tv=tv, **_ctx())
+
+
+# ---- معاينات التقارير: الصفحة الأولى من كل تقرير مولّدة ببيانات تجريبية ----
+_THUMB_CACHE: dict = {}
+_THUMB_LOCK = threading.Lock()
+_THUMB_KINDS = ("pilgrims", "financial", "airline", "cards", "stickers", "transport",
+                "itinerary", "receipt", "invoice", "contract")
+
+
+def _demo_records() -> list:
+    """سجلّات تجريبية لمعاينة شكل التقارير — لا بيانات حقيقية فيها."""
+    from hajj_app.mrz import PassportData
+    names = (("أحمد محمد العلي", "AHMED MOHAMMED ALALI", "ذكر"),
+             ("فاطمة حسن الكعبي", "FATIMA HASSAN ALKAABI", "أنثى"),
+             ("علي عبدالله الشامسي", "ALI ABDULLA ALSHAMSI", "ذكر"),
+             ("مريم سعيد النعيمي", "MARIAM SAEED ALNUAIMI", "أنثى"),
+             ("خالد يوسف المري", "KHALID YOUSEF ALMARRI", "ذكر"),
+             ("نورة راشد الظاهري", "NOURA RASHED ALDHAHERI", "أنثى"),
+             ("حسين جعفر الموسوي", "HUSSAIN JAAFAR ALMUSAWI", "ذكر"),
+             ("سارة أحمد المهيري", "SARA AHMED ALMUHAIRI", "أنثى"))
+    out = []
+    for i, (ar, en, sex) in enumerate(names):
+        out.append(PassportData(
+            full_name_ar=ar, full_name_en=en, sex=sex, nationality_ar="الإمارات",
+            passport_number=f"N{7654321 + i * 1111}", birth_date=f"19{70 + i * 3}-0{1 + i % 9}-1{i}",
+            expiry_date="2031-05-20", phone=f"05012345{i:02d}", family_number=str(10 + i // 2),
+            reference_number=f"R-{100 + i}", hotel="فندق مكة", room_type="رباعي 1" if i < 4 else "رباعي 2",
+            room_number="", airline="الإماراتية", flight_number="EK 815", trip="U1", program="البرنامج الأول",
+            arrival_date="2026-12-01", departure_date="2026-12-10", transport="GMC", vehicle="GMC 1",
+            program_value="6500", paid_amount=("6500" if i % 3 == 0 else "3000" if i % 3 == 1 else "0")))
+    return out
+
+
+def _report_thumb(kind: str) -> bytes | None:
+    """صورة PNG للصفحة الأولى من التقرير بالبيانات التجريبية (تُحفظ في الذاكرة)."""
+    import json as _json
+    from hajj_app import pdf_io
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings.get("company"), dict) else {}
+    key = (kind, _mode(), _BUILD_TAG, _json.dumps(co, sort_keys=True, ensure_ascii=False))
+    if key in _THUMB_CACHE:
+        return _THUMB_CACHE[key]
+    with _THUMB_LOCK:
+        if key in _THUMB_CACHE:
+            return _THUMB_CACHE[key]
+        recs = _demo_records()
+        umrah_mode = _mode() == app_mode.UMRAH
+        c = pdf_io.company_info(co)
+        path = _tmp(".pdf")
+        try:
+            if kind == "pilgrims":
+                if umrah_mode:
+                    pdf_io.export_umrah_pdf(recs, path, program_name="")
+                else:
+                    pdf_io.export_pdf(recs, path, title="كشف الحجّاج")
+            elif kind == "financial":
+                pdf_io.export_stats_pdf(recs, path)
+            elif kind == "airline":
+                pdf_io.export_airline_pdf(recs, path)
+            elif kind == "cards":
+                if umrah_mode:
+                    pdf_io.export_umrah_cards_pdf(recs, path, company=co, session=_sess())
+                else:
+                    pdf_io.export_badges_pdf(recs, path, company=c["name_ar"],
+                                             session=_sess(), back=_load_badge_back())
+            elif kind == "stickers":
+                pdf_io.export_stickers_pdf(recs, path, kind="bag", company=c["name_ar"],
+                                           season=str(settings.get("season_year", "") or ""))
+            elif kind == "transport":
+                pdf_io.export_umrah_transport_pdf(recs, path)
+            elif kind == "itinerary":
+                demo = [["الأول", "01/12", "الوصول والإحرام من الميقات", "الميقات", "الالتزام بالمواعيد"],
+                        ["الأول", "01/12", "أداء العمرة (الطواف والسعي)", "المسجد الحرام", "مع المرشد"],
+                        ["الثاني", "02/12", "زيارة المعالم", "مكة المكرمة", ""],
+                        ["الخامس", "05/12", "التوجّه إلى المدينة المنورة", "قطار الحرمين", "الحقائب 7:00 ص"],
+                        ["السادس", "06/12", "زيارة المسجد النبوي", "المدينة المنورة", ""],
+                        ["التاسع", "09/12", "العودة", "المطار", "قبل الإقلاع بـ 3 ساعات"]]
+                pdf_io.export_itinerary_pdf(path, rows=[list(r) for r in settings.get("itinerary", [])] or demo)
+            elif kind in ("receipt", "invoice", "contract"):
+                _doc_export(kind, recs[0], co, None, path)
+            else:
+                return None
+            import fitz
+            doc = fitz.open(path)
+            page = doc[0]
+            zoom = 460 / max(page.rect.width, 1)
+            png = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
+            doc.close()
+        except Exception:                          # noqa: BLE001
+            png = None
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        if len(_THUMB_CACHE) > 60:
+            _THUMB_CACHE.clear()
+        _THUMB_CACHE[key] = png
+        return png
+
+
+@app.get("/reports/preview/<kind>.png")
+def report_preview(kind):
+    """معاينة مصغّرة لشكل التقرير (ببيانات تجريبية) لبطاقات صفحة التقارير."""
+    if _sess() is None:
+        return ("", 401)
+    if kind not in _THUMB_KINDS:
+        return ("", 404)
+    png = _report_thumb(kind)
+    if not png:
+        return ("", 404)
+    import io
+    resp = send_file(io.BytesIO(png), mimetype="image/png", download_name=f"{kind}.png")
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 
 @app.get("/reports/pilgrims.pdf")
