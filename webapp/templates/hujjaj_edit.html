@@ -4,15 +4,72 @@
 {% block subhead %}<div class="season">{% if is_new %}سجلّ جديد{% else %}{{ name or '—' }}{% if number %} · {{ number }}{% endif %}{% endif %}</div>{% endblock %}
 {% block content %}
 {% if saved %}<div class="ok-banner">{{ ic('check') }} تم حفظ التعديلات بنجاح.</div>{% endif %}
-<form method="post" action="{{ url_for('hujjaj_new') if is_new else url_for('hujjaj_edit', idx=idx) }}">
+{% set mk = prof.miss_keys if prof else [] %}
+{% if prof %}
+<section class="prof" aria-label="ملخّص السجلّ">
+  <div class="prof-main">
+    <div class="prof-av av{{ (prof.initials|length + (prof.name_ar or prof.name_en or '')|length) % 6 }}">
+      <span>{{ prof.initials }}</span>
+      {% if prof.avatar %}<img src="{{ prof.avatar }}" alt="صورة {{ prof.name_ar or prof.name_en }}" onerror="this.remove()">{% endif %}
+    </div>
+    <div class="prof-names">
+      <h2>{{ prof.name_ar or prof.name_en or '—' }}</h2>
+      {% if prof.name_en and prof.name_ar %}<div class="prof-en" dir="ltr">{{ prof.name_en }}</div>{% endif %}
+      <div class="prof-chips">
+        {% if prof.status %}<span class="pchip st-{{ prof.status_cls }}">{{ prof.status }}</span>{% endif %}
+        {% for icon, text, is_ltr in prof.chips %}<span class="pchip">{{ ic(icon) }}<span{% if is_ltr %} dir="ltr"{% endif %}>{{ text }}</span></span>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="prof-stats">
+    <div class="pstat">
+      <svg class="pring {{ 'full' if prof.ready == 100 }}" viewBox="0 0 36 36" aria-hidden="true">
+        <circle cx="18" cy="18" r="16" class="pr-bg"/>
+        <circle cx="18" cy="18" r="16" class="pr-fg" stroke-dasharray="{{ prof.ring }} 100.53"/>
+        <text x="18" y="21.5" text-anchor="middle">{{ prof.ready }}%</text>
+      </svg>
+      <div class="pstat-t">
+        <b>جاهزية السفر</b>
+        {% if prof.missing %}
+        <span>ينقص: {{ prof.missing|join('، ') }}</span>
+        <button type="button" class="linkish" id="jumpMiss">{{ ic('arrow-left') }} أكمل الناقص</button>
+        {% else %}<span class="ok">{{ ic('check') }} البيانات الأساسية مكتملة</span>{% endif %}
+      </div>
+    </div>
+    <div class="pstat">
+      <span class="pstat-ic {{ prof.pay_cls or 'none' }}">{{ ic(prof.pay_ic or 'wallet') }}</span>
+      <div class="pstat-t">
+        <b>{{ prof.pay_lbl or 'السداد' }}{% if prof.total %} <small>{{ prof.pct }}%</small>{% endif %}</b>
+        {% if prof.total %}
+        <div class="pay-bar"><i class="pb-{{ prof.pay_cls }}" style="width:{{ prof.pct }}%"></i></div>
+        <span>مدفوع {{ prof.paid }} من {{ prof.total }}{% if prof.pay != 'paid' %} · المتبقّي <b>{{ prof.remaining }}</b>{% endif %}</span>
+        {% else %}<span>لم تُحدَّد قيمة البرنامج بعد</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="prof-acts">
+    <a class="btn ghost sm" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">{{ ic('file-text') }} المستندات</a>
+    <a class="btn ghost sm" href="{{ url_for('record_images', idx=idx, fp=fp) }}">{{ ic('image') }} الصور</a>
+    {% if prof.plink %}<a class="btn ghost sm" href="{{ prof.plink }}" target="_blank" rel="noopener">{{ ic('link') }} صفحة رحلتي</a>{% endif %}
+    {% if prof.wa %}<a class="btn ghost sm wa" href="{{ prof.wa }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+<nav class="sec-nav" id="secNav" aria-label="أقسام السجلّ">
+  {% for g in groups %}<a href="#sec-{{ loop.index }}">{{ ic(g.icon) }}<span>{{ g.title }}</span></a>{% endfor %}
+</nav>
+
+<form method="post" action="{{ url_for('hujjaj_new') if is_new else url_for('hujjaj_edit', idx=idx) }}"
+      class="rec-form{{ ' needs-save' if not is_new }}" id="recForm">
   {% if not is_new %}<input type="hidden" name="fp" value="{{ fp }}">{% endif %}
   {% for group in groups %}
-  <fieldset class="editcard">
-    <legend>{{ group.title }}</legend>
+  <fieldset class="editcard" id="sec-{{ loop.index }}">
+    <legend>{{ ic(group.icon) }} {{ group.title }}</legend>
     <div class="fgrid">
       {% for f in group.fields %}
-      <label class="ff">
-        <span>{{ f.label }}</span>
+      <label class="ff{{ ' miss' if f.key in mk }}">
+        <span>{{ f.label }}{% if f.key in mk %} <em>ناقص</em>{% endif %}</span>
         {% if f.choices %}
           <select name="{{ f.key }}" id="f_{{ f.key }}">
             {% for c in f.choices %}{% set v = c if c is string else c[0] %}{% set t = c if c is string else c[1] %}<option value="{{ v }}" {{ 'selected' if v==f.value }}>{{ t or '—' }}</option>{% endfor %}
@@ -26,11 +83,44 @@
     </div>
   </fieldset>
   {% endfor %}
-  <div class="formbar">
-    <button class="btn primary" type="submit">{{ ('➕ إضافة السجل' if is_new else '💾 حفظ التعديلات')|iconize }}</button>
+  <div class="formbar savebar">
+    {% if is_new %}
+    <button class="btn primary" type="submit">{{ ic('plus') }} إضافة السجل</button>
+    {% else %}
+    <button class="btn primary save-btn" type="submit">{{ ic('save') }} حفظ التعديلات</button>
+    <span class="sb-state">{{ ic('alert') }} تغييرات غير محفوظة</span>
+    {% endif %}
     <a class="btn ghost" href="{{ url_for('hujjaj') }}">رجوع للقائمة</a>
   </div>
 </form>
+<script>
+/* قائمة الأقسام تبقى تحت الشريط العلوي عند التمرير */
+(function(){var tb=document.querySelector('.topbar');if(!tb)return;
+  function set(){document.documentElement.style.setProperty('--tb-h',
+    (window.matchMedia('(min-width:761px)').matches?tb.offsetHeight:0)+'px');}
+  set();window.addEventListener('resize',set);})();
+/* قائمة الأقسام: تمييز القسم الظاهر، و«أكمل الناقص» يقفز لأول حقل ناقص */
+(function(){
+  var nav=document.getElementById('secNav'); if(!nav) return;
+  var links=[].slice.call(nav.querySelectorAll('a'));
+  var secs=links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function onScroll(){
+    var top=(parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tb-h'))||64)+nav.offsetHeight+30, cur=0;
+    secs.forEach(function(s,i){ if(s && s.getBoundingClientRect().top<=top) cur=i; });
+    links.forEach(function(a,i){ a.classList.toggle('on', i===cur); });
+    var on=links[cur]; if(on && nav.scrollWidth>nav.clientWidth){
+      var r=on.getBoundingClientRect(), nr=nav.getBoundingClientRect();
+      if(r.left<nr.left || r.right>nr.right) nav.scrollLeft+= (r.left<nr.left? r.left-nr.left-12 : r.right-nr.right+12);
+    }
+  }
+  window.addEventListener('scroll', onScroll, {passive:true}); onScroll();
+  var j=document.getElementById('jumpMiss');
+  if(j) j.addEventListener('click', function(){
+    var f=document.querySelector('.ff.miss input, .ff.miss select');
+    if(f){ f.scrollIntoView({behavior:'smooth', block:'center'}); setTimeout(function(){ f.focus({preventScroll:true}); }, 350); }
+  });
+})();
+</script>
 {% if room_prices is not none %}
 <script>
 /* العمرة: أنواع الغرف من أسعار البرنامج المختار، واختيار الغرفة يملأ قيمة البرنامج */
@@ -98,17 +188,5 @@
 </fieldset>
 {% endif %}
 
-{% if has_docs %}
-<fieldset class="editcard">
-  <legend>{{ ic('file-text') }} المستندات</legend>
-  <div class="docbtns">
-    <a class="btn primary" href="{{ url_for('record_docs', idx=idx, fp=fp) }}">
-      {{ ic('file-text') }} فتح قائمة مستندات {{ noun_singular }}</a>
-    <a class="btn ghost" href="{{ url_for('record_images', idx=idx, fp=fp) }}">
-      {{ ic('image') }} صور ومستندات {{ noun_singular }} (جواز/شخصية/هوية/تصريح)</a>
-  </div>
-  <p class="hint-note">سند/فاتورة/عقد/فاوتشر/طلب مواصلات + حزمة المستندات — في صفحة مستقلة.
-    وإرفاق صور الجواز والصورة الشخصية والهوية والتصريح للحاج.</p>
-</fieldset>
-{% endif %}
+{# المستندات والصور: أزرارها في رأس الملف الشخصي أعلى الصفحة #}
 {% endblock %}

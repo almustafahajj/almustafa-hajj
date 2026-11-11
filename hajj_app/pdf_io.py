@@ -31,7 +31,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    Image as RLImage, KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate,
+    Image as RLImage, KeepInFrame, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate,
     Spacer, Table, TableStyle,
 )
 
@@ -2108,6 +2108,8 @@ RECEIPT_SCHEMA = [
         {"key": "amount", "label": "المبلغ (AED)"},
         {"key": "amount_words", "label": "المبلغ كتابةً (English)"},
         {"key": "bank", "label": "طريقة الدفع"},
+        {"key": "chq_no", "label": "رقم الشيك (إن وُجد)"},
+        {"key": "chq_date", "label": "تاريخ الشيك"},
     ]},
     {"legend": "البيان", "fields": [
         {"key": "description", "label": "وذلك عن", "type": "area"},
@@ -2116,20 +2118,27 @@ RECEIPT_SCHEMA = [
 
 
 def export_receipt_pdf(rec, path: str | Path, *,
-                       company: str = "المصطفى للحج والعمرة",
+                       company="المصطفى للحج والعمرة",
                        company_en: str = "Al Mustafa Hajj & Umrah",
                        season: str = "", number: str = "",
                        date_str: str = "", amount=None,
                        amount_words: str = "", description: str = "",
                        bank: str = "Bank Transfer", data=None) -> Path:
     """يبني **سند قبض (Receipt Voucher)** ثنائي اللغة لحاج واحد على صفحة A4
-    عرضية، بنفس تخطيط النموذج الرسمي: ترويسة بالشعار، رقم السند، المستلَم منه،
-    التاريخ، المبلغ رقماً وكتابةً، بيان «وذلك عن»، الإجمالي، والتواقيع."""
+    عرضية بهوية المستندات (:mod:`hajj_app.pdf_brand`): ترويسة بالشعار ولوحة
+    العنوان ورقم السند، بطاقة المبلغ رقماً وكتابةً مع طريقة الدفع ورمز التحقّق،
+    المستلَم منه والتاريخ وبيان «وذلك عن» وبيانات الشيك، ثم التواقيع.
+
+    ``company`` اسم الشركة بالعربية أو قاموس بياناتها كاملة (للتذييل)."""
     from reportlab.pdfgen import canvas as _canvas
+    from . import pdf_brand as B
     from .fields import num_to_words_en, parse_amount
 
     _register_fonts()
     path = Path(path)
+    co = B.company(company)
+    if company_en and not (isinstance(company, dict) and company.get("name_en")):
+        co["name_en"] = company_en
 
     name = rec.full_name_ar or rec.full_name_en or "—"
     if amount is None:
@@ -2144,6 +2153,7 @@ def export_receipt_pdf(rec, path: str | Path, *,
         date_str = date.today().strftime("%B %d, %Y")
     if not description:
         description = build_receipt_description(rec, season=season, amount=amount)
+    chq_no = chq_date = ""
     # قيم قابلة للتحرير من المحرّر الويب
     if data:
         number = str(data.get("number") or number)
@@ -2155,199 +2165,146 @@ def export_receipt_pdf(rec, path: str | Path, *,
         amount_words = str(data.get("amount_words") or amount_words)
         description = str(data.get("description") or description)
         bank = str(data.get("bank") or bank)
-    amount_disp = f"AED {amount:,.2f}"
-    total_disp = f"{amount:,.2f}"
+        chq_no = str(data.get("chq_no") or "")
+        chq_date = str(data.get("chq_date") or "")
 
     W, H = landscape(A4)
     c = _canvas.Canvas(str(path), pagesize=landscape(A4), pageCompression=1)
     c.setTitle("سند قبض")
-    c.setAuthor("برنامج الحج")
-
-    AF, AFB = _FONT, _FONT_BOLD
-    EF, EFB = "Helvetica", "Helvetica-Bold"
-    ink = _INK
-
-    mx, my = 24, 26
+    c.setAuthor(co["name_ar"])
+    mx = 15 * mm
     x0, x1 = mx, W - mx
-    yt = H - my
-    bw = x1 - x0
 
-    def hline(yv):
-        c.setLineWidth(0.9); c.setStrokeColor(ink); c.line(x0, yv, x1, yv)
+    B.watermark(c, W, H, frac=0.26, alpha=0.3)
+    ytop = B.letterhead(c, W, H, co=co, title_ar="سند قبض",
+                        title_en="Receipt Voucher", number=number,
+                        date_txt=date_str, mx=mx, panel_w=250)
+    B.footer(c, W, co=co, label=f"سند قبض رقم {number}", mx=mx)
 
-    def vline(xv, ya, yc):
-        c.setLineWidth(0.9); c.setStrokeColor(ink); c.line(xv, ya, xv, yc)
+    # ---------- التواقيع (أسفل الصفحة) ----------
+    sig_h, sig_y = 74, 22 * mm
+    gap = 16
+    sw = (x1 - x0 - gap) / 2
+    # المحاسب يمين (المُصدِر)، والمستلم يسار
+    acc = B.SignBlock(sw, "المحاسب", "Accountant", stamp=True, h=sig_h)
+    acc.canv = c
+    c.saveState(); c.translate(x0 + sw + gap, sig_y); acc.draw(); c.restoreState()
+    rcv = B.SignBlock(sw, "المستلم", "Receiver", h=sig_h)
+    rcv.canv = c
+    c.saveState(); c.translate(x0, sig_y); rcv.draw(); c.restoreState()
 
-    # ارتفاعات الأقسام؛ الفراغ الأوسط يتمدّد ليملأ الصفحة تماماً
-    h_head, h_title, h_rf, h_sum = 82, 46, 40, 40
-    h_desc, h_total, h_chq, h_sig = 104, 30, 26, 66
-    fixed = h_head + h_title + h_rf + h_sum + h_desc + h_total + h_chq + h_sig
-    yb = my
-    h_gap = (yt - yb) - fixed
+    body_top, body_bot = ytop, sig_y + sig_h + 14
 
-    # الإطار الخارجي
-    c.setLineWidth(1.2); c.setStrokeColor(ink)
-    c.rect(x0, yb, bw, yt - yb, stroke=1, fill=0)
-
-    logo_reader = None
-    if _LOGO_PATH.is_file():
-        try:
-            logo_reader = ImageReader(str(_LOGO_PATH))
-        except Exception:
-            logo_reader = None
-
-    # ----- الترويسة: الشعار | اسم الشركة بالإنجليزية -----
-    y = yt
-    yb_head = y - h_head
-    logo_cell = 152
-    if logo_reader is not None:
-        iw, ih = logo_reader.getSize()
-        lh = h_head - 20
-        lw = lh * iw / ih
-        if lw > logo_cell - 16:
-            lw = logo_cell - 16; lh = lw * ih / iw
-        c.drawImage(logo_reader, x0 + (logo_cell - lw) / 2,
-                    yb_head + (h_head - lh) / 2, lw, lh,
-                    preserveAspectRatio=True, mask="auto")
-    vline(x0 + logo_cell, yb_head, y)
-    c.setFillColor(ink); c.setFont(EFB, 27)
-    c.drawCentredString((x0 + logo_cell + x1) / 2, yb_head + h_head / 2 - 9,
-                        company_en)
-    hline(yb_head)
-
-    # ----- سطر العنوان: Receipt Voucher | No. -----
-    y = yb_head
-    yb_title = y - h_title
-    no_div = x1 - bw * 0.24
-    vline(no_div, yb_title, y)
-    c.setFont(EFB, 20)
-    c.drawCentredString((x0 + no_div) / 2, yb_title + h_title / 2 - 7,
-                        "Receipt Voucher")
-    c.setFont(EFB, 17)
-    c.drawCentredString((no_div + x1) / 2, yb_title + h_title / 2 - 6,
-                        f"No. {number}")
-    hline(yb_title)
-
-    # ----- الفراغ الأوسط -----
-    y = yb_title
-    yb_gap = y - h_gap
-    # رمز تحقّق QR في يسار الفراغ الأوسط (طابع توثيق) — لا يزاحم أي محتوى
+    # ---------- بطاقة المبلغ (يسار) ----------
+    cw = 236
+    ch = body_top - body_bot
+    cx0, cy0 = x0, body_bot
+    c.saveState()
+    c.setFillColor(B.CREAM)
+    c.setStrokeColor(B.GOLD_LT)
+    c.setLineWidth(0.7)
+    c.roundRect(cx0, cy0, cw, ch, 8, stroke=1, fill=1)
+    c.restoreState()
+    mid = cx0 + cw / 2
+    yy = body_top - 22
+    B.draw(c, mid, yy, "المبلغ المستلَم", 11, bold=True, color=B.BRONZE,
+           align="center")
+    B.draw(c, mid, yy - 12, "AMOUNT RECEIVED", 6.8, bold=True, color=B.GOLD,
+           align="center", space=1.4)
+    amt = f"{amount:,.2f}"
+    size = 30
+    while B.width(amt, size, bold=True) > cw - 30 and size > 16:
+        size -= 1
+    B.draw(c, mid, yy - 48, amt, size, bold=True, color=B.INK, align="center")
+    _cur = ["درهم إماراتي", "AED"]
+    B.draw_runs(c, mid + B.runs_width(_cur, 8.5) / 2, yy - 63, _cur, 8.5)
+    words = (amount_words or "").strip()
+    if words and not B.has_ar(words):
+        words = words[:1].upper() + words[1:] + " dirhams only"
+    wl = B.wrap(words, 9, cw - 34)[:3]
+    wy = yy - 84
+    for ln in wl:
+        c.setFont(B.EFI if not B.has_ar(ln) else B.AF(), 9)
+        c.setFillColor(B.INK)
+        c.drawCentredString(mid, wy, B.vis(ln))
+        wy -= 12
+    # طريقة الدفع — في منتصف المسافة بين المبلغ ورمز التحقّق
+    py = max(cy0 + 130, (wy + cy0 + 96) / 2 + 22)
+    c.setStrokeColor(B.GOLD_LT); c.setLineWidth(0.5)
+    c.line(cx0 + 18, py + 6, cx0 + cw - 18, py + 6)
+    _pm = ["طريقة الدفع", "PAYMENT"]
+    B.draw_runs(c, mid + B.runs_width(_pm, 7.5) / 2, py - 10, _pm, 7.5)
+    B.draw(c, mid, py - 25, bank or "—", 11, bold=True, color=B.INK,
+           align="center")
+    # رمز التحقّق
     try:
         from reportlab.graphics import renderPDF
-        qd = _qr_drawing(f"{company} | سند {number} | {name} | "
-                         f"AED {amount:,.2f} | {date_str}", 62)
-        if qd is not None and h_gap > 70:
-            qx = x0 + 26
-            qy = (y + yb_gap) / 2 - 31
-            renderPDF.draw(qd, c, qx, qy)
-            c.setFont(AF, 8)
-            c.setFillColor(colors.HexColor("#888888"))
-            c.drawCentredString(qx + 31, qy - 11, ar("رمز التحقّق"))
-            c.setFillColor(ink)
+        qs = 58
+        if py - 40 - (cy0 + 16) >= qs + 12:
+            qd = _qr_drawing(f"{co['name_ar']} | سند {number} | {name} | "
+                             f"AED {amount:,.2f} | {date_str}", qs)
+            if qd is not None:
+                qy = cy0 + 22
+                c.setFillColor(colors.white)
+                c.roundRect(mid - qs / 2 - 5, qy - 5, qs + 10, qs + 10, 4,
+                            stroke=0, fill=1)
+                renderPDF.draw(qd, c, mid - qs / 2, qy)
+                B.draw(c, mid, cy0 + 9, "امسح للتحقّق", 7.2, color=B.MUTED,
+                       align="center")
     except Exception:                                  # noqa: BLE001
         pass
-    hline(yb_gap)
 
-    # حقل «تسمية: قيمة» فوق خطّ سفلي
-    def field_line(lx, rx, label_en, value, *, value_ar, baseline):
-        c.setFillColor(ink); c.setFont(EFB, 11)
-        c.drawString(lx, baseline, label_en)
-        us = lx + pdfmetrics.stringWidth(label_en, EFB, 11) + 8
-        c.setLineWidth(0.8); c.setStrokeColor(ink)
-        c.line(us, baseline - 3, rx, baseline - 3)
-        if value:
-            if value_ar:
-                c.setFont(AFB, 12)
-                c.drawCentredString((us + rx) / 2, baseline + 1, ar(value))
-            else:
-                c.setFont(EF, 11)
-                c.drawString(us + 6, baseline + 1, str(value))
+    # ---------- التفاصيل (يمين) ----------
+    dx0, dx1 = cx0 + cw + 22, x1
+    lab_w = 104                     # عمود التسميات (يمين)
 
-    xmid = x0 + bw * 0.60
+    def label(y, t_ar, t_en):
+        B.draw(c, dx1, y, t_ar, 11, bold=True, color=B.BRONZE)
+        B.draw(c, dx1, y - 13, t_en.upper(), 6.4, bold=True, color=B.GOLD,
+               space=1.1)
 
-    # ----- Received From / Date -----
-    y = yb_gap
-    yb_rf = y - h_rf
-    base = yb_rf + 13
-    field_line(x0 + 10, xmid - 14, "Received From:", name, value_ar=True, baseline=base)
-    field_line(xmid + 12, x1 - 12, "Date:", date_str, value_ar=False, baseline=base)
-    hline(yb_rf)
+    def underline(y):
+        c.setStrokeColor(B.HAIR); c.setLineWidth(0.7)
+        c.line(dx0, y, dx1, y)
 
-    # ----- THE SUM OF DHS / AMOUNT -----
-    y = yb_rf
-    yb_sum = y - h_sum
-    base = yb_sum + 13
-    field_line(x0 + 10, xmid - 14, "THE SUM OF DHS:", amount_words,
-               value_ar=False, baseline=base)
-    field_line(xmid + 12, x1 - 12, "AMOUNT:", amount_disp,
-               value_ar=False, baseline=base)
-    hline(yb_sum)
+    vx = dx1 - lab_w                # حافة القيم اليمنى
+    y = body_top - 22
+    label(y, "استلمنا من", "Received from")
+    B.draw(c, vx, y - 3, name, 16, bold=True, color=B.INK)
+    underline(y - 20)
 
-    # ----- البيان «وذلك عن» -----
-    y = yb_sum
-    yb_desc = y - h_desc
+    y -= 42
+    label(y, "التاريخ", "Date")
+    B.draw(c, vx, y - 3, date_str, 11.5, color=B.INK)
+    underline(y - 20)
 
-    def wrap_ar(text, font, size, maxw):
-        lines, cur = [], ""
-        for w in str(text).split():
-            trial = (cur + " " + w).strip()
-            if not cur or pdfmetrics.stringWidth(ar(trial), font, size) <= maxw:
-                cur = trial
-            else:
-                lines.append(cur); cur = w
-        if cur:
-            lines.append(cur)
-        return lines
-
-    c.setFillColor(ink); c.setFont(AF, 11)
-    ytxt = y - 22
-    for ln in wrap_ar(description, AF, 11, bw - 24):
-        c.drawRightString(x1 - 12, ytxt, ar(ln))
-        ytxt -= 15.5
-    hline(yb_desc)
-
-    # ----- Total -----
-    y = yb_desc
-    yb_total = y - h_total
-    vline(no_div, yb_total, y)
-    c.setFillColor(ink); c.setFont(EFB, 12)
-    c.drawRightString(no_div - 12, yb_total + h_total / 2 - 5, "Total :")
-    c.setFont(EFB, 13)
-    c.drawCentredString((no_div + x1) / 2, yb_total + h_total / 2 - 5, total_disp)
-    hline(yb_total)
-
-    # ----- Chq No / Chq Date / Bank -----
-    y = yb_total
-    yb_chq = y - h_chq
-    segs = [("Chq No", 0.13, EFB), ("-", 0.09, EF), ("Chq Date :", 0.15, EFB),
-            ("-", 0.09, EF), (f"Bank: {bank}", 0.54, EFB)]
-    cx = x0
-    cb = yb_chq + h_chq / 2 - 4
-    for i, (txt, frac, fnt) in enumerate(segs):
-        if i > 0:
-            vline(cx, yb_chq, y)
-        c.setFillColor(ink); c.setFont(fnt, 10)
-        c.drawString(cx + 6, cb, txt)
-        cx += bw * frac
-    hline(yb_chq)
-
-    # ----- التواقيع -----
-    y = yb_chq
-    xmid2 = (x0 + x1) / 2
-    vline(xmid2, yb, y)
-    c.setFillColor(ink); c.setFont(EFB, 11)
-    c.drawString(x0 + 14, y - 22, "Accountant:")
-    c.drawString(x0 + 14, yb + 12, "Signature :")
-    if logo_reader is not None:
-        iw, ih = logo_reader.getSize()
-        sh = 34; sw = sh * iw / ih
-        c.drawImage(logo_reader, x0 + 130, yb + 15, sw, sh,
-                    preserveAspectRatio=True, mask="auto")
-    c.drawString(xmid2 + 14, y - 22, "Receiver Name :")
-    c.setLineWidth(0.8); c.setStrokeColor(ink)
-    c.line(xmid2 + 120, y - 24, x1 - 14, y - 24)
-    c.drawString(xmid2 + 14, yb + 12, "Signature :")
-    c.line(xmid2 + 84, yb + 10, x1 - 14, yb + 10)
+    y -= 42
+    label(y, "وذلك عن", "Being for")
+    dl = B.wrap(description, 11, vx - dx0)
+    room = int(max(1, (y - 3 - (body_bot + 50)) // 17))
+    if len(dl) > room:
+        dl = dl[:room]
+        dl[-1] = dl[-1] + " …"
+    ty = y - 1
+    for ln in dl:
+        B.draw(c, vx, ty, ln, 11, color=B.INK)
+        ty -= 17
+    # بيانات الشيك (مربّعات صغيرة أسفل التفاصيل)
+    by = body_bot
+    bw = (dx1 - dx0 - 10) / 2
+    boxes = [("رقم الشيك", "Chq No", chq_no or "—"),
+             ("تاريخ الشيك", "Chq Date", chq_date or "—")]
+    for i, (ta, te, v) in enumerate(boxes):
+        bx1 = dx1 - i * (bw + 10)
+        c.setStrokeColor(B.HAIR); c.setFillColor(colors.white); c.setLineWidth(0.7)
+        c.roundRect(bx1 - bw, by, bw, 38, 5, stroke=1, fill=1)
+        B.draw(c, bx1 - 9, by + 24, ta, 8.5, bold=True, color=B.BRONZE)
+        B.draw(c, bx1 - bw + 9, by + 24, te.upper(), 6, bold=True,
+               color=B.GOLD, align="left", space=0.8)
+        vv = v
+        while B.width(vv, 10) > bw - 18 and len(vv) > 4:
+            vv = vv[:-2]
+        B.draw(c, bx1 - 9, by + 9, vv, 10, color=B.INK)
 
     c.showPage()
     c.save()
@@ -2361,7 +2318,7 @@ def export_receipt_pdf(rec, path: str | Path, *,
 _COMPANY_DEFAULTS = {
     "name_ar": "المصطفى للحج والعمرة",
     "name_en": "Al Mustafa Hajj & Umrah",
-    "trn": "", "address": "", "phone": "",
+    "trn": "", "address": "", "phone": "", "email": "", "website": "",
 }
 
 
@@ -2465,10 +2422,12 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
                        season: str = "", item_desc: str = "",
                        notes: str = "", data=None) -> Path:
     """يبني **فاتورة ضريبية** (أو **فاتورة إلكترونية** بصيغة PEPPOL عند
-    ``electronic=True``) لحاج واحد على صفحة A4 عمودية، ثنائية اللغة.
+    ``electronic=True``) لحاج واحد على صفحة A4 عمودية، ثنائية اللغة، بهوية
+    المستندات (:mod:`hajj_app.pdf_brand`).
 
     الفاتورة الإلكترونية هنا هي التمثيل البشري المرافق لملف الـ XML الرسمي
     (UBL 2.1 / PINT AE) الذي يُبنى عبر :mod:`hajj_app.einvoice`."""
+    from . import pdf_brand as B
     from .fields import parse_amount, vat_breakdown
 
     _register_fonts()
@@ -2515,201 +2474,251 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     title_ar = "فاتورة إلكترونية" if electronic else "فاتورة ضريبية"
     title_en = "E-Invoice (PEPPOL)" if electronic else "Tax Invoice"
 
+    mx = 15 * mm
     doc = SimpleDocTemplate(
         str(path), pagesize=A4,
-        rightMargin=15 * mm, leftMargin=15 * mm,
-        topMargin=13 * mm, bottomMargin=18 * mm,
-        title=title_ar, author="برنامج الحج",
+        rightMargin=mx, leftMargin=mx,
+        topMargin=B.header_space() + 4, bottomMargin=B.FOOTER_H + 4,
+        title=title_ar, author=co["name_ar"],
     )
+    Wd = doc.width
 
     def money(v):
         return f"{v:,.2f}"
 
     lbl = ParagraphStyle("ilbl", parent=st["cell"], fontName=_FONT_BOLD,
-                         textColor=_ACCENT, alignment=2, fontSize=9)
-    val = ParagraphStyle("ival", parent=st["cell"], alignment=2, fontSize=9)
-    comp = ParagraphStyle("comp", parent=st["subtitle"], fontSize=9,
-                          leading=13, spaceAfter=1)
+                         textColor=B.BRONZE, alignment=2, fontSize=9, leading=12)
+    val = ParagraphStyle("ival", parent=st["cell"], alignment=2, fontSize=9.5,
+                         leading=13, textColor=B.INK)
+    val_l = ParagraphStyle("ivall", parent=val, alignment=0, fontName="Helvetica")
+    kick = ParagraphStyle("ikick", parent=st["cell"], fontName=_FONT_BOLD,
+                          alignment=2, fontSize=10.5, leading=13,
+                          textColor=B.INK)
+    kick_en = ParagraphStyle("ikicken", parent=st["cell"], fontName="Helvetica-Bold",
+                             alignment=0, fontSize=6.4, leading=8,
+                             textColor=B.GOLD)
 
-    story: list = []
-    logo = _logo_flowable(max_width_pt=120)
-    if logo is not None:
-        story.append(logo)
-        story.append(Spacer(1, 3))
-    story.append(Paragraph(ar(co["name_ar"]), ParagraphStyle(
-        "cn", parent=st["title"], fontSize=14, spaceAfter=1)))
-    idbits = []
-    if co["trn"]:
-        idbits.append(ar("الرقم الضريبي (TRN): ") + co["trn"])
-    if co["phone"]:
-        idbits.append(ar("هاتف: ") + co["phone"])
-    if idbits:
-        story.append(Paragraph("  •  ".join(idbits), comp))
-    if co["address"]:
-        story.append(Paragraph(ar(co["address"]), comp))
-    story.append(Spacer(1, 7))
-
-    # شريط العنوان (بخلفية برونزية)
-    tbar = Table([[Paragraph(
-        ar(title_ar) + "   /   " + title_en,
-        ParagraphStyle("tbar", parent=st["cell"], fontName=_FONT_BOLD,
-                       textColor=colors.white, alignment=1, fontSize=14))]],
-        colWidths=[doc.width])
-    tbar.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
-    story.append(tbar)
-    story.append(Spacer(1, 8))
-
-    # بيانات الفاتورة | بيانات الحاج (عمودان)
-    def kv(pairs):
-        kv_cw = [doc.width * 0.30, doc.width * 0.20]
-        rows = [[_ar_para(str(v) or "—", val, kv_cw[0] - 13),
-                 _ar_para(k, lbl, kv_cw[1] - 13)] for k, v in pairs]
-        t = Table(rows, colWidths=kv_cw)
+    def card(t_ar, t_en, pairs, w):
+        """بطاقة بيانات: عنوان ثنائي اللغة ثم صفوف (تسمية، قيمة)."""
+        cw = [w * 0.62, w * 0.38]
+        rows = [[B.card_head(t_ar, t_en, w, kick, kick_en), ""]]
+        for k, v in pairs:
+            v = str(v or "").strip() or "—"
+            vp = (_ar_para(v, val, cw[0] - 16) if B.has_ar(v)
+                  else Paragraph(v, val_l))
+            rows.append([vp, _ar_para(k, lbl, cw[1] - 16)])
+        t = Table(rows, colWidths=cw)
         t.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+            ("ROUNDEDCORNERS", [6, 6, 6, 6]),
+            ("BOX", (0, 0), (-1, -1), 0.7, B.HAIR),
+            ("BACKGROUND", (0, 0), (-1, 0), B.CREAM),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, B.GOLD_LT),
+            ("LINEBELOW", (0, 1), (-1, -2), 0.4, B.HAIR),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("BACKGROUND", (1, 0), (1, -1), _ALT_ROW),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("SPAN", (0, 0), (1, 0)),
+            ("TOPPADDING", (0, 0), (-1, 0), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
         ]))
         return t
 
-    meta = kv([("رقم الفاتورة", number), ("التاريخ", date_str)])
-    billto = kv([("المستفيد", guest),
-                 ("الهاتف", phone),
-                 ("رقم الجواز", passport),
-                 ("الجنسية", nat)])
-    hdr = Table([[billto, meta]],
-                colWidths=[doc.width * 0.5, doc.width * 0.5])
+    story: list = []
+    gap = 12
+    half = (Wd - gap) / 2
+    billto = card("فاتورة إلى", "Billed to",
+                  [("المستفيد", guest), ("الهاتف", phone),
+                   ("رقم الجواز", passport), ("الجنسية", nat)], half)
+    meta_pairs = [("رقم الفاتورة", number), ("التاريخ", date_str),
+                  ("العملة", "درهم إماراتي (AED)")]
+    if co.get("trn"):
+        meta_pairs.append(("الرقم الضريبي", co["trn"]))
+    meta = card("تفاصيل الفاتورة", "Invoice details", meta_pairs, half)
+    hdr = Table([[meta, "", billto]], colWidths=[half, gap, half])
     hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
                              ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                             ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+                             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                             ("TOPPADDING", (0, 0), (-1, -1), 0),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
     story.append(hdr)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 16))
 
     # جدول البنود
     head = ParagraphStyle("ihd", parent=st["cell"], fontName=_FONT_BOLD,
-                          textColor=colors.white, alignment=1, fontSize=9)
-    cell = ParagraphStyle("icl", parent=st["cell"], alignment=1, fontSize=9,
+                          textColor=colors.white, alignment=1, fontSize=9.5,
                           leading=12)
-    rcell = ParagraphStyle("ircl", parent=cell, alignment=2)
-    it_cw = [doc.width * 0.17, doc.width * 0.17, doc.width * 0.10,
-             doc.width * 0.50, doc.width * 0.06]
-    items = [[_ar_para("المبلغ (د.إ)", head, it_cw[0] - 13),
-              _ar_para("سعر الوحدة", head, it_cw[1] - 13),
-              _ar_para("الكمية", head, it_cw[2] - 13),
-              _ar_para("البيان", head, it_cw[3] - 13),
+    head_en = ParagraphStyle("ihde", parent=head, fontName="Helvetica-Bold",
+                             fontSize=6, leading=8, spaceBefore=2,
+                             textColor=colors.HexColor("#E9DCC2"))
+    cell = ParagraphStyle("icl", parent=st["cell"], alignment=1, fontSize=10,
+                          leading=14, fontName="Helvetica", textColor=B.INK)
+    rcell = ParagraphStyle("ircl", parent=st["cell"], alignment=2, fontSize=10,
+                           leading=15, textColor=B.INK)
+    it_cw = [Wd * 0.17, Wd * 0.16, Wd * 0.09, Wd * 0.52, Wd * 0.06]
+
+    def hcell(t_ar, t_en, w):
+        return [_ar_para(t_ar, head, w - 13), Paragraph(t_en.upper(), head_en)]
+    items = [[hcell("المبلغ (د.إ)", "Amount", it_cw[0]),
+              hcell("سعر الوحدة", "Unit price", it_cw[1]),
+              hcell("الكمية", "Qty", it_cw[2]),
+              [_ar_para("البيان", ParagraphStyle("ihr", parent=head, alignment=2),
+                        it_cw[3] - 13),
+               Paragraph("DESCRIPTION", ParagraphStyle("ihre", parent=head_en,
+                                                       alignment=2))],
               Paragraph("#", head)]]
-    items.append([Paragraph(money(net), cell), Paragraph(money(net), cell),
-                  Paragraph("1", cell), _ar_para(item_desc, rcell, it_cw[3] - 13),
+    items.append([Paragraph(f"<b>{money(net)}</b>", cell),
+                  Paragraph(money(net), cell),
+                  Paragraph("1", cell),
+                  _ar_para(item_desc, rcell, it_cw[3] - 16),
                   Paragraph("1", cell)])
     it = Table(items, colWidths=it_cw)
     it.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, _GRID),
-        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+        ("ROUNDEDCORNERS", [6, 6, 0, 0]),
+        ("BACKGROUND", (0, 0), (-1, 0), B.BRONZE),
+        ("LINEBELOW", (0, 0), (-1, 0), 1.6, B.GOLD),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.8, B.GOLD_LT),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+        ("TOPPADDING", (0, 1), (-1, -1), 11),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 11),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(it)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 14))
 
     # الإجماليات — عند «بدون استخراج» يُعرض السعر كاملاً شاملاً الضريبة بلا تقسيم
     if vat_mode == "none":
-        tot_rows = [
-            ("الإجمالي", money(total)),
-            ("المدفوع", money(paid)),
-            ("المتبقّي", money(remaining)),
-        ]
+        tot_rows = [("الإجمالي", "Total", money(total)),
+                    ("المدفوع", "Paid", money(paid)),
+                    ("المتبقّي", "Balance due", money(remaining))]
         big_idx = 0
     else:
-        tot_rows = [
-            ("المجموع الفرعي (غير شامل الضريبة)", money(net)),
-            ("ضريبة القيمة المضافة 5%", money(vat)),
-            ("الإجمالي شامل الضريبة", money(total)),
-            ("المدفوع", money(paid)),
-            ("المتبقّي", money(remaining)),
-        ]
+        tot_rows = [("المجموع الفرعي (غير شامل الضريبة)", "Subtotal", money(net)),
+                    ("ضريبة القيمة المضافة 5%", "VAT 5%", money(vat)),
+                    ("الإجمالي شامل الضريبة", "Total incl. VAT", money(total)),
+                    ("المدفوع", "Paid", money(paid)),
+                    ("المتبقّي", "Balance due", money(remaining))]
         big_idx = 2
+    tw = Wd * 0.50
+    tcw = [tw * 0.40, tw * 0.60]
     trows = []
-    for i, (k, v) in enumerate(tot_rows):
+    for i, (k, ke, v) in enumerate(tot_rows):
         big = (i == big_idx)
-        vs = ParagraphStyle("tv", parent=val, alignment=0,
-                            fontName=_FONT_BOLD if big else _FONT,
-                            fontSize=11 if big else 9.5)
-        ks = ParagraphStyle("tk", parent=lbl, fontSize=10 if big else 9,
-                            textColor=colors.white if big else _ACCENT)
-        trows.append([Paragraph(v, vs), _ar_para(k, ks, doc.width * 0.34 - 13)])
-    tot = Table(trows, colWidths=[doc.width * 0.18, doc.width * 0.34])
-    tstyle = [
-        ("GRID", (0, 0), (-1, -1), 0.4, _GRID),
+        last = (i == len(tot_rows) - 1)
+        vs = ParagraphStyle("tv", parent=val_l, fontName="Helvetica-Bold" if (big or last) else "Helvetica",
+                            fontSize=13 if big else 10, leading=16 if big else 13,
+                            textColor=(colors.HexColor("#E9D3A6") if big else
+                                       (B.BRONZE if last and remaining > 0.005 else B.INK)))
+        ks = ParagraphStyle("tk", parent=lbl, fontSize=10.5 if big else 9.5,
+                            textColor=colors.white if big else B.INK,
+                            fontName=_FONT_BOLD if (big or last) else _FONT)
+        kes = ParagraphStyle("tke", parent=kick_en, fontSize=5.8,
+                             textColor=colors.HexColor("#CDB78E") if big else B.GOLD)
+        trows.append([Paragraph(f"{v} <font size='7'>AED</font>", vs),
+                      [_ar_para(k, ks, tcw[1] - 16), Paragraph(ke.upper(), kes)]])
+    tot = Table(trows, colWidths=tcw)
+    tot.setStyle(TableStyle([
+        ("ROUNDEDCORNERS", [6, 6, 6, 6]),
+        ("BOX", (0, 0), (-1, -1), 0.7, B.HAIR),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.4, B.HAIR),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("BACKGROUND", (0, big_idx), (-1, big_idx), _ACCENT),
-        ("TEXTCOLOR", (0, big_idx), (0, big_idx), colors.white),
-    ]
-    tot.setStyle(TableStyle(tstyle))
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("BACKGROUND", (0, big_idx), (-1, big_idx), B.INK),
+        ("TOPPADDING", (0, big_idx), (-1, big_idx), 9),
+        ("BOTTOMPADDING", (0, big_idx), (-1, big_idx), 9),
+    ]))
 
-    # رمز تحقّق QR بجانب الإجماليات (كما في فواتير الضريبة الرسمية)
+    # يمين الإجماليات: رمز التحقّق وختم «مدفوع» عند السداد الكامل
     _qr = _qr_drawing(f"{co['name_ar']} | فاتورة {number} | {guest} | "
-                      f"{money(total)} AED | {date_str}", 66)
-    if _qr is not None:
-        _qr.hAlign = "CENTER"
+                      f"{money(total)} AED | {date_str}", 62)
     _qcap = ParagraphStyle("iqc", parent=st["cell"], alignment=1, fontSize=7.5,
-                           textColor=colors.HexColor("#888888"), leading=10)
-    side_cell = ([_qr, Spacer(1, 3), Paragraph(ar("رمز التحقّق"), _qcap)]
-                 if _qr is not None else "")
+                           textColor=B.MUTED, leading=10)
+    side: list = []
     if electronic:
         from .einvoice import PINT_AE_CUSTOMIZATION
         info = ParagraphStyle("pep", parent=st["cell"], alignment=2,
-                              fontSize=8.3, leading=12,
-                              textColor=colors.HexColor("#555555"))
-        side_cell = [
+                              fontSize=8.3, leading=12, textColor=B.MUTED)
+        side = [
             Paragraph(ar("فاتورة إلكترونية بصيغة PEPPOL (PINT AE)"),
                       ParagraphStyle("peph", parent=info, fontName=_FONT_BOLD,
-                                     textColor=_ACCENT, fontSize=9.5)),
+                                     textColor=B.BRONZE, fontSize=9.5)),
             Spacer(1, 4),
             Paragraph(ar("معرّف التخصيص:"), info),
             Paragraph(PINT_AE_CUSTOMIZATION, ParagraphStyle(
                 "pepid", parent=info, alignment=0, fontSize=7.8)),
             Spacer(1, 4),
-            Paragraph(ar("الملف الرسمي المُرسَل عبر شبكة PEPPOL هو ملف "
-                         "XML (UBL 2.1) المرافق لهذه الصفحة."), info),
+            _ar_para("الملف الرسمي المُرسَل عبر شبكة PEPPOL هو ملف XML "
+                     "(UBL 2.1) المرافق لهذه الصفحة.", info, Wd * 0.42),
         ]
-    band = Table([[side_cell, tot]],
-                 colWidths=[doc.width * 0.48, doc.width * 0.52])
-    band.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
-                              ("ALIGN", (0, 0), (0, 0), "RIGHT")]))
+    else:
+        inner = []
+        if total > 0.005 and remaining <= 0.005:
+            inner.append(B.Stamp(150, 64))
+        if _qr is not None:
+            qbox = Table([[_qr], [Paragraph(ar("امسح للتحقّق"), _qcap)]],
+                         colWidths=[78])
+            qbox.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                      ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                      ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                                      ("TOPPADDING", (0, 0), (-1, -1), 1),
+                                      ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+            inner.append(qbox)
+        if inner:
+            row = Table([inner], colWidths=[Wd * 0.44 - 78, 78][-len(inner):])
+            row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                     ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+            row.hAlign = "RIGHT"
+            side = [row]
+    band = Table([[tot, side]], colWidths=[tw, Wd - tw])
+    band.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                              ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                              ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                              ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story.append(band)
 
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 18))
     default_note = ("هذه فاتورة إلكترونية بصيغة PEPPOL (PINT AE). جميع المبالغ "
                     "بالدرهم الإماراتي (AED)." if electronic else
                     "هذه فاتورة ضريبية معتمدة. جميع المبالغ بالدرهم الإماراتي (AED).")
     note_txt = notes or default_note
-    story.append(Paragraph(ar(note_txt), ParagraphStyle(
-        "note", parent=st["cell"], alignment=2, fontSize=8.5,
-        textColor=colors.HexColor("#666666"))))
+    nst = ParagraphStyle("note", parent=st["cell"], alignment=2, fontSize=9,
+                         leading=14, textColor=B.MUTED)
+    nhd = ParagraphStyle("noteh", parent=nst, fontName=_FONT_BOLD,
+                         textColor=B.BRONZE, fontSize=9.5)
+    nbox = Table([[[Paragraph(ar("ملاحظات"), nhd),
+                    _ar_para(note_txt, nst, Wd - 30)]]], colWidths=[Wd])
+    nbox.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), B.CREAM),
+                              ("LINEAFTER", (0, 0), (-1, -1), 2.2, B.GOLD),
+                              ("TOPPADDING", (0, 0), (-1, -1), 8),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                              ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                              ("LEFTPADDING", (0, 0), (-1, -1), 12)]))
+    story.append(nbox)
 
     story.append(Spacer(1, 22))
-    sign = ParagraphStyle("sg", parent=st["cell"], alignment=1, fontSize=9.5)
-    srow = Table([[Paragraph(ar("توقيع المستلم"), sign),
-                   Paragraph(ar("المحاسب / الختم"), sign)]],
-                 colWidths=[doc.width / 2, doc.width / 2])
-    srow.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.6, _GRID),
-                              ("LINEABOVE", (1, 0), (1, 0), 0.6, _GRID),
-                              ("TOPPADDING", (0, 0), (-1, -1), 8)]))
-    story.append(srow)
+    sgap = 14
+    sw = (Wd - sgap) / 2
+    srow = Table([[B.SignBlock(sw, "توقيع المستلم", "Received by", name=guest),
+                   "",
+                   B.SignBlock(sw, "المحاسب / الختم", "Accountant", stamp=True)]],
+                 colWidths=[sw, sgap, sw])
+    srow.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
+                              ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(KeepTogether([srow]))
 
-    ttl = title_ar
-    doc.build(story,
-              onFirstPage=lambda c, dd: _footer_portrait(c, dd, ttl),
-              onLaterPages=lambda c, dd: _footer_portrait(c, dd, ttl))
+    def _page(c, dd):
+        B.page_decor(c, dd, co=co, title_ar=title_ar, title_en=title_en,
+                     number=number, date_txt=date_str,
+                     label=f"{title_ar} رقم {number}")
+    doc.build(story, onFirstPage=_page, onLaterPages=_page)
     return path
 
 
@@ -2807,7 +2816,10 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
                         title_en: str = "Hajj Services Agreement",
                         preamble: str = _CONTRACT_PREAMBLE, data=None) -> Path:
     """يبني **عقد خدمات** بين الشركة (الطرف الأول) والمستفيد (الطرف الثاني)
-    على صفحة A4 عمودية، مع بنود قابلة للتحرير وتوقيعَي الطرفين."""
+    على صفحة A4 عمودية بهوية المستندات: بطاقتا الطرفين، التمهيد، البنود
+    (كلّ بند بشارة رقمه)، ومربّعا التوقيع مع موضع الختم."""
+    from . import pdf_brand as B
+
     _register_fonts()
     path = Path(path)
     st = _styles()
@@ -2830,91 +2842,159 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
         guest = str(data.get("guest_ar") or guest)
         passport = str(data.get("passport") or passport)
         phone = str(data.get("phone") or phone)
+    if "عمرة" in title_ar and title_en == "Hajj Services Agreement":
+        title_en = "Umrah Services Agreement"
 
+    mx = 16 * mm
     doc = SimpleDocTemplate(
         str(path), pagesize=A4,
-        rightMargin=17 * mm, leftMargin=17 * mm,
-        topMargin=13 * mm, bottomMargin=18 * mm,
-        title=title_ar, author="المصطفى للحج والعمرة",
+        rightMargin=mx, leftMargin=mx,
+        topMargin=B.header_space() + 2, bottomMargin=B.FOOTER_H + 4,
+        title=title_ar, author=co["name_ar"],
     )
+    Wd = doc.width
 
-    comp = ParagraphStyle("ccomp", parent=st["subtitle"], fontSize=9,
-                          leading=13, spaceAfter=1)
     lbl = ParagraphStyle("clbl", parent=st["cell"], fontName=_FONT_BOLD,
-                         textColor=_ACCENT, alignment=2, fontSize=9)
-    val = ParagraphStyle("cval", parent=st["cell"], alignment=2, fontSize=9)
-    ptitle = ParagraphStyle("pt", parent=st["cell"], fontName=_FONT_BOLD,
-                            textColor=_ACCENT, alignment=2, fontSize=10.5,
-                            spaceBefore=8, spaceAfter=2, leading=15)
-    pbody = ParagraphStyle("pb", parent=st["cell"], alignment=2, fontSize=9.5,
-                           leading=15, spaceAfter=3)
+                         textColor=B.BRONZE, alignment=2, fontSize=9, leading=12)
+    val = ParagraphStyle("cval", parent=st["cell"], alignment=2, fontSize=9.5,
+                         leading=13, textColor=B.INK)
+    val_l = ParagraphStyle("cvall", parent=val, alignment=0, fontName="Helvetica")
+    kick = ParagraphStyle("ckick", parent=st["cell"], fontName=_FONT_BOLD,
+                          alignment=2, fontSize=10.5, leading=13, textColor=B.INK)
+    kick_en = ParagraphStyle("ckicken", parent=st["cell"], fontName="Helvetica-Bold",
+                             alignment=0, fontSize=6.4, leading=8, textColor=B.GOLD)
+    pbody = ParagraphStyle("pb", parent=st["cell"], alignment=2, fontSize=10,
+                           leading=17, textColor=B.INK)
+    phead = ParagraphStyle("ph", parent=st["cell"], fontName=_FONT_BOLD,
+                           alignment=2, fontSize=11.5, leading=15,
+                           textColor=B.INK)
+    pill = ParagraphStyle("pill", parent=st["cell"], fontName=_FONT_BOLD,
+                          alignment=1, fontSize=8.8, leading=11,
+                          textColor=B.BRONZE)
+
+    def party(t_ar, t_en, pairs, w):
+        cw = [w * 0.64, w * 0.36]
+        rows = [[B.card_head(t_ar, t_en, w, kick, kick_en), ""]]
+        for k, v in pairs:
+            v = str(v or "").strip()
+            if not v:
+                continue
+            vp = (_ar_para(v, val, cw[0] - 16) if B.has_ar(v)
+                  else Paragraph(v, val_l))
+            rows.append([vp, _ar_para(k, lbl, cw[1] - 16)])
+        t = Table(rows, colWidths=cw)
+        t.setStyle(TableStyle([
+            ("ROUNDEDCORNERS", [6, 6, 6, 6]),
+            ("BOX", (0, 0), (-1, -1), 0.7, B.HAIR),
+            ("BACKGROUND", (0, 0), (-1, 0), B.CREAM),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, B.GOLD_LT),
+            ("LINEBELOW", (0, 1), (-1, -2), 0.4, B.HAIR),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("SPAN", (0, 0), (1, 0)),
+            ("TOPPADDING", (0, 0), (-1, 0), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+        ]))
+        return t
 
     story: list = []
-    logo = _logo_flowable(max_width_pt=115)
-    if logo is not None:
-        story.append(logo)
-        story.append(Spacer(1, 3))
-    story.append(Paragraph(ar(co["name_ar"]), ParagraphStyle(
-        "ccn", parent=st["title"], fontSize=13, spaceAfter=1)))
-    story.append(Paragraph(ar(title_ar) + f"  /  {title_en}",
-                           ParagraphStyle("ct", parent=st["title"], fontSize=15,
-                                          spaceBefore=4, spaceAfter=6)))
-    meta_cw = [doc.width * 0.25, doc.width * 0.15,
-               doc.width * 0.35, doc.width * 0.25]
-    meta = Table([[Paragraph(date_str, val),
-                   _ar_para("التاريخ", lbl, meta_cw[1] - 13),
-                   Paragraph(number, val),
-                   _ar_para("رقم العقد", lbl, meta_cw[3] - 13)]],
-                 colWidths=meta_cw)
-    meta.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, _GRID),
-                              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                              ("TOPPADDING", (0, 0), (-1, -1), 4),
-                              ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                              ("BACKGROUND", (1, 0), (1, 0), _ALT_ROW),
-                              ("BACKGROUND", (3, 0), (3, 0), _ALT_ROW)]))
-    story.append(meta)
-    story.append(Spacer(1, 8))
+    gap = 12
+    half = (Wd - gap) / 2
+    p1 = party("الطرف الأول · المزوّد", "First party · Provider",
+               [("الاسم", co["name_ar"]), ("الرقم الضريبي", co.get("trn")),
+                ("الهاتف", co.get("phone")), ("العنوان", co.get("address"))], half)
+    p2 = party("الطرف الثاني · المستفيد", "Second party · Client",
+               [("الاسم", guest), ("رقم الجواز", passport), ("الهاتف", phone)],
+               half)
+    hdr = Table([[p2, "", p1]], colWidths=[half, gap, half])
+    hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                             ("TOPPADDING", (0, 0), (-1, -1), 0),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(hdr)
+    story.append(Spacer(1, 12))
 
-    # الطرفان
-    p1 = (f"الطرف الأول (المزوّد): {co['name_ar']}"
-          + (f" — الرقم الضريبي {co['trn']}" if co["trn"] else "")
-          + (f" — هاتف {co['phone']}" if co["phone"] else "") + ".")
-    p2 = (f"الطرف الثاني (المستفيد): {guest}"
-          + (f" — جواز رقم {passport}" if passport else "")
-          + (f" — هاتف {phone}" if phone else "") + ".")
-    story.append(Paragraph(ar(p1), pbody))
-    story.append(Paragraph(ar(p2), pbody))
-    story.append(Paragraph(ar(preamble), pbody))
-    story.append(Spacer(1, 4))
+    # التمهيد بخطّ ذهبي على يمينه
+    pre = Table([[_ar_para(preamble, ParagraphStyle(
+        "pre", parent=pbody, textColor=colors.HexColor("#4A433A")), Wd - 28)]],
+        colWidths=[Wd])
+    pre.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), B.CREAM),
+                             ("LINEAFTER", (0, 0), (-1, -1), 2.2, B.GOLD),
+                             ("TOPPADDING", (0, 0), (-1, -1), 8),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                             ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 12)]))
+    story.append(pre)
+    story.append(Spacer(1, 6))
 
+    # البنود: «البند الأول: موضوع العقد» ← شارة «البند الأول» + عنوان «موضوع العقد»
+    pw = 66
     for para in body.split("\n\n"):
         para = para.strip()
         if not para:
             continue
         lines = para.split("\n", 1)
-        story.append(Paragraph(ar(lines[0]), ptitle))
+        t = lines[0].strip()
+        kicker, head = "", t
+        if ":" in t:
+            kicker, head = (x.strip() for x in t.split(":", 1))
+        elif "：" in t:
+            kicker, head = (x.strip() for x in t.split("：", 1))
+        parts = []
+        if kicker and len(kicker) <= 22:
+            badge = Table([[Paragraph(ar(kicker), pill)]], colWidths=[pw])
+            badge.setStyle(TableStyle([
+                ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+                ("BACKGROUND", (0, 0), (-1, -1), B.CREAM),
+                ("BOX", (0, 0), (-1, -1), 0.6, B.GOLD_LT),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2)]))
+            trow = Table([[_ar_para(head or kicker, phead, Wd - pw - 20), badge]],
+                         colWidths=[Wd - pw - 8, pw + 8])
+        else:
+            trow = Table([[_ar_para(t, phead, Wd - 12)]], colWidths=[Wd])
+        trow.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                  ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                                  ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+        parts.append(Spacer(1, 9))
+        parts.append(trow)
         if len(lines) > 1 and lines[1].strip():
-            story.append(Paragraph(ar(lines[1].strip()), pbody))
+            bt = Table([[_ar_para(lines[1].strip(), pbody, Wd - 14)]],
+                       colWidths=[Wd])
+            bt.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                                    ("LINEBELOW", (0, 0), (-1, -1), 0.4, B.HAIR)]))
+            parts.append(bt)
+        story.append(KeepTogether(parts))
 
-    story.append(Spacer(1, 24))
-    sign = ParagraphStyle("csg", parent=st["cell"], fontName=_FONT_BOLD,
-                          alignment=1, fontSize=10)
-    subsign = ParagraphStyle("css", parent=st["cell"], alignment=1, fontSize=8.5,
-                             textColor=colors.HexColor("#777777"))
-    srow = Table([[Paragraph(ar("الطرف الثاني (المستفيد)"), sign),
-                   Paragraph(ar("الطرف الأول (المزوّد)"), sign)],
-                 [Paragraph(ar("التوقيع: ____________"), subsign),
-                  Paragraph(ar("التوقيع والختم: ____________"), subsign)]],
-                 colWidths=[doc.width / 2, doc.width / 2])
-    srow.setStyle(TableStyle([("LINEABOVE", (0, 0), (0, 0), 0.6, _GRID),
-                              ("LINEABOVE", (1, 0), (1, 0), 0.6, _GRID),
-                              ("TOPPADDING", (0, 0), (-1, 0), 8),
-                              ("TOPPADDING", (0, 1), (-1, 1), 14)]))
-    story.append(srow)
+    story.append(Spacer(1, 20))
+    sgap = 14
+    sw = (Wd - sgap) / 2
+    srow = Table([[B.SignBlock(sw, "الطرف الثاني (المستفيد)", "Second party",
+                               name=guest),
+                   "",
+                   B.SignBlock(sw, "الطرف الأول (المزوّد)", "First party",
+                               name=co["name_ar"], stamp=True)]],
+                 colWidths=[sw, sgap, sw])
+    srow.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
+                              ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(KeepTogether([srow]))
 
-    doc.build(story,
-              onFirstPage=lambda c, dd: _footer_portrait(c, dd, title_ar),
-              onLaterPages=lambda c, dd: _footer_portrait(c, dd, title_ar))
+    def _page(c, dd):
+        B.page_decor(c, dd, co=co, title_ar=title_ar, title_en=title_en,
+                     number=number, date_txt=date_str,
+                     label=f"{title_ar} رقم {number}")
+    doc.build(story, onFirstPage=_page, onLaterPages=_page)
     return path
 
 
@@ -3480,22 +3560,9 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
     story.append(header)
     story.append(Spacer(1, 6))
 
-    # شريط العنوان (بلون الهوية) + سطر إنجليزي أنيق
-    band = Table([[Paragraph(ar("طلب حجز مواصلات"), ParagraphStyle(
-                       "tbt", fontName=_FONT_BOLD, fontSize=16, alignment=1,
-                       textColor=colors.white, leading=20))],
-                  [Paragraph("TRANSPORTATION REQUEST", ParagraphStyle(
-                       "tbs", fontName=_FONT, fontSize=8, alignment=1,
-                       textColor=colors.HexColor("#EFE6D8"), leading=11))]],
-                 colWidths=[W])
-    band.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
-        ("LINEABOVE", (0, 0), (-1, 0), 1.6, _DEEP),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.6, _DEEP),
-        ("TOPPADDING", (0, 0), (-1, 0), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
-        ("TOPPADDING", (0, 1), (-1, 1), 0),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 5)]))
+    # شريط العنوان بهوية المستندات (لوحة بنقش النجمة الثمانية)
+    from . import pdf_brand as _B
+    band = _B.TitleBand(W, "طلب حجز مواصلات", "Transportation Request", h=44)
     story.append(band)
     story.append(Spacer(1, 7))
 
@@ -3649,10 +3716,14 @@ def export_umrah_transport_request_pdf(rec, path, *, trip=None, program_name="",
         ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story.append(sig_tbl)
 
-    doc.build(
-        story,
-        onFirstPage=lambda c, d: _umrah_page(c, d, "طلب حجز مواصلات"),
-        onLaterPages=lambda c, d: _umrah_page(c, d, "طلب حجز مواصلات"))
+    def _tpage(c, d):
+        c.saveState()
+        _B.watermark(c, A4[0], A4[1])
+        _B.footer(c, A4[0], co=co, label=f"طلب حجز مواصلات رقم {number}",
+                  page=d.page, mx=16 * mm, y=7 * mm)
+        c.restoreState()
+
+    doc.build(story, onFirstPage=_tpage, onLaterPages=_tpage)
     return path
 
 
@@ -3723,24 +3794,9 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
     story.append(header)
     story.append(Spacer(1, 4))
 
-    # شريط العنوان بالإنجليزية فقط (احترافي، بلون الهوية)
-    band_title = ParagraphStyle("vbt", fontName=_FONT_BOLD, fontSize=18,
-                                alignment=1, textColor=colors.white, leading=21)
-    band_sub = ParagraphStyle("vbs", fontName=_FONT, fontSize=8.5, alignment=1,
-                              textColor=colors.HexColor("#EFE6D8"), leading=12,
-                              spaceBefore=1)
-    band = Table([[Paragraph("HOTEL VOUCHER", band_title)],
-                  [Paragraph(co["name_en"].upper(), band_sub)]],
-                 colWidths=[W])
-    band.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT),
-        ("LINEABOVE", (0, 0), (-1, 0), 2.0, _DEEP),
-        ("LINEBELOW", (0, -1), (-1, -1), 2.0, _DEEP),
-        ("TOPPADDING", (0, 0), (-1, 0), 5),
-        ("BOTTOMPADDING", (0, -1), (-1, -1), 5),
-        ("TOPPADDING", (0, 1), (-1, 1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
-    ]))
+    # شريط العنوان بالإنجليزية فقط — بهوية المستندات (لوحة بنقش النجمة الثمانية)
+    from . import pdf_brand as _B
+    band = _B.TitleBand(W, "Hotel Voucher", co["name_en"], h=42)
     story.append(band)
     story.append(Spacer(1, 4))
 
@@ -3996,13 +4052,10 @@ def export_umrah_voucher_pdf(rec, path: str | Path, *, trip=None,
 
     def _vfooter(canvas, d):
         canvas.saveState()
-        canvas.setFont(_FONT, 7.5)
-        canvas.setFillColor(colors.HexColor("#888888"))
-        pw = landscape(A4)[0]
-        page_lbl = f"Page {d.page}" if L else ar(f"صفحة {d.page}")
-        canvas.drawCentredString(pw / 2, 8 * mm, page_lbl)
-        canvas.drawRightString(pw - 13 * mm, 8 * mm, "Hotel Voucher")
-        canvas.drawString(13 * mm, 8 * mm, date.today().isoformat())
+        _B.footer_compact(canvas, landscape(A4)[0], co=co,
+                          label=f"Hotel Voucher · {number}",
+                          page_txt=f"Page {d.page}" if L else f"صفحة {d.page}",
+                          mx=13 * mm)
         canvas.restoreState()
 
     doc.build(story, onFirstPage=_vfooter, onLaterPages=_vfooter)

@@ -1,36 +1,191 @@
 <!doctype html>
 <html lang="ar" dir="rtl"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>برنامجي — المصطفى للحج والعمرة</title>
+<meta name="theme-color" content="{{ '#8A6E4B' if (p or {}).get('mode') == 'hajj' else '#13795B' }}">
+<title>رحلتي — {{ co_name or 'المصطفى للحج والعمرة' }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head><body class="mode-{{ (p or {}).get('mode') or 'umrah' }}">
+</head><body class="mode-{{ (p or {}).get('mode') or 'umrah' }} trip-body">
+{% if p %}
+<main class="tp-page">
+  <header class="tp-hero">
+    <div class="tp-brand">
+      <img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="">
+      <span>{{ co_name }}</span>
+    </div>
+    <h1>أهلاً {{ p.first }}</h1>
+    <p class="tp-sub">تقبّل الله منك — هذه تفاصيل رحلتك</p>
+    {% if trip.name %}<div class="tp-name">{{ trip.name }}</div>{% endif %}
+
+    {% set stt = trip.status %}
+    {% if stt.state == 'before' %}
+    <div class="tp-count" role="timer" aria-label="باقٍ {{ stt.n }} {{ stt.unit }} على المغادرة">
+      <div class="tp-num">{{ stt.n }}</div>
+      <div class="tp-ctext">
+        <b>{{ stt.unit }} على المغادرة</b>
+        <span>{{ trip.dep_txt }}<span class="tp-hijri" data-iso="{{ trip.dep_iso }}"></span></span>
+      </div>
+    </div>
+    {% elif stt.state == 'during' %}
+    <div class="tp-count during">
+      <div class="tp-ctext">
+        <b>رحلتك جارية — اليوم {{ stt.n }} من {{ stt.total }}</b>
+        <span>العودة {{ trip.ret_txt or '—' }}</span>
+      </div>
+      <div class="tp-prog" aria-hidden="true"><i style="width:{{ stt.pct }}%"></i></div>
+    </div>
+    {% elif stt.state == 'after' %}
+    <div class="tp-count done">
+      <div class="tp-ctext"><b>حمداً لله على السلامة</b><span>تقبّل الله طاعتكم وجعلها في ميزان حسناتكم</span></div>
+    </div>
+    {% else %}
+    <div class="tp-count done"><div class="tp-ctext"><b>نجهّز رحلتك</b><span>ستظهر المواعيد هنا فور تأكيدها</span></div></div>
+    {% endif %}
+  </header>
+
+  {% if trip.flights %}
+  <section class="tp-sec">
+    <h2>{{ ic('plane') }} الطيران{% if trip.airline %} <small>{{ trip.airline }}</small>{% endif %}</h2>
+    {% for f in trip.flights %}
+    <article class="bp">
+      <div class="bp-head">
+        <span class="bp-label">{{ ic('takeoff' if loop.first else 'landing') }} {{ f.label }}</span>
+        <span class="bp-date">{{ f.wday }} {{ f.date }}</span>
+      </div>
+      <div class="bp-main">
+        <div class="bp-pt">
+          <small>إقلاع</small>
+          <b dir="ltr">{{ f.dep or '—' }}</b>
+          {% if f['from'] %}<span>{{ f['from'] }}</span>{% endif %}
+        </div>
+        <div class="bp-path" aria-hidden="true"><i></i>{{ ic('plane') }}<i></i></div>
+        <div class="bp-pt">
+          <small>وصول</small>
+          <b dir="ltr">{{ f.arr or '—' }}</b>
+          {% if f.to %}<span>{{ f.to }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="bp-foot">
+        <span>رقم الرحلة <b dir="ltr">{{ f.flight or '—' }}</b></span>
+        {% if f.report %}<span>الحضور للمطار <b dir="ltr">{{ f.report }}</b></span>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% elif trip.dep_txt %}
+  <section class="tp-sec">
+    <h2>{{ ic('calendar') }} المواعيد</h2>
+    <div class="tp-rows">
+      <div><span>{{ ic('takeoff') }} المغادرة</span><b>{{ trip.dep_txt }}</b></div>
+      {% if trip.ret_txt %}<div><span>{{ ic('landing') }} العودة</span><b>{{ trip.ret_txt }}</b></div>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if trip.hotels %}
+  <section class="tp-sec">
+    <h2>{{ ic('hotel') }} الإقامة</h2>
+    <div class="tp-hotels">
+      {% for h in trip.hotels %}
+      <article class="tp-hotel">
+        <span class="tp-hic">{{ ic(h.icon) }}</span>
+        <div><small>{{ h.city }}</small><b>{{ h.name }}</b>{% if h.nights %}<span>{{ h.nights }}</span>{% endif %}</div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if trip.room or trip.transport %}
+  <div class="tp-chips">
+    {% if trip.room %}<span>{{ ic('bed') }} غرفة {{ trip.room }}</span>{% endif %}
+    {% if trip.transport %}<span>{{ ic('bus') }} {{ trip.transport }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if guide %}
+  <section class="tp-sec">
+    <h2>{{ ic('users') }} مرشدك</h2>
+    <article class="tp-guide">
+      <span class="tp-av">{{ (guide.name or guide.team)[:1] }}</span>
+      <div class="tp-gname"><b>{{ guide.name or '—' }}</b><small>مجموعة {{ guide.team }}</small></div>
+      {% if guide.phone %}
+      <div class="tp-gact">
+        <a class="tp-btn" href="tel:{{ guide.tel }}" aria-label="اتصال بالمرشد">{{ ic('phone') }}<span>اتصال</span></a>
+        {% if guide.wa %}<a class="tp-btn wa" href="{{ guide.wa }}" target="_blank" rel="noopener" aria-label="واتساب المرشد">{{ ic('chat') }}<span>واتساب</span></a>{% endif %}
+      </div>
+      {% endif %}
+    </article>
+  </section>
+  {% endif %}
+
+  {% if phones %}
+  <section class="tp-sec">
+    <h2>{{ ic('lifebuoy') }} للطوارئ</h2>
+    <div class="tp-rows">
+      {% for k, v, tel in phones %}
+      <a href="tel:{{ tel }}"><span>{{ k }}</span><b dir="ltr">{{ v }}</b><i>{{ ic('phone') }}</i></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if docs %}
+  <section class="tp-sec">
+    <h2>{{ ic('file-text') }} مستنداتك</h2>
+    <div class="tp-rows">
+      {% for link, title, num, kind in docs %}
+      <a href="{{ link }}"><span>{{ ic('hotel' if kind == 'voucher' else 'bus' if kind == 'treq' else 'file-text') }} {{ title }}</span><b dir="ltr">{{ num }}</b><i>{{ ic('arrow-left') }}</i></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if trip.status.state in ['before', 'unknown'] %}
+  <section class="tp-sec">
+    <h2>{{ ic('luggage') }} قبل السفر</h2>
+    <ul class="tp-check" id="tpCheck" data-key="tp-{{ p.uid or p.first }}">
+      <li><label><input type="checkbox"> جواز السفر ساري ٦ أشهر على الأقل</label></li>
+      <li><label><input type="checkbox"> {{ 'ملابس الإحرام' if noun == 'المعتمر' else 'ملابس الإحرام وحقيبة منى' }}</label></li>
+      <li><label><input type="checkbox"> الأدوية الشخصية مع وصفتها</label></li>
+      <li><label><input type="checkbox"> الوصول للمطار قبل الإقلاع بثلاث ساعات</label></li>
+      <li><label><input type="checkbox"> حفظ أرقام المرشد والطوارئ</label></li>
+    </ul>
+  </section>
+  {% endif %}
+
+  <footer class="tp-foot">{{ co_name }}<br><span>تقبّل الله منّا ومنكم صالح الأعمال</span></footer>
+</main>
+<script>
+(function(){
+  var h=document.querySelector('.tp-hijri[data-iso]');
+  if(h && h.dataset.iso){
+    try{
+      var d=new Date(h.dataset.iso+'T12:00:00');
+      var t=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{day:'numeric',month:'long',year:'numeric'}).format(d);
+      h.textContent=' · '+t;
+    }catch(e){}
+  }
+  var ul=document.getElementById('tpCheck'); if(!ul) return;
+  var key=ul.dataset.key, saved={};
+  try{ saved=JSON.parse(localStorage.getItem(key)||'{}')||{}; }catch(e){}
+  ul.querySelectorAll('input').forEach(function(cb,i){
+    cb.checked=!!saved[i];
+    cb.addEventListener('change',function(){
+      saved[i]=cb.checked;
+      try{ localStorage.setItem(key, JSON.stringify(saved)); }catch(e){}
+    });
+  });
+})();
+</script>
+{% else %}
 <div class="login-wrap">
   <div class="login-card pub-card">
     <img class="pub-logo" src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="المصطفى للحج والعمرة">
-    {% if p %}
-    <h1>أهلاً {{ p.first }} {{ ic('heart') }}</h1>
-    <p class="sub">تقبّل الله منك — هذه تفاصيل رحلتك مع المصطفى للحج والعمرة{% if info.group %}<br><b>{{ info.group }}</b>{% endif %}</p>
-    {% if info.rows %}
-    <table class="pub-tbl">
-      {% for k, v in info.rows %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}
-    </table>
-    {% else %}<p class="sub">ستظهر تفاصيل رحلتك هنا عند اكتمالها.</p>{% endif %}
-    {% if docs %}
-    <h3 class="pub-h">{{ ic('file-text') }} مستنداتك</h3>
-    {% for link, title, num in docs %}
-    <a class="btn primary" style="display:block;margin:6px 0;text-align:center" href="{{ link }}">{{ title }} {{ num }}</a>
-    {% endfor %}
-    {% endif %}
-    {% if info.phones %}
-    <h3 class="pub-h">{{ ic('phone') }} للطوارئ</h3>
-    {% for k, v in info.phones %}<p class="sub" style="margin:4px 0">{{ k }}: <a href="tel:{{ v|replace(' ', '') }}" dir="ltr">{{ v }}</a></p>{% endfor %}
-    {% endif %}
-    {% else %}
     <div class="pub-bad">{{ ic('x-circle') }} الرابط غير صالح أو أُلغي</div>
     <p class="sub">اطلب من مكتب المصطفى رابطاً جديداً.</p>
-    {% endif %}
   </div>
 </div>
+{% endif %}
 </body></html>

@@ -28,7 +28,8 @@ from hajj_app.stats import remaining_amount
 _PAGE = 50
 _STATUS_CLS = {"نشط": "good", "ملغى": "crit", "قائمة انتظار": "warn"}
 _CHOICES = {"status": ["", "نشط", "ملغى", "قائمة انتظار"],
-            "sex": ["", "ذكر", "أنثى"], "wheelchair": ["", "نعم"]}
+            "sex": ["", "ذكر", "أنثى"], "wheelchair": ["", "نعم"],
+            "blood_type": ["", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]}
 # قوائم خاصّة بالعمرة (في الحج «المواصلات» رقم الباص فتبقى نصّاً حرّاً)
 _UMRAH_CHOICES = {
     "staff": ["", "أيمن الشهابي", "أحمد الشبراوي", "علاء بريخان",   # الموظف المسؤول
@@ -39,7 +40,7 @@ _DATE_FIELDS = {"birth_date", "expiry_date", "arrival_date", "departure_date"}
 _UMRAH_DROP = {"program", "group", "hady", "executive_service", "wheelchair",
                "airline", "flight_number", "travel_class", "pnr",
                "arrival_date", "arrival_time", "departure_date",
-               "departure_time", "hotel"}
+               "departure_time", "hotel", "permit_status", "masar_number"}
 _GROUPS = [
     ("بيانات {n}", ["family_number", "reference_number", "full_name_ar",
                     "full_name_en", "phone", "program", "group", "status",
@@ -51,9 +52,17 @@ _GROUPS = [
                "departure_time", "transport"]),
     ("الإقامة والخدمات", ["hotel", "room_type", "room_number",
                           "executive_service", "wheelchair", "hady"]),
+    ("التأشيرة والتصاريح", ["visa_number", "visa_status", "permit_status",
+                            "masar_number", "vaccination", "insurance"]),
     ("المالية", ["program_value", "paid_amount"]),
+    ("الصحة والطوارئ", ["blood_type", "medical_conditions", "medications",
+                        "emergency_name", "emergency_phone", "emergency_relation"]),
     ("ملاحظات", ["notes", "staff"]),
 ]
+# أيقونة كل قسم في صفحة السجلّ (حسب بداية العنوان)
+_GROUP_ICONS = (("البرنامج", "briefcase"), ("بيانات", "user"), ("الجواز", "id-card"),
+                ("السفر", "plane"), ("الإقامة", "hotel"), ("التأشيرة", "shield"),
+                ("المالية", "wallet"), ("الصحة", "heart"), ("ملاحظات", "pen"))
 
 app = Flask(__name__)
 from webapp import icons as _icons  # noqa: E402
@@ -1973,7 +1982,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-10 · بحث سريع Ctrl+K + تنبيه البيانات الناقصة قبل المغادرة"
+_BUILD_TAG = "2026-11-11 · مستندات بهوية فاخرة + صفحة رحلتي + السجلّ كملفّ شخصي"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2711,13 +2720,84 @@ _DOC_KINDS = [
 _DOC_KIND_LABEL = {k: lbl for k, _ic, lbl, _d in _DOC_KINDS}
 
 
+# بيانات ترويسة المستندات (تظهر في رأس وتذييل السند والفاتورة والعقد والفاوتشر)
+_CO_FIELDS = (("name_ar", "اسم الشركة بالعربية", 80), ("name_en", "الاسم بالإنجليزية", 80),
+              ("phone", "الهاتف", 40), ("email", "البريد الإلكتروني", 120),
+              ("website", "الموقع الإلكتروني", 120), ("trn", "الرقم الضريبي (TRN)", 20),
+              ("address", "العنوان", 120))
+
+
 @app.get("/documents")
 def documents():
     """بند «المستندات» المستقلّ: قائمة أنواع المستندات (اختر النوع ثم الشخص)."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    co = {}
+    if s.is_admin:
+        settings = storage.load_settings()
+        raw = settings.get("company") if isinstance(settings, dict) else None
+        co = raw if isinstance(raw, dict) else {}
+    msg, err = session.pop("acc_msg", None), session.pop("acc_err", None)
+    return render_template("documents.html", active="documents",
+                           docs=_DOC_KINDS, co=co, co_fields=_CO_FIELDS,
+                           msg=msg, err=err, **_ctx())
+
+
+@app.post("/documents/company")
+def documents_company():
+    """يحفظ بيانات ترويسة المستندات (للمدير) — في نظامَي الحج والعمرة معاً كي
+    تخرج مستندات النظامين بالترويسة نفسها."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    new = {}
+    for key, label, limit in _CO_FIELDS:
+        v = " ".join((request.form.get(key) or "").split())
+        if len(v) > limit:
+            session["acc_err"] = f"«{label}» أطول من المسموح ({limit} حرفاً)."
+            return redirect(url_for("documents") + "#letterhead")
+        new[key] = v
+    if new["email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", new["email"]):
+        session["acc_err"] = "البريد الإلكتروني غير صحيح."
+        return redirect(url_for("documents") + "#letterhead")
+    if new["trn"] and not re.fullmatch(r"\d{15}", new["trn"]):
+        session["acc_err"] = "الرقم الضريبي في الإمارات ١٥ رقماً."
+        return redirect(url_for("documents") + "#letterhead")
+    cur = _mode()
+    try:
+        for m in app_mode.MODES:
+            app_mode.set_mode(m)
+            st = storage.load_settings()
+            co = st.get("company") if isinstance(st.get("company"), dict) else {}
+            co.update(new)                      # يحفظ أيّ مفاتيح أخرى كما هي
+            st["company"] = co
+            storage.save_settings(st)
+    finally:
+        app_mode.set_mode(cur)
+    _audit("تعديل ترويسة المستندات", new["name_ar"] or "—")
+    session["acc_msg"] = "حُفظت بيانات الترويسة — تظهر في كل مستند تُصدره من الآن."
+    return redirect(url_for("documents") + "#letterhead")
+
+
+@app.get("/documents/company/preview.pdf")
+def documents_company_preview():
+    """معاينة الترويسة: فاتورة تجريبية باسم «عميل تجريبي» (لا تُؤرشف ولا تأخذ رقماً)."""
     if _sess() is None:
         return redirect(url_for("login"))
-    return render_template("documents.html", active="documents",
-                           docs=_DOC_KINDS, **_ctx())
+    from hajj_app import pdf_io
+    from hajj_app.mrz import PassportData
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    demo = PassportData(full_name_ar="عميل تجريبي", passport_number="X0000000",
+                        phone="0500000000", nationality_ar="—",
+                        program_value="5000", paid_amount="2000")
+    return _pdf_response(
+        lambda p: pdf_io.export_invoice_pdf(
+            demo, p, company=co, number="معاينة",
+            data={"item_desc": "معاينة شكل الترويسة والتذييل — ليست فاتورة حقيقية",
+                  "notes": "هذه صفحة معاينة فقط."}),
+        "letterhead-preview.pdf")
 
 
 @app.get("/documents/<kind>")
@@ -2819,53 +2899,128 @@ def verify_doc(token):
                            ), (200 if d else 404)
 
 
+def _nights_txt(n) -> str:
+    try:
+        k = int(float(str(n).strip()))
+    except (TypeError, ValueError):
+        return f"{n} ليالٍ" if str(n or "").strip() else ""
+    return ("ليلة واحدة" if k == 1 else "ليلتان" if k == 2 else
+            f"{k} ليالٍ" if 3 <= k <= 10 else f"{k} ليلة")
+
+
+def _trip_status(dep, ret, today) -> dict:
+    """حالة الرحلة للعدّ التنازلي في صفحة «رحلتي»."""
+    if dep and today < dep:
+        n = (dep - today).days
+        return {"state": "before", "n": n, "unit": _days_unit(n)}
+    if dep and (today <= (ret or dep)):
+        total = ((ret or dep) - dep).days + 1
+        k = (today - dep).days + 1
+        return {"state": "during", "n": k, "total": total,
+                "pct": round(100 * k / total) if total else 100}
+    if (ret or dep) and today > (ret or dep):
+        return {"state": "after"}
+    return {"state": "unknown"}
+
+
 @app.get("/p/<token>")
 def person_page(token):
-    """صفحة المعتمر الخاصة (رابط سرّي يُرسل له): برنامجه ورحلته وفندقه
-    ومستنداته — تُقرأ بيانات البرنامج حيّةً من الإعدادات."""
+    """صفحة «رحلتي» الخاصة بالمعتمر (رابط سرّي يُرسل له): عدّ تنازلي، بطاقتا
+    الطيران، الفنادق، المرشد، الطوارئ، ومستنداته — تُقرأ بيانات البرنامج حيّةً
+    من الإعدادات (الكشف مشفّر فلا يُعرض منه إلا المحفوظ في الرابط)."""
     from webapp import public
+    from webapp.alerts import _d
     p = public.get_person(token)
     if not p:
         return render_template("public_person.html", p=None), 404
     mode = p.get("mode") if p.get("mode") in app_mode.MODES else app_mode.UMRAH
     app_mode.set_mode(mode)
     settings = storage.load_settings()
-    info = {"group": p.get("group", ""), "rows": [], "phones": []}
+    today = datetime.now(_UAE).date()
+    trip = {"name": p.get("group", ""), "flights": [], "hotels": [],
+            "room": p.get("room", ""), "transport": "", "dep": None, "ret": None}
+    phones = []
+
+    def leg(label, when, flight, t_dep, t_arr, frm="", to="", carrier="", report=""):
+        if not any((flight, t_dep, t_arr)):
+            return None
+        d = _d(when)
+        return {"label": label, "date": _day_txt(d, today) if d else (when or ""),
+                "wday": _AR_DAYS[d.weekday()] if d else "", "flight": flight,
+                "dep": t_dep, "arr": t_arr, "from": frm, "to": to,
+                "carrier": carrier, "report": report}
+
     if mode == app_mode.UMRAH:
         from hajj_app import umrah
         t = next((x for x in umrah.load_trips(settings) if x.code == p.get("group")), None)
         if t:
-            info["group"] = t.name or t.code
-            fl = lambda f, a, b: " · ".join(x for x in (f, a and f"إقلاع {a}",
-                                                        b and f"وصول {b}") if x)
-            info["rows"] = [r for r in [
-                ("✈️ الطيران", " — ".join(x for x in (t.airline, t.depart_city and
-                                                      f"من {t.depart_city}") if x)),
-                ("🛫 المغادرة", t.depart_date), ("رحلة الذهاب", fl(t.flight_out,
-                    t.out_depart_time, t.out_arrive_time)),
-                ("🛬 العودة", t.return_date), ("رحلة العودة", fl(t.flight_ret,
-                    t.ret_depart_time, t.ret_arrive_time)),
-                ("🏨 فندق مكة", " · ".join(x for x in (t.makkah_hotel, t.makkah_nights
-                                                      and f"{t.makkah_nights} ليالٍ") if x)),
-                ("🏨 فندق المدينة", " · ".join(x for x in (t.madinah_hotel, t.madinah_nights
-                                                          and f"{t.madinah_nights} ليالٍ") if x)),
-                ("🚐 النقل", t.transport)] if r[1]]
-            info["phones"] = [x for x in (("طوارئ الإمارات", t.emergency_uae),
-                                          ("طوارئ السعودية", t.emergency_ksa)) if x[1]]
+            trip["name"] = t.name or t.code
+            trip["dep"], trip["ret"] = _d(t.depart_date), _d(t.return_date)
+            trip["flights"] = [x for x in (
+                leg("رحلة الذهاب", t.depart_date, t.flight_out, t.out_depart_time,
+                    t.out_arrive_time, frm=t.depart_city, carrier=t.airline),
+                leg("رحلة العودة", t.return_date, t.flight_ret, t.ret_depart_time,
+                    t.ret_arrive_time, to=t.depart_city, carrier=t.airline)) if x]
+            trip["airline"] = t.airline
+            trip["hotels"] = [h for h in (
+                {"city": "مكة المكرمة", "icon": "kaaba", "name": t.makkah_hotel,
+                 "nights": _nights_txt(t.makkah_nights) if t.makkah_nights else ""},
+                {"city": "المدينة المنورة", "icon": "moon", "name": t.madinah_hotel,
+                 "nights": _nights_txt(t.madinah_nights) if t.madinah_nights else ""})
+                if h["name"]]
+            trip["transport"] = t.transport
+            phones = [x for x in (("طوارئ الإمارات", t.emergency_uae),
+                                  ("طوارئ السعودية", t.emergency_ksa)) if x[1]]
     else:
         from hajj_app import programs as hp
         for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
             if nm == p.get("group"):
-                info["rows"] = [r for r in [
-                    ("✈️ الناقل", pr.carrier), ("🛫 السفر", pr.travel_date),
-                    ("رحلة الذهاب", pr.flight_out), ("🛬 العودة", pr.return_date),
-                    ("رحلة العودة", pr.flight_ret), ("🏨 الفندق", pr.hotel)] if r[1]]
-    if p.get("room"):
-        info["rows"].append(("🛏 نوع الغرفة", p["room"]))
-    docs = [(url_for("verify_doc", token=t), _DOC_TITLES.get(d.get("kind"), ("مستند", ""))[0],
-             d.get("number", "")) for t, d in public.person_docs(mode, p.get("uid"))]
-    return render_template("public_person.html", p=p, info=info, docs=docs,
+                trip["dep"], trip["ret"] = _d(pr.travel_date), _d(pr.return_date)
+                trip["airline"] = pr.carrier
+                trip["flights"] = [x for x in (
+                    leg("رحلة الذهاب", pr.travel_date, pr.flight_out, pr.takeoff_out,
+                        pr.land_out, frm=pr.departure_airport, to=pr.arrival_airport,
+                        carrier=pr.carrier, report=pr.report_out),
+                    leg("رحلة العودة", pr.return_date, pr.flight_ret, pr.takeoff_ret,
+                        pr.land_ret, frm=pr.arrival_airport, to=pr.departure_airport,
+                        carrier=pr.carrier, report=pr.report_ret)) if x]
+                if pr.hotel:
+                    trip["hotels"] = [{"city": "الفندق", "icon": "kaaba",
+                                       "name": pr.hotel, "nights": ""}]
+                trip["transport"] = pr.transport
+    for k in ("dep", "ret"):
+        d = trip[k]
+        trip[k + "_txt"] = _day_txt(d, today) if d else ""
+        trip[k + "_iso"] = d.isoformat() if d else ""
+    trip["status"] = _trip_status(trip["dep"], trip["ret"], today)
+    team = str(p.get("team") or "").strip()
+    g = (settings.get("groups") or {}).get(team) if team else None
+    guide = ({"team": team, "name": str(g.get("guide") or ""),
+              "phone": str(g.get("phone") or "")}
+             if isinstance(g, dict) and (g.get("guide") or g.get("phone")) else None)
+    from hajj_app import whatsapp as _wa
+    cc = str(settings.get("whatsapp_cc") or "971")
+    if guide and guide["phone"]:
+        guide["tel"] = re.sub(r"[^\d+]", "", guide["phone"])
+        try:
+            guide["wa"] = _wa.wa_link(guide["phone"], "السلام عليكم", cc)
+        except Exception:                          # noqa: BLE001
+            guide["wa"] = ""
+    phones = [(k, v, re.sub(r"[^\d+]", "", v)) for k, v in phones]
+    docs = [(url_for("verify_doc", token=tk), _DOC_TITLES.get(d.get("kind"), ("مستند", ""))[0],
+             d.get("number", ""), d.get("kind", "")) for tk, d in public.person_docs(mode, p.get("uid"))]
+    co = settings.get("company") if isinstance(settings.get("company"), dict) else {}
+    return render_template("public_person.html", p=p, trip=trip, guide=guide,
+                           phones=phones, docs=docs, mode=mode,
+                           co_name=co.get("name_ar") or "المصطفى للحج والعمرة",
                            noun="الحاج" if mode == app_mode.HAJJ else "المعتمر")
+
+
+def _person_info(rec) -> dict:
+    """ما يُحفظ في رابط المعتمر العام — أقلّ قدر لازم (لا جواز ولا هاتف ولا مبالغ)."""
+    name = rec.full_name_ar or rec.full_name_en or ""
+    return {"first": (name.split() or [""])[0], "group": getattr(rec, _group_attr(), "") or "",
+            "room": rec.room_type or "", "team": str(getattr(rec, "group", "") or "").strip()}
 
 
 @app.post("/hujjaj/<int:idx>/link")
@@ -2886,9 +3041,7 @@ def person_link(idx):
         public.revoke_person(_mode(), uid)
         _audit("إلغاء رابط معتمر", name)
     else:
-        public.person_token(_mode(), uid, {
-            "first": (name.split() or [""])[0], "group": getattr(rec, _group_attr(), "") or "",
-            "room": rec.room_type or ""}, rotate=(action == "rotate"))
+        public.person_token(_mode(), uid, _person_info(rec), rotate=(action == "rotate"))
         _audit("رابط معتمر" + (" (تجديد)" if action == "rotate" else ""), name)
     return redirect(url_for("record_docs", idx=j, fp=_rec_token(rec)))
 
@@ -3243,9 +3396,12 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
                     f["hint"] = ("يُملأ تلقائياً بسعر الفرد من البرنامج حسب نوع "
                                  "الغرفة — ويمكن تعديله.")
     has_docs = idx is not None            # للسجلّ القائم فقط
+    for g in groups:
+        g["icon"] = next((ic for pre, ic in _GROUP_ICONS if g["title"].startswith(pre)),
+                         "file-text")
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
-        has_docs=has_docs,
+        has_docs=has_docs, prof=_profile(rec, idx) if idx is not None else None,
         is_new=is_new, idx=idx, room_prices=room_prices,
         fp=_rec_token(rec) if idx is not None else "",
         svc_total=umrah.record_services_total(rec),   # خدمات المعتمر
@@ -3255,6 +3411,123 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
             rec, "full_name_en", "") or "",
         number=getattr(rec, "reference_number", "") or "",
         noun_singular=_noun_singular(), **_ctx())
+
+
+def _profile(rec, idx) -> dict:
+    """بيانات رأس «الملف الشخصي» في صفحة السجلّ: الاسم والصورة والشارات،
+    جاهزية السفر (البيانات الناقصة)، حالة السداد، والروابط السريعة."""
+    from webapp import alerts, public
+    from hajj_app import images as imgmod
+    from hajj_app.fields import format_amount
+    mode = _mode()
+    name = rec.full_name_ar or rec.full_name_en or ""
+    parts = name.split()
+    initials = (parts[0][:1] + (parts[-1][:1] if len(parts) > 1 else "")) if parts else "؟"
+    needs = alerts._NEEDS_HAJJ if mode == app_mode.HAJJ else alerts._NEEDS
+    missing = alerts.missing_fields(rec, mode)
+    miss_keys = [k for k, _l in needs if not str(getattr(rec, k, "") or "").strip()]
+    ready = round(100 * (len(needs) - len(missing)) / len(needs)) if needs else 100
+    iid = getattr(rec, "image_id", "") or ""
+    has_img = bool(iid) and any(imgmod.has_image(iid, k) for k in
+                                (imgmod.PHOTO, imgmod.PASSPORT, imgmod.ID_CARD))
+    gval = str(getattr(rec, _group_attr(), "") or "")
+    chips = []
+    if gval:
+        lbl = gval
+        if mode == app_mode.UMRAH:
+            from hajj_app import umrah
+            t = next((x for x in umrah.load_trips(storage.load_settings())
+                      if x.code == gval), None)
+            lbl = f"{t.code} — {t.name}" if t and t.name else gval
+        chips.append(("briefcase", lbl, False))
+    if rec.reference_number:
+        chips.append(("tag", rec.reference_number, True))
+    if rec.passport_number:
+        chips.append(("id-card", rec.passport_number, True))
+    if rec.nationality_ar:
+        chips.append(("globe", rec.nationality_ar, False))
+    status = str(rec.status or "").strip()
+    pay = _pay_state(rec)
+    total = stats._amount(rec.program_value)
+    paid = stats._amount(rec.paid_amount)
+    pct = max(0, min(100, round(100 * paid / total))) if total > 0 else 0
+    from hajj_app import whatsapp as _wa
+    tok = public.find_person(mode, getattr(rec, "uid", "") or "")
+    fp = _rec_token(rec)
+    wa = None
+    if rec.phone:
+        try:
+            wa = _wa.wa_link(rec.phone, f"السلام عليكم {(parts or [''])[0]}",
+                             str(storage.load_settings().get("whatsapp_cc") or "971"))
+        except Exception:                          # noqa: BLE001
+            wa = None
+    return {
+        "initials": initials, "name_ar": rec.full_name_ar, "name_en": rec.full_name_en,
+        "chips": chips, "status": status,
+        "status_cls": {"ملغى": "crit", "قائمة انتظار": "warn"}.get(status, "good"),
+        "has_img": has_img,
+        "avatar": url_for("record_avatar", idx=idx, fp=fp) if has_img else "",
+        "ready": ready, "missing": missing, "miss_keys": miss_keys, "ring": round(ready * 1.0053, 2),
+        "pay": pay, "pay_lbl": _PAY_STATES[pay][0] if pay else "",
+        "pay_cls": _PAY_STATES[pay][1] if pay else "",
+        "pay_ic": _PAY_STATES[pay][2] if pay else "",
+        "total": format_amount(total) if total else "", "paid": format_amount(paid),
+        "remaining": format_amount(max(0.0, remaining_amount(rec))), "pct": pct,
+        "plink": url_for("person_page", token=tok) if tok else "",
+        "wa": wa,
+    }
+
+
+@app.get("/hujjaj/<int:idx>/avatar.jpg")
+def record_avatar(idx):
+    """صورة السجلّ المصغّرة لرأس صفحته: الصورة الشخصية المرفوعة، وإلّا الوجه
+    مقتصّاً من الجواز/الهوية. لا تُخزَّن مفكوكة على الخادم."""
+    if _sess() is None:
+        return ("", 401)
+    from hajj_app import images as imgmod
+    records = _load_records()
+    j = _resolve_idx(records, idx, request.args.get("fp", ""))
+    if j is None:
+        return ("", 404)
+    iid = getattr(records[j], "image_id", "") or ""
+    if not iid:
+        return ("", 404)
+    import io
+    out = None
+    try:
+        blob = imgmod.load_image(iid, imgmod.PHOTO, _sess())
+        if blob:
+            pil = imgmod.to_pil_image(blob)
+            if pil is not None:
+                w, h = pil.size
+                side = min(w, h)
+                top = max(0, int((h - side) * 0.2))
+                pil = pil.convert("RGB").crop(((w - side) // 2, top,
+                                               (w - side) // 2 + side, top + side))
+                pil.thumbnail((256, 256))
+                bio = io.BytesIO()
+                pil.save(bio, format="JPEG", quality=86)
+                out = bio.getvalue()
+        if out is None:
+            for kind in (imgmod.PASSPORT, imgmod.ID_CARD):
+                blob = imgmod.load_image(iid, kind, _sess())
+                face = imgmod.face_crop(blob, target_aspect=1.0) if blob else None
+                if face:
+                    pil = imgmod.to_pil_image(face)
+                    if pil is not None:
+                        pil = pil.convert("RGB")
+                        pil.thumbnail((256, 256))
+                        bio = io.BytesIO()
+                        pil.save(bio, format="JPEG", quality=86)
+                        out = bio.getvalue()
+                        break
+    except Exception:                              # noqa: BLE001
+        out = None
+    if not out:
+        return ("", 404)
+    resp = send_file(io.BytesIO(out), mimetype="image/jpeg", download_name="avatar.jpg")
+    resp.headers["Cache-Control"] = "private, max-age=600"
+    return resp
 
 
 _RECORD_DOCS = [
@@ -3290,6 +3563,12 @@ def record_docs(idx):
     from webapp import public
     from hajj_app import whatsapp as _wa
     tok = public.find_person(_mode(), getattr(rec, "uid", "") or "")
+    if tok and getattr(rec, "uid", ""):        # حدّث بيانات الرابط (البرنامج/الغرفة/المجموعة)
+        try:
+            if any(public.get_person(tok).get(k) != v for k, v in _person_info(rec).items()):
+                public.person_token(_mode(), rec.uid, _person_info(rec))
+        except Exception:                          # noqa: BLE001
+            pass
     plink = url_for("person_page", token=tok, _external=True) if tok else ""
     wa = (_wa.wa_link(rec.phone, f"السلام عليكم {(name.split() or [''])[0]}، هذا رابط "
                       f"برنامجك مع المصطفى للحج والعمرة: {plink}",
@@ -4766,7 +5045,7 @@ def _doc_export(kind, rec, co, data, path):
     from hajj_app import pdf_io
     if kind == "receipt":
         c = pdf_io.company_info(co)
-        pdf_io.export_receipt_pdf(rec, path, company=c["name_ar"],
+        pdf_io.export_receipt_pdf(rec, path, company=c,
                                   company_en=c["name_en"], data=data)
     elif kind == "invoice":
         pdf_io.export_invoice_pdf(rec, path, company=co, data=data)
@@ -4978,7 +5257,7 @@ def pilgrim_packet(idx):
             pass
         rp = os.path.join(tmpdir, "receipt.pdf")   # ٣) سند القبض
         pdf_io.export_receipt_pdf(
-            rec, rp, season=season,
+            rec, rp, season=season, company=company,
             number=_web_doc_number(settings, rec, "receipts", "", 119))
         parts.append(rp)
         cp = os.path.join(tmpdir, "contract.pdf")  # ٤) العقد

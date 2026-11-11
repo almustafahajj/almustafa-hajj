@@ -3,6 +3,8 @@
 {% block heading %}{{ ic('file-text') }} المستندات{% endblock %}
 {% block subhead %}<div class="season">اختر نوع المستند — من سجلّ شخص، أو يدوي بلا اسم</div>{% endblock %}
 {% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
+{% if err %}<div class="acc-msg err" data-keep>{{ err|iconize }}</div>{% endif %}
 <div class="repgrid">
   {% for kind, icon, label, desc in docs %}
   <div class="repcard" style="align-items:flex-start">
@@ -27,4 +29,59 @@
   يفتح المستند بحقول فارغة تملؤها بالكامل — دون ربطه بأي سجلّ. «من عرض سعر»
   (للفاوتشر وطلب المواصلات) يعبّئه من عرض سعر محفوظ برقمه المرجعي. (حزمة المستندات
   تحتاج سجلّاً فلا يوجد لها وضع يدوي.)</p>
+
+{% if is_admin %}
+<section class="panel lh-panel" id="letterhead">
+  <div class="lh-head">
+    <h3>{{ ic('pen') }} ترويسة المستندات</h3>
+    <p class="muted">تظهر في رأس وتذييل سند القبض والفاتورة والعقد والفاوتشر وطلب المواصلات —
+      في نظامَي الحج والعمرة معاً. اترك أيّ حقل فارغاً ليُخفى.</p>
+  </div>
+  <div class="lh-body">
+    <form method="post" action="{{ url_for('documents_company') }}" class="acc-form needs-save lh-form" id="lhForm">
+      {% for key, label, limit in co_fields %}
+      <label class="{{ 'wide' if key in ['address'] }}">{{ label }}
+        <input name="{{ key }}" maxlength="{{ limit }}" value="{{ co.get(key, '') }}"
+          {% if key in ['name_en', 'phone', 'email', 'website', 'trn'] %}dir="ltr"{% endif %}
+          {% if key == 'email' %}type="email"{% elif key == 'trn' %}inputmode="numeric" pattern="\d{15}" title="١٥ رقماً"{% endif %}
+          placeholder="{{ {'name_ar': 'المصطفى للحج والعمرة', 'name_en': 'Al Mustafa Hajj & Umrah', 'phone': '+971 4 000 0000', 'email': 'info@example.com', 'website': 'www.example.com', 'address': 'دبي — الإمارات العربية المتحدة', 'trn': '100000000000003'}[key] }}"></label>
+      {% endfor %}
+      <div class="off-bar">
+        <button class="acc-btn save-btn" type="submit">{{ ic('check') }} حفظ</button>
+        <a class="btn ghost sm" target="_blank" href="{{ url_for('documents_company_preview') }}">{{ ic('file-text') }} معاينة فاتورة تجريبية</a>
+      </div>
+    </form>
+    <div class="lh-paper" aria-hidden="true">
+      <div class="lh-top">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+        <div class="lh-names">
+          <b data-f="name_ar">{{ co.get('name_ar') or 'المصطفى للحج والعمرة' }}</b>
+          <small data-f="name_en">{{ (co.get('name_en') or 'Al Mustafa Hajj & Umrah')|upper }}</small>
+          <span class="lh-contact" data-f="contact"></span>
+        </div>
+        <div class="lh-title"><b>فاتورة ضريبية</b><small>TAX INVOICE</small><span dir="ltr">No. INV-0001</span></div>
+      </div>
+      <div class="lh-rule"></div>
+      <div class="lh-lines"><i></i><i></i><i class="s"></i><i></i><i class="s"></i></div>
+      <div class="lh-foot"><span class="lh-star"></span><span data-f="foot"></span></div>
+    </div>
+  </div>
+</section>
+<script>
+(function(){
+  var f=document.getElementById('lhForm'); if(!f) return;
+  function v(n){ var e=f.elements[n]; return e ? e.value.trim() : ''; }
+  function sync(){
+    var q=function(k){ return document.querySelector('.lh-paper [data-f="'+k+'"]'); };
+    q('name_ar').textContent = v('name_ar') || 'المصطفى للحج والعمرة';
+    q('name_en').textContent = (v('name_en') || 'Al Mustafa Hajj & Umrah').toUpperCase();
+    var c=[v('phone'), v('email'), v('trn') ? 'TRN ' + v('trn') : '', v('address'), v('website')].filter(Boolean);
+    q('contact').textContent = c.join('  ·  ');
+    var ft=[v('phone'), v('email'), v('website'), v('address')].filter(Boolean);
+    q('foot').textContent = ft.length ? ft.join('  ·  ') : (v('name_ar') || 'المصطفى للحج والعمرة');
+  }
+  f.addEventListener('input', sync); sync();
+})();
+</script>
+{% endif %}
 {% endblock %}
