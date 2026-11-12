@@ -1986,7 +1986,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-12 · عنوان البرامج حسب نوعها وموسمها"
+_BUILD_TAG = "2026-11-12 · إصلاح نصّ صورة المعاينة على الخادم"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3277,13 +3277,15 @@ def public_trips():
     wa = _wa.wa_link(wa_num, "السلام عليكم، أرغب بالاستفسار عن برامجكم") or ""
     pick = request.args.get("p", "")
     pick_prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == pick), None)
+    from webapp import share_image
     og = _trips_og_text(progs, pick_prog)
     kinds = {x["mode"] for x in progs}
     noun = ("عمرة وحج" if len(kinds) != 1 else "عمرة" if app_mode.UMRAH in kinds else "حج")
     return render_template("public_trips.html", progs=progs, intro=intro, co=co, wa=wa,
                            label=_progs_label(progs), og_title=og[0], og_sub=og[1] if pick_prog else "",
                            og_img=url_for("trips_og", p=pick if pick_prog else None,
-                                          v=hashlib.sha1("|".join(og).encode("utf-8")).hexdigest()[:8],
+                                          v=hashlib.sha1("|".join((str(share_image.VERSION),) + og)
+                                                         .encode("utf-8")).hexdigest()[:8],
                                           _external=True),
                            noun=noun,
                            rooms=_BOOK_ROOMS, sent=request.args.get("sent"),

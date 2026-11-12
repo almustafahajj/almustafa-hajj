@@ -170,6 +170,9 @@ assert 'rel="icon"' in pub and "icons/icon-192.png" in pub
 im = anon.get(urlsplit(og).path, query_string=urlsplit(og).query)
 assert im.status_code == 200 and im.mimetype == "image/jpeg" and im.data[:3] == b"\xff\xd8\xff"
 assert len(im.data) < 300_000, "صورة JPEG خفيفة"
+from PIL import ImageFont  # noqa: E402
+from webapp import share_image  # noqa: E402
+assert share_image._font("Amiri-Bold.ttf", 20).layout_engine == ImageFont.Layout.BASIC,     "التخطيط البسيط دائماً (libraqm على الخادم يقلب النصّ المُشكَّل مسبقاً)"
 im.close()
 # العنوان حسب البرامج المنشورة (هنا عمرة فقط): في العنوان والمعاينة وأعلى الصفحة
 lbl = server._progs_label(server._all_public_programs()[0])

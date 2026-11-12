@@ -23,8 +23,13 @@ def ar(text: str) -> str:
     return get_display(arabic_reshaper.reshape(text))
 
 
+VERSION = 2          # يُضاف لرابط الصورة: تغييره يجعل واتساب يجلب الصورة من جديد
+
+
 def _font(name: str, px: int):
-    return ImageFont.truetype(os.path.join(FONTS, name), px)
+    # التخطيط البسيط دائماً: النصّ مُشكَّل ومرتّب مسبقاً (reshaper + bidi)، وعلى الخادم
+    # (لينكس) يتوفّر libraqm الذي يعيد ترتيبه فتنقلب الحروف وتنفصل.
+    return ImageFont.truetype(os.path.join(FONTS, name), px, layout_engine=ImageFont.Layout.BASIC)
 
 
 def _fit(d, text, name, size, min_size, max_w, k):
