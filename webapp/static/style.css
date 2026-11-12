@@ -1891,21 +1891,46 @@ body.pub-trips{ background:var(--bg); }
 .pt-left{ font-size:12px; font-weight:700; padding:3px 10px; border-radius:99px; background:#FDF3E1; color:#8A5A00; }
 .pt-left.full{ background:#FBE4E0; color:#B23A3A; }
 .pt-card h3{ margin:0; font-size:19px; line-height:1.4; }
-.pt-dates{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:var(--soft); }
-.pt-dates > div{ display:flex; flex-direction:column; }
-.pt-dates small{ display:flex; align-items:center; gap:4px; font-size:11.5px; color:var(--muted); }
-.pt-dates b{ font-size:15px; }
-.pt-dates > div:last-child{ margin-inline-start:auto; text-align:left; align-items:flex-end; }
-.pt-n{ font-size:12px; font-weight:700; color:var(--bronze); padding:1px 9px; border-radius:99px; background:var(--panel); }
+/* رحلتا الذهاب والعودة: التاريخ ورقم الرحلة ووقتا الإقلاع والوصول */
+.pt-legs{ display:flex; flex-direction:column; padding:4px 12px; border-radius:14px; background:var(--soft); }
+.pt-leg{ display:flex; align-items:center; gap:10px; padding:8px 0; }
+.pt-leg-ic{ flex:none; width:34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--panel); color:var(--bronze); }
+.pt-leg-ic .ico{ width:17px; height:17px; }
+.pt-leg-d{ flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.35; }
+.pt-leg-d small{ font-size:11.5px; color:var(--muted); }
+.pt-leg-d b{ font-size:14.5px; }
+.pt-leg-t{ flex:none; display:flex; gap:12px; text-align:center; }
+.pt-leg-t span{ display:flex; flex-direction:column; line-height:1.3; }
+.pt-leg-t small{ font-size:10.5px; color:var(--muted); }
+.pt-leg-t b{ font-size:14.5px; font-variant-numeric:tabular-nums; }
+.pt-gap{ display:flex; align-items:center; gap:8px; }
+.pt-gap::before, .pt-gap::after{ content:""; flex:1; border-top:1px dashed var(--border); }
+.pt-n{ display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--bronze); padding:1px 9px;
+  border-radius:99px; background:var(--panel); }
+.pt-n .ico{ width:12px; height:12px; }
 .pt-facts{ list-style:none; margin:0; padding:0; display:grid; gap:7px; font-size:14px; }
 .pt-facts li{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .pt-facts .ico{ color:var(--bronze); }
 .pt-facts small{ color:var(--muted); font-size:12.5px; }
-.pt-card footer{ display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin-top:auto; padding-top:12px;
-  border-top:1px dashed var(--border); }
-.pt-price{ display:flex; flex-direction:column; line-height:1.25; }
-.pt-price small{ font-size:12px; color:var(--muted); }
-.pt-price b{ font-size:24px; color:var(--ink); font-variant-numeric:tabular-nums; }
+/* أسعار الغرف: بطاقات صغيرة قابلة للاختيار، ثم زرّ الحجز */
+.pt-pick{ display:flex; flex-direction:column; gap:12px; margin-top:auto; padding-top:12px; border-top:1px dashed var(--border); }
+.pt-prices{ margin:0; padding:0; border:0; min-width:0; }
+.pt-prices legend{ padding:0; margin-bottom:8px; font-size:13px; font-weight:700; color:var(--ink); }
+.pt-prices legend small{ font-weight:400; color:var(--muted); }
+.pt-pgrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(66px, 1fr)); gap:6px; }
+.pt-pr{ position:relative; display:flex; flex-direction:column; align-items:center; gap:1px; padding:8px 4px; border-radius:12px;
+  border:1.5px solid var(--border); background:var(--panel); cursor:pointer; text-align:center;
+  transition:border-color .15s, background .15s, transform .15s var(--ease); }
+.pt-pr:hover{ border-color:var(--bronze); }
+.pt-pr input{ position:absolute; opacity:0; pointer-events:none; }
+.pt-pr span{ font-size:12px; color:var(--muted); }
+.pt-pr b{ font-size:15.5px; color:var(--ink); font-variant-numeric:tabular-nums; }
+.pt-pr:has(input:checked){ border-color:var(--bronze); background:var(--soft); transform:translateY(-1px); }
+.pt-pr:has(input:checked) span{ color:var(--bronze); font-weight:700; }
+.pt-pr:has(input:focus-visible){ box-shadow:0 0 0 3px var(--focus); }
+.pt-ask{ display:flex; align-items:center; gap:6px; margin:0; font-size:14px; color:var(--muted); }
+.pt-pick .pt-btn{ width:100%; }
+.pt-done .pt-wa{ flex:none; margin-inline-start:auto; background:#25D366; color:#fff; }
 .pt-empty{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:40px 16px; text-align:center; color:var(--muted);
   background:var(--panel); border:1px dashed var(--border); border-radius:20px; }
 .pt-empty b{ color:var(--ink); font-size:17px; }
@@ -1959,6 +1984,8 @@ body.pub-trips{ background:var(--bg); }
 .bk-pub{ margin-top:20px; scroll-margin-top:calc(var(--tb-h, 64px) + 12px); }
 .bk-pub h3{ display:flex; align-items:center; gap:8px; margin:0 0 4px; color:var(--bronze); }
 .bk-opts{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:4px 14px; margin:10px 0; }
+.bk-pub .bk-wa{ display:block; width:min(100%, 260px); margin:6px 0 10px; font:inherit; font-size:15px; padding:9px 12px;
+  border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--ink); }
 .bk-pub textarea{ display:block; width:100%; margin-top:6px; font:inherit; font-size:14.5px; line-height:1.8; padding:10px 12px;
   border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--ink); resize:vertical; }
 .bk-card footer .bk-del{ margin-inline-start:auto; }

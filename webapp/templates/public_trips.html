@@ -26,6 +26,7 @@
   <div class="pt-done" id="done" role="status">
     <span class="pt-done-ic">{{ ic('check') }}</span>
     <div><b>وصلنا طلبك — شكراً لك</b><span>سيتواصل معك فريقنا قريباً لتأكيد الحجز وتفاصيل الدفع.</span></div>
+    {% if wa %}<a class="pt-btn sm pt-wa" href="{{ wa }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>{% endif %}
   </div>
   {% endif %}
 
@@ -35,25 +36,45 @@
     <div class="pt-grid">
       {% for p in progs %}
       <article class="pt-card">
+        {% set full = p.left is not none and p.left <= 0 %}
         <header>
           <span class="pt-kind">{{ ic('kaaba' if p.mode == 'hajj' else 'moon') }} {{ 'حج' if p.mode == 'hajj' else 'عمرة' }}</span>
-          {% if p.left is not none and p.left <= 0 %}<span class="pt-left full">مكتمل</span>
-          {% elif p.left is not none and p.left <= 10 %}<span class="pt-left">تبقّى {{ p.left }} {{ 'مقعد' if p.left == 1 else 'مقاعد' }}</span>{% endif %}
+          {% if full %}<span class="pt-left full">مكتمل</span>{% else %}<span class="pt-left">مقاعد محدودة</span>{% endif %}
         </header>
         <h3>{{ p.name }}</h3>
-        <div class="pt-dates">
-          <div><small>{{ ic('takeoff') }} المغادرة</small><b>{{ p.dep }}</b></div>
-          {% if p.nights %}<span class="pt-n">{{ p.nights }}</span>{% endif %}
-          {% if p.ret %}<div><small>{{ ic('landing') }} العودة</small><b>{{ p.ret }}</b></div>{% endif %}
+        <div class="pt-legs">
+          {% for lg in p.legs %}
+          {% if loop.index == 2 and p.nights %}<div class="pt-gap"><span class="pt-n">{{ ic('moon') }} {{ p.nights }}</span></div>{% endif %}
+          <div class="pt-leg">
+            <span class="pt-leg-ic">{{ ic(lg.icon) }}</span>
+            <div class="pt-leg-d"><small>{{ lg.label }}{% if lg.flight %} · <bdi dir="ltr">{{ lg.flight }}</bdi>{% endif %}</small>
+              <b>{% if lg.wday %}{{ lg.wday }} {% endif %}{{ lg.date }}</b></div>
+            {% if lg.dep or lg.arr %}<div class="pt-leg-t">
+              {% if lg.dep %}<span><small>إقلاع</small><b dir="ltr">{{ lg.dep }}</b></span>{% endif %}
+              {% if lg.arr %}<span><small>وصول</small><b dir="ltr">{{ lg.arr }}</b></span>{% endif %}
+            </div>{% endif %}
+          </div>
+          {% endfor %}
         </div>
         <ul class="pt-facts">
-          {% if p.airline %}<li>{{ ic('plane') }} {{ p.airline }}{% if p.city %} — من {{ p.city }}{% endif %}</li>{% endif %}
+          {% if p.airline %}<li>{{ ic('plane') }} {{ p.airline }}{% if p.city %} <small>من {{ p.city }}</small>{% endif %}</li>{% endif %}
           {% for icon, city, hotel, nights in p.hotels %}<li>{{ ic(icon) }} {{ hotel }} <small>{{ city }}{% if nights %} · {{ nights }}{% endif %}</small></li>{% endfor %}
+          {% if p.car %}<li>{{ ic(p.car[0]) }} {{ p.car[1] }}</li>{% endif %}
         </ul>
-        <footer>
-          {% if p.price %}<div class="pt-price"><small>يبدأ من</small><b>{{ p.price }}</b><small>درهم للفرد</small></div>{% else %}<div class="pt-price"><small>السعر عند الطلب</small></div>{% endif %}
-          <a class="pt-btn sm" href="?p={{ p.mode }}:{{ p.key }}#book">{{ 'قائمة الانتظار' if p.left is not none and p.left <= 0 else 'احجز مقعدك' }}</a>
-        </footer>
+        <form class="pt-pick" method="get" action="{{ url_for('public_trips') }}#book">
+          <input type="hidden" name="p" value="{{ p.mode }}:{{ p.key }}">
+          {% if p.prices %}
+          <fieldset class="pt-prices">
+            <legend>السعر للفرد حسب الغرفة <small>· درهم — اختر غرفتك</small></legend>
+            <div class="pt-pgrid">
+              {% for room, price in p.prices %}
+              <label class="pt-pr"><input type="radio" name="r" value="{{ room }}"><span>{{ room }}</span><b>{{ price }}</b></label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          {% else %}<p class="pt-ask">{{ ic('chat') }} السعر عند الطلب</p>{% endif %}
+          <button class="pt-btn sm" type="submit">{{ ic('send') }} {{ 'قائمة الانتظار' if full else 'احجز مقعدك' }}</button>
+        </form>
       </article>
       {% endfor %}
     </div>
@@ -69,21 +90,35 @@
     {% if err %}<div class="pt-err" role="alert">{{ ic('alert') }} {{ err }}</div>{% endif %}
     <form method="post" action="{{ url_for('public_trip_request') }}" class="pt-form">
       <label class="wide">البرنامج
-        <select name="program" required>
+        <select name="program" id="ptProg" required>
           <option value="">— اختر —</option>
-          {% for p in progs %}<option value="{{ p.mode }}:{{ p.key }}" {{ 'selected' if pick == p.mode ~ ':' ~ p.key }}>{{ p.name }} — {{ p.dep }}</option>{% endfor %}
+          {% for p in progs %}<option value="{{ p.mode }}:{{ p.key }}" data-prices='{{ p.prices|tojson }}' {{ 'selected' if pick == p.mode ~ ':' ~ p.key }}>{{ p.name }} — {{ p.dep }}</option>{% endfor %}
         </select></label>
       <label>الاسم الكامل<input name="name" required minlength="5" maxlength="80" autocomplete="name"></label>
       <label>رقم الهاتف (واتساب)<input name="phone" required inputmode="tel" maxlength="20" dir="ltr" autocomplete="tel" placeholder="05x xxx xxxx"></label>
       <label>عدد الأشخاص<input name="count" type="number" min="1" max="20" value="1" inputmode="numeric"></label>
-      <label>نوع الغرفة المفضّل
-        <select name="room"><option value="">لا يهمّ</option>{% for r in rooms %}<option>{{ r }}</option>{% endfor %}</select></label>
+      <label>نوع الغرفة
+        <select name="room" id="ptRoom"><option value="">لا يهمّ</option>{% for r, pr in room_opts %}<option value="{{ r }}" {{ 'selected' if pick_room == r }}>{{ r }}{% if pr %} — {{ pr }} درهم للفرد{% endif %}</option>{% endfor %}</select></label>
       <label class="wide">ملاحظة (اختياري)<textarea name="note" rows="2" maxlength="300" placeholder="مثلاً: نحتاج كرسياً متحرّكاً، أو أوقات الاتصال المناسبة"></textarea></label>
       <label class="hp" aria-hidden="true">لا تملأ هذا الحقل<input name="website" tabindex="-1" autocomplete="off"></label>
       <button class="pt-btn wide" type="submit">{{ ic('send') }} أرسل طلب الحجز</button>
       <p class="pt-priv wide">{{ ic('lock') }} بياناتك تُستعمل للتواصل معك بخصوص الحجز فقط.</p>
     </form>
   </section>
+  <script>
+  (function(){
+    var prog=document.getElementById('ptProg'), room=document.getElementById('ptRoom'), ALL={{ rooms|list|tojson }};
+    if(!prog||!room)return;
+    prog.addEventListener('change',function(){
+      var o=prog.options[prog.selectedIndex], pr=[], keep=room.value;
+      try{pr=JSON.parse(o.getAttribute('data-prices')||'[]');}catch(e){}
+      if(!pr.length)pr=ALL.map(function(r){return [r,''];});
+      room.length=1;
+      pr.forEach(function(x){var op=new Option(x[0]+(x[1]?' — '+x[1]+' درهم للفرد':''),x[0]);
+        if(x[0]===keep)op.selected=true;room.add(op);});
+    });
+  })();
+  </script>
   {% endif %}
 </main>
 <footer class="pt-foot">

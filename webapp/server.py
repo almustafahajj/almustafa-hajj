@@ -1986,7 +1986,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-11 · حذف طلبات الحجز للمدير"
+_BUILD_TAG = "2026-11-12 · بطاقات البرامج: كل الأسعار ومواعيد الرحلات"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3036,7 +3036,8 @@ _BOOK_LOCK = threading.Lock()
 _BOOK_HITS: dict = {}                    # عنوان IP ← أوقات الطلبات (حدّ الإرسال)
 _BOOK_STATUS = {"new": ("جديد", "warn"), "contacted": ("تم التواصل", "info"),
                 "converted": ("صار سجلّاً", "good"), "rejected": ("مؤرشف", "muted")}
-_BOOK_ROOMS = ("رباعي", "ثلاثي", "ثنائي", "مفرد")
+_BOOK_ROOMS = ("مفرد", "ثنائي", "ثلاثي", "رباعي")
+_PUB_WA_DEFAULT = "00971549964801"   # «راسلنا واتساب» في الصفحة العامة (يُغيَّر من «طلبات الحجز»)
 
 
 def _book_path():
@@ -3075,25 +3076,42 @@ def _book_save(items: list) -> None:
 def _public_cfg(settings) -> dict:
     cfg = settings.get("public_page") if isinstance(settings.get("public_page"), dict) else {}
     return {"published": [str(x) for x in (cfg.get("published") or [])],
-            "intro": str(cfg.get("intro") or ""), "seats": dict(cfg.get("seats") or {})}
+            "intro": str(cfg.get("intro") or ""), "seats": dict(cfg.get("seats") or {}),
+            "wa": str(cfg.get("wa") or "")}
 
 
 def _public_programs(mode: str, settings, today) -> list:
-    """برامج النظام المنشورة للعامّة القادمة (لا ماضية): بطاقات بلا أي بيانات أشخاص."""
+    """برامج النظام المنشورة للعامّة القادمة (لا ماضية): بطاقات بلا أي بيانات أشخاص —
+    الأسعار حسب الغرفة، ومواعيد رحلتَي الذهاب والعودة، والفنادق والنقل."""
     from webapp.alerts import _d
     cfg = _public_cfg(settings)
     out = []
 
-    def price_txt(vals):
-        nums = []
-        for v in vals:
-            try:
-                n = float(str(v or "").replace(",", "").strip())
-                if n > 0:
-                    nums.append(n)
-            except ValueError:
-                pass
-        return format_amount(min(nums)) if nums else ""
+    def money(v):
+        try:
+            n = float(str(v or "").replace(",", "").strip())
+        except ValueError:
+            return ""
+        return format_amount(n) if n > 0 else ""
+
+    def prices(vals):                       # بترتيب _BOOK_ROOMS: مفرد، ثنائي، ثلاثي، رباعي
+        return [(room, money(v)) for room, v in zip(_BOOK_ROOMS, vals) if money(v)]
+
+    def leg(label, icon, d, flight, t_dep, t_arr):
+        return {"label": label, "icon": icon,
+                "date": _day_txt(d, today) if d else "يُحدَّد لاحقاً",
+                "wday": _AR_DAYS[d.weekday()] if d else "",
+                "flight": str(flight or "").strip(), "dep": str(t_dep or "").strip(),
+                "arr": str(t_arr or "").strip()}
+
+    def card(key, name, d0, d1, out_leg, ret_leg, **kw):
+        legs = [leg("الذهاب", "takeoff", d0, *out_leg)]
+        if d1 or any(str(x or "").strip() for x in ret_leg):
+            legs.append(leg("العودة", "landing", d1, *ret_leg))
+        return {"mode": mode, "key": key, "name": name, "d0": d0,
+                "dep": _day_txt(d0, today) if d0 else "يُحدَّد لاحقاً", "legs": legs,
+                "nights": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
+                "left": cfg["seats"].get(key), **kw}
     if mode == app_mode.UMRAH:
         from hajj_app import umrah
         for t in umrah.load_trips(settings):
@@ -3102,18 +3120,17 @@ def _public_programs(mode: str, settings, today) -> list:
             d0, d1 = _d(t.depart_date), _d(t.return_date)
             if d0 and d0 < today:
                 continue
-            out.append({"mode": mode, "key": t.code, "name": t.name or t.code,
-                        "d0": d0, "dep": _day_txt(d0, today) if d0 else "يُحدَّد لاحقاً",
-                        "ret": _day_txt(d1, today) if d1 else "",
-                        "nights": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
-                        "airline": t.airline, "city": t.depart_city,
-                        "hotels": [h for h in (
-                            ("kaaba", "مكة المكرمة", t.makkah_hotel, _nights_txt(t.makkah_nights) if t.makkah_nights else ""),
-                            ("moon", "المدينة المنورة", t.madinah_hotel, _nights_txt(t.madinah_nights) if t.madinah_nights else ""))
-                            if h[2]],
-                        "price": price_txt([t.price_quad, t.price_triple, t.price_double, t.price_single]),
-                        "rooms": [n for n, _p in umrah.trip_room_prices(t) if n in _BOOK_ROOMS],
-                        "left": cfg["seats"].get(t.code)})
+            out.append(card(
+                t.code, t.name or t.code, d0, d1,
+                (t.flight_out, t.out_depart_time, t.out_arrive_time),
+                (t.flight_ret, t.ret_depart_time, t.ret_arrive_time),
+                airline=t.airline, city=t.depart_city,
+                hotels=[h for h in (
+                    ("kaaba", "مكة المكرمة", t.makkah_hotel, _nights_txt(t.makkah_nights) if t.makkah_nights else ""),
+                    ("moon", "المدينة المنورة", t.madinah_hotel, _nights_txt(t.madinah_nights) if t.madinah_nights else ""))
+                    if h[2]],
+                car=("car", "سيارة خاصة"),
+                prices=prices([t.price_single, t.price_double, t.price_triple, t.price_quad])))
     else:
         from hajj_app import programs as hp
         for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
@@ -3122,34 +3139,54 @@ def _public_programs(mode: str, settings, today) -> list:
             d0, d1 = _d(pr.travel_date), _d(pr.return_date)
             if d0 and d0 < today:
                 continue
-            out.append({"mode": mode, "key": nm, "name": f"الحج — {nm}", "d0": d0,
-                        "dep": _day_txt(d0, today) if d0 else "يُحدَّد لاحقاً",
-                        "ret": _day_txt(d1, today) if d1 else "",
-                        "nights": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
-                        "airline": pr.carrier, "city": pr.departure_airport,
-                        "hotels": [("kaaba", "الفندق", pr.hotel, "")] if pr.hotel else [],
-                        "price": price_txt([pr.cost_quad, pr.cost_triple, pr.cost_double, pr.cost_single]),
-                        "rooms": list(_BOOK_ROOMS), "left": cfg["seats"].get(nm)})
+            bus = "باص" in str(pr.transport or "")
+            out.append(card(
+                nm, f"الحج — {nm}", d0, d1,
+                (pr.flight_out, pr.takeoff_out, pr.land_out),
+                (pr.flight_ret, pr.takeoff_ret, pr.land_ret),
+                airline=pr.carrier, city=pr.departure_airport,
+                hotels=[("kaaba", "الفندق", pr.hotel, "")] if pr.hotel else [],
+                car=("bus", "باص") if bus else ("car", "سيارة خاصة"),
+                prices=prices([pr.cost_single, pr.cost_double, pr.cost_triple, pr.cost_quad])))
     return out
 
 
 def _all_public_programs() -> tuple:
-    """البرامج المنشورة في النظامين + مقدّمة الصفحة وبيانات الشركة (للصفحة العامة)."""
+    """البرامج المنشورة في النظامين + مقدّمة الصفحة وبيانات الشركة ورقم الواتساب."""
     today = datetime.now(_UAE).date()
     cur = app_mode.get_mode()
-    progs, intro, co = [], "", {}
+    progs, intro, co, wa = [], "", {}, ""
     try:
         for m in (app_mode.UMRAH, app_mode.HAJJ):
             app_mode.set_mode(m)
             st = storage.load_settings()
             progs += _public_programs(m, st, today)
             intro = intro or _public_cfg(st)["intro"]
+            wa = wa or _public_cfg(st)["wa"]
             if not co and isinstance(st.get("company"), dict):
                 co = st["company"]
     finally:
         app_mode.set_mode(cur)
     progs.sort(key=lambda x: (x["d0"] is None, x["d0"] or today))
-    return progs, intro, co
+    return progs, intro, co, (wa or _PUB_WA_DEFAULT)
+
+
+def _sync_public_wa(num: str) -> None:
+    """رقم «راسلنا واتساب» واحد للصفحة العامة: يُكتب في إعدادات النظام الآخر أيضاً."""
+    cur = app_mode.get_mode()
+    try:
+        for m in app_mode.MODES:
+            if m == cur:
+                continue
+            app_mode.set_mode(m)
+            st = storage.load_settings()
+            cfg = st.get("public_page") if isinstance(st.get("public_page"), dict) else {}
+            if str(cfg.get("wa") or "") != num:
+                cfg["wa"] = num
+                st["public_page"] = cfg
+                storage.save_settings(st)
+    finally:
+        app_mode.set_mode(cur)
 
 
 def _update_public_seats(settings, counts: dict) -> None:
@@ -3187,16 +3224,17 @@ def _seat_counts(records, settings) -> dict:
 @app.get("/trips")
 def public_trips():
     """الصفحة العامة: البرامج المنشورة ونموذج «احجز مقعدك» — بلا دخول."""
-    progs, intro, co = _all_public_programs()
+    from hajj_app import whatsapp as _wa
+    progs, intro, co, wa_num = _all_public_programs()
     co = {**{"name_ar": "المصطفى للحج والعمرة"}, **{k: v for k, v in co.items() if v}}
-    wa = ""
-    if co.get("phone"):
-        from hajj_app import whatsapp as _wa
-        wa = _wa.wa_link(co["phone"], "السلام عليكم، أرغب بالاستفسار عن برامجكم") or ""
+    wa = _wa.wa_link(wa_num, "السلام عليكم، أرغب بالاستفسار عن برامجكم") or ""
+    pick = request.args.get("p", "")
+    pick_prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == pick), None)
     return render_template("public_trips.html", progs=progs, intro=intro, co=co, wa=wa,
                            rooms=_BOOK_ROOMS, sent=request.args.get("sent"),
-                           err=request.args.get("err", ""),
-                           pick=request.args.get("p", ""))
+                           err=request.args.get("err", ""), pick=pick,
+                           room_opts=(pick_prog or {}).get("prices") or [(r, "") for r in _BOOK_ROOMS],
+                           pick_room=request.args.get("r", ""))
 
 
 @app.post("/trips/request")
@@ -3214,7 +3252,7 @@ def public_trip_request():
     if len(hits) >= 5:
         return redirect(url_for("public_trips", err="كثرت الطلبات من جهازك — حاول بعد قليل") + "#book")
     key = (f.get("program") or "").strip()
-    progs, _i, _c = _all_public_programs()
+    progs = _all_public_programs()[0]
     prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == key), None)
     name = " ".join((f.get("name") or "").split())[:80]
     phone = re.sub(r"[^\d+]", "", (f.get("phone") or "").translate(
@@ -3229,12 +3267,12 @@ def public_trip_request():
     err = ("اختر البرنامج" if not prog else "اكتب الاسم الكامل" if len(name) < 5
            else "اكتب رقم هاتف صحيحاً" if len(re.sub(r"\D", "", phone)) < 8 else "")
     if err:
-        return redirect(url_for("public_trips", err=err, p=key) + "#book")
+        return redirect(url_for("public_trips", err=err, p=key, r=room) + "#book")
     _BOOK_HITS[ip] = hits + [now]
     item = {"id": _secrets.token_hex(6), "ts": datetime.now(_UAE).replace(microsecond=0).isoformat(),
             "mode": prog["mode"], "key": prog["key"], "prog": prog["name"], "dep": prog["dep"],
             "name": name, "phone": phone, "count": count, "room": room, "note": note,
-            "status": "new"}
+            "rprice": dict(prog.get("prices") or []).get(room, ""), "status": "new"}
     with _BOOK_LOCK:
         items = _book_load()
         items.append(item)
@@ -3259,11 +3297,19 @@ def bookings():
     if request.method == "POST":                       # إعدادات النشر — للمدير (زرّ صريح)
         if not s.is_admin:
             return redirect(url_for("bookings"))
+        from hajj_app import whatsapp as _wa
+        wa_in = re.sub(r"[^\d+]", "", (request.form.get("wa") or "").translate(
+            str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")))[:20]
+        if wa_in and not _wa.to_intl(wa_in, "971"):
+            session["acc_err"] = "رقم الواتساب غير صحيح — اكتبه مع رمز الدولة، مثل 00971501234567."
+            return redirect(url_for("bookings") + "#publish")
         cfg = settings.get("public_page") if isinstance(settings.get("public_page"), dict) else {}
         cfg["published"] = [x for x in request.form.getlist("pub") if x][:60]
         cfg["intro"] = (request.form.get("intro") or "").strip()[:400]
+        cfg["wa"] = wa_in
         settings["public_page"] = cfg
         storage.save_settings(settings)
+        _sync_public_wa(wa_in)
         _update_public_seats(settings, _seat_counts(_load_records(), settings))
         _audit("إعدادات صفحة البرامج العامة", f"{len(cfg['published'])} برنامج منشور")
         session["acc_msg"] = "حُفظت إعدادات الصفحة العامة."
@@ -3304,6 +3350,7 @@ def bookings():
     return render_template("bookings.html", active="bookings", items=items, show=show,
                            counts=counts, cfg=cfg, options=options, msg=msg, err=err,
                            public_url=url_for("public_trips", _external=True),
+                           wa_default=_PUB_WA_DEFAULT,
                            other_mode_new=sum(1 for x in _book_load()
                                               if x.get("status") == "new" and x.get("mode") != _mode()),
                            **_ctx())

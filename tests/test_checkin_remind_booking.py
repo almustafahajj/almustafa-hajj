@@ -42,7 +42,9 @@ st = storage.load_settings()
 umrah.save_trips(st, [
     umrah.UmrahTrip(code="U1", name="عمرة قريبة", depart_date=(T + timedelta(days=5)).isoformat(),
                     return_date=(T + timedelta(days=12)).isoformat(), capacity="10",
-                    price_quad="4500", price_double="5900", makkah_hotel="سويس أوتيل", makkah_nights="4"),
+                    price_quad="4500", price_double="5900", makkah_hotel="سويس أوتيل", makkah_nights="4",
+                    airline="فلاي دبي", flight_out="FZ 811", out_depart_time="09:45", out_arrive_time="11:50",
+                    flight_ret="FZ 812", ret_depart_time="13:10", ret_arrive_time="17:05"),
     umrah.UmrahTrip(code="U2", name="عمرة بعيدة", depart_date=(T + timedelta(days=60)).isoformat(),
                     capacity="3", price_quad="3900"),
     umrah.UmrahTrip(code="U0", name="عمرة مضت", depart_date=(T - timedelta(days=20)).isoformat())])
@@ -144,7 +146,32 @@ pub = anon.get("/trips").get_data(as_text=True)
 assert "عمرة قريبة" in pub and "عمرة بعيدة" in pub and "عمرة مضت" not in pub and "أهلاً بكم" in pub
 assert "4,500" in pub and "3,900" in pub and "سويس أوتيل" in pub
 assert "أحمد علي" not in pub and "P100" not in pub, "لا بيانات أشخاص"
-assert "تبقّى 1 مقعد" in pub or "تبقّى 2 مقاعد" in pub, "مقاعد U2: 3 − 1"
+assert "تبقّى" not in pub and pub.count("مقاعد محدودة") == 2, "«مقاعد محدودة» بدل العدد"
+# كل الأسعار بالترتيب (مفرد ← رباعي) قابلة للاختيار، ومواعيد الرحلتين، والسيارة الخاصة
+card1 = pub.split("عمرة قريبة")[1].split("</article>")[0]
+assert card1.index("ثنائي") < card1.index("رباعي") and "5,900" in card1 and "4,500" in card1
+assert 'name="r" value="ثنائي"' in card1 and 'name="r" value="مفرد"' not in card1, "غير المسعّر لا يظهر"
+for s_ in ("FZ 811", "09:45", "11:50", "FZ 812", "13:10", "17:05", "إقلاع", "وصول", "الذهاب", "العودة"):
+    assert s_ in card1, s_
+assert "سيارة خاصة" in card1 and "فلاي دبي" in card1 and "يبدأ من" not in pub
+assert "wa.me/971549964801" in pub, "واتساب «راسلنا» على الرقم الافتراضي"
+pk = anon.get("/trips", query_string={"p": "umrah:U1", "r": "ثنائي"}).get_data(as_text=True)
+assert '<option value="ثنائي" selected>ثنائي — 5,900 درهم للفرد</option>' in pk, "الغرفة المختارة من البطاقة"
+assert '<option value="مفرد"' not in pk.split('id="ptRoom"')[1].split("</select>")[0]
+# رقم الواتساب: المدير يغيّره (يُكتب في النظامين)، والخاطئ مرفوض، والمحرّر لا يغيّره
+c.post("/bookings", data={"pub": ["U1", "U2"], "intro": "أهلاً بكم", "wa": "12"})
+assert "رقم الواتساب غير صحيح" in c.get("/bookings").get_data(as_text=True)
+assert not storage.load_settings()["public_page"].get("wa")
+c.post("/bookings", data={"pub": ["U1", "U2"], "intro": "أهلاً بكم", "wa": "+971 50 999 8877"})
+assert storage.load_settings()["public_page"]["wa"] == "+971509998877"
+assert "wa.me/971509998877" in anon.get("/trips").get_data(as_text=True)
+app_mode.set_mode(app_mode.HAJJ)
+assert storage.load_settings()["public_page"]["wa"] == "+971509998877", "الرقم في نظام الحج أيضاً"
+app_mode.set_mode(app_mode.UMRAH)
+e.post("/bookings", data={"pub": ["U1"], "wa": "0501111111"})
+assert storage.load_settings()["public_page"]["wa"] == "+971509998877", "المحرّر لا يغيّر الرقم"
+c.post("/bookings", data={"pub": ["U1", "U2"], "intro": "أهلاً بكم", "wa": ""})
+assert "wa.me/971549964801" in anon.get("/trips").get_data(as_text=True), "الفارغ يعود للافتراضي"
 c.get("/programs")
 assert storage.load_settings()["public_page"]["seats"]["U1"] == 8, storage.load_settings()["public_page"]
 R = "/trips/request"
@@ -154,6 +181,7 @@ assert r.status_code == 302 and "sent=1" in r.headers["Location"]
 assert "وصلنا طلبك" in anon.get("/trips?sent=1").get_data(as_text=True)
 items = server._book_load()
 assert len(items) == 1 and items[0]["phone"] == "0551234567" and items[0]["count"] == 3
+assert items[0]["room"] == "ثنائي" and items[0]["rprice"] == "5,900", "سعر الغرفة المختارة مع الطلب"
 raw = server._book_path().read_bytes()
 assert "عبدالله".encode("utf-8") not in raw and b"0551234567" not in raw, "مشفّرة على القرص"
 r = anon.post(R, data={"program": "umrah:U0", "name": "اسم صحيح", "phone": "0551234567"})
@@ -167,6 +195,7 @@ for i in range(6):
 assert "err=" in r.headers["Location"] and len(server._book_load()) == 5, "حدّ الإرسال (٥ في ١٠ دقائق)"
 bk = c.get("/bookings").get_data(as_text=True)
 assert "عبدالله الكتبي" in bk and "wa.me/971551234567" in bk and 'class="nav-count">5<' in bk
+assert "(5,900 درهم للفرد)" in bk
 assert "طلبات الحجز" in v.get("/bookings").get_data(as_text=True)
 first = next(x for x in server._book_load() if x["name"] == "عبدالله الكتبي")
 v.post(f"/bookings/{first['id']}/convert")

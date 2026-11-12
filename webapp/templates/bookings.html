@@ -25,7 +25,7 @@
     </header>
     <ul class="bk-facts">
       <li>{{ ic('briefcase') }} {{ x.prog }}{% if x.dep %} <small>· {{ x.dep }}</small>{% endif %}</li>
-      <li>{{ ic('users') }} {{ x.count }} {{ 'شخص' if x.count == 1 else 'أشخاص' }}{% if x.room %} · {{ ic('bed') }} {{ x.room }}{% endif %}</li>
+      <li>{{ ic('users') }} {{ x.count }} {{ 'شخص' if x.count == 1 else 'أشخاص' }}{% if x.room %} · {{ ic('bed') }} {{ x.room }}{% if x.rprice %} <small>({{ x.rprice }} درهم للفرد)</small>{% endif %}{% endif %}</li>
       {% if x.note %}<li class="bk-note">{{ ic('pen') }} {{ x.note }}</li>{% endif %}
       <li class="muted">{{ ic('clock') }} {{ x.ago }}{% if x.by %} · {{ x.by }}{% endif %}</li>
     </ul>
@@ -57,7 +57,7 @@
 {% if is_admin %}
 <section class="panel bk-pub" id="publish">
   <h3>{{ ic('globe') }} الصفحة العامة للبرامج</h3>
-  <p class="muted">اختر برامج {{ noun }} التي تظهر للعامّة. تظهر التواريخ والفنادق والسعر الأدنى والمقاعد المتبقّية فقط — لا أي بيانات أشخاص.
+  <p class="muted">اختر برامج {{ noun }} التي تظهر للعامّة. تظهر التواريخ ومواعيد الرحلات والطيران والفنادق وأسعار الغرف فقط — لا أي بيانات أشخاص، ولا عدد المقاعد (تظهر «مقاعد محدودة» أو «مكتمل»).
     البرامج التي غادرت تختفي وحدها.</p>
   <form method="post" class="needs-save acc-form">
     <div class="bk-opts">
@@ -65,6 +65,7 @@
       <label class="remember"><input type="checkbox" name="pub" value="{{ key }}" {{ 'checked' if key in cfg.published }}> {{ label }}{% if dep %} <span class="muted" dir="ltr">({{ dep }})</span>{% endif %}</label>
       {% else %}<p class="muted">لا برامج بعد.</p>{% endfor %}
     </div>
+    <label>رقم واتساب لزرّ «راسلنا واتساب»<input name="wa" class="bk-wa" dir="ltr" inputmode="tel" maxlength="20" value="{{ cfg.wa or wa_default }}" placeholder="00971501234567"></label>
     <label>نصّ ترحيبي أعلى الصفحة (اختياري)<textarea name="intro" rows="2" maxlength="400" placeholder="مثال: برامج عمرة رجب وشعبان — فنادق على بُعد خطوات من الحرم">{{ cfg.intro }}</textarea></label>
     <div class="off-bar">
       <button class="acc-btn save-btn" type="submit">{{ ic('check') }} حفظ</button>
