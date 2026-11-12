@@ -39,6 +39,12 @@
           <form method="post" class="inline" action="{{ url_for('booking_action', bid=x.id, action='rejected', show=show) }}"><button class="icon-btn" type="submit" title="أرشفة الطلب" aria-label="أرشفة طلب {{ x.name }}">{{ ic('archive') }}</button></form>
         {% elif x.status == 'rejected' %}<form method="post" class="inline" action="{{ url_for('booking_action', bid=x.id, action='new', show=show) }}"><button class="btn ghost sm" type="submit">{{ ic('undo') }} إعادة فتح</button></form>{% endif %}
       {% endif %}
+      {% if is_admin %}
+      <form method="post" class="inline bk-del" action="{{ url_for('booking_delete', bid=x.id, show=show) }}"
+            data-msg="حذف طلب «{{ x.name }}» نهائياً؟ لا يمكن التراجع{% if x.status == 'converted' %} (السجلّ الذي أُنشئ منه يبقى كما هو){% endif %}."
+            onsubmit="return confirm(this.getAttribute('data-msg'));">
+        <button class="icon-btn del" type="submit" title="حذف الطلب نهائياً" aria-label="حذف طلب {{ x.name }}">{{ ic('trash') }}</button></form>
+      {% endif %}
     </footer>
   </article>
   {% endfor %}

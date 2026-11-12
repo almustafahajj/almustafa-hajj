@@ -188,4 +188,26 @@ r = c.post(f"/bookings/{other['id']}/convert")
 assert "بدّل النظام" in c.get("/bookings").get_data(as_text=True), "التحويل في نظام الطلب فقط"
 print("[ok] الصفحة العامة: نشر للمدير، بلا بيانات أشخاص، طلب مشفّر بحماية، تحويل إلى سجلّ")
 
+# ---- ٤) حذف طلب حجز — للمدير حصراً ----
+items = server._book_load()
+n0 = len(items)
+victim = next(x for x in items if x["status"] == "new")
+assert 'class="inline bk-del"' in c.get("/bookings", query_string={"show": "all"}).get_data(as_text=True)
+assert 'class="inline bk-del"' not in e.get("/bookings", query_string={"show": "all"}).get_data(as_text=True)
+assert 'class="inline bk-del"' not in v.get("/bookings", query_string={"show": "all"}).get_data(as_text=True)
+for cl in (e, v, anon):                                  # المحرّر والمطّلع والزائر لا يحذفون
+    cl.post(f"/bookings/{victim['id']}/delete")
+assert len(server._book_load()) == n0 and any(x["id"] == victim["id"] for x in server._book_load())
+r = c.post(f"/bookings/{victim['id']}/delete", query_string={"show": "all"})
+assert r.status_code == 302 and "show=all" in r.headers["Location"]
+assert len(server._book_load()) == n0 - 1 and not any(x["id"] == victim["id"] for x in server._book_load())
+assert "حُذف طلب" in c.get("/bookings").get_data(as_text=True)
+assert "حذف طلب حجز" in c.get("/audit").get_data(as_text=True), "يُسجَّل في سجلّ التدقيق"
+conv = next(x for x in server._book_load() if x["status"] == "converted")
+c.post(f"/bookings/{conv['id']}/delete")
+app_mode.set_mode(app_mode.UMRAH)
+assert any(r.uid == conv["uid"] for r in storage.load_records(session=SESS)[0]), "السجلّ المُنشأ يبقى"
+assert c.post("/bookings/غير-موجود/delete").status_code == 302 and len(server._book_load()) == n0 - 2
+print("[ok] حذف طلبات الحجز: للمدير حصراً، بتأكيد، ويُسجَّل، والسجلّ المُنشأ منه يبقى")
+
 print("ALL OK")

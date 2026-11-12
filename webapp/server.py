@@ -1986,7 +1986,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-11 · تسجيل الحضور بالمسح + حملة التحصيل بالواتساب + صفحة البرامج العامة وطلبات الحجز"
+_BUILD_TAG = "2026-11-11 · حذف طلبات الحجز للمدير"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3307,6 +3307,23 @@ def bookings():
                            other_mode_new=sum(1 for x in _book_load()
                                               if x.get("status") == "new" and x.get("mode") != _mode()),
                            **_ctx())
+
+
+@app.post("/bookings/<bid>/delete")
+def booking_delete(bid):
+    """حذف طلب حجز نهائياً — للمدير حصراً (المحرّر يؤرشف فقط)."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    with _BOOK_LOCK:
+        items = _book_load()
+        it = next((x for x in items if x.get("id") == bid), None)
+        if it is not None:
+            _book_save([x for x in items if x.get("id") != bid])
+    if it is not None:
+        _audit("حذف طلب حجز", f"{it.get('name', '')} — {it.get('prog', '')}")
+        session["acc_msg"] = f"حُذف طلب «{it.get('name', '')}» نهائياً."
+    return redirect(url_for("bookings", show=request.args.get("show", "open")))
 
 
 @app.post("/bookings/<bid>/<action>")

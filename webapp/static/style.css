@@ -1961,3 +1961,5 @@ body.pub-trips{ background:var(--bg); }
 .bk-opts{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:4px 14px; margin:10px 0; }
 .bk-pub textarea{ display:block; width:100%; margin-top:6px; font:inherit; font-size:14.5px; line-height:1.8; padding:10px 12px;
   border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--ink); resize:vertical; }
+.bk-card footer .bk-del{ margin-inline-start:auto; }
+.bk-card footer .icon-btn.del:hover{ background:#FBE4E0; color:#B23A3A; border-color:#F0C4BC; }
