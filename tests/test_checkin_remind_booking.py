@@ -103,6 +103,12 @@ with server.app.test_request_context("/"):
     fp1 = server._rec_token(recs()[1])
 c.post("/hujjaj/1/link", data={"fp": fp1, "action": "create"})
 tp = anon.get("/p/" + public.find_person("umrah", "bb22")).get_data(as_text=True)
+head = tp.split("</head>")[0]
+assert "/static/share/trip-og.jpg" in head and 'og:title" content="رحلتي' in head
+assert "سالم" not in head, "معاينة رابط رحلتي بلا اسم المعتمر"
+im = anon.get("/static/share/trip-og.jpg")
+assert im.status_code == 200 and im.data[:3] == b"\xff\xd8\xff"
+im.close()
 assert "رمز الحضور" in tp and "<svg" in tp.split("رمز الحضور")[1]
 assert 'href="/checkin"' in c.get("/dashboard").get_data(as_text=True)
 print("[ok] الحضور: رمز رحلتي والجواز ونصّ البطاقة، بلا تكرار، بالبرنامج، إلغاء، تقرير، صلاحيات")
@@ -155,6 +161,14 @@ for s_ in ("FZ 811", "09:45", "11:50", "FZ 812", "13:10", "17:05", "إقلاع",
     assert s_ in card1, s_
 assert "سيارة خاصة" in card1 and "فلاي دبي" in card1 and "يبدأ من" not in pub
 assert "wa.me/971549964801" in pub, "واتساب «راسلنا» على الرقم الافتراضي"
+# معاينة الرابط (واتساب): صورة مطلقة الرابط بمقاسها، وأيقونة الشعار
+og = re.search(r'<meta property="og:image" content="([^"]+)">', pub).group(1)
+assert og.startswith("http") and "/static/share/trips-og.jpg" in og, og
+assert 'og:image:width" content="1200"' in pub and 'twitter:card" content="summary_large_image"' in pub
+assert 'rel="icon"' in pub and "icons/icon-192.png" in pub
+im = anon.get("/static/share/trips-og.jpg")
+assert im.status_code == 200 and im.data[:3] == b"\xff\xd8\xff" and len(im.data) < 300_000, "صورة JPEG خفيفة"
+im.close()
 pk = anon.get("/trips", query_string={"p": "umrah:U1", "r": "ثنائي"}).get_data(as_text=True)
 assert '<option value="ثنائي" selected>ثنائي — 5,900 درهم للفرد</option>' in pk, "الغرفة المختارة من البطاقة"
 assert '<option value="مفرد"' not in pk.split('id="ptRoom"')[1].split("</select>")[0]

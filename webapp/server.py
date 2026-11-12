@@ -1986,7 +1986,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-12 · بطاقات البرامج: كل الأسعار ومواعيد الرحلات"
+_BUILD_TAG = "2026-11-12 · معاينة الروابط بشعار المصطفى وصورة الكعبة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
