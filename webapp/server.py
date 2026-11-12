@@ -17,7 +17,7 @@ import threading
 import hmac
 import time
 
-from flask import (Flask, g, redirect, render_template, request, send_file,
+from flask import (Flask, g, make_response, redirect, render_template, request, send_file,
                    session, url_for)
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -1459,7 +1459,8 @@ def backup_restore():
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
              "forgot", "reset_password", "session_status", "session_ping",
-             "verify_doc", "person_page", "public_trips", "public_trip_request", "trips_og"}
+             "verify_doc", "person_page", "public_trips", "public_trip_request", "trips_og",
+             "review_public"}
 
 
 _PW_FREE = _2FA_FREE | {"account_password", "session_ping", "healthz"}
@@ -1986,7 +1987,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-12 · رابط البرامج المنسوخ يُظهر الصورة في واتساب"
+_BUILD_TAG = "2026-11-13 · روابط البرامج والمصادر وما قبل السفر والآراء والأرباح"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3037,7 +3038,15 @@ _BOOK_HITS: dict = {}                    # عنوان IP ← أوقات الطل
 _BOOK_STATUS = {"new": ("جديد", "warn"), "contacted": ("تم التواصل", "info"),
                 "converted": ("صار سجلّاً", "good"), "rejected": ("مؤرشف", "muted")}
 _BOOK_ROOMS = ("مفرد", "ثنائي", "ثلاثي", "رباعي")
-_PUB_WA_DEFAULT = "00971549964801"   # «راسلنا واتساب» في الصفحة العامة (يُغيَّر من «طلبات الحجز»)
+_PUB_WA_DEFAULT = "00971549964801"
+# مصادر روابط المشاركة (?src=) — لمعرفة أي قناة تجلب الزيارات والطلبات
+_BOOK_SOURCES = (("instagram", "إنستغرام"), ("status", "حالة واتساب"), ("whatsapp", "واتساب"),
+                 ("tiktok", "تيك توك"), ("snapchat", "سناب شات"), ("facebook", "فيسبوك"),
+                 ("x", "إكس"), ("google", "جوجل"), ("other", "أخرى"))
+_SRC_LABEL = dict(_BOOK_SOURCES)
+_VISIT_LOCK = threading.Lock()
+_BOT_RE = re.compile(r"bot|crawl|spider|preview|whatsapp|facebookexternalhit|telegram|slack|discord"
+                     r"|curl|wget|python|headless|lighthouse", re.I)   # «راسلنا واتساب» في الصفحة العامة (يُغيَّر من «طلبات الحجز»)
 
 
 def _book_path():
@@ -3289,17 +3298,29 @@ def public_trips():
     share_v = _trips_share_v(progs, pick_prog)
     kinds = {x["mode"] for x in progs}
     noun = ("عمرة وحج" if len(kinds) != 1 else "عمرة" if app_mode.UMRAH in kinds else "حج")
-    return render_template("public_trips.html", progs=progs, intro=intro, co=co, wa=wa,
-                           label=_progs_label(progs), og_title=og[0], og_sub=og[1] if pick_prog else "",
-                           og_img=url_for("trips_og", p=pick if pick_prog else None, v=share_v,
-                                          _external=True),
-                           share_url=url_for("public_trips", p=pick if pick_prog else None, v=share_v,
-                                             _external=True),
-                           noun=noun,
-                           rooms=_BOOK_ROOMS, sent=request.args.get("sent"),
-                           err=request.args.get("err", ""), pick=pick,
-                           room_opts=(pick_prog or {}).get("prices") or [(r, "") for r in _BOOK_ROOMS],
-                           pick_room=request.args.get("r", ""))
+    shown = ([pick_prog] + [x for x in progs if x is not pick_prog]) if pick_prog else progs
+    src = _src_of(request)
+    resp = make_response(render_template(
+        "public_trips.html", progs=shown, intro=intro, co=co, wa=wa, src=src,
+        pick_key=pick if pick_prog else "", reviews=_public_reviews(),
+        label=_progs_label(progs), og_title=og[0], og_sub=og[1] if pick_prog else "",
+        og_img=url_for("trips_og", p=pick if pick_prog else None, v=share_v, _external=True),
+        share_url=url_for("public_trips", p=pick if pick_prog else None, v=share_v, _external=True),
+        noun=noun, rooms=_BOOK_ROOMS, sent=request.args.get("sent"),
+        err=request.args.get("err", ""), pick=pick,
+        room_opts=(pick_prog or {}).get("prices") or [(r, "") for r in _BOOK_ROOMS],
+        pick_room=request.args.get("r", "")))
+    # المصدر يبقى مع الزائر 30 يوماً، والزيارة تُعدّ مرّة في اليوم لكل متصفّح (لا الروبوتات ولا الموظفين)
+    if request.args.get("src") in _SRC_LABEL:
+        resp.set_cookie("pt_src", request.args["src"], max_age=30 * 86400, samesite="Lax",
+                        secure=request.is_secure, httponly=True)
+    seen = f"{datetime.now(_UAE).date().isoformat()}:{src or 'direct'}"
+    if (not request.args.get("sent") and not _BOT_RE.search(request.headers.get("User-Agent", ""))
+            and request.cookies.get("pt_seen") != seen and _sess() is None):
+        _visit_count(src)
+        resp.set_cookie("pt_seen", seen, max_age=86400, samesite="Lax", secure=request.is_secure,
+                        httponly=True)
+    return resp
 
 
 @app.get("/trips/og.jpg")
@@ -3345,17 +3366,121 @@ def public_trip_request():
     err = ("اختر البرنامج" if not prog else "اكتب الاسم الكامل" if len(name) < 5
            else "اكتب رقم هاتف صحيحاً" if len(re.sub(r"\D", "", phone)) < 8 else "")
     if err:
-        return redirect(url_for("public_trips", err=err, p=key, r=room) + "#book")
+        return redirect(url_for("public_trips", err=err, p=key, r=room, src=_src_of(request) or None)
+                        + "#book")
     _BOOK_HITS[ip] = hits + [now]
     item = {"id": _secrets.token_hex(6), "ts": datetime.now(_UAE).replace(microsecond=0).isoformat(),
             "mode": prog["mode"], "key": prog["key"], "prog": prog["name"], "dep": prog["dep"],
             "name": name, "phone": phone, "count": count, "room": room, "note": note,
-            "rprice": dict(prog.get("prices") or []).get(room, ""), "status": "new"}
+            "rprice": dict(prog.get("prices") or []).get(room, ""), "src": _src_of(request),
+            "status": "new"}
     with _BOOK_LOCK:
         items = _book_load()
         items.append(item)
         _book_save(items[-2000:])
     return redirect(back + "?sent=1#done")
+
+
+def _visits_path():
+    from hajj_app.paths import data_dir
+    return data_dir() / "public_visits.json"
+
+
+def _visits_load() -> dict:
+    """زيارات الصفحة العامة: {"YYYY-MM-DD": {"المصدر": العدد}} — أعداد فقط بلا بيانات أشخاص."""
+    import json as _json
+    try:
+        data = _json.loads(_visits_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:                              # noqa: BLE001
+        return {}
+
+
+def _visit_count(src: str) -> None:
+    import json as _json
+    day = datetime.now(_UAE).date().isoformat()
+    with _VISIT_LOCK:
+        data = _visits_load()
+        row = data.setdefault(day, {})
+        row[src or "direct"] = int(row.get(src or "direct", 0)) + 1
+        for k in sorted(data)[:-400]:                  # يُحفظ ما يقارب سنة
+            data.pop(k, None)
+        p = _visits_path()
+        tmp = p.with_suffix(".tmp")
+        try:
+            tmp.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, p)
+        except OSError:
+            pass
+
+
+def _src_of(req) -> str:
+    """مصدر الزائر: من الرابط (?src=) أو من زيارته الأولى (كوكي) — وإلا «مباشر»."""
+    s = (req.args.get("src") or req.form.get("src") or req.cookies.get("pt_src") or "").strip()
+    return s if s in _SRC_LABEL else ""
+
+
+def _book_stats(items, per: str) -> dict:
+    """مصادر الطلبات (زيارات/طلبات/صارت سجلّاً) والبرامج الأكثر طلباً في المدّة."""
+    today = datetime.now(_UAE).date()
+    since = None if per == "all" else today - timedelta(days=int(per) - 1)
+    visits = {}
+    for day, row in _visits_load().items():
+        try:
+            d = datetime.fromisoformat(day).date()
+        except ValueError:
+            continue
+        if since and d < since:
+            continue
+        for k, n in (row or {}).items():
+            visits[k] = visits.get(k, 0) + int(n or 0)
+    reqs = []
+    for x in items:
+        try:
+            d = datetime.fromisoformat(x.get("ts", "")).date()
+        except (TypeError, ValueError):
+            continue
+        if not since or d >= since:
+            reqs.append(x)
+    srcs = []
+    for key, label in list(_BOOK_SOURCES) + [("direct", "مباشر / غير معروف")]:
+        mine = [x for x in reqs if (x.get("src") or "direct") == key]
+        v, n = visits.get(key, 0), len(mine)
+        if not v and not n:
+            continue
+        srcs.append({"key": key, "label": label, "visits": v, "reqs": n,
+                     "conv": sum(1 for x in mine if x.get("status") == "converted"),
+                     "rate": round(100 * n / v) if v else None})
+    srcs.sort(key=lambda r: (-r["reqs"], -r["visits"]))
+    top = max([r["reqs"] for r in srcs] + [r["visits"] for r in srcs] + [1])
+    for r in srcs:
+        r["w_v"], r["w_r"] = round(100 * r["visits"] / top), round(100 * r["reqs"] / top)
+    progs = {}
+    for x in reqs:
+        k = (x.get("mode"), x.get("key"))
+        p = progs.setdefault(k, {"name": x.get("prog") or x.get("key") or "—", "reqs": 0,
+                                 "people": 0, "conv": 0})
+        p["reqs"] += 1
+        p["people"] += int(x.get("count") or 1)
+        p["conv"] += 1 if x.get("status") == "converted" else 0
+    plist = sorted(progs.values(), key=lambda p: (-p["reqs"], -p["people"]))[:8]
+    ptop = max([p["reqs"] for p in plist] + [1])
+    for p in plist:
+        p["w"] = round(100 * p["reqs"] / ptop)
+    return {"srcs": srcs, "progs": plist, "visits": sum(visits.values()), "reqs": len(reqs),
+            "conv": sum(1 for x in reqs if x.get("status") == "converted")}
+
+
+def _share_links() -> list:
+    """روابط المشاركة: الصفحة كلها ثم كل برنامج منشور قادم برابطه وعنوان معاينته."""
+    progs = _all_public_programs()[0]
+    out = [{"name": "كل البرامج", "label": _progs_label(progs), "all": True,
+            "url": url_for("public_trips", v=_trips_share_v(progs), _external=True)}]
+    for p in progs:
+        key = f"{p['mode']}:{p['key']}"
+        out.append({"name": p["name"], "label": _progs_label([p]), "dep": p["dep"], "all": False,
+                    "url": url_for("public_trips", p=key, v=_trips_share_v(progs, p), _external=True)})
+    return out
 
 
 def _book_new_count() -> int:
@@ -3394,7 +3519,10 @@ def bookings():
         return redirect(url_for("bookings") + "#publish")
     _update_public_seats(settings, _seat_counts(_load_records(), settings))
     show = request.args.get("show", "open")
+    per = request.args.get("per", "30")
+    per = per if per in ("7", "30", "90", "all") else "30"
     items = list(reversed(_book_load()))
+    bstats = _book_stats(items, per)
     counts = {k: sum(1 for x in items if x.get("status") == k) for k in _BOOK_STATUS}
     if show == "open":
         items = [x for x in items if x.get("status") in ("new", "contacted")]
@@ -3414,6 +3542,7 @@ def bookings():
                     f"قبل {mins // 60} ساعة" if mins < 1440 else f"قبل {mins // 1440} يوم")
         x["st_lbl"], x["st_cls"] = _BOOK_STATUS.get(x.get("status"), ("—", "muted"))
         x["here"] = x.get("mode") == _mode()
+        x["src_lbl"] = _SRC_LABEL.get(x.get("src") or "", "")
     # البرامج القابلة للنشر في هذا النظام
     cfg = _public_cfg(settings)
     if _mode() == app_mode.UMRAH:
@@ -3429,7 +3558,8 @@ def bookings():
                            counts=counts, cfg=cfg, options=options, msg=msg, err=err,
                            public_url=url_for("public_trips", v=_trips_share_v(_all_public_programs()[0]),
                                               _external=True),
-                           wa_default=_PUB_WA_DEFAULT,
+                           wa_default=_PUB_WA_DEFAULT, bstats=bstats, per=per,
+                           share_links=_share_links(), sources=_BOOK_SOURCES,
                            other_mode_new=sum(1 for x in _book_load()
                                               if x.get("status") == "new" and x.get("mode") != _mode()),
                            **_ctx())
@@ -3481,7 +3611,9 @@ def booking_action(bid, action):
         rec = PassportData(full_name_ar=it.get("name", ""), phone=it.get("phone", ""),
                            source_file="طلب حجز من الموقع", uid=uuid.uuid4().hex,
                            notes=(f"طلب حجز {it.get('count', 1)} أشخاص" if int(it.get("count") or 1) > 1
-                                  else "طلب حجز") + (f" — {it['note']}" if it.get("note") else ""))
+                                  else "طلب حجز")
+                           + (f" (من {_SRC_LABEL[it['src']]})" if it.get("src") in _SRC_LABEL else "")
+                           + (f" — {it['note']}" if it.get("note") else ""))
         if _mode() == app_mode.UMRAH:
             rec.trip = it.get("key", "")
             if it.get("room"):
@@ -7178,6 +7310,451 @@ def finance_remind_mark():
         settings["reminders"] = rem
         storage.save_settings(settings)
     return {"ok": True}
+
+# ==================== معلومات البرامج (مشتركة) =============================
+def _trip_info(settings) -> dict:
+    """لكل برنامج في النظام الحالي: التاريخان والاسم ورحلة الذهاب — {المفتاح: {...}}."""
+    from webapp.alerts import _d
+    out = {}
+    if _mode() == app_mode.UMRAH:
+        from hajj_app import umrah
+        for t in umrah.load_trips(settings):
+            out[t.code] = {"dep": _d(t.depart_date), "ret": _d(t.return_date), "kind": "عمرة",
+                           "label": f"{t.code} {t.name}".strip(), "name": t.name or t.code,
+                           "flight": str(t.flight_out or "").strip(), "airline": str(t.airline or "").strip(),
+                           "takeoff": str(t.out_depart_time or "").strip(),
+                           "airport": str(t.depart_city or "").strip(), "report": ""}
+    else:
+        from hajj_app import programs as hp
+        for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
+            out[nm] = {"dep": _d(pr.travel_date), "ret": _d(pr.return_date), "kind": "حج",
+                       "label": nm, "name": f"الحج — {nm}",
+                       "flight": str(pr.flight_out or "").strip(), "airline": str(pr.carrier or "").strip(),
+                       "takeoff": str(pr.takeoff_out or "").strip(),
+                       "airport": str(pr.departure_airport or "").strip(),
+                       "report": str(pr.report_out or "").strip()}
+    return out
+
+
+def _fill_lines(tpl: str, vals: dict) -> str:
+    """يستبدل الكلمات بين القوسين، ويحذف كل سطر فيه كلمة قيمتها فارغة."""
+    out = []
+    for ln in str(tpl or "").split("\n"):
+        keys = [k for k in vals if k in ln]
+        if any(not vals[k] for k in keys):
+            continue
+        for k in keys:
+            ln = ln.replace(k, vals[k])
+        out.append(ln.rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def _ago_days(iso: str, today):
+    try:
+        return (today - datetime.fromisoformat(str(iso)).date()).days
+    except (TypeError, ValueError):
+        return None
+
+
+# ==================== رسائل ما قبل السفر ====================================
+_PRE_TPL = ("السلام عليكم {الاسم}،\n"
+            "نذكّركم بموعد رحلتكم «{البرنامج}» يوم {التاريخ} بإذن الله.\n"
+            "✈️ الرحلة: {الرحلة}\n"
+            "🕘 الإقلاع: {الإقلاع}\n"
+            "🛫 المطار: {المطار}\n"
+            "⏰ الحضور للمطار: {الحضور}\n"
+            "🛂 لا تنسوا جواز السفر الأصلي والهوية.\n"
+            "تفاصيل رحلتكم كاملة: {الرابط}\n"
+            "تقبّل الله منكم — المصطفى للحج والعمرة.")
+_PRE_KEYS = ("{الاسم}", "{البرنامج}", "{التاريخ}", "{الرحلة}", "{الإقلاع}", "{المطار}",
+             "{الحضور}", "{الرابط}")
+
+
+def _report_txt(takeoff: str, report: str) -> str:
+    """موعد الحضور للمطار: المسجّل في البرنامج، وإلا قبل الإقلاع بثلاث ساعات."""
+    if report:
+        return report
+    m = re.match(r"^\s*(\d{1,2})[:.](\d{2})", takeoff or "")
+    if not m:
+        return "قبل الإقلاع بثلاث ساعات على الأقل"
+    h = int(m.group(1))
+    low = (takeoff or "").lower()
+    if re.search(r"pm|p\.m|مساء|\bم\b", low) and h < 12:
+        h += 12
+    elif re.search(r"am|a\.m|صباح|\bص\b", low) and h == 12:
+        h = 0
+    return f"الساعة {(h - 3) % 24:02d}:{m.group(2)} (قبل الإقلاع بثلاث ساعات)"
+
+
+def _pre_text(tpl, rec, info, dep_txt, link) -> str:
+    name = " ".join((rec.full_name_ar or rec.full_name_en or "").split()[:2])
+    flight = info.get("flight", "")
+    if flight and info.get("airline"):
+        flight = f"{flight} ({info['airline']})"
+    return _fill_lines(tpl, {
+        "{الاسم}": name, "{البرنامج}": info.get("name") or info.get("label") or "",
+        "{التاريخ}": dep_txt, "{الرحلة}": flight, "{الإقلاع}": info.get("takeoff", ""),
+        "{المطار}": info.get("airport", ""),
+        "{الحضور}": _report_txt(info.get("takeoff", ""), info.get("report", "")), "{الرابط}": link})
+
+
+@app.route("/pretravel", methods=["GET", "POST"])
+def pretravel():
+    """رسائل ما قبل السفر: من يغادر قريباً، وبجانب كلٍّ زرّ واتساب برسالة جاهزة فيها
+    موعد الرحلة والإقلاع والحضور للمطار ورابط «رحلتي» — ويُعلَّم «أُرسلت»."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    settings = storage.load_settings()
+    if request.method == "POST":                     # حفظ نصّ الرسالة (زرّ صريح)
+        if not s.can_edit:
+            return redirect(url_for("pretravel"))
+        if request.form.get("reset"):
+            settings.pop("pretravel_tpl", None)
+            msg = "أُعيد النصّ الافتراضي."
+        else:
+            tpl = (request.form.get("tpl") or "").strip()[:1500]
+            if not tpl:
+                session["acc_err"] = "اكتب نصّ الرسالة."
+                return redirect(url_for("pretravel", **request.args))
+            settings["pretravel_tpl"] = tpl
+            msg = "حُفظ نصّ رسالة ما قبل السفر."
+        storage.save_settings(settings)
+        _audit("تعديل رسالة ما قبل السفر", "")
+        session["acc_msg"] = msg
+        return redirect(url_for("pretravel", **request.args))
+    from webapp import public
+    from hajj_app import whatsapp as _wa
+    from hajj_app.mrz import PassportData as _PD
+    tpl = str(settings.get("pretravel_tpl") or _PRE_TPL)
+    cc = str(settings.get("whatsapp_cc") or "971")
+    info = _trip_info(settings)
+    sent = settings.get("pretravel_sent") if isinstance(settings.get("pretravel_sent"), dict) else {}
+    today = datetime.now(_UAE).date()
+    within = request.args.get("within", "3")
+    within = within if within in ("3", "7", "14") else "3"
+    grp = (request.args.get("grp") or "").strip()
+    gattr = _group_attr()
+    rows = []
+    for i, r in enumerate(_load_records()):
+        if str(r.status or "").strip() == "ملغى":
+            continue
+        g = str(getattr(r, gattr, "") or "")
+        if grp and g != grp:
+            continue
+        inf = info.get(g)
+        dep = inf["dep"] if inf else None
+        days = (dep - today).days if dep else None
+        if days is None or days < 0 or days > int(within):
+            continue
+        uid = str(getattr(r, "uid", "") or "")
+        ago = _ago_days(sent.get(uid), today) if uid else None
+        tok = public.find_person(_mode(), uid) if uid else None
+        link = url_for("person_page", token=tok, _external=True) if tok else ""
+        dep_txt = f"{_AR_DAYS[dep.weekday()]} {_day_txt(dep, today)}"
+        text = _pre_text(tpl, r, inf, dep_txt, link)
+        rows.append({
+            "idx": i, "uid": uid, "name": r.full_name_ar or r.full_name_en or "—",
+            "prog": inf.get("label") or g, "days": days, "dep_txt": dep_txt,
+            "when": "اليوم" if days == 0 else "غداً" if days == 1 else f"بعد {days} {_days_unit(days)}",
+            "urgent": days <= 1, "flight": inf.get("flight", ""), "takeoff": inf.get("takeoff", ""),
+            "wa": _wa.wa_link(r.phone, text, cc) if r.phone else None,
+            "ago": ago, "has_link": bool(tok)})
+    rows.sort(key=lambda x: (x["days"], x["prog"], x["name"]))
+    msg, err = session.pop("acc_msg", None), session.pop("acc_err", None)
+    demo = {"name": "عمرة رجب", "flight": "FZ 811", "airline": "فلاي دبي", "takeoff": "09:45",
+            "airport": "دبي", "report": ""}
+    return render_template(
+        "pretravel.html", active="pretravel", rows=rows, within=within, grp=grp,
+        groups=_checkin_groups(_load_records()), tpl=tpl, keys=_PRE_KEYS,
+        is_default=tpl == _PRE_TPL, msg=msg, err=err,
+        done=sum(1 for x in rows if x["ago"] is not None and x["ago"] <= 3),
+        no_phone=sum(1 for x in rows if not x["wa"]),
+        sample=_pre_text(tpl, _PD(full_name_ar="أحمد محمد"), demo, "الخميس 4 ديسمبر",
+                         "https://…/p/…"), **_ctx())
+
+
+@app.post("/pretravel/mark")
+def pretravel_mark():
+    """يعلّم أن رسالة ما قبل السفر أُرسلت (يُستدعى عند ضغط زرّ واتساب)."""
+    s = _sess()
+    if s is None:
+        return {"ok": False}, 401
+    if not s.can_edit:
+        return {"ok": False}, 403
+    uid = str((request.get_json(silent=True) or {}).get("uid") or "")[:80]
+    if not uid:
+        return {"ok": False}, 400
+    with _UID_LOCK:
+        settings = storage.load_settings()
+        m = settings.get("pretravel_sent") if isinstance(settings.get("pretravel_sent"), dict) else {}
+        m[uid] = datetime.now(_UAE).replace(microsecond=0).isoformat()
+        settings["pretravel_sent"] = m
+        storage.save_settings(settings)
+    return {"ok": True}
+
+
+# ==================== آراء المعتمرين ========================================
+_REV_LOCK = threading.Lock()
+_REV_MSG = ("السلام عليكم {first}، حمداً لله على سلامتكم وتقبّل الله منكم 🤍\n"
+            "يسعدنا أن نسمع رأيكم في رحلة «{prog}» — دقيقة واحدة فقط:\n{link}\n"
+            "مع تحيات المصطفى للحج والعمرة.")
+
+
+def _rev_path():
+    from hajj_app.paths import data_dir
+    return data_dir() / "reviews.enc"
+
+
+def _rev_fernet():
+    import base64 as _b64
+    from cryptography.fernet import Fernet
+    key = hashlib.sha256((_session_secret() + "|reviews").encode("utf-8")).digest()
+    return Fernet(_b64.urlsafe_b64encode(key))
+
+
+def _rev_load() -> list:
+    """دعوات الآراء والآراء (مشفّرة بمفتاح الخادم — فيها أسماء وتعليقات)."""
+    import json as _json
+    p = _rev_path()
+    if not p.is_file():
+        return []
+    try:
+        data = _json.loads(_rev_fernet().decrypt(p.read_bytes()).decode("utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:                              # noqa: BLE001
+        return []
+
+
+def _rev_save(items: list) -> None:
+    import json as _json
+    p = _rev_path()
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(_rev_fernet().encrypt(_json.dumps(items, ensure_ascii=False).encode("utf-8")))
+    os.replace(tmp, p)
+
+
+def _public_reviews(limit: int = 6) -> list:
+    """الآراء التي وافق أصحابها على نشرها وأظهرها المدير — للصفحة العامة."""
+    out = []
+    for x in sorted(_rev_load(), key=lambda x: x.get("ts") or "", reverse=True):
+        if x.get("stars") and x.get("consent") and x.get("show"):
+            try:
+                d = datetime.fromisoformat(x.get("ret") or x.get("ts")).date()
+                when = f"{_AR_MONTHS[d.month - 1]} {d.year}"
+            except (TypeError, ValueError):
+                when = ""
+            out.append({"first": x.get("first") or "", "stars": int(x["stars"]),
+                        "comment": x.get("comment") or "", "kind": x.get("kind") or "", "when": when})
+        if len(out) >= limit:
+            break
+    return out
+
+
+@app.route("/r/<rid>", methods=["GET", "POST"])
+def review_public(rid):
+    """صفحة رأي المعتمر (رابط سرّي يصله بالواتساب بعد العودة): نجوم وتعليق وموافقة النشر."""
+    rid = str(rid or "")[:40]
+    with _REV_LOCK:
+        items = _rev_load()
+        it = next((x for x in items if x.get("id") == rid), None)
+        if it is not None and request.method == "POST":
+            try:
+                stars = int(request.form.get("stars") or 0)
+            except ValueError:
+                stars = 0
+            if not 1 <= stars <= 5:
+                return redirect(url_for("review_public", rid=rid, err=1))
+            it["stars"] = stars
+            it["comment"] = " ".join((request.form.get("comment") or "").split())[:600]
+            it["consent"] = request.form.get("consent") == "1"
+            it["ts"] = datetime.now(_UAE).replace(microsecond=0).isoformat()
+            if not it["consent"]:
+                it["show"] = False
+            _rev_save(items)
+            return redirect(url_for("review_public", rid=rid, done=1))
+    if it is None:
+        return render_template("public_review.html", it=None), 404
+    return render_template("public_review.html", it=it, done=request.args.get("done"),
+                           err=request.args.get("err"),
+                           trips_url=url_for("public_trips", _external=True))
+
+
+@app.get("/reviews")
+def reviews_page():
+    """آراء المعتمرين: من عاد مؤخراً (زرّ واتساب برابط الاستبيان) + الآراء الواردة
+    ونشر المختار منها في الصفحة العامة (للمدير، وبموافقة صاحبها)."""
+    import secrets as _secrets
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    from hajj_app import whatsapp as _wa
+    settings = storage.load_settings()
+    cc = str(settings.get("whatsapp_cc") or "971")
+    info = _trip_info(settings)
+    today = datetime.now(_UAE).date()
+    gattr = _group_attr()
+    mode = _mode()
+    eligible = []
+    for r in _load_records():
+        if str(r.status or "").strip() == "ملغى":
+            continue
+        uid = str(getattr(r, "uid", "") or "")
+        inf = info.get(str(getattr(r, gattr, "") or ""))
+        ret = inf.get("ret") if inf else None
+        if not uid or not ret or not 0 <= (today - ret).days <= 45:
+            continue
+        eligible.append((r, uid, inf, ret))
+    with _REV_LOCK:
+        items = _rev_load()
+        by_uid = {(x.get("mode"), x.get("uid")): x for x in items}
+        changed = False
+        for r, uid, inf, ret in eligible:
+            if (mode, uid) not in by_uid:
+                x = {"id": _secrets.token_urlsafe(9), "mode": mode, "uid": uid,
+                     "first": (str(r.full_name_ar or r.full_name_en or "").split() or [""])[0],
+                     "name": r.full_name_ar or r.full_name_en or "", "prog": inf.get("name") or "",
+                     "kind": inf.get("kind") or "", "ret": ret.isoformat(),
+                     "created": datetime.now(_UAE).replace(microsecond=0).isoformat()}
+                items.append(x)
+                by_uid[(mode, uid)] = x
+                changed = True
+        if changed:
+            _rev_save(items[-5000:])
+    ask = []
+    for r, uid, inf, ret in eligible:
+        x = by_uid[(mode, uid)]
+        if x.get("stars"):
+            continue
+        link = url_for("review_public", rid=x["id"], _external=True)
+        text = _REV_MSG.format(first=x.get("first") or "", prog=x.get("prog") or "", link=link)
+        ask.append({"uid": uid, "name": x.get("name") or "—", "prog": inf.get("label") or "",
+                    "back": (today - ret).days, "sent": _ago_days(x.get("sent"), today),
+                    "wa": _wa.wa_link(r.phone, text, cc) if r.phone else None})
+    ask.sort(key=lambda a: (a["sent"] is not None, a["back"]))
+    got = sorted((x for x in items if x.get("stars")), key=lambda x: x.get("ts") or "", reverse=True)
+    for x in got:
+        x["ago"] = _ago_days(x.get("ts"), today)
+    dist = {n: sum(1 for x in got if int(x["stars"]) == n) for n in range(5, 0, -1)}
+    avg = round(sum(int(x["stars"]) for x in got) / len(got), 1) if got else None
+    msg, err = session.pop("acc_msg", None), session.pop("acc_err", None)
+    return render_template("reviews.html", active="reviews", ask=ask, got=got, avg=avg, dist=dist,
+                           shown=sum(1 for x in got if x.get("show")), msg=msg, err=err, **_ctx())
+
+
+@app.post("/reviews/mark")
+def reviews_mark():
+    """يعلّم أن رابط الاستبيان أُرسل (عند ضغط زرّ واتساب)."""
+    s = _sess()
+    if s is None:
+        return {"ok": False}, 401
+    if not s.can_edit:
+        return {"ok": False}, 403
+    uid = str((request.get_json(silent=True) or {}).get("uid") or "")[:80]
+    with _REV_LOCK:
+        items = _rev_load()
+        x = next((x for x in items if x.get("mode") == _mode() and x.get("uid") == uid), None)
+        if x is None:
+            return {"ok": False}, 404
+        x["sent"] = datetime.now(_UAE).replace(microsecond=0).isoformat()
+        _rev_save(items)
+    return {"ok": True}
+
+
+@app.post("/reviews/<rid>/show")
+def reviews_show(rid):
+    """إظهار رأي في الصفحة العامة أو إخفاؤه — للمدير، وبموافقة صاحبه فقط."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    with _REV_LOCK:
+        items = _rev_load()
+        x = next((x for x in items if x.get("id") == rid), None)
+        if x is not None and x.get("stars"):
+            if not x.get("consent"):
+                session["acc_err"] = "صاحب هذا الرأي لم يوافق على نشره."
+            else:
+                x["show"] = not x.get("show")
+                _rev_save(items)
+                _audit("إظهار رأي في الصفحة العامة" if x["show"] else "إخفاء رأي من الصفحة العامة",
+                       f"{x.get('name', '')} — {x.get('stars')}★")
+                session["acc_msg"] = ("سيظهر هذا الرأي في صفحة البرامج العامة." if x["show"]
+                                      else "أُخفي الرأي من الصفحة العامة.")
+    return redirect(url_for("reviews_page") + "#got")
+
+
+# ==================== أرباح البرامج ==========================================
+_COST_FIELDS = (("flight_pp", "الطيران", "للفرد"), ("visa_pp", "التأشيرة والتصاريح", "للفرد"),
+                ("hotels", "الفنادق", "إجمالي البرنامج"), ("transport", "النقل والسيارات", "إجمالي البرنامج"),
+                ("other", "مصاريف أخرى", "إجمالي البرنامج"))
+
+
+@app.route("/finance/profit", methods=["GET", "POST"])
+def profit_page():
+    """ربح كل برنامج: الإيراد (قيم البرامج) − التكلفة المُدخلة (للفرد × العدد + الإجماليات).
+    للمدير فقط — فيها أسعار التكلفة."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    from hajj_app.fields import parse_amount
+    settings = storage.load_settings()
+    costs = settings.get("program_costs") if isinstance(settings.get("program_costs"), dict) else {}
+    info = _trip_info(settings)
+    if request.method == "POST":                       # حفظ تكلفة برنامج (زرّ صريح)
+        key = (request.form.get("key") or "").strip()
+        if key not in info:
+            return redirect(url_for("profit_page"))
+        row, bad_f = {}, []
+        for f, label, _u in _COST_FIELDS:
+            v = (request.form.get(f) or "").strip().translate(str.maketrans("٠١٢٣٤٥٦٧٨٩٫", "0123456789."))
+            if v and parse_amount(v) is None:
+                bad_f.append(label)
+            elif v:
+                row[f] = v
+        if bad_f:
+            session["acc_err"] = "أرقام غير صحيحة في: " + "، ".join(bad_f)
+        else:
+            costs[key] = row
+            settings["program_costs"] = costs
+            storage.save_settings(settings)
+            _audit("تكلفة برنامج", info[key]["label"])
+            session["acc_msg"] = f"حُفظت تكلفة «{info[key]['label']}»."
+        return redirect(url_for("profit_page") + f"#p-{list(info).index(key)}")
+    gattr = _group_attr()
+    recs = [r for r in _load_records() if str(r.status or "").strip() != "ملغى"]
+    rows = []
+    for i, (key, inf) in enumerate(info.items()):
+        mine = [r for r in recs if str(getattr(r, gattr, "") or "") == key]
+        n = len(mine)
+        rev = sum(parse_amount(r.program_value) or 0.0 for r in mine)
+        paid = sum(parse_amount(r.paid_amount) or 0.0 for r in mine)
+        c = costs.get(key) or {}
+        has = any(c.get(f) for f, _l, _u in _COST_FIELDS)
+        num = {f: parse_amount(c.get(f)) or 0.0 for f, _l, _u in _COST_FIELDS}
+        cost = (num["flight_pp"] + num["visa_pp"]) * n + num["hotels"] + num["transport"] + num["other"]
+        profit = rev - cost
+        parts = [(label, num[f] * n if f.endswith("_pp") else num[f]) for f, label, _u in _COST_FIELDS]
+        rows.append({
+            "i": i, "key": key, "label": inf["label"], "dep": inf["dep"], "n": n, "has": has,
+            "rev": rev, "paid": paid, "cost": cost, "profit": profit,
+            "margin": round(100 * profit / rev) if has and rev else None,
+            "pp": round(profit / n) if has and n else None, "vals": c,
+            "parts": [(lbl, v) for lbl, v in parts if v],
+            "cost_pct": min(100, round(100 * cost / rev)) if has and rev else (100 if has and cost else 0)})
+    rows.sort(key=lambda r: (r["dep"] is None, r["dep"] or datetime.max.date()))
+    rows = [r for r in rows if r["n"] or r["has"]] + [r for r in rows if not r["n"] and not r["has"]]
+    with_c = [r for r in rows if r["has"]]
+    tot = {"rev": sum(r["rev"] for r in rows), "paid": sum(r["paid"] for r in rows),
+           "cost": sum(r["cost"] for r in with_c), "profit": sum(r["profit"] for r in with_c),
+           "rev_c": sum(r["rev"] for r in with_c)}
+    tot["margin"] = round(100 * tot["profit"] / tot["rev_c"]) if tot["rev_c"] else None
+    today = datetime.now(_UAE).date()
+    for r in rows:
+        r["dep_txt"] = _day_txt(r["dep"], today) if r["dep"] else "بلا تاريخ"
+    msg, err = session.pop("acc_msg", None), session.pop("acc_err", None)
+    return render_template("profit.html", active="profit", rows=rows, tot=tot, fields=_COST_FIELDS,
+                           n_cost=len(with_c), fmt=lambda v: format_amount(v) or "0",
+                           msg=msg, err=err, **_ctx())
 
 
 @app.get("/finance")

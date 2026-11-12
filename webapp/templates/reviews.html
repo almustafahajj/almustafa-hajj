@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}آراء المعتمرين — المصطفى{% endblock %}
+{% block heading %}{{ ic('heart') }} آراء {{ noun }}{% endblock %}
+{% block subhead %}<div class="season">بعد العودة يصل كلَّ واحدٍ رابطٌ قصير يقيّم فيه رحلته — وتُنشر الآراء التي يوافق أصحابها عليها في صفحة البرامج العامة</div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
+{% if err %}<div class="acc-msg err" data-keep>{{ err|iconize }}</div>{% endif %}
+
+<section class="rv-sum">
+  <div class="rv-avg">
+    <b>{{ avg if avg is not none else '—' }}</b>
+    <div class="pt-stars" role="img" aria-label="المتوسّط {{ avg or 0 }} من 5">{% for n in range(5) %}<span class="{{ 'on' if avg and n < avg|round(0, 'common') }}">★</span>{% endfor %}</div>
+    <small>عدد التقييمات: {{ got|length }}{% if shown %} · {{ shown }} في الصفحة العامة{% endif %}</small>
+  </div>
+  <ul class="rv-dist" aria-label="توزيع التقييمات">
+    {% set mx = (dist.values()|max) or 1 %}
+    {% for n, c in dist.items() %}
+    <li><span>{{ n }} ★</span><span class="bs-track"><span class="bs-bar" style="--w:{{ (100 * c / mx)|round|int }}%"></span></span><b>{{ c }}</b></li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="rv-block">
+  <h3 class="rv-h">{{ ic('send') }} اطلب رأيهم <small>عادوا خلال آخر ٤٥ يوماً ولم يقيّموا بعد</small></h3>
+  {% if ask %}
+  <ul class="rm-list two" id="rvAsk">
+    {% for a in ask %}
+    <li class="rm-row{{ ' done' if a.sent is not none }}" data-uid="{{ a.uid }}">
+      <div class="rm-who"><b>{{ a.name }}</b>
+        <span class="rm-chips"><span class="rm-chip">{{ ic('briefcase') }} {{ a.prog }}</span>
+          <span class="rm-chip">{{ ic('landing') }} {{ 'عاد اليوم' if a.back == 0 else 'عاد أمس' if a.back == 1 else 'عاد قبل ' ~ a.back ~ ' يوماً' }}</span></span></div>
+      <div class="rm-act">
+        <span class="rm-last">{% if a.sent == 0 %}{{ ic('check') }} أُرسل اليوم{% elif a.sent is not none %}أُرسل قبل {{ a.sent }} يوم{% else %}لم يُرسل{% endif %}</span>
+        {% if a.wa %}<a class="btn wa-btn sm" href="{{ a.wa }}" target="_blank" rel="noopener" {% if not can_edit %}data-ro="1"{% endif %}>{{ ic('chat') }} اطلب رأيه</a>
+        {% else %}<span class="btn ghost sm" aria-disabled="true">{{ ic('phone') }} بلا هاتف</span>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state"><span class="es-ic">{{ ic('landing') }}</span><b>لا أحد ينتظر طلب رأيه</b>
+    <span>يظهر هنا مَن عاد من رحلته خلال آخر ٤٥ يوماً (حسب تاريخ العودة في البرنامج).</span></div>
+  {% endif %}
+</section>
+
+<section class="rv-block" id="got">
+  <h3 class="rv-h">{{ ic('star') }} الآراء الواردة</h3>
+  {% if got %}
+  <div class="rv-list">
+    {% for x in got %}
+    <article class="rv-card{{ ' shown' if x.show }}">
+      <header>
+        <div class="pt-stars" role="img" aria-label="{{ x.stars }} من 5">{% for n in range(5) %}<span class="{{ 'on' if n < x.stars|int }}">★</span>{% endfor %}</div>
+        <small class="muted">{{ 'اليوم' if x.ago == 0 else 'أمس' if x.ago == 1 else 'قبل ' ~ x.ago ~ ' يوماً' if x.ago is not none else '' }}</small>
+      </header>
+      {% if x.comment %}<p class="rv-text">«{{ x.comment }}»</p>{% else %}<p class="rv-text muted">بلا تعليق</p>{% endif %}
+      <footer>
+        <span class="rv-who"><b>{{ x.name }}</b><small>{{ x.prog }}</small></span>
+        {% if not x.consent %}<span class="rm-chip muted" title="لم يوافق صاحب الرأي على نشره">{{ ic('lock') }} خاص</span>
+        {% elif is_admin %}
+          <form method="post" class="inline" action="{{ url_for('reviews_show', rid=x.id) }}">
+            <button class="btn {{ 'primary' if not x.show else 'ghost' }} sm" type="submit">{{ ic('eye') }} {{ 'إخفاء من الصفحة العامة' if x.show else 'إظهار في الصفحة العامة' }}</button></form>
+        {% else %}<span class="rm-chip">{{ ic('globe') }} {{ 'في الصفحة العامة' if x.show else 'يوافق على النشر' }}</span>{% endif %}
+      </footer>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state"><span class="es-ic">{{ ic('star') }}</span><b>لا آراء بعد</b>
+    <span>أرسل رابط الرأي لمن عاد من رحلته من القائمة أعلاه — وتظهر الآراء هنا فور وصولها.</span></div>
+  {% endif %}
+</section>
+<script>
+(function(){
+  var list=document.getElementById('rvAsk'); if(!list) return;
+  list.addEventListener('click',function(e){
+    var a=e.target.closest('a.wa-btn'); if(!a||a.dataset.ro) return;
+    var row=a.closest('.rm-row'); if(!row||!row.dataset.uid) return;
+    fetch('{{ url_for("reviews_mark") }}',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uid:row.dataset.uid}),keepalive:true}).then(function(r){
+        if(!r.ok) return; row.classList.add('done'); row.querySelector('.rm-last').textContent='✓ أُرسل اليوم';
+      }).catch(function(){});
+  });
+})();
+</script>
+{% endblock %}

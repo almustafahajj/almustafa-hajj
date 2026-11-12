@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}أرباح البرامج — المصطفى{% endblock %}
+{% block heading %}{{ ic('trend') }} أرباح البرامج{% endblock %}
+{% block subhead %}<div class="season">الإيراد من قيم برامج {{ noun }} (بلا الملغين) − التكلفة التي تُدخلها لكل برنامج — للمدير فقط</div>{% endblock %}
+{% block content %}
+{% macro money(v) %}{% if v < 0 %}<bdi dir="ltr" class="neg">−{{ fmt(-v) }}</bdi>{% else %}{{ fmt(v) }}{% endif %}{% endmacro %}
+{% macro pct(v) %}{% if v is none %}—{% else %}<bdi dir="ltr"{% if v < 0 %} class="neg"{% endif %}>{{ '−' if v < 0 }}{{ v|abs }}%</bdi>{% endif %}{% endmacro %}
+{% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
+{% if err %}<div class="acc-msg err" data-keep>{{ err|iconize }}</div>{% endif %}
+
+<section class="pf-kpis">
+  <div class="pf-kpi"><small>الإيراد</small><b>{{ fmt(tot.rev) }}</b><span>محصّل منه {{ fmt(tot.paid) }}</span></div>
+  <div class="pf-kpi"><small>التكلفة</small><b>{{ fmt(tot.cost) }}</b><span>{{ n_cost }} من {{ rows|length }} برنامج أُدخلت تكلفته</span></div>
+  <div class="pf-kpi {{ 'gain' if tot.profit >= 0 else 'loss' }}"><small>{{ 'صافي الربح' if tot.profit >= 0 else 'صافي الخسارة' }}</small><b>{{ fmt(tot.profit|abs) }}</b><span>للبرامج التي أُدخلت تكلفتها</span></div>
+  <div class="pf-kpi"><small>هامش الربح</small><b>{{ pct(tot.margin) }}</b><span>الربح ÷ الإيراد</span></div>
+</section>
+
+{% if rows %}
+<div class="pf-list">
+  {% for r in rows %}
+  <article class="pf-card{{ ' nocost' if not r.has }}" id="p-{{ r.i }}">
+    <header>
+      <div class="pf-name"><b>{{ r.label }}</b><small>{{ ic('takeoff') }} {{ r.dep_txt }} · {{ ic('users') }} {{ r.n }} {{ 'شخص' if r.n == 1 else 'أشخاص' }}</small></div>
+      {% if r.has %}
+      <span class="pf-tag {{ 'gain' if r.profit >= 0 else 'loss' }}">{{ ic('trend') }} {{ 'ربح' if r.profit >= 0 else 'خسارة' }} {{ fmt(r.profit|abs) }}</span>
+      {% else %}<span class="pf-tag none">لم تُدخل التكلفة</span>{% endif %}
+    </header>
+    <dl class="pf-nums">
+      <div><dt>الإيراد</dt><dd>{{ fmt(r.rev) }}</dd></div>
+      <div><dt>المحصّل</dt><dd>{{ fmt(r.paid) }}</dd></div>
+      <div><dt>التكلفة</dt><dd>{{ fmt(r.cost) if r.has else '—' }}</dd></div>
+      <div><dt>الهامش</dt><dd>{{ pct(r.margin) }}</dd></div>
+      <div><dt>ربح الفرد</dt><dd>{{ money(r.pp) if r.pp is not none else '—' }}</dd></div>
+    </dl>
+    {% if r.has and r.rev %}
+    <div class="pf-bar" role="img" aria-label="التكلفة {{ r.cost_pct }}% من الإيراد">
+      <span class="c" style="--w:{{ r.cost_pct }}%"></span>
+      <small>التكلفة {{ r.cost_pct }}% من الإيراد{% if r.cost_pct >= 100 %} — أكثر من الإيراد{% endif %}</small>
+    </div>
+    {% endif %}
+    {% if r.parts %}<p class="pf-parts">{% for lbl, v in r.parts %}<span>{{ lbl }} <b>{{ fmt(v) }}</b></span>{% endfor %}</p>{% endif %}
+    <details class="pf-edit"{% if not r.has and r.n %} open{% endif %}>
+      <summary>{{ ic('calculator') }} {{ 'تعديل التكلفة' if r.has else 'أدخل تكلفة البرنامج' }}</summary>
+      <form method="post" class="needs-save pf-form">
+        <input type="hidden" name="key" value="{{ r.key }}">
+        {% for f, label, unit in fields %}
+        <label>{{ label }} <small>({{ unit }})</small>
+          <input name="{{ f }}" value="{{ r.vals.get(f, '') }}" inputmode="decimal" dir="ltr" placeholder="0"></label>
+        {% endfor %}
+        <div class="off-bar"><button class="acc-btn save-btn" type="submit">{{ ic('check') }} حفظ</button></div>
+      </form>
+    </details>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state"><span class="es-ic">{{ ic('briefcase') }}</span><b>لا برامج بعد</b>
+  <span>أضف برامج {{ noun }} أولاً ثم أدخل تكلفة كلٍّ منها هنا.</span></div>
+{% endif %}
+<p class="hint-note">التكلفة = (الطيران + التأشيرة) × عدد الأشخاص + الفنادق + النقل + المصاريف الأخرى. المبالغ بالدرهم.</p>
+{% endblock %}

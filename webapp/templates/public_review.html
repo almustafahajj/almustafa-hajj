@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#13795B">
+{% set og_img = url_for('static', filename='share/og-base.jpg', _external=True) ~ '?v=1' %}
+<meta property="og:type" content="website">
+<meta property="og:title" content="رأيك في رحلتك — المصطفى للحج والعمرة">
+<meta property="og:description" content="دقيقة واحدة: قيّم رحلتك واكتب رأيك — يهمّنا أن نسمعك.">
+<meta property="og:image" content="{{ og_img }}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<title>رأيك في رحلتك — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body class="mode-umrah trip-body pub-trips">
+<header class="pt-hero">
+  <div class="pt-in">
+    <div class="tp-brand"><img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt=""><span>المصطفى للحج والعمرة</span></div>
+    {% if it %}
+    <h1>كيف كانت رحلتك يا {{ it.first }}؟</h1>
+    <p>«{{ it.prog }}» — تقبّل الله منك. رأيك يساعدنا أن نخدمك ونخدم غيرك أفضل.</p>
+    {% else %}
+    <h1>الرابط غير صحيح</h1>
+    <p>تأكّد من الرابط الذي وصلك، أو تواصل معنا.</p>
+    {% endif %}
+  </div>
+</header>
+<main class="pt-main rvp-main">
+  {% if it %}
+  {% if done %}
+  <div class="pt-done" role="status">
+    <span class="pt-done-ic">{{ ic('heart') }}</span>
+    <div><b>شكراً لك — وصلنا رأيك</b><span>جزاك الله خيراً، ونسأل الله أن يتقبّل منك.</span></div>
+  </div>
+  <p class="rvp-more"><a class="pt-btn sm" href="{{ trips_url }}">{{ ic('calendar') }} شاهد برامجنا القادمة</a>
+    <a class="rvp-edit" href="{{ url_for('review_public', rid=it.id) }}">تعديل رأيي</a></p>
+  {% else %}
+  <section class="pt-book">
+    {% if err %}<div class="pt-err" role="alert">{{ ic('alert') }} اختر عدد النجوم أولاً</div>{% endif %}
+    <form method="post" class="pt-form rvp-form">
+      <fieldset class="wide rvp-rate">
+        <legend>تقييمك للرحلة</legend>
+        <div class="rvp-stars">
+          {% for n in [5, 4, 3, 2, 1] %}
+          <input type="radio" name="stars" id="st{{ n }}" value="{{ n }}" {{ 'checked' if (it.stars or 0)|int == n }} required>
+          <label for="st{{ n }}" title="{{ n }} من 5"><span class="sr">{{ n }} من 5</span>★</label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <label class="wide">رأيك بكلماتك (اختياري)
+        <textarea name="comment" rows="4" maxlength="600" placeholder="ما الذي أعجبك؟ وما الذي تقترح أن نحسّنه؟">{{ it.comment or '' }}</textarea></label>
+      <label class="wide rvp-consent"><input type="checkbox" name="consent" value="1" {{ 'checked' if it.consent }}>
+        <span>أوافق على نشر رأيي في صفحة برامج المصطفى باسمي الأول فقط («{{ it.first }}»).</span></label>
+      <button class="pt-btn wide" type="submit">{{ ic('send') }} إرسال رأيي</button>
+      <p class="pt-priv wide">{{ ic('lock') }} لا يُنشر رأيك إلا بموافقتك، وباسمك الأول فقط.</p>
+    </form>
+  </section>
+  {% endif %}
+  {% endif %}
+</main>
+<footer class="pt-foot"><b>المصطفى للحج والعمرة</b></footer>
+</body></html>

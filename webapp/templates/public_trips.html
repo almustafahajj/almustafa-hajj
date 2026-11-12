@@ -53,8 +53,10 @@
     {% if progs %}
     <div class="pt-grid">
       {% for p in progs %}
-      <article class="pt-card">
+      {% set picked = pick_key and pick_key == p.mode ~ ':' ~ p.key %}
+      <article class="pt-card{{ ' pick' if picked }}">
         {% set full = p.left is not none and p.left <= 0 %}
+        {% if picked %}<span class="pt-pickbadge">{{ ic('star') }} البرنامج المختار</span>{% endif %}
         <header>
           <span class="pt-kind">{{ ic('kaaba' if p.mode == 'hajj' else 'moon') }} {{ 'حج' if p.mode == 'hajj' else 'عمرة' }}</span>
           {% if full %}<span class="pt-left full">مكتمل</span>{% else %}<span class="pt-left">مقاعد محدودة</span>{% endif %}
@@ -81,6 +83,7 @@
         </ul>
         <form class="pt-pick" method="get" action="{{ url_for('public_trips') }}#book">
           <input type="hidden" name="p" value="{{ p.mode }}:{{ p.key }}">
+          {% if src %}<input type="hidden" name="src" value="{{ src }}">{% endif %}
           {% if p.prices %}
           <fieldset class="pt-prices">
             <legend>السعر للفرد حسب الغرفة <small>· درهم — اختر غرفتك</small></legend>
@@ -101,6 +104,21 @@
     {% endif %}
   </section>
 
+  {% if reviews %}
+  <section class="pt-revs" id="reviews">
+    <h2 class="pt-h">{{ ic('heart') }} آراء معتمرينا</h2>
+    <div class="pt-rgrid">
+      {% for r in reviews %}
+      <figure class="pt-rev">
+        <div class="pt-stars" role="img" aria-label="{{ r.stars }} من 5">{% for n in range(5) %}<span class="{{ 'on' if n < r.stars }}">★</span>{% endfor %}</div>
+        {% if r.comment %}<blockquote>«{{ r.comment }}»</blockquote>{% endif %}
+        <figcaption>— {{ r.first }}{% if r.kind or r.when %} <small>· {{ r.kind }} {{ r.when }}</small>{% endif %}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   {% if progs %}
   <section class="pt-book" id="book">
     <h2 class="pt-h">{{ ic('send') }} احجز مقعدك</h2>
@@ -119,6 +137,7 @@
         <select name="room" id="ptRoom"><option value="">لا يهمّ</option>{% for r, pr in room_opts %}<option value="{{ r }}" {{ 'selected' if pick_room == r }}>{{ r }}{% if pr %} — {{ pr }} درهم للفرد{% endif %}</option>{% endfor %}</select></label>
       <label class="wide">ملاحظة (اختياري)<textarea name="note" rows="2" maxlength="300" placeholder="مثلاً: نحتاج كرسياً متحرّكاً، أو أوقات الاتصال المناسبة"></textarea></label>
       <label class="hp" aria-hidden="true">لا تملأ هذا الحقل<input name="website" tabindex="-1" autocomplete="off"></label>
+      {% if src %}<input type="hidden" name="src" value="{{ src }}">{% endif %}
       <button class="pt-btn wide" type="submit">{{ ic('send') }} أرسل طلب الحجز</button>
       <p class="pt-priv wide">{{ ic('lock') }} بياناتك تُستعمل للتواصل معك بخصوص الحجز فقط.</p>
     </form>

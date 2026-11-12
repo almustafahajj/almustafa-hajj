@@ -1994,3 +1994,158 @@ body.pub-trips{ background:var(--bg); }
   border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--ink); resize:vertical; }
 .bk-card footer .bk-del{ margin-inline-start:auto; }
 .bk-card footer .icon-btn.del:hover{ background:#FBE4E0; color:#B23A3A; border-color:#F0C4BC; }
+
+/* ======================================================================
+   روابط المشاركة ومصادر الطلبات · ما قبل السفر · آراء المعتمرين · أرباح البرامج
+   ====================================================================== */
+.rm-list.two .rm-row{ grid-template-columns:minmax(0, 1fr) auto; }
+/* البرنامج المختار من رابط خاص */
+.pt-card{ position:relative; }
+.pt-card.pick{ border-color:var(--bronze); box-shadow:0 0 0 3px color-mix(in srgb, var(--bronze) 22%, transparent), var(--sh-2); }
+.pt-pickbadge{ position:absolute; top:-12px; inset-inline-start:18px; display:inline-flex; align-items:center; gap:5px;
+  padding:3px 11px; border-radius:99px; font-size:12px; font-weight:700; color:#fff; background:var(--bronze); }
+.pt-pickbadge .ico{ width:13px; height:13px; }
+/* النجوم (مشتركة) */
+.pt-stars{ display:inline-flex; gap:2px; font-size:17px; line-height:1; color:#D9D2C3; letter-spacing:0; }
+.pt-stars .on{ color:#E0A12B; }
+/* آراء معتمرينا في الصفحة العامة */
+.pt-rgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap:14px; }
+.pt-rev{ margin:0; display:flex; flex-direction:column; gap:10px; padding:16px 18px; background:var(--panel);
+  border:1px solid var(--border); border-radius:18px; box-shadow:var(--sh-1); }
+.pt-rev blockquote{ margin:0; font-size:15px; line-height:1.9; color:var(--ink); }
+.pt-rev figcaption{ margin-top:auto; font-weight:700; color:var(--bronze-d); }
+.pt-rev figcaption small{ font-weight:400; color:var(--muted); }
+/* طلبات الحجز: المصدر وروابط المشاركة والإحصاء */
+.bk-src{ display:inline-flex; align-items:center; gap:4px; color:var(--bronze); font-weight:600; }
+.bk-share, .bk-stats{ margin-top:20px; scroll-margin-top:calc(var(--tb-h, 64px) + 12px); }
+.bk-share h3, .bk-stats h3{ display:flex; align-items:center; gap:8px; margin:0 0 4px; color:var(--bronze); }
+.sh-srcpick{ display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; margin:6px 0 12px; font-size:14px; font-weight:600; }
+.sh-srcpick select{ font:inherit; font-size:14.5px; padding:7px 12px; border-radius:10px; border:1px solid var(--border);
+  background:var(--panel); color:var(--ink); }
+.sh-list{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.sh-row{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.3fr) auto; align-items:center; gap:8px 14px;
+  padding:10px 12px; border:1px solid var(--border); border-radius:14px; background:var(--panel); }
+.sh-row.all{ background:var(--soft); }
+.sh-who{ min-width:0; display:flex; flex-direction:column; }
+.sh-who b{ font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sh-who small{ font-size:12px; color:var(--muted); }
+.sh-url{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--muted);
+  padding:5px 9px; border-radius:8px; background:var(--soft); text-align:left; }
+.sh-act{ display:flex; gap:6px; }
+.sh-act .btn{ width:auto; }
+.bs-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.bs-head .pay-chips{ margin:0; }
+.bs-kpis{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; margin-bottom:14px; }
+.bs-kpis > div{ display:flex; flex-direction:column; padding:10px 12px; border-radius:14px; background:var(--soft); }
+.bs-kpis b{ font-size:22px; font-variant-numeric:tabular-nums; color:var(--ink); }
+.bs-kpis small{ font-size:12px; color:var(--muted); }
+.bs-wrap{ overflow-x:auto; }
+.bs-table{ width:100%; border-collapse:collapse; font-size:14px; }
+.bs-table th, .bs-table td{ padding:8px 10px; text-align:start; border-bottom:1px solid var(--border); white-space:nowrap; }
+.bs-table thead th{ font-size:12px; color:var(--muted); font-weight:600; }
+.bs-table td{ font-variant-numeric:tabular-nums; }
+.bs-table td b{ margin-inline-start:6px; }
+.bs-bar{ display:inline-block; vertical-align:middle; width:calc(var(--w, 0%) * .9); min-width:3px; max-width:90px; height:8px;
+  border-radius:4px; background:var(--bronze); }
+.bs-bar.v{ background:color-mix(in srgb, var(--bronze) 35%, var(--soft)); }
+.bs-sub{ display:flex; align-items:center; gap:6px; margin:16px 0 8px; font-size:14.5px; color:var(--ink); }
+.bs-progs{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.bs-progs li{ display:grid; grid-template-columns:minmax(0, 1.2fr) minmax(60px, 1fr) auto; align-items:center; gap:10px; font-size:14px; }
+.bs-pn{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bs-track{ display:block; height:8px; border-radius:4px; background:var(--soft); overflow:hidden; }
+.bs-track .bs-bar{ display:block; width:var(--w); min-width:0; max-width:none; height:100%; }
+.bs-pv{ font-size:12.5px; color:var(--muted); white-space:nowrap; }
+.bs-pv b{ color:var(--ink); }
+@media (max-width:700px){
+  .sh-row{ grid-template-columns:minmax(0, 1fr); }
+  .bs-kpis{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .bs-progs li{ grid-template-columns:minmax(0, 1fr) auto; }
+  .bs-progs .bs-track{ grid-column:1 / -1; order:3; }
+}
+/* آراء المعتمرين (للموظفين) */
+.rv-sum{ display:grid; grid-template-columns:auto minmax(0, 1fr); gap:18px 28px; align-items:center; padding:16px 20px;
+  margin-bottom:18px; background:var(--panel); border:1px solid var(--border); border-radius:18px; box-shadow:var(--sh-1); }
+.rv-avg{ display:flex; flex-direction:column; align-items:center; gap:4px; min-width:140px; }
+.rv-avg > b{ font-size:40px; line-height:1; color:var(--ink); font-variant-numeric:tabular-nums; }
+.rv-avg .pt-stars{ font-size:20px; }
+.rv-avg small{ font-size:12px; color:var(--muted); text-align:center; }
+.rv-dist{ list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.rv-dist li{ display:grid; grid-template-columns:44px minmax(0, 1fr) 32px; align-items:center; gap:10px; font-size:13px; }
+.rv-dist li > span:first-child{ color:var(--muted); white-space:nowrap; }
+.rv-dist .bs-bar{ background:#E0A12B; }
+.rv-dist b{ font-variant-numeric:tabular-nums; }
+.rv-block{ margin-bottom:22px; scroll-margin-top:calc(var(--tb-h, 64px) + 12px); }
+.rv-h{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin:0 0 10px; font-size:17px; color:var(--bronze-d); }
+.rv-h small{ font-size:12.5px; font-weight:400; color:var(--muted); }
+.rv-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap:14px; }
+.rv-card{ display:flex; flex-direction:column; gap:10px; padding:14px 16px; background:var(--panel); border:1px solid var(--border);
+  border-radius:18px; box-shadow:var(--sh-1); }
+.rv-card.shown{ border-color:#BFE0CB; box-shadow:0 0 0 2px #E6F3EC, var(--sh-1); }
+.rv-card header{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.rv-text{ margin:0; font-size:14.5px; line-height:1.9; }
+.rv-card footer{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-top:auto;
+  padding-top:10px; border-top:1px dashed var(--border); }
+.rv-who{ display:flex; flex-direction:column; min-width:0; }
+.rv-who small{ font-size:12px; color:var(--muted); }
+.rv-card footer .btn{ width:auto; }
+@media (max-width:620px){ .rv-sum{ grid-template-columns:1fr; } }
+/* صفحة الرأي العامة */
+.rvp-rate{ margin:0; padding:0; border:0; min-width:0; }
+.rvp-rate legend{ padding:0; margin-bottom:6px; font-size:13.5px; color:var(--muted); }
+.rvp-stars{ display:flex; flex-direction:row-reverse; justify-content:flex-end; gap:6px; }
+.rvp-stars input{ position:absolute; opacity:0; pointer-events:none; }
+.rvp-stars label{ font-size:44px; line-height:1; color:#D9D2C3; cursor:pointer; transition:color .12s, transform .12s var(--ease); }
+.rvp-stars label:hover, .rvp-stars label:hover ~ label,
+.rvp-stars input:checked ~ label{ color:#E0A12B; }
+.rvp-stars label:hover{ transform:scale(1.1); }
+.rvp-stars input:focus-visible + label{ outline:3px solid var(--focus); outline-offset:3px; border-radius:6px; }
+.rvp-stars .sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.pt-form .rvp-consent{ flex-direction:row; align-items:flex-start; gap:8px; color:var(--ink); line-height:1.7; font-size:14px; }
+.pt-form .rvp-consent input{ margin-top:5px; width:18px; height:18px; flex:none; padding:0; }
+.rvp-more{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:16px; }
+.rvp-edit{ font-size:14px; color:var(--muted); }
+/* أرباح البرامج */
+.pf-kpis{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:18px; }
+.pf-kpi{ display:flex; flex-direction:column; gap:2px; padding:14px 16px; background:var(--panel); border:1px solid var(--border);
+  border-radius:16px; box-shadow:var(--sh-1); }
+.pf-kpi small{ font-size:12.5px; color:var(--muted); }
+.pf-kpi b{ font-size:24px; font-variant-numeric:tabular-nums; color:var(--ink); }
+.pf-kpi span{ font-size:12px; color:var(--muted); }
+.pf-kpi.gain{ border-color:#BFE0CB; } .pf-kpi.gain b{ color:#1E6B4A; }
+.pf-kpi.loss{ border-color:#F0C4BC; } .pf-kpi.loss b{ color:#B23A3A; }
+.pf-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap:14px; }
+.pf-card{ display:flex; flex-direction:column; gap:12px; padding:14px 16px; background:var(--panel); border:1px solid var(--border);
+  border-radius:18px; box-shadow:var(--sh-1); scroll-margin-top:calc(var(--tb-h, 64px) + 12px); }
+.pf-card.nocost{ border-style:dashed; }
+.pf-card header{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.pf-name{ min-width:0; display:flex; flex-direction:column; gap:3px; }
+.pf-name b{ font-size:15.5px; }
+.pf-name small{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); }
+.pf-name small .ico{ width:13px; height:13px; }
+.pf-tag{ flex:none; display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:99px; font-size:12.5px; font-weight:700;
+  font-variant-numeric:tabular-nums; }
+.pf-tag .ico{ width:13px; height:13px; }
+.pf-tag.gain{ background:#E6F3EC; color:#1E6B4A; } .pf-tag.loss{ background:#FBE4E0; color:#B23A3A; }
+.pf-tag.loss .ico{ transform:scaleY(-1); }
+.pf-tag.none{ background:var(--soft); color:var(--muted); font-weight:600; }
+.pf-nums{ display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px; margin:0; }
+.pf-nums div{ display:flex; flex-direction:column; padding:7px 8px; border-radius:10px; background:var(--soft); min-width:0; }
+.pf-nums dt{ font-size:11px; color:var(--muted); }
+.pf-nums dd{ margin:0; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; }
+.pf-bar{ position:relative; display:flex; flex-direction:column; gap:4px; }
+.pf-bar::before{ content:""; display:block; height:8px; border-radius:4px; background:#CFE8DA; }
+.pf-bar .c{ position:absolute; top:0; inset-inline-start:0; height:8px; width:var(--w); max-width:100%; border-radius:4px; background:var(--bronze); }
+.pf-bar small{ font-size:11.5px; color:var(--muted); }
+.pf-parts{ display:flex; flex-wrap:wrap; gap:6px 12px; margin:0; font-size:12.5px; color:var(--muted); }
+.pf-parts b{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-edit summary{ cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:13.5px; font-weight:600; color:var(--bronze); }
+.pf-form{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px 12px; margin-top:10px; }
+.pf-form label{ display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--ink); }
+.pf-form label small{ color:var(--muted); }
+.pf-form input{ font:inherit; font-size:15px; padding:8px 10px; border-radius:10px; border:1px solid var(--border);
+  background:var(--panel); color:var(--ink); }
+.pf-form .off-bar{ grid-column:1 / -1; }
+@media (max-width:820px){ .pf-kpis{ grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+@media (max-width:480px){ .pf-nums{ grid-template-columns:repeat(3, minmax(0, 1fr)); } }
+.pf-nums .neg, .pf-kpi .neg{ color:#B23A3A; }
+.rvp-main{ margin-top:0; padding-top:22px; }

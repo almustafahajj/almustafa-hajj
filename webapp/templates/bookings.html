@@ -27,7 +27,7 @@
       <li>{{ ic('briefcase') }} {{ x.prog }}{% if x.dep %} <small>· {{ x.dep }}</small>{% endif %}</li>
       <li>{{ ic('users') }} {{ x.count }} {{ 'شخص' if x.count == 1 else 'أشخاص' }}{% if x.room %} · {{ ic('bed') }} {{ x.room }}{% if x.rprice %} <small>({{ x.rprice }} درهم للفرد)</small>{% endif %}{% endif %}</li>
       {% if x.note %}<li class="bk-note">{{ ic('pen') }} {{ x.note }}</li>{% endif %}
-      <li class="muted">{{ ic('clock') }} {{ x.ago }}{% if x.by %} · {{ x.by }}{% endif %}</li>
+      <li class="muted">{{ ic('clock') }} {{ x.ago }}{% if x.src_lbl %} · <span class="bk-src">{{ ic('globe') }} من {{ x.src_lbl }}</span>{% endif %}{% if x.by %} · {{ x.by }}{% endif %}</li>
     </ul>
     <footer>
       {% if x.wa %}<a class="btn wa-btn sm" href="{{ x.wa }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>{% endif %}
@@ -53,6 +53,87 @@
 <div class="empty-state"><span class="es-ic">{{ ic('send') }}</span><b>لا طلبات هنا</b>
   <span>انشر برامجك في الصفحة العامة وشارك رابطها في وسائل التواصل — تصل الطلبات هنا.</span></div>
 {% endif %}
+
+<section class="panel bk-share" id="share">
+  <h3>{{ ic('link') }} روابط المشاركة</h3>
+  <p class="muted">رابط الصفحة كلها أو رابط برنامج بعينه — كلٌّ يظهر في واتساب بصورة وعنوان خاصّين به.
+    اختر أين ستنشر الرابط ليُعرف مصدر الزيارات والطلبات.</p>
+  <label class="sh-srcpick">{{ ic('globe') }} أين ستنشر الرابط؟
+    <select id="shSrc"><option value="">بلا مصدر</option>{% for k, l in sources %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select></label>
+  <ul class="sh-list" id="shList">
+    {% for l in share_links %}
+    <li class="sh-row{{ ' all' if l.all }}" data-url="{{ l.url }}">
+      <div class="sh-who"><b>{{ l.name }}</b><small>{{ l.label }}{% if l.dep %} · {{ l.dep }}{% endif %}</small></div>
+      <code class="sh-url" dir="ltr">{{ l.url }}</code>
+      <div class="sh-act">
+        <button type="button" class="btn ghost sm sh-copy">{{ ic('copy') }} نسخ</button>
+        <a class="btn wa-btn sm sh-wa" href="https://wa.me/?text={{ l.url|urlencode }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if share_links|length == 1 %}<p class="muted">لا برامج منشورة بعد — اخترها من «الصفحة العامة للبرامج»{% if not is_admin %} (للمدير){% endif %}.</p>{% endif %}
+</section>
+<script>
+(function(){
+  var sel=document.getElementById('shSrc'), list=document.getElementById('shList'); if(!sel||!list) return;
+  function url(row){var u=row.dataset.url;return sel.value?u+(u.indexOf('?')<0?'?':'&')+'src='+sel.value:u;}
+  function paint(){list.querySelectorAll('.sh-row').forEach(function(row){var u=url(row);
+    row.querySelector('.sh-url').textContent=u;row.querySelector('.sh-wa').href='https://wa.me/?text='+encodeURIComponent(u);});}
+  sel.addEventListener('change',paint);
+  list.addEventListener('click',function(e){var b=e.target.closest('.sh-copy');if(!b)return;
+    var u=url(b.closest('.sh-row'));
+    (navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(function(){
+      var t=b.lastChild.textContent;b.lastChild.textContent=' نُسخ ✓';setTimeout(function(){b.lastChild.textContent=t;},1600);},
+      function(){window.prompt('انسخ الرابط:',u);});});
+})();
+</script>
+
+<section class="panel bk-stats" id="stats">
+  <header class="bs-head">
+    <h3>{{ ic('chart') }} من أين تأتي الطلبات؟</h3>
+    <nav class="pay-chips" aria-label="المدّة">
+      {% for v, lbl in [('7', 'أسبوع'), ('30', 'شهر'), ('90', '3 أشهر'), ('all', 'الكل')] %}
+      <a class="chip{{ ' on' if per == v }}" href="{{ url_for('bookings', show=show, per=v) }}#stats">{{ lbl }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+  <div class="bs-kpis">
+    <div><b>{{ bstats.visits }}</b><small>زيارة للصفحة</small></div>
+    <div><b>{{ bstats.reqs }}</b><small>طلب حجز</small></div>
+    <div><b>{{ bstats.conv }}</b><small>صار سجلّاً</small></div>
+    <div><b>{{ (100 * bstats.reqs / bstats.visits)|round|int if bstats.visits else '—' }}{{ '%' if bstats.visits }}</b><small>من الزوّار طلبوا</small></div>
+  </div>
+  {% if bstats.srcs %}
+  <div class="bs-wrap">
+  <table class="bs-table">
+    <thead><tr><th>المصدر</th><th>الزيارات</th><th>الطلبات</th><th>نسبة الطلب</th><th>صار سجلّاً</th></tr></thead>
+    <tbody>
+      {% for r in bstats.srcs %}
+      <tr>
+        <th scope="row">{{ r.label }}</th>
+        <td><span class="bs-bar v" style="--w:{{ r.w_v }}%"></span><b>{{ r.visits }}</b></td>
+        <td><span class="bs-bar" style="--w:{{ r.w_r }}%"></span><b>{{ r.reqs }}</b></td>
+        <td>{{ r.rate ~ '%' if r.rate is not none else '—' }}</td>
+        <td>{{ r.conv }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">لا زيارات ولا طلبات في هذه المدّة بعد.</p>{% endif %}
+  {% if bstats.progs %}
+  <h4 class="bs-sub">{{ ic('trend') }} البرامج الأكثر طلباً</h4>
+  <ul class="bs-progs">
+    {% for p in bstats.progs %}
+    <li><span class="bs-pn">{{ p.name }}</span>
+      <span class="bs-track"><span class="bs-bar" style="--w:{{ p.w }}%"></span></span>
+      <span class="bs-pv"><b>{{ p.reqs }}</b> طلب · {{ p.people }} {{ 'شخص' if p.people == 1 else 'أشخاص' }}{% if p.conv %} · {{ p.conv }} سجلّ{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <p class="hint-note">الزيارة تُعدّ مرّة في اليوم لكل جهاز، ولا تُعدّ زيارات الموظفين المسجّلين ولا برامج معاينة الروابط.</p>
+</section>
 
 {% if is_admin %}
 <section class="panel bk-pub" id="publish">
