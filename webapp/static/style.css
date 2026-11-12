@@ -1869,6 +1869,10 @@ body.pub-trips{ background:var(--bg); }
              linear-gradient(160deg, #0B3F30 0%, #13795B 70%, #1C8E6C 100%); }
 .pt-hero::before{ content:""; position:absolute; inset:0; z-index:-1; background:var(--pat-white) 0 0 / 84px 84px; opacity:.85; }
 .pt-in, .pt-main{ width:min(1120px, 100%); margin:0 auto; padding-inline:max(16px, env(safe-area-inset-left, 0px)); }
+.pt-kicker{ display:inline-flex; align-items:center; gap:7px; margin-top:24px; padding:5px 14px; border-radius:99px;
+  font-size:14.5px; font-weight:700; color:#FCE7B0; background:rgba(255,255,255,.12); border:1px solid rgba(252,231,176,.35); }
+.pt-kicker .ico{ width:16px; height:16px; }
+.pt-kicker + h1{ margin-top:12px; }
 .pt-hero h1{ margin:26px 0 10px; font-size:clamp(28px, 5vw, 44px); line-height:1.25; font-weight:700; text-wrap:balance; }
 .pt-hero p{ margin:0; max-width:620px; font-size:16.5px; line-height:1.9; opacity:.9; }
 .pt-cta{ display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }

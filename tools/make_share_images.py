@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """يولّد صور معاينة الروابط (Open Graph) التي تظهر في واتساب وغيره عند إرسال
-رابط «برامج العمرة والحج» أو رابط «رحلتي» للعملاء: مشهد الكعبة والمآذن وقت
-الفجر مع شعار المصطفى ونصّ عربي.
+رابط صفحة البرامج أو رابط «رحلتي» للعملاء: مشهد الكعبة والمآذن وقت الفجر مع
+شعار المصطفى. og-base.jpg خلفية بلا نصّ يكتب عليها الخادم عنوان البرامج المنشورة
+(webapp/share_image.py)، وtrip-og.jpg جاهزة لرابط «رحلتي».
 
 التشغيل (مرّة عند تغيير التصميم — الصور الناتجة تُحفظ في webapp/static/share):
     python tools/make_share_images.py
@@ -10,10 +11,8 @@ import math
 import os
 import random
 
-import arabic_reshaper
-from bidi.algorithm import get_display
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTS = os.path.join(ROOT, "hajj_app", "assets", "fonts")
@@ -27,23 +26,11 @@ GOLD = (242, 201, 106)
 CREAM = (252, 231, 176)
 
 VARIANTS = {
-    "trips": {"title": "برامج العمرة والحج",
-              "sub": "رحلتك إلى الحرمين تبدأ من هنا",
-              "feat": "طيران  ·  فنادق قريبة من الحرم  ·  سيارة خاصة",
-              "cta": "احجز مقعدك الآن"},
     "trip": {"title": "رحلتي",
              "sub": "تفاصيل رحلتك إلى الحرمين في رابط واحد",
              "feat": "الطيران  ·  الفنادق  ·  المرشد  ·  الطوارئ",
              "cta": "افتح تفاصيل رحلتك"},
 }
-
-
-def ar(text):
-    return get_display(arabic_reshaper.reshape(text))
-
-
-def font(name, size):
-    return ImageFont.truetype(os.path.join(FONTS, name), size * S)
 
 
 def lerp(a, b, t):
@@ -216,13 +203,6 @@ def kaaba(img, cx, by, rnd):
     dots(front)
 
 
-def text_r(d, xr, y, s, f, fill):
-    t = ar(s)
-    w = d.textlength(t, font=f)
-    d.text((xr - w, y), t, font=f, fill=fill)
-    return w
-
-
 def logo_card(img, x, y, w, h):
     card = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     cd = ImageDraw.Draw(card)
@@ -239,8 +219,8 @@ def logo_card(img, x, y, w, h):
     img.paste(logo, (x + (w - logo.width) // 2, y + (h - logo.height) // 2), logo)
 
 
-def make(kind):
-    v = VARIANTS[kind]
+def scene():
+    """المشهد بلا نصوص (بضعف الحجم): السماء والنقش والهلال والحرم والكعبة والظلّ والشعار."""
     rnd = random.Random(7)
     arr = sky()
     glow(arr, 420 * S, 470 * S, 470 * S, GOLD, 0.42)
@@ -255,28 +235,31 @@ def make(kind):
     arr = np.asarray(img, dtype=np.float32).copy()
     right_shade(arr)
     img = to_img(arr)
-    # الشعار ثم النصوص (يمين — RTL)
     xr = 1150 * S
     logo_card(img, xr - 250 * S, 38 * S, 250 * S, 196 * S)
-    d = ImageDraw.Draw(img)
-    text_r(d, xr, 248 * S, v["title"], font("Amiri-Bold.ttf", 62), (255, 255, 255))
-    text_r(d, xr, 348 * S, v["sub"], font("Amiri-Regular.ttf", 31), CREAM)
-    text_r(d, xr, 406 * S, v["feat"], font("Amiri-Regular.ttf", 24), (214, 232, 222))
-    f = font("Amiri-Bold.ttf", 27)
-    t = ar(v["cta"])
-    tw = d.textlength(t, font=f)
-    pw, ph = tw + 64 * S, 60 * S
-    px0, py0 = xr - pw, 482 * S
-    d.rounded_rectangle((px0, py0, xr, py0 + ph), ph // 2, fill=GOLD)
-    d.text((px0 + 32 * S, py0 + 6 * S), t, font=f, fill=INK)
-    out = img.resize((W // S, H // S), Image.LANCZOS)
+    return img
+
+
+def save(img, name, quality):
     os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, f"{kind}-og.jpg")
-    out.save(path, "JPEG", quality=86, optimize=True, progressive=True)
+    path = os.path.join(OUT, name)
+    img.resize((W // S, H // S), Image.LANCZOS).save(path, "JPEG", quality=quality, optimize=True, progressive=True)
     return path
 
 
+def main():
+    import sys
+    sys.path.insert(0, ROOT)
+    from webapp import share_image
+    base = scene()
+    # الخلفية: يكتب الخادم عليها عنوان البرامج المنشورة (برامج عمرة رمضان…)
+    yield save(base, "og-base.jpg", 93)
+    for kind, v in VARIANTS.items():
+        img = base.copy()
+        share_image.draw_text(img, v["title"], v["sub"], v["feat"], v["cta"], k=S)
+        yield save(img, f"{kind}-og.jpg", 86)
+
+
 if __name__ == "__main__":
-    for k in VARIANTS:
-        p = make(k)
+    for p in main():
         print(p, os.path.getsize(p) // 1024, "KB")

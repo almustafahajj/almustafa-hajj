@@ -8,7 +8,8 @@ import re
 import sys
 import tempfile
 from datetime import date, timedelta
-from urllib.parse import unquote
+from html import unescape
+from urllib.parse import unquote, urlsplit
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -162,13 +163,43 @@ for s_ in ("FZ 811", "09:45", "11:50", "FZ 812", "13:10", "17:05", "إقلاع",
 assert "سيارة خاصة" in card1 and "فلاي دبي" in card1 and "يبدأ من" not in pub
 assert "wa.me/971549964801" in pub, "واتساب «راسلنا» على الرقم الافتراضي"
 # معاينة الرابط (واتساب): صورة مطلقة الرابط بمقاسها، وأيقونة الشعار
-og = re.search(r'<meta property="og:image" content="([^"]+)">', pub).group(1)
-assert og.startswith("http") and "/static/share/trips-og.jpg" in og, og
+og = unescape(re.search(r'<meta property="og:image" content="([^"]+)">', pub).group(1))
+assert og.startswith("http") and "/trips/og.jpg?v=" in og, og
 assert 'og:image:width" content="1200"' in pub and 'twitter:card" content="summary_large_image"' in pub
 assert 'rel="icon"' in pub and "icons/icon-192.png" in pub
-im = anon.get("/static/share/trips-og.jpg")
-assert im.status_code == 200 and im.data[:3] == b"\xff\xd8\xff" and len(im.data) < 300_000, "صورة JPEG خفيفة"
+im = anon.get(urlsplit(og).path, query_string=urlsplit(og).query)
+assert im.status_code == 200 and im.mimetype == "image/jpeg" and im.data[:3] == b"\xff\xd8\xff"
+assert len(im.data) < 300_000, "صورة JPEG خفيفة"
 im.close()
+# العنوان حسب البرامج المنشورة (هنا عمرة فقط): في العنوان والمعاينة وأعلى الصفحة
+lbl = server._progs_label(server._all_public_programs()[0])
+assert lbl.startswith("برامج عمرة ") or lbl == "برامج العمرة", lbl
+assert f"<title>{lbl} — " in pub and f'og:title" content="{lbl} — ' in pub
+assert lbl in pub.split('class="pt-kicker"')[1][:400] and "برامج العمرة والحج" not in pub
+one = anon.get("/trips", query_string={"p": "umrah:U1"}).get_data(as_text=True)
+assert re.search(r"<title>برنامج (عمرة \S+|العمرة) «عمرة قريبة» — ", one), "رابط برنامج واحد"
+og1 = unescape(re.search(r'<meta property="og:image" content="([^"]+)">', one).group(1))
+assert "p=umrah:U1" in unquote(og1) and og1 != og
+assert anon.get(urlsplit(og1).path, query_string=urlsplit(og1).query).status_code == 200
+assert anon.get("/trips/og.jpg", query_string={"p": "umrah:لا-يوجد"}).status_code == 200, "رمز خاطئ ← صورة الكلّ"
+# قاعدة التسمية: الشهر أو رمضان، والحج، والمفرد
+U, HJ = app_mode.UMRAH, app_mode.HAJJ
+
+
+def P_(m, d=None, r=False):
+    return {"mode": m, "d0": d, "ramadan": r}
+
+
+L = server._progs_label
+assert L([P_(U, date(2026, 12, 4)), P_(U, date(2026, 12, 20))]) == "برامج عمرة ديسمبر"
+assert L([P_(U, date(2027, 1, 9)), P_(U, date(2026, 12, 4))]) == "برامج عمرة ديسمبر ويناير"
+assert L([P_(U, date(2027, 2, 12), True), P_(U, date(2027, 2, 25), True)]) == "برامج عمرة رمضان"
+assert L([P_(U, date(2026, 12, 4)), P_(U, date(2027, 1, 9)), P_(U, date(2027, 3, 1))]) == "برامج العمرة"
+assert L([P_(HJ, date(2027, 5, 10)), P_(HJ, date(2027, 5, 12))]) == "برامج الحج"
+assert L([P_(U, date(2027, 2, 12), True), P_(HJ, date(2027, 5, 10))]) == "برامج عمرة رمضان والحج"
+assert L([P_(U, date(2026, 12, 4))]) == "برنامج عمرة ديسمبر" and L([]) == "برامج العمرة والحج"
+assert server._hijri_month(date(2026, 2, 18)) == 9 and server._hijri_month(date(2026, 2, 16)) == 8
+assert server._hijri_month(date(2027, 2, 20)) == 9 and server._hijri_month(date(2026, 12, 4)) == 6
 pk = anon.get("/trips", query_string={"p": "umrah:U1", "r": "ثنائي"}).get_data(as_text=True)
 assert '<option value="ثنائي" selected>ثنائي — 5,900 درهم للفرد</option>' in pk, "الغرفة المختارة من البطاقة"
 assert '<option value="مفرد"' not in pk.split('id="ptRoom"')[1].split("</select>")[0]

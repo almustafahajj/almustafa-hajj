@@ -1459,7 +1459,7 @@ def backup_restore():
 _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
              "forgot", "reset_password", "session_status", "session_ping",
-             "verify_doc", "person_page", "public_trips", "public_trip_request"}
+             "verify_doc", "person_page", "public_trips", "public_trip_request", "trips_og"}
 
 
 _PW_FREE = _2FA_FREE | {"account_password", "session_ping", "healthz"}
@@ -1986,7 +1986,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-12 · معاينة الروابط بشعار المصطفى وصورة الكعبة"
+_BUILD_TAG = "2026-11-12 · عنوان البرامج حسب نوعها وموسمها"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -3104,13 +3104,14 @@ def _public_programs(mode: str, settings, today) -> list:
                 "flight": str(flight or "").strip(), "dep": str(t_dep or "").strip(),
                 "arr": str(t_arr or "").strip()}
 
-    def card(key, name, d0, d1, out_leg, ret_leg, **kw):
+    def card(key, name, d0, d1, out_leg, ret_leg, ramadan=False, **kw):
         legs = [leg("الذهاب", "takeoff", d0, *out_leg)]
         if d1 or any(str(x or "").strip() for x in ret_leg):
             legs.append(leg("العودة", "landing", d1, *ret_leg))
         return {"mode": mode, "key": key, "name": name, "d0": d0,
                 "dep": _day_txt(d0, today) if d0 else "يُحدَّد لاحقاً", "legs": legs,
                 "nights": _nights_txt((d1 - d0).days) if d0 and d1 and d1 > d0 else "",
+                "ramadan": bool(ramadan or (d0 and _hijri_month(d0) == 9)),
                 "left": cfg["seats"].get(key), **kw}
     if mode == app_mode.UMRAH:
         from hajj_app import umrah
@@ -3130,6 +3131,7 @@ def _public_programs(mode: str, settings, today) -> list:
                     ("moon", "المدينة المنورة", t.madinah_hotel, _nights_txt(t.madinah_nights) if t.madinah_nights else ""))
                     if h[2]],
                 car=("car", "سيارة خاصة"),
+                ramadan="رمضان" in f"{t.package} {t.name}",
                 prices=prices([t.price_single, t.price_double, t.price_triple, t.price_quad])))
     else:
         from hajj_app import programs as hp
@@ -3149,6 +3151,51 @@ def _public_programs(mode: str, settings, today) -> list:
                 car=("bus", "باص") if bus else ("car", "سيارة خاصة"),
                 prices=prices([pr.cost_single, pr.cost_double, pr.cost_triple, pr.cost_quad])))
     return out
+
+
+def _hijri_month(d) -> int:
+    """الشهر الهجري لتاريخ ميلادي (التقويم الهجري الجدولي — يكفي لمعرفة رمضان؛
+    وأسماء البرامج/الباقات التي فيها «رمضان» تُحتسب رمضانية أيضاً)."""
+    import math
+    epoch = 1948439.5
+    jd = d.toordinal() + 1721424.5
+
+    def to_jd(y, m):
+        return 1 + math.ceil(29.5 * (m - 1)) + (y - 1) * 354 + (3 + 11 * y) // 30 + epoch - 1
+    y = int((30 * (jd - epoch) + 10646) // 10631)
+    return min(12, math.ceil((jd - (29 + to_jd(y, 1))) / 29.5) + 1)
+
+
+def _progs_label(progs) -> str:
+    """عنوان مجموعة برامج: «برامج عمرة رمضان»، «برامج عمرة ديسمبر ويناير»،
+    «برامج الحج»، «برامج عمرة رمضان والحج»… (والمفرد «برنامج» لبرنامج واحد)."""
+    head = "برنامج" if len(progs) == 1 else "برامج"
+    um = sorted((p for p in progs if p.get("mode") == app_mode.UMRAH),
+                key=lambda p: (p.get("d0") is None, p.get("d0") or datetime.max.date()))
+    hj = [p for p in progs if p.get("mode") == app_mode.HAJJ]
+    if not um and not hj:
+        return "برامج العمرة والحج"
+    parts = []
+    if um:
+        quals = []
+        for p in um:
+            q = "رمضان" if p.get("ramadan") else (_AR_MONTHS[p["d0"].month - 1] if p.get("d0") else "")
+            if q and q not in quals:
+                quals.append(q)
+        parts.append("عمرة " + " و".join(quals) if 1 <= len(quals) <= 2 else "العمرة")
+    if hj:
+        parts.append("الحج")
+    return f"{head} " + " و".join(parts)
+
+
+def _trips_og_text(progs, prog=None) -> tuple:
+    """نصوص صورة المعاينة: (العنوان، السطر الثاني، المزايا، الزرّ)."""
+    sel = [prog] if prog else progs
+    car = any(p.get("mode") == app_mode.UMRAH for p in sel) or not sel
+    return (_progs_label(sel),
+            prog["name"] if prog else "رحلتك إلى الحرمين تبدأ من هنا",
+            "طيران  ·  فنادق قريبة من الحرم  ·  " + ("سيارة خاصة" if car else "نقل ومرشدون"),
+            "احجز مقعدك الآن")
 
 
 def _all_public_programs() -> tuple:
@@ -3230,11 +3277,32 @@ def public_trips():
     wa = _wa.wa_link(wa_num, "السلام عليكم، أرغب بالاستفسار عن برامجكم") or ""
     pick = request.args.get("p", "")
     pick_prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == pick), None)
+    og = _trips_og_text(progs, pick_prog)
+    kinds = {x["mode"] for x in progs}
+    noun = ("عمرة وحج" if len(kinds) != 1 else "عمرة" if app_mode.UMRAH in kinds else "حج")
     return render_template("public_trips.html", progs=progs, intro=intro, co=co, wa=wa,
+                           label=_progs_label(progs), og_title=og[0], og_sub=og[1] if pick_prog else "",
+                           og_img=url_for("trips_og", p=pick if pick_prog else None,
+                                          v=hashlib.sha1("|".join(og).encode("utf-8")).hexdigest()[:8],
+                                          _external=True),
+                           noun=noun,
                            rooms=_BOOK_ROOMS, sent=request.args.get("sent"),
                            err=request.args.get("err", ""), pick=pick,
                            room_opts=(pick_prog or {}).get("prices") or [(r, "") for r in _BOOK_ROOMS],
                            pick_room=request.args.get("r", ""))
+
+
+@app.get("/trips/og.jpg")
+def trips_og():
+    """صورة معاينة رابط صفحة البرامج: الكعبة والشعار وعنوان البرامج المنشورة
+    (أو البرنامج المختار بـ ?p=)."""
+    from webapp import share_image
+    progs = _all_public_programs()[0]
+    key = request.args.get("p", "")
+    prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == key), None)
+    data = share_image.render(*_trips_og_text(progs, prog))
+    resp = send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=3600)
+    return resp
 
 
 @app.post("/trips/request")

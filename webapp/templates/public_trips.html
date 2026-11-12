@@ -3,33 +3,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#13795B">
-<meta name="description" content="برامج العمرة والحج القادمة مع {{ co.name_ar }} — التواريخ والفنادق والأسعار، واحجز مقعدك بخطوة.">
-{# معاينة الرابط في واتساب وغيره: صورة الكعبة مع شعار المصطفى (tools/make_share_images.py) #}
-{% set og_img = url_for('static', filename='share/trips-og.jpg', _external=True) ~ '?v=1' %}
+<meta name="description" content="{{ label }} مع {{ co.name_ar }} — التواريخ ومواعيد الرحلات والفنادق والأسعار، واحجز مقعدك بخطوة.">
+{# معاينة الرابط في واتساب وغيره: صورة الكعبة مع شعار المصطفى وعنوان البرامج المنشورة
+   («برامج عمرة رمضان»، «برامج الحج»…) — تُرسم في الخادم (webapp/share_image.py) #}
+{% set og_full = og_title ~ (' «' ~ og_sub ~ '»' if og_sub else '') ~ ' — ' ~ co.name_ar %}
 <meta property="og:type" content="website">
 <meta property="og:locale" content="ar_AE">
 <meta property="og:site_name" content="{{ co.name_ar }}">
-<meta property="og:url" content="{{ url_for('public_trips', _external=True) }}">
-<meta property="og:title" content="برامج العمرة والحج — {{ co.name_ar }}">
+<meta property="og:url" content="{{ url_for('public_trips', p=pick if og_sub else None, _external=True) }}">
+<meta property="og:title" content="{{ og_full }}">
 <meta property="og:description" content="اختر برنامجك واحجز مقعدك — طيران وفنادق قريبة من الحرم وسيارة خاصة، ونتواصل معك خلال وقت قصير.">
 <meta property="og:image" content="{{ og_img }}">
 <meta property="og:image:secure_url" content="{{ og_img }}">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="الكعبة المشرّفة وشعار المصطفى للحج والعمرة — برامج العمرة والحج">
+<meta property="og:image:alt" content="الكعبة المشرّفة وشعار المصطفى للحج والعمرة — {{ og_title }}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="{{ og_img }}">
 <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
-<title>برامج العمرة والحج — {{ co.name_ar }}</title>
+<title>{{ og_full }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head><body class="mode-umrah trip-body pub-trips">
 <header class="pt-hero">
   <div class="pt-in">
     <div class="tp-brand"><img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt=""><span>{{ co.name_ar }}</span></div>
+    <span class="pt-kicker">{{ ic('kaaba' if noun == 'حج' else 'moon') }} {{ label }}</span>
     <h1>رحلتك إلى الحرمين تبدأ من هنا</h1>
-    <p>{{ intro or 'برامج عمرة وحج منظّمة بعناية: طيران، فنادق قريبة من الحرم، نقل ومرشدون — اختر برنامجك واحجز مقعدك، ونتواصل معك.' }}</p>
+    <p>{{ intro or 'برامج ' ~ noun ~ ' منظّمة بعناية: طيران، فنادق قريبة من الحرم، نقل ومرشدون — اختر برنامجك واحجز مقعدك، ونتواصل معك.' }}</p>
     <div class="pt-cta">
       <a class="pt-btn" href="#programs">تصفّح البرامج</a>
       {% if wa %}<a class="pt-btn ghost" href="{{ wa }}" target="_blank" rel="noopener">{{ ic('chat') }} راسلنا واتساب</a>{% endif %}
