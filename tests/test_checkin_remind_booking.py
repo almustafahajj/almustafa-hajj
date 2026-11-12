@@ -179,6 +179,12 @@ lbl = server._progs_label(server._all_public_programs()[0])
 assert lbl.startswith("برامج عمرة ") or lbl == "برامج العمرة", lbl
 assert f"<title>{lbl} — " in pub and f'og:title" content="{lbl} — ' in pub
 assert lbl in pub.split('class="pt-kicker"')[1][:400] and "برامج العمرة والحج" not in pub
+# الرابط المنسوخ من البورتال يحمل رمز المعاينة (يتغيّر بتغيّرها فيجلب واتساب الصورة من جديد)
+cp = unescape(re.search(r'id="bkCopy" data-url="([^"]+)"', c.get("/bookings").get_data(as_text=True)).group(1))
+assert "/trips?v=" in cp and cp.split("v=")[1] == og.split("v=")[1], (cp, og)
+assert f'og:url" content="{cp}"' in pub, "og:url = الرابط المنسوخ نفسه"
+_ps = server._all_public_programs()[0]
+assert server._trips_share_v(_ps) != server._trips_share_v(_ps[:1]), "يتغيّر الرمز بتغيّر البرامج"
 one = anon.get("/trips", query_string={"p": "umrah:U1"}).get_data(as_text=True)
 assert re.search(r"<title>برنامج (عمرة \S+|العمرة) «عمرة قريبة» — ", one), "رابط برنامج واحد"
 og1 = unescape(re.search(r'<meta property="og:image" content="([^"]+)">', one).group(1))
