@@ -521,7 +521,77 @@ def login():
                 _finish_login(hs, username, mode, remember)
                 return redirect(url_for("dashboard"))
     return render_template("login.html", error=error, modes=_MODE_CHOICES,
-                           selected_mode=mode)
+                           selected_mode=mode, sky=_makkah_sky())
+
+
+_SKY_LABEL = {"dawn": "وقت الفجر", "day": "نهار", "sunset": "وقت الغروب", "night": "ليل"}
+
+
+def _makkah_sky(now=None) -> dict:
+    """مرحلة السماء في مكة الآن (فجر/نهار/غروب/ليل) وموضع الشمس أو القمر على قوسهما —
+    من مواقيت اليوم بتقويم أمّ القرى؛ ويحدّثها sky.js في المتصفّح كل نصف دقيقة."""
+    import math
+    from webapp import prayer
+    now = now or datetime.now(timezone(timedelta(hours=3)))
+    try:
+        _n, lat, lng = prayer.CITIES["makkah"]
+        t = [int(x[:2]) * 60 + int(x[3:5]) for x in prayer.times(now.date(), lat, lng)]
+    except Exception:                              # noqa: BLE001
+        t = [300, 380, 735, 945, 1090, 1180]
+    fajr, rise, maghrib = t[0], t[1], t[4]
+    cur = now.hour * 60 + now.minute
+    if fajr <= cur < rise + 25:
+        phase = "dawn"
+    elif rise + 25 <= cur < maghrib - 40:
+        phase = "day"
+    elif maghrib - 40 <= cur < maghrib + 25:
+        phase = "sunset"
+    else:
+        phase = "night"
+    if phase == "night":
+        span = (fajr + 1440 - maghrib) % 1440 or 600
+        f = ((cur - maghrib) % 1440) / span
+    else:
+        f = (cur - rise) / max(1, maghrib - rise)
+    f = max(0.0, min(1.0, f))
+    return {"phase": phase, "fajr": fajr, "sunrise": rise, "maghrib": maghrib,
+            "x": round(86 - 72 * f, 1), "y": round(74 - 60 * math.sin(math.pi * f), 1),
+            "clock": f"{now.hour:02d}:{now.minute:02d}", "label": _SKY_LABEL[phase]}
+
+
+# ---- صفحات الخطأ: عربية بمشهد سماء مكة بدل صفحات الإنجليزية الافتراضية ----
+_ERR_TXT = {
+    400: ("الطلب غير مكتمل", "وصلنا طلب ناقص أو غير صالح — ارجع للصفحة السابقة وأعد المحاولة."),
+    403: ("لا تملك صلاحية لهذه الصفحة", "إن كنت تحتاجها فاطلب الصلاحية من مدير النظام."),
+    404: ("هذه الصفحة غير موجودة", "ربما تغيّر الرابط أو كُتب بشكل خاطئ — جرّب من الصفحة الرئيسية."),
+    405: ("لا يمكن فتح هذه الصفحة بهذه الطريقة", "ارجع للصفحة السابقة واستعمل الزرّ المخصّص."),
+    413: ("الملف أكبر من المسموح", "صغّر حجم الملف أو قسّمه ثم أعد الرفع."),
+    429: ("طلبات كثيرة في وقت قصير", "انتظر قليلاً ثم أعد المحاولة."),
+    500: ("حدث خطأ غير متوقّع", "سُجّل الخطأ وسنعالجه — أعد المحاولة بعد لحظات، وبياناتك محفوظة."),
+}
+
+
+def _error_page(code: int):
+    title, msg = _ERR_TXT.get(code, _ERR_TXT[500])
+    plain = (request.path.startswith("/static/") or request.is_json
+             or request.headers.get("X-Requested-With")
+             or not (request.accept_mimetypes.accept_html or not request.headers.get("Accept"))
+             or request.path.endswith((".json", ".pdf", ".jpg", ".png", ".xlsx", ".zip", ".csv")))
+    if plain:
+        return title, code
+    try:
+        logged = _sess() is not None
+    except Exception:                              # noqa: BLE001
+        logged = False
+    try:
+        return render_template("error.html", code=code, title=title, msg=msg, logged=logged,
+                               sky=_makkah_sky()), code
+    except Exception:                              # noqa: BLE001
+        return title, code
+
+
+for _code in _ERR_TXT:
+    app.register_error_handler(_code, lambda e, _c=_code: _error_page(_c))
 
 
 @app.route("/login/2fa", methods=["GET", "POST"])
@@ -768,8 +838,11 @@ def dashboard():
     today = now.date()
     trips = _upcoming_trips(records, settings, today)
     s = _sess()
+    _tv_snapshot(records, settings)
+    from webapp import hijri as _hj
+    greet_now = next((dict(o, left=_occ_left(o["days"])) for o in _hj.occasions(today) if o["now"]), None)
     return render_template(
-        "dashboard.html", kpis=kpis, progs=progs, pcards=pcards,
+        "dashboard.html", kpis=kpis, progs=progs, pcards=pcards, greet_now=greet_now,
         season_rings=season_rings, alerts_top=alerts_top, active="dashboard",
         greeting="صباح الخير" if 4 <= now.hour < 12 else "مساء الخير",
         today_txt=f"{_AR_DAYS[now.weekday()]} {now.day} {_AR_MONTHS[now.month - 1]} {now.year}",
@@ -1460,7 +1533,7 @@ _2FA_FREE = {"account_2fa", "logout", "static", "version", "login", "login_2fa",
              "setup", "recover", "switch", "index", "service_worker",
              "forgot", "reset_password", "session_status", "session_ping",
              "verify_doc", "person_page", "public_trips", "public_trip_request", "trips_og",
-             "review_public"}
+             "review_public", "person_card", "public_program", "office_tv", "office_tv_data"}
 
 
 _PW_FREE = _2FA_FREE | {"account_password", "session_ping", "healthz"}
@@ -1987,7 +2060,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-13 · لحظة الدفعة ورفيق الحرم وختم الأصالة"
+_BUILD_TAG = "2026-11-16 · بطاقة المعتمر وصفحة البرنامج وسماء مكة والتهنئة والنظرة السريعة وختام اليوم وشاشة المكتب"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2678,7 +2751,7 @@ def hujjaj():
         rem = remaining_amount(r)
         initial = next((ch for ch in name if ch.isalpha()), "؟")
         rows.append({
-            "idx": i, "name": name,
+            "idx": i, "name": name, "fp": _rec_token(r),
             "name_en": name_en if name_en and name_en != name else "",
             "initial": initial.upper(), "hue": sum(map(ord, name)) % 6,
             "passport": getattr(r, "passport_number", "") or "—",
@@ -2710,6 +2783,7 @@ def hujjaj():
                            qs=qs, qs_nopay=qs_nopay, pay=pay, pay_states=pay_states,
                            grp=grp, need=need,
                            counts=counts, total=total, page=page, pages=pages,
+                           pay_moment=session.pop("pay_moment", None), pay_methods=_PAY_METHODS,
                            offset=offset, **_ctx())
 
 
@@ -3056,26 +3130,70 @@ def person_page(token):
     code = _checkin_code(mode, str(p.get("uid") or ""))
     from markupsafe import Markup
     checkin_qr = Markup(_qr_svg(code)) if code else ""
+    from webapp import cards as _cards
     return render_template("public_person.html", p=p, trip=trip, guide=guide,
+                           card_url=url_for("person_card", token=token, v=f"{_cards.VERSION}.{today.isoformat()}"),
                            checkin_qr=checkin_qr, haram=_haram_data(trip, today),
                            phones=phones, docs=docs, mode=mode,
                            co_name=co.get("name_ar") or "المصطفى للحج والعمرة",
                            noun="الحاج" if mode == app_mode.HAJJ else "المعتمر")
 
 
-# بداية رمضان وبداية شوّال بتقويم أمّ القرى (من UmAlQuraCalendar) — العشاء في
-# رمضان بعد المغرب بساعتين؛ والتقويم الحسابي قد يخالف أمّ القرى بيوم عند أطراف الشهر.
-_UQ_RAMADAN = (("2025-03-01", "2025-03-30"), ("2026-02-18", "2026-03-20"),
-               ("2027-02-08", "2027-03-09"), ("2028-01-28", "2028-02-26"),
-               ("2029-01-16", "2029-02-14"), ("2030-01-05", "2030-02-04"),
-               ("2030-12-26", "2031-01-24"), ("2031-12-15", "2032-01-14"))
+def _person_trip_basic(p, settings) -> tuple:
+    """(اسم الرحلة، المغادرة، العودة) لرابط «رحلتي» — من إعدادات البرنامج الحيّة."""
+    from webapp.alerts import _d
+    name, dep, ret = str(p.get("group") or ""), None, None
+    if p.get("mode") == app_mode.HAJJ:
+        from hajj_app import programs as hp
+        for nm, pr in zip(hp.PROGRAM_NAMES, hp.load_programs(settings)):
+            if nm == p.get("group"):
+                dep, ret = _d(pr.travel_date), _d(pr.return_date)
+    else:
+        from hajj_app import umrah
+        t = next((x for x in umrah.load_trips(settings) if x.code == p.get("group")), None)
+        if t:
+            name, dep, ret = t.name or t.code, _d(t.depart_date), _d(t.return_date)
+    return name, dep, ret
+
+
+@app.get("/p/<token>/card.jpg")
+def person_card(token):
+    """بطاقة المعتمر لحالة الواتساب: «باقي ١٢ يوماً على عمرتي» قبل السفر، ويوم السفر،
+    وأثناء الرحلة، وبعد العودة بطاقة تذكارية باسمه الأول وتاريخ رحلته بالهجري — وعليها
+    رمز يوصل لصفحة البرامج بمصدر «بطاقات المعتمرين» (فتظهر الحجوزات القادمة منها)."""
+    from webapp import cards, hijri, public
+    p = public.get_person(token)
+    if not p:
+        return ("", 404)
+    mode = p.get("mode") if p.get("mode") in app_mode.MODES else app_mode.UMRAH
+    app_mode.set_mode(mode)
+    settings = storage.load_settings()
+    today = datetime.now(_UAE).date()
+    name, dep, ret = _person_trip_basic(p, settings)
+    st = _trip_status(dep, ret, today)
+    state, n, k, total = st["state"], int(st.get("n") or 0), 0, 0
+    if state == "during" and dep == today:
+        state = "today"
+    elif state == "during":
+        k, total = n, int(st.get("total") or 0)
+    elif state == "unknown":
+        state = "soon"
+    when = f"{_AR_DAYS[dep.weekday()]} {_day_txt(dep, today)}" if dep and state == "before" else ""
+    co = settings.get("company") if isinstance(settings.get("company"), dict) else {}
+    data = cards.story(state, "حجّي" if mode == app_mode.HAJJ else "عمرتي", n, name, when,
+                       str(p.get("first") or ""), hijri.month_year(ret or dep) if (ret or dep) else "",
+                       co.get("name_ar") or "المصطفى للحج والعمرة",
+                       url_for("public_trips", src="card", _external=True), k, total)
+    return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=600,
+                     as_attachment=bool(request.args.get("dl")),
+                     download_name=("hajj" if mode == app_mode.HAJJ else "umrah") + "-card.jpg")
 
 
 def _uq_ramadan(d) -> bool:
-    iso = d.isoformat()
-    if _UQ_RAMADAN[0][0] <= iso < _UQ_RAMADAN[-1][1]:
-        return any(a <= iso < b for a, b in _UQ_RAMADAN)
-    return _hijri_month(d) == 9                     # خارج الجدول: التقويم الحسابي
+    """رمضان بتقويم أمّ القرى (webapp/hijri.py) — العشاء فيه بعد المغرب بساعتين؛ والتقويم
+    الحسابي قد يخالف أمّ القرى بيوم عند أطراف الشهر."""
+    from webapp import hijri
+    return hijri.is_ramadan(d)
 
 
 def _haram_data(trip, today):
@@ -3110,7 +3228,8 @@ _PUB_WA_DEFAULT = "00971549964801"
 # مصادر روابط المشاركة (?src=) — لمعرفة أي قناة تجلب الزيارات والطلبات
 _BOOK_SOURCES = (("instagram", "إنستغرام"), ("status", "حالة واتساب"), ("whatsapp", "واتساب"),
                  ("tiktok", "تيك توك"), ("snapchat", "سناب شات"), ("facebook", "فيسبوك"),
-                 ("x", "إكس"), ("google", "جوجل"), ("other", "أخرى"))
+                 ("x", "إكس"), ("google", "جوجل"), ("card", "بطاقات المعتمرين"),
+                 ("other", "أخرى"))
 _SRC_LABEL = dict(_BOOK_SOURCES)
 _VISIT_LOCK = threading.Lock()
 _BOT_RE = re.compile(r"bot|crawl|spider|preview|whatsapp|facebookexternalhit|telegram|slack|discord"
@@ -3231,16 +3350,10 @@ def _public_programs(mode: str, settings, today) -> list:
 
 
 def _hijri_month(d) -> int:
-    """الشهر الهجري لتاريخ ميلادي (التقويم الهجري الجدولي — يكفي لمعرفة رمضان؛
-    وأسماء البرامج/الباقات التي فيها «رمضان» تُحتسب رمضانية أيضاً)."""
-    import math
-    epoch = 1948439.5
-    jd = d.toordinal() + 1721424.5
-
-    def to_jd(y, m):
-        return 1 + math.ceil(29.5 * (m - 1)) + (y - 1) * 354 + (3 + 11 * y) // 30 + epoch - 1
-    y = int((30 * (jd - epoch) + 10646) // 10631)
-    return min(12, math.ceil((jd - (29 + to_jd(y, 1))) / 29.5) + 1)
+    """الشهر الهجري لتاريخ ميلادي (تقويم أمّ القرى — webapp/hijri.py؛ وأسماء
+    البرامج/الباقات التي فيها «رمضان» تُحتسب رمضانية أيضاً)."""
+    from webapp import hijri
+    return hijri.to_hijri(d)[1]
 
 
 def _progs_label(progs) -> str:
@@ -3370,6 +3483,8 @@ def public_trips():
     src = _src_of(request)
     resp = make_response(render_template(
         "public_trips.html", progs=shown, intro=intro, co=co, wa=wa, src=src,
+        prog_urls={f"{x['mode']}:{x['key']}": url_for("public_program", mode=x["mode"], key=x["key"],
+                                                      src=src or None) for x in progs},
         pick_key=pick if pick_prog else "", reviews=_public_reviews(),
         label=_progs_label(progs), og_title=og[0], og_sub=og[1] if pick_prog else "",
         og_img=url_for("trips_og", p=pick if pick_prog else None, v=share_v, _external=True),
@@ -3378,7 +3493,12 @@ def public_trips():
         err=request.args.get("err", ""), pick=pick,
         room_opts=(pick_prog or {}).get("prices") or [(r, "") for r in _BOOK_ROOMS],
         pick_room=request.args.get("r", "")))
-    # المصدر يبقى مع الزائر 30 يوماً، والزيارة تُعدّ مرّة في اليوم لكل متصفّح (لا الروبوتات ولا الموظفين)
+    return _track_visit(resp, src)
+
+
+def _track_visit(resp, src):
+    """المصدر يبقى مع الزائر 30 يوماً، والزيارة تُعدّ مرّة في اليوم لكل متصفّح (لا الروبوتات
+    ولا الموظفين) — لصفحة البرامج وصفحات البرامج المفردة."""
     if request.args.get("src") in _SRC_LABEL:
         resp.set_cookie("pt_src", request.args["src"], max_age=30 * 86400, samesite="Lax",
                         secure=request.is_secure, httponly=True)
@@ -3389,6 +3509,76 @@ def public_trips():
         resp.set_cookie("pt_seen", seen, max_age=86400, samesite="Lax", secure=request.is_secure,
                         httponly=True)
     return resp
+
+
+# مواقع الخريطة (خطّ الطول، العرض) — مدن المغادرة في الإمارات ومدن الحرمين
+_MAP_UAE = (("دبي", "دبي", 55.30, 25.26), ("الشارقة", "الشارقة", 55.42, 25.35),
+            ("العين", "العين", 55.76, 24.21), ("", "أبوظبي", 54.37, 24.45))
+_MAP_LAND = ((35.0, 29.5), (35.6, 28.0), (36.6, 26.0), (37.6, 24.6), (38.6, 23.0), (39.1, 21.7),
+             (39.9, 20.0), (41.0, 18.2), (42.4, 16.4), (42.8, 14.6), (43.4, 12.7), (44.6, 12.7),
+             (46.5, 13.4), (48.6, 14.0), (50.2, 14.9), (52.2, 15.6), (53.6, 16.6), (55.2, 17.5),
+             (56.6, 18.2), (57.8, 19.1), (58.5, 20.4), (59.8, 22.4), (59.0, 22.9), (58.4, 23.6),
+             (57.4, 23.9), (56.4, 24.6), (56.3, 25.6), (56.4, 26.3), (56.0, 26.1), (55.6, 25.6),
+             (55.0, 25.0), (54.4, 24.3), (53.6, 24.1), (52.5, 24.2), (51.6, 24.3), (51.3, 24.6),
+             (51.6, 25.3), (51.5, 26.1), (51.1, 26.1), (50.8, 25.4), (50.5, 25.9), (50.1, 26.5),
+             (49.6, 27.1), (48.8, 27.7), (48.4, 28.5), (47.9, 29.6), (47.7, 30.1), (47.4, 30.0),
+             (46.5, 29.1), (44.7, 29.2), (42.0, 31.1), (39.2, 32.2), (37.0, 31.5), (36.0, 30.5))
+
+
+def _route_map(city: str, madinah: bool) -> dict:
+    """خريطة مبسّطة لجزيرة العرب ومسار الرحلة: الطائرة من مدينة المغادرة إلى مكة،
+    والطريق البرّي بين مكة والمدينة (إن كان في البرنامج فندق بالمدينة)."""
+    def xy(lon, lat):
+        return round((lon - 34) * 18, 1), round((32.6 - lat) * 18, 1)
+    c = str(city or "")
+    key, label, lon, lat = next(x for x in _MAP_UAE if x[0] and x[0] in c or not x[0])
+    ux, uy = xy(lon, lat)
+    mx, my = xy(39.83, 21.42)
+    dx, dy = xy(39.61, 24.47)
+    land = "M" + " L".join(f"{x},{y}" for x, y in (xy(a, b) for a, b in _MAP_LAND)) + " Z"
+    cx, cy = (ux + mx) / 2, min(uy, my) - 34             # قوس الطيران شمالاً
+    return {"land": land, "uae": (ux, uy), "uae_label": c.strip() or label, "makkah": (mx, my),
+            "madinah": (dx, dy) if madinah else None,
+            "flight": f"M{ux},{uy} Q{cx:.1f},{cy:.1f} {mx},{my}",
+            "road": f"M{mx},{my} Q{mx + 30:.1f},{(my + dy) / 2:.1f} {dx},{dy}" if madinah else ""}
+
+
+def _price_num(v) -> float:
+    try:
+        return float(str(v or "").replace(",", "").strip())
+    except ValueError:
+        return 0.0
+
+
+@app.get("/trips/<mode>/<key>")
+def public_program(mode, key):
+    """صفحة خاصة لبرنامج واحد منشور: مسار الرحلة على الخريطة بطائرة تطير من الإمارات
+    إلى مكة، والليالي والفنادق، والأسعار حسب الغرفة، وزرّ «احجز» ثابت أسفل الشاشة."""
+    from hajj_app import whatsapp as _wa
+    progs, intro, co, wa_num = _all_public_programs()
+    co = {**{"name_ar": "المصطفى للحج والعمرة"}, **{k: v for k, v in co.items() if v}}
+    prog = next((x for x in progs if x["mode"] == mode and x["key"] == key), None)
+    if prog is None:
+        return render_template("public_program.html", prog=None, co=co,
+                               trips_url=url_for("public_trips")), 404
+    pkey = f"{mode}:{key}"
+    src = _src_of(request)
+    wa = _wa.wa_link(wa_num, f"السلام عليكم، أرغب بالاستفسار عن «{prog['name']}»") or ""
+    og = _trips_og_text(progs, prog)
+    share_v = _trips_share_v(progs, prog)
+    prices = [(r, p) for r, p in (prog.get("prices") or [])]
+    low = min((_price_num(p) for _r, p in prices if _price_num(p) > 0), default=0)
+    madinah = any(h[0] == "moon" for h in prog.get("hotels") or [])
+    resp = make_response(render_template(
+        "public_program.html", prog=prog, co=co, wa=wa, src=src, pkey=pkey,
+        reviews=_public_reviews(3), rmap=_route_map(prog.get("city"), madinah),
+        low=format_amount(low) if low else "", prices=prices, rooms=_BOOK_ROOMS,
+        og_title=og[0], og_sub=prog["name"],
+        og_img=url_for("trips_og", p=pkey, v=share_v, _external=True),
+        share_url=url_for("public_program", mode=mode, key=key, v=share_v, _external=True),
+        trips_url=url_for("public_trips", src=src or None), sent=request.args.get("sent"),
+        err=request.args.get("err", ""), pick_room=request.args.get("r", "")))
+    return _track_visit(resp, src)
 
 
 @app.get("/trips/og.jpg")
@@ -3421,6 +3611,8 @@ def public_trip_request():
     key = (f.get("program") or "").strip()
     progs = _all_public_programs()[0]
     prog = next((x for x in progs if f"{x['mode']}:{x['key']}" == key), None)
+    if prog and f.get("back") == "prog":                # من صفحة البرنامج: نعود إليها
+        back = url_for("public_program", mode=prog["mode"], key=prog["key"])
     name = " ".join((f.get("name") or "").split())[:80]
     phone = re.sub(r"[^\d+]", "", (f.get("phone") or "").translate(
         str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")))[:16]
@@ -3434,6 +3626,9 @@ def public_trip_request():
     err = ("اختر البرنامج" if not prog else "اكتب الاسم الكامل" if len(name) < 5
            else "اكتب رقم هاتف صحيحاً" if len(re.sub(r"\D", "", phone)) < 8 else "")
     if err:
+        if prog and f.get("back") == "prog":
+            return redirect(url_for("public_program", mode=prog["mode"], key=prog["key"], err=err,
+                                    r=room, src=_src_of(request) or None) + "#book")
         return redirect(url_for("public_trips", err=err, p=key, r=room, src=_src_of(request) or None)
                         + "#book")
     _BOOK_HITS[ip] = hits + [now]
@@ -3547,7 +3742,8 @@ def _share_links() -> list:
     for p in progs:
         key = f"{p['mode']}:{p['key']}"
         out.append({"name": p["name"], "label": _progs_label([p]), "dep": p["dep"], "all": False,
-                    "url": url_for("public_trips", p=key, v=_trips_share_v(progs, p), _external=True)})
+                    "url": url_for("public_program", mode=p["mode"], key=p["key"],
+                                   v=_trips_share_v(progs, p), _external=True)})
     return out
 
 
@@ -3792,6 +3988,7 @@ def checkin_page():
                        "time": str(ck.get(stage, "") or "")[-5:],
                        "tel": re.sub(r"[^\d+]", "", str(r.phone or ""))})
     present = sum(1 for p in people if p["time"])
+    _tv_snapshot(records)
     return render_template("checkin.html", active="checkin", stages=_CHECK_STAGES,
                            stage=stage, groups=groups, grp=grp, people=people,
                            grp_label=dict(groups).get(grp, grp),
@@ -3839,6 +4036,7 @@ def checkin_mark():
             rec.checkins[stage] = datetime.now(_UAE).strftime("%Y-%m-%d %H:%M")
         if undo or not already:
             storage.save_records(records, session=s)
+            _tv_snapshot(records)
             if undo:
                 _audit("إلغاء تسجيل حضور", f"{name} — {stage}")
         scope = _checkin_scope(records, grp)
@@ -7908,6 +8106,368 @@ def finance():
                            pay_moment=session.pop("pay_moment", None), **_ctx())
 
 
+# ======================= (٨) نظرة سريعة على المعتمر =======================
+@app.get("/hujjaj/<int:idx>/peek")
+def hujjaj_peek(idx):
+    """لوحة جانبية تنزلق من قائمة السجلّات: الصورة والجواز والغرفة والسداد وأزرار
+    الاتصال والواتساب وتسجيل دفعة — دون مغادرة القائمة (جزء HTML يُجلب بالمتصفّح)."""
+    s = _sess()
+    if s is None:
+        return ("انتهت الجلسة — ادخل من جديد", 401)
+    from hajj_app import images as imgmod
+    from hajj_app import whatsapp as _wa
+    from webapp.alerts import _d
+    records = _load_records()
+    j = _resolve_idx(records, idx, request.args.get("fp", ""))
+    if j is None:
+        return ("تغيّر الكشف منذ فتح الصفحة — حدّثها ثم أعد المحاولة.", 409)
+    r = records[j]
+    fp = _rec_token(r)
+    name = r.full_name_ar or r.full_name_en or r.passport_number or "—"
+    iid = getattr(r, "image_id", "") or ""
+    photo = (url_for("record_image_view", idx=j, kind=imgmod.PHOTO, fp=fp)
+             if iid and imgmod.has_image(iid, imgmod.PHOTO) else "")
+    pass_img = (url_for("record_image_view", idx=j, kind=imgmod.PASSPORT, fp=fp)
+                if iid and imgmod.has_image(iid, imgmod.PASSPORT) else "")
+    today = datetime.now(_UAE).date()
+    exp = _d(r.expiry_date)
+    exp_left = (exp - today).days if exp else None
+    value = stats._amount(r.program_value)
+    rem = remaining_amount(r)
+    paid = max(0.0, value - rem) if value > 0 else stats._amount(r.paid_amount)
+    settings = storage.load_settings()
+    cc = str(settings.get("whatsapp_cc") or "971")
+    first = (name.split() or [""])[0]
+    try:
+        wa = _wa.wa_link(r.phone, f"السلام عليكم {first}، معك المصطفى للحج والعمرة.", cc) if r.phone else ""
+    except Exception:                              # noqa: BLE001
+        wa = ""
+    room = " · ".join(x for x in (str(r.room_type or "").strip(),
+                                   f"غرفة {r.room_number}" if str(r.room_number or "").strip() else "",
+                                   f"مكة {r.makkah_room}" if str(r.makkah_room or "").strip() else "",
+                                   f"المدينة {r.madinah_room}" if str(r.madinah_room or "").strip() else "") if x)
+    pays = list(reversed(_payment_rows(r, value)))[:3]
+    st = str(r.status or "").strip()
+    return render_template(
+        "_peek.html", r=r, idx=j, fp=fp, name=name, photo=photo, pass_img=pass_img,
+        initial=next((ch for ch in name if ch.isalpha()), "؟"), hue=sum(map(ord, name)) % 6,
+        group=str(getattr(r, _group_attr(), "") or ""), group_label="البرنامج" if _mode() == app_mode.HAJJ else "الرحلة",
+        exp=exp.isoformat() if exp else "", exp_left=exp_left, room=room,
+        value=format_amount(value) if value > 0 else "", paid=format_amount(paid) or "0",
+        rem=format_amount(rem) or "0", pct=max(0, min(100, round(100 * paid / value))) if value > 0 else 0,
+        pays=pays, wa=wa, tel=re.sub(r"[^\d+]", "", str(r.phone or "")), status=st,
+        status_cls=_STATUS_CLS.get(st, ""), can_edit=s.can_edit, pay_methods=_PAY_METHODS,
+        ret=request.args.get("ret") or url_for("hujjaj"))
+
+
+# ======================= (٧) بطاقات تهنئة المواسم =======================
+def _company_card() -> tuple:
+    """اسم الشركة وهاتفها لبطاقات التهنئة."""
+    co = storage.load_settings().get("company")
+    co = co if isinstance(co, dict) else {}
+    return (str(co.get("name_ar") or "المصطفى للحج والعمرة"), str(co.get("phone") or "").strip())
+
+
+def _occ_left(n: int) -> str:
+    """«اليوم» / «غداً» / «بعد يومين» / «بعد ٥ أيام» / «جارٍ الآن» لموعد مناسبة."""
+    if n < 0:
+        return "جارٍ الآن"
+    return ("اليوم" if n == 0 else "غداً" if n == 1 else "بعد يومين" if n == 2
+            else f"بعد {n} {_days_unit(n)}")
+
+
+_GREET_MSG = {"ramadan": "رمضان كريم 🌙 أعاده الله علينا وعليكم بالخير واليُمن والبركات.",
+              "fitr": "عيد فطر مبارك 🌙 تقبّل الله منّا ومنكم صالح الأعمال.",
+              "arafah": "في يوم عرفة، خير الدعاء — تقبّل الله منّا ومنكم صالح الأعمال.",
+              "adha": "عيد أضحى مبارك 🐑 كل عام وأنتم بخير، وحجّاً مبروراً لضيوف الرحمن.",
+              "newyear": "عام هجري سعيد ✨ أعاده الله علينا وعليكم باليُمن والبركات."}
+
+
+@app.get("/greetings")
+def greetings_page():
+    """بطاقات التهنئة بالمناسبات القادمة (رمضان، العيدان، عرفة، رأس السنة الهجرية) بشعار
+    الشركة ورقمها — تُنزَّل أو تُشارك للعملاء بضغطة."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from webapp import cards, hijri
+    today = datetime.now(_UAE).date()
+    name, _phone = _company_card()
+    items = []
+    for o in hijri.occasions(today):
+        title, line, _k = cards.GREET[o["key"]]
+        img = url_for("greeting_img", key=o["key"], y=o["hy"], v=cards.VERSION)
+        items.append(dict(o, title=title, line=line, img=img,
+                          when=_day_txt(o["date"], today), hdate=hijri.fmt(o["date"]),
+                          left=_occ_left(o["days"]),
+                          msg=f"{_GREET_MSG[o['key']]}\n— {name}"))
+    pick = request.args.get("o", "")
+    if pick:
+        items.sort(key=lambda x: x["key"] != pick)
+    return render_template("greetings.html", active="greetings", items=items, pick=pick,
+                           hy=hijri.to_hijri(today)[0], **_ctx())
+
+
+@app.get("/greetings/<key>.jpg")
+def greeting_img(key):
+    if _sess() is None:
+        return ("", 401)
+    from webapp import cards, hijri
+    if key not in cards.GREET:
+        return ("", 404)
+    try:
+        y = int(request.args.get("y") or 0)
+    except ValueError:
+        y = 0
+    y = y if 1440 <= y <= 1500 else hijri.to_hijri(datetime.now(_UAE).date())[0]
+    name, phone = _company_card()
+    data = cards.greeting(key, y, name, phone)
+    return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=3600,
+                     as_attachment=bool(request.args.get("dl")), download_name=f"greeting-{key}-{y}.jpg")
+
+
+# ======================= (٩) بطاقة ختام اليوم =======================
+def _pays_txt(n: int) -> str:
+    return ("لا دفعات" if not n else "دفعة واحدة" if n == 1 else "دفعتان" if n == 2
+            else f"{n} دفعات" if n <= 10 else f"{n} دفعة")
+
+
+def _day_summary(today) -> dict:
+    """حصيلة اليوم بلا أسماء: المحصّل وعدد الدفعات، طلبات الحجز الجديدة، تسجيلات الحضور،
+    المتأخّرون عن السداد، وأقرب رحلة."""
+    from webapp import hijri
+    records = _load_records()
+    settings = storage.load_settings()
+    iso = today.isoformat()
+    paid, n = 0.0, 0
+    for r in records:
+        for p in getattr(r, "payments", None) or []:
+            if isinstance(p, dict) and str(p.get("date") or "")[:10] == iso:
+                a = stats._amount(p.get("amount"))
+                if a > 0:
+                    paid += a
+                    n += 1
+    stages: dict = {}
+    for r in records:
+        for stg, when in (r.checkins if isinstance(r.checkins, dict) else {}).items():
+            if str(when or "").startswith(iso):
+                stages[stg] = stages.get(stg, 0) + 1
+    books = sum(1 for x in _book_load() if str(x.get("ts") or "")[:10] == iso)
+    late = len(stats.outstanding(records))
+    trip = next(iter(_upcoming_trips(records, settings, today, 1)), None)
+    top = max(stages.items(), key=lambda kv: kv[1])[0] if stages else ""
+    when = ""
+    if trip:
+        when = ("تنطلق اليوم" if trip["state"] == "today" else
+                f"جارية — العودة بعد {trip['days']} {trip['unit']}" if trip["state"] == "now"
+                else f"بعد {trip['days']} {trip['unit']}")
+    now = datetime.now(_UAE)
+    return {"title_date": f"{_AR_DAYS[today.weekday()]} {today.day} {_AR_MONTHS[today.month - 1]} {today.year}",
+            "hijri": hijri.fmt(today), "mode_label": f"نظام {_noun_mode()}",
+            "paid": format_amount(paid) or "0", "pays_txt": _pays_txt(n), "n": n,
+            "tiles": [("الدفعات", n, ""), ("طلبات الحجز", books, "جديدة اليوم"),
+                      ("تسجيلات الحضور", sum(stages.values()), top), ("المتأخّرون", late, "عن السداد")],
+            "books": books, "checkins": sum(stages.values()), "late": late,
+            "trip_name": trip["label"] if trip else "", "trip_when": when,
+            "stamp": f"بورتال المصطفى · {now:%H:%M}"}
+
+
+def _noun_mode() -> str:
+    return "الحج" if _mode() == app_mode.HAJJ else "العمرة"
+
+
+@app.get("/day-card")
+def day_card_page():
+    """بطاقة ختام اليوم للمدير: صورة بشعار الشركة فيها حصيلة اليوم تُرسل له على الواتساب."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if not s.is_admin:
+        return redirect(url_for("dashboard"))
+    from urllib.parse import quote as _q
+    from webapp import cards
+    today = datetime.now(_UAE).date()
+    d = _day_summary(today)
+    lines = [f"ختام اليوم — {d['title_date']}", f"المحصّل: {d['paid']} درهم ({d['pays_txt']})",
+             f"طلبات الحجز الجديدة: {d['books']}", f"تسجيلات الحضور: {d['checkins']}",
+             f"المتأخّرون عن السداد: {d['late']}"]
+    if d["trip_name"]:
+        lines.append(f"أقرب رحلة: {d['trip_name']} — {d['trip_when']}")
+    text = "\n".join(lines)
+    return render_template("day_card.html", active="daycard", d=d, text=text,
+                           img=url_for("day_card_img", v=f"{cards.VERSION}.{datetime.now(_UAE):%H%M%S}"),
+                           wa_text="https://wa.me/?text=" + _q(text), **_ctx())
+
+
+@app.get("/day-card.jpg")
+def day_card_img():
+    s = _sess()
+    if s is None or not s.is_admin:
+        return ("", 403)
+    from webapp import cards
+    today = datetime.now(_UAE).date()
+    data = cards.day_card(_day_summary(today))
+    return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=0,
+                     as_attachment=bool(request.args.get("dl")), download_name=f"day-{today.isoformat()}.jpg")
+
+
+# ======================= (١٠) شاشة المكتب =======================
+_TV_LOCK = threading.Lock()
+
+
+def _tv_path(name: str):
+    from hajj_app.paths import data_dir
+    return data_dir() / name
+
+
+def _tv_cfg() -> dict:
+    import json as _json
+    try:
+        d = _json.loads(_tv_path("office_screen.json").read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:                              # noqa: BLE001
+        return {}
+
+
+def _tv_write(name: str, data) -> None:
+    import json as _json
+    p = _tv_path(name)
+    tmp = p.with_suffix(".tmp")
+    try:
+        tmp.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, p)
+    except OSError:
+        pass
+
+
+def _tv_snapshot(records=None, settings=None) -> None:
+    """لقطة لشاشة المكتب بلا أسماء ولا مبالغ: الرحلات القادمة بأعدادها، وحضور اليوم لكل
+    برنامج ومرحلة. الكشف مشفّر بمفتاح الجلسة، فتُكتب اللقطة حين يعمل الموظفون في البورتال."""
+    if not _tv_cfg().get("token"):
+        return
+    try:
+        records = records if records is not None else _load_records()
+        settings = settings if settings is not None else storage.load_settings()
+        today = datetime.now(_UAE).date()
+        tl = _trip_list(records, settings)
+        trips = [{"label": t["label"], "dep": t["depart"].isoformat(), "dep_txt": t["depart_txt"],
+                  "ret_txt": t["ret_txt"], "n": t["n"], "cap": t["cap"], "state": t["state"],
+                  "days": t["days"], "unit": t["unit"], "pct": t["pct"]}
+                 for t in _upcoming_trips(records, settings, today, 6)]
+        if _mode() == app_mode.UMRAH:
+            from hajj_app import umrah
+            labels = {x.code: f"{x.code} {x.name or ''}".strip() for x in umrah.load_trips(settings)}
+        else:
+            labels = {t["label"]: t["label"] for t in tl}
+        dep_today = {t["label"] for t in tl if t["depart"] == today}
+        ret_today = {t["label"] for t in tl if t["ret"] == today}
+        gattr, iso = _group_attr(), today.isoformat()
+        att: dict = {}
+        for r in records:
+            if str(getattr(r, "status", "") or "").strip() == "ملغى":
+                continue
+            g = str(getattr(r, gattr, "") or "").strip()
+            if not g:
+                continue
+            ck = r.checkins if isinstance(r.checkins, dict) else {}
+            for stg in _CHECK_STAGES:
+                row = att.setdefault((g, stg), [0, 0])
+                row[1] += 1
+                if str(ck.get(stg, "") or "").startswith(iso):
+                    row[0] += 1
+        checkins = []
+        for (g, stg), (present, total) in att.items():
+            lab = labels.get(g, g)
+            if present or (stg == _CHECK_STAGES[0] and lab in dep_today) or (stg == "العودة" and lab in ret_today):
+                checkins.append({"label": lab, "stage": stg, "present": present, "total": total})
+        checkins.sort(key=lambda x: (x["label"], _CHECK_STAGES.index(x["stage"])))
+        data = {"mode": _mode(), "noun": _noun_mode(), "day": iso, "trips": trips, "checkins": checkins,
+                "ts": datetime.now(_UAE).replace(microsecond=0).isoformat()}
+        with _TV_LOCK:
+            _tv_write(f"office_tv_{_mode()}.json", data)
+    except Exception:                              # noqa: BLE001
+        pass
+
+
+def _tv_ok(token: str) -> bool:
+    tok = str(_tv_cfg().get("token") or "")
+    return bool(tok) and hmac.compare_digest(str(token or "").encode("utf-8"), tok.encode("utf-8"))
+
+
+@app.route("/office-screen", methods=["GET", "POST"])
+def office_screen():
+    """شاشة المكتب (للمدير): رابط سرّي يُفتح على تلفزيون المكتب فيعرض بالتناوب الساعة
+    والتاريخ الهجري والرحلات القادمة وآراء المعتمرين وحضور المطار — بلا أسماء ولا مبالغ."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    if request.method == "POST":
+        action = request.form.get("action")
+        cfg = _tv_cfg()
+        if action in ("on", "rotate"):
+            cfg["token"] = secrets.token_urlsafe(18)
+            cfg["since"] = datetime.now(_UAE).replace(microsecond=0).isoformat()
+            session["acc_msg"] = ("شُغّلت شاشة المكتب — افتح الرابط على التلفزيون." if action == "on"
+                                  else "أُنشئ رابط جديد — الرابط القديم لم يعد يعمل.")
+            _audit("شاشة المكتب", "تشغيل" if action == "on" else "رابط جديد")
+        elif action == "off":
+            cfg["token"] = ""
+            session["acc_msg"] = "أُوقفت شاشة المكتب — الرابط لم يعد يعمل."
+            _audit("شاشة المكتب", "إيقاف")
+        with _TV_LOCK:
+            _tv_write("office_screen.json", cfg)
+        _tv_snapshot()
+        return redirect(url_for("office_screen"))
+    _tv_snapshot()
+    tok = str(_tv_cfg().get("token") or "")
+    url = url_for("office_tv", token=tok, _external=True) if tok else ""
+    from markupsafe import Markup
+    return render_template("office_screen.html", active="officetv", url=url,
+                           qr=Markup(_qr_svg(url, 5)) if url else "",
+                           msg=session.pop("acc_msg", None), **_ctx())
+
+
+@app.get("/tv/<token>")
+def office_tv(token):
+    if not _tv_ok(token):
+        return _error_page(404)
+    name, _phone = _company_card()
+    return render_template("tv.html", co_name=name, sky=_makkah_sky(),
+                           data_url=url_for("office_tv_data", token=token))
+
+
+@app.get("/tv/<token>/data.json")
+def office_tv_data(token):
+    """بيانات شاشة المكتب (تُجلب كل دقيقتين): من لقطتَي النظامين + آراء منشورة بلا أسماء
+    + مواقيت مكة اليوم."""
+    import json as _json
+    from webapp import prayer
+    if not _tv_ok(token):
+        return {"ok": False}, 404
+    trips, checkins, stamp = [], [], ""
+    for m in app_mode.MODES:
+        try:
+            snap = _json.loads(_tv_path(f"office_tv_{m}.json").read_text(encoding="utf-8"))
+        except Exception:                          # noqa: BLE001
+            continue
+        for t in snap.get("trips") or []:
+            trips.append(dict(t, noun=snap.get("noun", "")))
+        if snap.get("day") == datetime.now(_UAE).date().isoformat():
+            checkins += snap.get("checkins") or []
+        stamp = max(stamp, str(snap.get("ts") or ""))
+    rank = {"now": 0, "today": 1, "soon": 2}
+    trips.sort(key=lambda t: (rank.get(t.get("state"), 3), t.get("dep") or ""))
+    mk = datetime.now(timezone(timedelta(hours=3))).date()
+    _n, lat, lng = prayer.CITIES["makkah"]
+    revs = [{"stars": r["stars"], "comment": r["comment"], "kind": r["kind"], "when": r["when"]}
+            for r in _public_reviews(10) if r.get("comment")]
+    resp = make_response({"ok": True, "trips": trips[:6], "checkins": checkins, "reviews": revs,
+                          "prayer": {"names": list(prayer.NAMES),
+                                     "times": prayer.times(mk, lat, lng, ramadan=_uq_ramadan(mk))},
+                          "updated": stamp})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.post("/finance/<int:idx>/pay")
 def finance_pay(idx):
     if _sess() is None:
@@ -7917,9 +8477,14 @@ def finance_pay(idx):
     from hajj_app.fields import parse_amount, format_amount as _fmt, sync_paid_amount
     records = _load_records()
     back_edit = request.form.get("back") == "edit"
+    back_list = request.form.get("back") == "list"
+    ret = str(request.form.get("ret") or "")
+    if not (ret.startswith("/hujjaj") and "//" not in ret and "\\" not in ret):
+        ret = url_for("hujjaj")
     j = _resolve_idx(records, idx, request.form.get("fp", ""))
     if j is None:                                  # تغيّر الكشف منذ فتح الصفحة
-        return redirect(url_for("hujjaj", msg="stale") if back_edit else url_for("finance", msg="stale"))
+        return redirect(url_for("hujjaj", msg="stale") if back_edit or back_list
+                        else url_for("finance", msg="stale"))
     idx = j
     if 0 <= idx < len(records):
         amt = parse_amount(request.form.get("amount"))
@@ -7949,6 +8514,8 @@ def finance_pay(idx):
                 pass
     if back_edit and 0 <= idx < len(records):
         return redirect(url_for("hujjaj_edit", idx=idx, fp=_rec_token(records[idx])) + "#payments")
+    if back_list:
+        return redirect(ret)
     return redirect(url_for("finance"))
 
 

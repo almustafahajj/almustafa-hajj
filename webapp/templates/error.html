@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0B3F30">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<title>{{ title }} — المصطفى للحج والعمرة</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head><body class="mode-umrah err-body">
+{% include "_sky.html" %}
+<main class="err-page">
+  <section class="err-card" role="alert">
+    <img class="err-logo" src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="المصطفى للحج والعمرة">
+    <span class="err-code" dir="ltr">{{ code }}</span>
+    <h1>{{ title }}</h1>
+    <p>{{ msg }}</p>
+    <div class="err-acts">
+      {% if logged %}
+      <a class="pt-btn" href="{{ url_for('dashboard') }}">{{ ic('grid') }} لوحة التحكم</a>
+      {% else %}
+      <a class="pt-btn" href="{{ url_for('public_trips') }}">{{ ic('calendar') }} برامجنا</a>
+      <a class="pt-btn ghost" href="{{ url_for('login') }}">{{ ic('user') }} دخول الموظفين</a>
+      {% endif %}
+      <button type="button" class="pt-btn ghost" onclick="history.length > 1 ? history.back() : location.assign('/')">{{ ic('arrow-right') }} رجوع</button>
+    </div>
+  </section>
+</main>
+</body></html>

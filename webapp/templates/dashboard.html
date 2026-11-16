@@ -57,8 +57,19 @@
     <a class="dh-act" href="{{ url_for('hujjaj_scan') }}">{{ ic('camera') }} قراءة جواز</a>{% endif %}
     <a class="dh-act" href="{{ url_for('finance') }}">{{ ic('wallet') }} التحصيل</a>
     <a class="dh-act" href="{{ url_for('reports') }}">{{ ic('chart') }} التقارير</a>
+    {% if is_admin %}<a class="dh-act" href="{{ url_for('day_card_page') }}">{{ ic('image') }} ختام اليوم</a>{% endif %}
   </nav>
 </section>
+
+{# مناسبة قريبة (رمضان، العيدان، عرفة، رأس السنة): بطاقة تهنئة جاهزة بشعار الشركة #}
+{% if greet_now %}
+<a class="gr-banner" href="{{ url_for('greetings_page', o=greet_now.key) }}">
+  <span class="gr-b-ic">{{ ic('gift') }}</span>
+  <span class="gr-b-t"><b>{{ greet_now.name }} {{ greet_now.left }}</b>
+    <small>بطاقة تهنئة جاهزة بشعارك ورقمك — شاركها مع عملائك بضغطة</small></span>
+  <span class="gr-b-go">اصنع البطاقة {{ ic('arrow-left') }}</span>
+</a>
+{% endif %}
 
 <div class="kpis">
   {% for k in kpis %}

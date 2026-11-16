@@ -1,0 +1,37 @@
+{# سماء مكة الآن: فجر أو نهار أو غروب أو ليل بالنجوم والقمر — المرحلة تُحسب في الخادم من
+   مواقيت مكة (أمّ القرى) ويحدّثها sky.js كل دقيقة. خلفية زخرفية فقط (aria-hidden). #}
+<div class="sky sky-{{ sky.phase }}" id="sky" data-t='{{ sky|tojson }}' aria-hidden="true">
+  <div class="sky-bg l-night"></div><div class="sky-bg l-dawn"></div>
+  <div class="sky-bg l-day"></div><div class="sky-bg l-sunset"></div>
+  <div class="sky-stars"></div>
+  <div class="sky-orb" id="skyOrb" style="--x:{{ sky.x }}%; --y:{{ sky.y }}%">
+    <span class="sky-sun"></span>
+    <svg class="sky-moon" viewBox="0 0 40 40"><defs><mask id="skyMoonCut"><rect width="40" height="40" fill="#fff"/><circle cx="27" cy="14" r="14" fill="#000"/></mask></defs>
+      <circle cx="20" cy="20" r="15" fill="#FBEFC8" mask="url(#skyMoonCut)"/></svg>
+  </div>
+  <svg class="sky-city" viewBox="0 0 1200 240" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <pattern id="skyArch" width="34" height="40" patternUnits="userSpaceOnUse" x="6">
+        <path d="M8 40V20a9 9 0 0 1 18 0v20z" class="sky-lit"/></pattern>
+    </defs>
+    <g class="sky-sil">
+      {# المآذن #}
+      {% for x, top in [(150, 92), (318, 70), (882, 70), (1050, 92)] %}
+      <path d="M{{ x - 9 }} 196V{{ top + 50 }}h-5v-6h28v6h-5V196z M{{ x - 7 }} {{ top + 44 }}V{{ top + 24 }}h-4v-5h22v5h-4v20z M{{ x - 6 }} {{ top + 19 }}V{{ top + 4 }}l6-10l6 10v15z"/>
+      <path d="M{{ x }} {{ top - 6 }}v-8" stroke-width="2" class="sky-stroke"/>
+      {% endfor %}
+      {# برج الساعة #}
+      <path d="M528 198V128h144v70z M562 128V64h76v64z M578 64V40h44v24z M596 40V14h8v26z"/>
+      <path d="M600 14v-8" stroke-width="2.4" class="sky-stroke"/>
+      <circle cx="600" cy="96" r="22" class="sky-clock"/>
+      <path d="M600 96v-13M600 96l9 5" stroke-width="2.4" stroke-linecap="round" class="sky-hand"/>
+      {# رواق الحرم #}
+      <rect x="0" y="168" width="1200" height="36"/>
+      <rect x="0" y="162" width="1200" height="7" class="sky-cornice"/>
+    </g>
+    <rect x="0" y="174" width="1200" height="26" fill="url(#skyArch)"/>
+    <rect x="0" y="204" width="1200" height="36" class="sky-ground"/>
+  </svg>
+  <div class="sky-now" id="skyNow">{{ ic('kaaba') }} <span>مكة الآن</span> <b dir="ltr" id="skyClock">{{ sky.clock }}</b> <small id="skyLbl">{{ sky.label }}</small></div>
+</div>
+<script src="{{ url_for('static', filename='sky.js') }}?v=1" defer></script>

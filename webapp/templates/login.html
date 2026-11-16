@@ -37,7 +37,8 @@
       </div>
     </form>
   </div>
-  <aside class="ls-brand">
+  <aside class="ls-brand has-sky">
+    {% if sky %}{% include "_sky.html" %}{% endif %}
     <div class="lb-inner">
       <span class="logo-frame"><img class="logo-img" src="{{ url_for('static', filename='logo.png') }}" alt="المصطفى للحج والعمرة"></span>
       <div class="lb-kicker">{{ ic('sparkles') }} بوابة فريق العمل</div>

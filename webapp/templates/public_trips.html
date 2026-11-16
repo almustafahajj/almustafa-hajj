@@ -94,7 +94,10 @@
             </div>
           </fieldset>
           {% else %}<p class="pt-ask">{{ ic('chat') }} السعر عند الطلب</p>{% endif %}
-          <button class="pt-btn sm" type="submit">{{ ic('send') }} {{ 'قائمة الانتظار' if full else 'احجز مقعدك' }}</button>
+          <div class="pt-card-acts">
+            <button class="pt-btn sm" type="submit">{{ ic('send') }} {{ 'قائمة الانتظار' if full else 'احجز مقعدك' }}</button>
+            {% if prog_urls and prog_urls.get(p.mode ~ ':' ~ p.key) %}<a class="pt-more" href="{{ prog_urls[p.mode ~ ':' ~ p.key] }}">تفاصيل البرنامج {{ ic('arrow-left') }}</a>{% endif %}
+          </div>
         </form>
       </article>
       {% endfor %}

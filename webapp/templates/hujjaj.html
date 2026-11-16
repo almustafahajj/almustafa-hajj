@@ -75,7 +75,7 @@
   {% for r in rows %}
     <tr>
       <td class="num">{{ loop.index + offset }}</td>
-      <td><a class="who" href="{{ url_for('hujjaj_edit', idx=r.idx) }}">
+      <td><a class="who" href="{{ url_for('hujjaj_edit', idx=r.idx) }}" data-peek="{{ url_for('hujjaj_peek', idx=r.idx, fp=r.fp) }}">
         <span class="av av{{ r.hue }}" aria-hidden="true">{{ r.initial }}</span>
         <span class="who-t"><b>{{ r.name }}</b>{% if r.name_en %}<small dir="ltr">{{ r.name_en }}</small>{% endif %}
           {% if r.missing %}<small class="miss">ينقص: {{ r.missing|join('، ') }}</small>{% endif %}</span></a></td>
@@ -118,6 +118,67 @@
   {% endfor %}
 </div>
 {% endif %}
+{# نظرة سريعة: الضغط على الاسم يفتح لوحة جانبية بلا مغادرة القائمة (Ctrl/الزرّ الأوسط يفتح الملف كالعادة) #}
+<div class="pk-overlay" id="pkOverlay" hidden>
+  <aside class="pk-drawer" id="pkDrawer" role="dialog" aria-modal="true" aria-label="نظرة سريعة على السجلّ" tabindex="-1">
+    <button type="button" class="pk-close" id="pkClose" aria-label="إغلاق">{{ ic('x') }}</button>
+    <div class="pk-body" id="pkBody" aria-live="polite"></div>
+  </aside>
+</div>
+<script>
+(function(){
+  var ov=document.getElementById('pkOverlay'), body=document.getElementById('pkBody'),
+      drawer=document.getElementById('pkDrawer'), closeBtn=document.getElementById('pkClose');
+  if(!ov) return;
+  document.body.appendChild(ov);                 // فوق الشريطين العلوي والسفلي
+  var prev=null, behind=[], ctl=null;
+  var SKEL='<div class="pk-skel"><i></i><i></i><i></i><i></i></div>';
+  function close(){
+    if(ov.hidden) return;
+    ov.classList.remove('in');
+    behind.forEach(function(el){ el.inert=false; el.removeAttribute('aria-hidden'); }); behind=[];
+    document.documentElement.classList.remove('pm-lock');
+    setTimeout(function(){ ov.hidden=true; body.innerHTML=''; },200);
+    if(ctl){ try{ctl.abort();}catch(e){} ctl=null; }
+    try{ prev && prev.focus(); }catch(e){}
+  }
+  function open(a){
+    prev=a; ov.hidden=false; body.innerHTML=SKEL;
+    requestAnimationFrame(function(){ ov.classList.add('in'); });
+    document.documentElement.classList.add('pm-lock');
+    behind=[].filter.call(document.body.children,function(el){ return el!==ov && el.tagName!=='SCRIPT' && !el.inert; });
+    behind.forEach(function(el){ el.inert=true; el.setAttribute('aria-hidden','true'); });
+    drawer.focus({preventScroll:true});
+    ctl=window.AbortController?new AbortController():null;
+    var url=a.dataset.peek+'&ret='+encodeURIComponent(location.pathname+location.search);
+    fetch(url,{headers:{'X-Requested-With':'fetch'},credentials:'same-origin',signal:ctl&&ctl.signal}).then(function(r){
+      return r.text().then(function(t){ return {ok:r.ok,t:t}; });
+    }).then(function(x){
+      body.innerHTML=x.ok?x.t:'<p class="pk-err">'+x.t.replace(/</g,'&lt;')+'</p>';
+      if(body.querySelector('#pkTitle')) drawer.setAttribute('aria-labelledby','pkTitle');
+    }).catch(function(e){ if(!e||e.name!=='AbortError') body.innerHTML='<p class="pk-err">تعذّر التحميل — تحقّق من الاتصال وأعد المحاولة.</p>'; });
+  }
+  document.addEventListener('click',function(e){
+    var a=e.target.closest&&e.target.closest('a.who[data-peek]');
+    if(!a || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button!==0) return;
+    e.preventDefault(); open(a);
+  });
+  closeBtn.addEventListener('click',close);
+  ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+  document.addEventListener('keydown',function(e){
+    if(ov.hidden) return;
+    if(e.key==='Escape'){ close(); return; }
+    if(e.key==='Tab'){
+      var f=drawer.querySelectorAll('a[href],button:not([disabled]),input,select');
+      if(!f.length) return;
+      var first=f[0], last=f[f.length-1];
+      if(e.shiftKey && (document.activeElement===first || document.activeElement===drawer)){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+    }
+  });
+})();
+</script>
+{% include "_pay_moment.html" %}
 <script>
 /* رأس الجدول يبقى ظاهراً تحت الشريط العلوي عند التمرير */
 (function(){var tb=document.querySelector('.topbar');if(!tb)return;

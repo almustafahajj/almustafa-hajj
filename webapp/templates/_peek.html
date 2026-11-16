@@ -1,0 +1,62 @@
+{# نظرة سريعة على السجلّ — جزء يُحمَّل داخل اللوحة الجانبية في قائمة السجلّات (hujjaj.html) #}
+<header class="pk-head">
+  {% if photo %}<img class="pk-photo" src="{{ photo }}" alt="صورة {{ name }}">
+  {% else %}<span class="pk-photo av av{{ hue }}" aria-hidden="true">{{ initial }}</span>{% endif %}
+  <div class="pk-who">
+    <h2 id="pkTitle">{{ name }}</h2>
+    {% if r.full_name_en and r.full_name_en != name %}<small dir="ltr">{{ r.full_name_en }}</small>{% endif %}
+    <div class="pk-tags">
+      {% if group %}<span class="pk-tag">{{ ic('plane') }} {{ group_label }} {{ group }}</span>{% endif %}
+      {% if status %}<span class="st {{ status_cls }}">{{ status }}</span>{% endif %}
+    </div>
+  </div>
+</header>
+
+<div class="pk-acts">
+  {% if tel %}<a class="pk-act" href="tel:{{ tel }}">{{ ic('phone') }}<span>اتصال</span></a>{% endif %}
+  {% if wa %}<a class="pk-act wa" href="{{ wa }}" target="_blank" rel="noopener">{{ ic('chat') }}<span>واتساب</span></a>{% endif %}
+  <a class="pk-act" href="{{ url_for('hujjaj_edit', idx=idx, fp=fp) }}">{{ ic('pencil') }}<span>فتح الملف</span></a>
+  <a class="pk-act" href="{{ url_for('record_docs', idx=idx) }}">{{ ic('file-text') }}<span>المستندات</span></a>
+</div>
+
+<section class="pk-sec">
+  <h3>{{ ic('wallet') }} السداد</h3>
+  {% if value %}
+  <div class="pk-money">
+    <div><small>القيمة</small><b dir="ltr">{{ value }}</b></div>
+    <div><small>المدفوع</small><b dir="ltr" class="ok">{{ paid }}</b></div>
+    <div><small>المتبقّي</small><b dir="ltr" class="{{ 'due' if rem != '0' else 'ok' }}">{{ rem }}</b></div>
+  </div>
+  <div class="pk-bar" role="img" aria-label="مدفوع {{ pct }}%"><i style="width:{{ pct }}%"></i><span>{{ pct }}%</span></div>
+  {% else %}<p class="muted pk-empty">لم تُحدَّد قيمة البرنامج بعد.</p>{% endif %}
+  {% if pays %}
+  <ol class="pk-pays">
+    {% for p in pays %}<li><b dir="ltr">{{ p.amount }}</b> <span>{{ p.method or '—' }}</span> <small dir="ltr">{{ p.date or '' }}</small></li>{% endfor %}
+  </ol>
+  {% endif %}
+  {% if can_edit %}
+  <form class="pk-pay" method="post" action="{{ url_for('finance_pay', idx=idx) }}">
+    <input type="hidden" name="fp" value="{{ fp }}">
+    <input type="hidden" name="back" value="list">
+    <input type="hidden" name="ret" value="{{ ret }}">
+    <label class="pk-amt"><span class="sr-only">مبلغ الدفعة</span>
+      <input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="مبلغ الدفعة" required></label>
+    <label><span class="sr-only">طريقة الدفع</span>
+      <select name="method">{% for m in pay_methods %}<option>{{ m }}</option>{% endfor %}</select></label>
+    <button class="btn primary sm" type="submit">{{ ic('banknote') }} سجّل الدفعة</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="pk-sec">
+  <h3>{{ ic('id-card') }} الجواز والإقامة</h3>
+  <dl class="pk-rows">
+    <div><dt>رقم الجواز</dt><dd dir="ltr" class="mono">{{ r.passport_number or '—' }}</dd></div>
+    <div><dt>انتهاء الجواز</dt><dd>{% if exp %}<span dir="ltr">{{ exp }}</span>{% if exp_left is not none and exp_left < 180 %} <span class="st {{ 'crit' if exp_left < 0 else 'warn' }}">{{ 'منتهٍ' if exp_left < 0 else 'أقل من ٦ أشهر' }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
+    {% if r.nationality_ar or r.nationality %}<div><dt>الجنسية</dt><dd>{{ r.nationality_ar or r.nationality }}</dd></div>{% endif %}
+    {% if r.birth_date %}<div><dt>الميلاد</dt><dd dir="ltr">{{ r.birth_date }}</dd></div>{% endif %}
+    <div><dt>الغرفة</dt><dd>{{ room or '—' }}</dd></div>
+    {% if r.phone %}<div><dt>الهاتف</dt><dd dir="ltr">{{ r.phone }}</dd></div>{% endif %}
+  </dl>
+  {% if pass_img %}<a class="btn ghost sm pk-pass" href="{{ pass_img }}" target="_blank" rel="noopener">{{ ic('image') }} صورة الجواز</a>{% endif %}
+</section>

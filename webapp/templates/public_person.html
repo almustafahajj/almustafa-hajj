@@ -105,6 +105,25 @@
   <script src="{{ url_for('static', filename='haram.js') }}?v=2" defer></script>
   {% endif %}
 
+  {# بطاقة لحالة الواتساب بشعار المصطفى — تُرسم في الخادم حسب حالة الرحلة اليوم #}
+  {% set after_trip = trip.status.state == 'after' %}
+  <section class="tp-sec tp-story" id="story">
+    <h2>{{ ic('image') }} {{ 'بطاقتك التذكارية' if after_trip else 'شارك فرحتك' }}</h2>
+    <article class="ts-card">
+      <a class="ts-thumb" href="{{ card_url }}" target="_blank" rel="noopener" aria-label="عرض البطاقة كاملة">
+        <img src="{{ card_url }}" alt="{{ 'بطاقة تذكارية لرحلتك' if after_trip else 'بطاقة رحلتك لحالة الواتساب' }}" width="1080" height="1920" loading="lazy" decoding="async">
+      </a>
+      <div class="ts-body">
+        <b>{{ 'ذكرى رحلتك إلى الحرمين' if after_trip else 'بطاقة جاهزة لحالة الواتساب' }}</b>
+        <p>{% if after_trip %}بطاقة باسمك وتاريخ رحلتك بالهجري — احتفظ بها أو شاركها مع أحبّتك.{% else %}فيها العدّ التنازلي لرحلتك بشعار {{ co_name }} — شاركها في الحالة ودع أحبّتك يدعون لك.{% endif %}</p>
+        <div class="ts-acts">
+          <button type="button" class="tp-btn wa" id="tsShare" hidden>{{ ic('send') }}<span>مشاركة</span></button>
+          <a class="tp-btn" id="tsSave" href="{{ card_url }}&amp;dl=1" download>{{ ic('download') }}<span>حفظ الصورة</span></a>
+        </div>
+      </div>
+    </article>
+  </section>
+
   {% if trip.flights %}
   <section class="tp-sec">
     <h2>{{ ic('plane') }} الطيران{% if trip.airline %} <small>{{ trip.airline }}</small>{% endif %}</h2>
@@ -238,6 +257,17 @@
       var t=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{day:'numeric',month:'long',year:'numeric'}).format(d);
       h.textContent=' · '+t;
     }catch(e){}
+  }
+  // مشاركة البطاقة مباشرةً (واتساب وغيره) حيث يدعم الجوال مشاركة الملفات
+  var sh=document.getElementById('tsShare'), sv=document.getElementById('tsSave');
+  if(sh && navigator.canShare && window.File && window.fetch){
+    try{ if(navigator.canShare({files:[new File([''],'a.jpg',{type:'image/jpeg'})]})) sh.hidden=false; }catch(e){}
+    sh.addEventListener('click',function(){
+      sh.disabled=true;
+      fetch(sv.getAttribute('href').replace('&dl=1','')).then(function(r){return r.blob();}).then(function(b){
+        return navigator.share({files:[new File([b],'my-trip.jpg',{type:'image/jpeg'})]});
+      }).catch(function(){}).then(function(){ sh.disabled=false; });
+    });
   }
   var ul=document.getElementById('tpCheck'); if(!ul) return;
   var key=ul.dataset.key, saved={};

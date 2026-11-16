@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}شاشة المكتب — المصطفى{% endblock %}
+{% block heading %}{{ ic('grid') }} شاشة المكتب{% endblock %}
+{% block subhead %}<div class="season">رابط تفتحه على تلفزيون المكتب: الساعة والتاريخ الهجري والرحلات القادمة وآراء المعتمرين وحضور المطار — بلا أسماء ولا مبالغ</div>{% endblock %}
+{% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg }}</div>{% endif %}
+<div class="os-grid">
+  <section class="panel os-main">
+    {% if url %}
+    <h3>{{ ic('check') }} الشاشة تعمل</h3>
+    <p>افتح هذا الرابط في متصفّح التلفزيون (أو امسح الرمز بالجوال المتّصل بالشاشة)، ثم اضغط <kbd>F11</kbd> لملء الشاشة.</p>
+    <div class="os-link"><input id="osUrl" value="{{ url }}" readonly dir="ltr" aria-label="رابط شاشة المكتب">
+      <button type="button" class="btn sm" id="osCopy">{{ ic('copy') }} نسخ</button>
+      <a class="btn primary sm" href="{{ url }}" target="_blank" rel="noopener">{{ ic('eye') }} فتح</a></div>
+    <div class="os-qr">{{ qr }}</div>
+    <div class="os-acts">
+      <form method="post"><input type="hidden" name="action" value="rotate">
+        <button class="btn ghost" type="submit">{{ ic('redo') }} رابط جديد (يُبطل القديم)</button></form>
+      <form method="post"><input type="hidden" name="action" value="off">
+        <button class="btn ghost danger-txt" type="submit">{{ ic('ban') }} إيقاف الشاشة</button></form>
+    </div>
+    {% else %}
+    <h3>{{ ic('info') }} الشاشة متوقّفة</h3>
+    <p>عند التشغيل يُنشأ رابط سرّي خاص بالشاشة. من يملك الرابط يرى ما يظهر عليها فقط (لا أسماء ولا هواتف ولا مبالغ)، ويمكنك إيقافه أو تجديده في أي وقت.</p>
+    <form method="post"><input type="hidden" name="action" value="on">
+      <button class="btn primary" type="submit">{{ ic('zap') }} تشغيل شاشة المكتب</button></form>
+    {% endif %}
+  </section>
+  <aside class="panel os-what">
+    <h3>ما يظهر على الشاشة بالتناوب</h3>
+    <ul>
+      <li>{{ ic('clock') }} الساعة والتاريخ الميلادي والهجري، والصلاة القادمة في مكة</li>
+      <li>{{ ic('plane') }} الرحلات الجارية والقادمة بعدّها التنازلي وعدد المسجّلين</li>
+      <li>{{ ic('heart') }} آراء المعتمرين المنشورة (بلا أسماء)</li>
+      <li>{{ ic('check') }} حضور المطار والفندق والحافلة اليوم — يتحدّث مع كل تسجيل حضور</li>
+    </ul>
+    <p class="muted">{{ ic('lock') }} الكشف مشفّر، فالشاشة تأخذ لقطة أرقام فقط كلما عمل الموظفون في البورتال (لوحة التحكم وتسجيل الحضور).</p>
+  </aside>
+</div>
+<script>
+(function(){
+  var b=document.getElementById('osCopy'), i=document.getElementById('osUrl'); if(!b) return;
+  b.addEventListener('click',function(){ i.select(); (navigator.clipboard?navigator.clipboard.writeText(i.value):Promise.reject()).then(function(){
+    b.lastChild.textContent=' نُسخ ✓'; setTimeout(function(){ b.lastChild.textContent=' نسخ'; },1500); },function(){ try{document.execCommand('copy');}catch(e){} }); });
+})();
+</script>
+{% endblock %}

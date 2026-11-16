@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}ختام اليوم — المصطفى{% endblock %}
+{% block heading %}{{ ic('chart') }} بطاقة ختام اليوم{% endblock %}
+{% block subhead %}<div class="season">حصيلة اليوم في صورة بشعارك — لك وحدك، بلا أسماء — أرسلها لنفسك على الواتساب</div>{% endblock %}
+{% block content %}
+<div class="dc-wrap">
+  <a class="dc-img" href="{{ img }}" target="_blank" rel="noopener" aria-label="عرض البطاقة كاملة">
+    <img src="{{ img }}" alt="بطاقة ختام اليوم: المحصّل {{ d.paid }} درهم" width="1080" height="1350">
+  </a>
+  <div class="panel dc-side">
+    <h3>{{ d.title_date }} <small>{{ d.hijri }}</small></h3>
+    <ul class="dc-list">
+      <li><span>{{ ic('wallet') }} المحصّل اليوم</span><b><bdi dir="ltr">{{ d.paid }}</bdi> درهم</b><small>{{ d.pays_txt }}</small></li>
+      <li><span>{{ ic('send') }} طلبات حجز جديدة</span><b>{{ d.books }}</b></li>
+      <li><span>{{ ic('check') }} تسجيلات الحضور</span><b>{{ d.checkins }}</b></li>
+      <li><span>{{ ic('alert') }} المتأخّرون عن السداد</span><b>{{ d.late }}</b></li>
+      {% if d.trip_name %}<li><span>{{ ic('plane') }} أقرب رحلة</span><b>{{ d.trip_name }}</b><small>{{ d.trip_when }}</small></li>{% endif %}
+    </ul>
+    <div class="dc-acts">
+      <button type="button" class="btn primary" id="dcShare" hidden>{{ ic('send') }} أرسلها على الواتساب</button>
+      <a class="btn" href="{{ img }}&amp;dl=1" download>{{ ic('download') }} تنزيل الصورة</a>
+      <a class="btn ghost" href="{{ wa_text }}" target="_blank" rel="noopener">{{ ic('chat') }} الملخّص نصّاً</a>
+    </div>
+    <p class="muted dc-note">{{ ic('info') }} على الجوال: «أرسلها على الواتساب» تفتح قائمة المشاركة، فاختر محادثتك مع نفسك أو أي محادثة. الأرقام لنظام {{ 'الحج' if mode == 'hajj' else 'العمرة' }} الحالي.</p>
+  </div>
+</div>
+<script>
+(function(){
+  var b=document.getElementById('dcShare'); if(!b) return;
+  try{ if(!(navigator.canShare && navigator.canShare({files:[new File([''],'a.jpg',{type:'image/jpeg'})]}))) return; }catch(e){ return; }
+  b.hidden=false;
+  b.addEventListener('click',function(){
+    b.disabled=true;
+    fetch({{ img|tojson }}).then(function(r){return r.blob();}).then(function(bl){
+      return navigator.share({files:[new File([bl],'day.jpg',{type:'image/jpeg'})], text:{{ text|tojson }}});
+    }).catch(function(){}).then(function(){ b.disabled=false; });
+  });
+})();
+</script>
+{% endblock %}

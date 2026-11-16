@@ -122,22 +122,23 @@ def minaret(d, x, top, base, col):
     d.arc((x - 5 * S, top - 28 * S, x + 5 * S, top - 18 * S), 200, 520, fill=col, width=2 * S)
 
 
-def haram(img, x0, x1, ground):
-    """واجهة الحرم البعيدة: رواق بأقواس مضاءة ومآذن، وصحن المطاف أمامه."""
+def haram(img, x0, x1, ground, k=1.0):
+    """واجهة الحرم البعيدة: رواق بأقواس مضاءة ومآذن، وصحن المطاف أمامه (k: مقياس)."""
     col = (8, 42, 33, 255)
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     span = x1 - x0
+    u = S * k
     for f, top in ((0.06, 205), (0.24, 168), (0.76, 168), (0.94, 205)):
-        minaret(d, x0 + span * f, top * S, ground, col)
-    top = ground - 74 * S
+        minaret(d, x0 + span * f, ground - (520 - top) * u, ground, col)
+    top = ground - 74 * u
     d.rectangle((x0, top, x1, ground), fill=col)
-    d.rectangle((x0, top - 9 * S, x1, top), fill=(10, 52, 40, 255))
-    aw = 30 * S
-    x = x0 + 10 * S
+    d.rectangle((x0, top - 9 * u, x1, top), fill=(10, 52, 40, 255))
+    aw = 30 * u
+    x = x0 + 10 * u
     while x + aw < x1:
-        d.rectangle((x + 6 * S, top + 26 * S, x + aw - 6 * S, top + 64 * S), fill=(222, 178, 92, 165))
-        d.pieslice((x + 6 * S, top + 12 * S, x + aw - 6 * S, top + 40 * S), 180, 360, fill=(222, 178, 92, 165))
+        d.rectangle((x + 6 * u, top + 26 * u, x + aw - 6 * u, top + 64 * u), fill=(222, 178, 92, 165))
+        d.pieslice((x + 6 * u, top + 12 * u, x + aw - 6 * u, top + 40 * u), 180, 360, fill=(222, 178, 92, 165))
         x += aw
     img.paste(layer, (0, 0), layer)
     # الصحن الرخامي المضيء
@@ -148,32 +149,33 @@ def haram(img, x0, x1, ground):
     img.paste(floor, (0, 0), floor)
 
 
-def kaaba(img, cx, by, rnd):
+def kaaba(img, cx, by, rnd, k=1.0):
     """الكعبة (منظور جانبي) بحزامها الذهبي وبابها، يحيط بها الطائفون."""
     d = ImageDraw.Draw(img)
+    u = S * k
     # صحن المطاف
     mat = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(mat).ellipse((cx - 330 * S, by - 80 * S, cx + 290 * S, by + 70 * S), fill=(240, 234, 214, 90))
-    mat = mat.filter(ImageFilter.GaussianBlur(10 * S))
+    ImageDraw.Draw(mat).ellipse((cx - 330 * u, by - 80 * u, cx + 290 * u, by + 70 * u), fill=(240, 234, 214, 90))
+    mat = mat.filter(ImageFilter.GaussianBlur(10 * u))
     img.paste(mat, (0, 0), mat)
 
     rings = []
     for _ in range(1100):
         a = rnd.uniform(0, 2 * math.pi)
         k = rnd.uniform(0.55, 1.0)
-        x = cx - 22 * S + math.cos(a) * 285 * S * k
-        y = by - 14 * S + math.sin(a) * 58 * S * k
-        rings.append((y, x, rnd.choice((1.5, 2, 2, 2.5)) * S, rnd.random()))
-    back = [r for r in rings if r[0] < by - 30 * S]
-    front = [r for r in rings if r[0] >= by - 30 * S]
+        x = cx - 22 * u + math.cos(a) * 285 * u * k
+        y = by - 14 * u + math.sin(a) * 58 * u * k
+        rings.append((y, x, rnd.choice((1.5, 2, 2, 2.5)) * u, rnd.random()))
+    back = [r for r in rings if r[0] < by - 30 * u]
+    front = [r for r in rings if r[0] >= by - 30 * u]
 
     def dots(items):
         for y, x, r, t in items:
             c = lerp((255, 255, 255), (230, 220, 196), t)
             d.ellipse((x - r, y - r, x + r, y + r), fill=c)
     dots(back)
-    wl, wr, hh = 150 * S, 104 * S, 196 * S
-    L, C, R = (cx - wl, by - 29 * S), (cx, by), (cx + wr, by - 21 * S)
+    wl, wr, hh = 150 * u, 104 * u, 196 * u
+    L, C, R = (cx - wl, by - 29 * u), (cx, by), (cx + wr, by - 21 * u)
     Lt, Ct, Rt = (L[0], L[1] - hh), (C[0], C[1] - hh), (R[0], R[1] - hh)
     Bt = (Lt[0] + (Rt[0] - Ct[0]), Lt[1] + (Rt[1] - Ct[1]))
     d.polygon([L, C, Ct, Lt], fill=(20, 20, 22))
@@ -191,15 +193,15 @@ def kaaba(img, cx, by, rnd):
             t0, t1 = (i + 0.2) / n, (i + 0.8) / n
             x0, y0 = p[0] + (q[0] - p[0]) * t0, p[1] + (q[1] - p[1]) * t0 - hh * 0.745
             x1, y1 = p[0] + (q[0] - p[0]) * t1, p[1] + (q[1] - p[1]) * t1 - hh * 0.745
-            d.line((x0, y0, x1, y1), fill=(120, 88, 30), width=2 * S)
+            d.line((x0, y0, x1, y1), fill=(120, 88, 30), width=max(1, round(2 * u)))
     # الباب الذهبي على الوجه الأيسر قرب الركن
     t0, t1 = 0.62, 0.86
     p0 = (L[0] + (C[0] - L[0]) * t0, L[1] + (C[1] - L[1]) * t0)
     p1 = (L[0] + (C[0] - L[0]) * t1, L[1] + (C[1] - L[1]) * t1)
     d.polygon([(p0[0], p0[1] - hh * 0.16), (p1[0], p1[1] - hh * 0.16),
                (p1[0], p1[1] - hh * 0.55), (p0[0], p0[1] - hh * 0.55)], fill=(212, 170, 80))
-    d.polygon([(p0[0] + 7 * S, p0[1] - hh * 0.16 - 2 * S), (p1[0] - 7 * S, p1[1] - hh * 0.16 - 2 * S),
-               (p1[0] - 7 * S, p1[1] - hh * 0.52), (p0[0] + 7 * S, p0[1] - hh * 0.52)], outline=(140, 102, 40), width=2 * S)
+    d.polygon([(p0[0] + 7 * u, p0[1] - hh * 0.16 - 2 * u), (p1[0] - 7 * u, p1[1] - hh * 0.16 - 2 * u),
+               (p1[0] - 7 * u, p1[1] - hh * 0.52), (p0[0] + 7 * u, p0[1] - hh * 0.52)], outline=(140, 102, 40), width=max(1, round(2 * u)))
     dots(front)
 
 
@@ -240,6 +242,80 @@ def scene():
     return img
 
 
+def set_size(w, h):
+    """مقاس المشهد التالي (بالبكسل النهائي) — الدوال أعلاه ترسم على W×H."""
+    global W, H
+    W, H = w * S, h * S
+
+
+def vshade(arr, y0, y1, strength):
+    """تظليل أفقيّ النطاق (بين y0 وy1) يخفّ نحو الطرفين — ليُقرأ النصّ فوق السماء."""
+    _xx, yy = _grid()
+    mid, half = (y0 + y1) / 2, (y1 - y0) / 2
+    a = np.clip(1 - np.abs(yy - mid) / half, 0, 1) ** 0.6 * strength
+    arr *= (1 - a[..., None])
+    arr += np.array(INK, dtype=np.float32) * a[..., None]
+
+
+def story_scene():
+    """بطاقة الحالة ١٠٨٠×١٩٢٠: الشعار أعلى الوسط، سماء الفجر وفيها النصّ، والحرم والكعبة أسفل."""
+    set_size(1080, 1920)
+    rnd = random.Random(11)
+    arr = sky()
+    glow(arr, 540 * S, 1640 * S, 820 * S, GOLD, 0.40)
+    glow(arr, 170 * S, 470 * S, 150 * S, CREAM, 0.20)
+    vshade(arr, 380 * S, 1300 * S, 0.30)
+    img = to_img(arr)
+    star_lattice(img, 104 * S, 20)
+    crescent(img, 170 * S, 470 * S, 46 * S)
+    sparkles(img, rnd, 34, (40 * S, 340 * S, 1040 * S, 1240 * S))
+    ground = 1560 * S
+    haram(img, -40 * S, 1120 * S, ground, k=1.3)
+    kaaba(img, 560 * S, 1800 * S, rnd, k=1.45)
+    logo_card(img, 540 * S - 150 * S, 78 * S, 300 * S, 232 * S)
+    return img
+
+
+def greet_scene():
+    """بطاقة التهنئة ١٠٨٠×١٣٥٠: سماء ليلية بهلال كبير ونجوم، والكعبة أسفلها، والشعار أعلى."""
+    set_size(1080, 1350)
+    rnd = random.Random(23)
+    arr = sky() * np.array([0.62, 0.66, 0.70], dtype=np.float32)
+    glow(arr, 540 * S, 1180 * S, 640 * S, GOLD, 0.34)
+    glow(arr, 860 * S, 360 * S, 230 * S, CREAM, 0.16)
+    img = to_img(arr)
+    star_lattice(img, 104 * S, 16)
+    crescent(img, 860 * S, 360 * S, 70 * S)
+    sparkles(img, rnd, 60, (30 * S, 40 * S, 1050 * S, 880 * S))
+    ground = 1060 * S
+    haram(img, -30 * S, 1110 * S, ground, k=1.15)
+    kaaba(img, 560 * S, 1265 * S, rnd, k=1.2)
+    logo_card(img, 540 * S - 130 * S, 60 * S, 260 * S, 200 * S)
+    return img
+
+
+def day_scene():
+    """بطاقة ختام اليوم ١٠٨٠×١٣٥٠: ترويسة خضراء بنقش وشعار، وجسم كريمي تُكتب عليه الأرقام."""
+    set_size(1080, 1350)
+    arr = np.empty((H, W, 3), dtype=np.float32)
+    arr[:] = np.array((250, 246, 236), dtype=np.float32)
+    head = 360 * S
+    t = np.linspace(0, 1, head, dtype=np.float32)
+    top = np.stack([np.interp(t, [0, 1], [5, 14])[:, None].repeat(W, 1),
+                    np.interp(t, [0, 1], [36, 82])[:, None].repeat(W, 1),
+                    np.interp(t, [0, 1], [29, 62])[:, None].repeat(W, 1)], axis=2)
+    arr[:head] = top
+    glow(arr, 160 * S, 120 * S, 300 * S, GOLD, 0.18)
+    arr[head:] = np.array((250, 246, 236), dtype=np.float32)     # التوهّج للترويسة وحدها
+    img = to_img(arr)
+    star_lattice(img, 96 * S, 30)
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, head, W, H), fill=(250, 246, 236))           # النقش للترويسة وحدها
+    d.rectangle((0, head - 6 * S, W, head), fill=(212, 169, 76))
+    logo_card(img, 1030 * S - 236 * S, 62 * S, 236 * S, 182 * S)
+    return img
+
+
 def save(img, name, quality):
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, name)
@@ -258,6 +334,10 @@ def main():
         img = base.copy()
         share_image.draw_text(img, v["title"], v["sub"], v["feat"], v["cta"], k=S)
         yield save(img, f"{kind}-og.jpg", 86)
+    # خلفيات البطاقات (يكتب الخادم عليها النصوص — webapp/cards.py)
+    yield save(story_scene(), "story-base.jpg", 90)
+    yield save(greet_scene(), "greet-base.jpg", 90)
+    yield save(day_scene(), "day-base.jpg", 90)
 
 
 if __name__ == "__main__":

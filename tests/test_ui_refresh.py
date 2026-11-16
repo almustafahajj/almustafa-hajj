@@ -42,7 +42,7 @@ assert "/static/fonts/plex-arabic-400-arabic.woff2" in sw, "الخط يُحفظ 
 # ---- ٢) شاشة الدخول الجديدة: لوحة الهوية + الحقول + إظهار كلمة المرور ----
 auth.create_account("owner", "Passw0rd!x")
 page = anon.get("/login").get_data(as_text=True)
-for bit in ('class="login-wrap login-split"', 'class="ls-brand"', "logo.png", "أهلاً بعودتك",
+for bit in ('class="login-wrap login-split"', 'class="ls-brand has-sky"', "logo.png", "أهلاً بعودتك",
             'id="pwEye"', 'aria-label="إظهار كلمة المرور"', 'name="username"', 'name="password"',
             'name="remember"', "نسيت كلمة المرور؟", 'value="umrah"'):
     assert bit in page, f"ينقص في شاشة الدخول: {bit}"

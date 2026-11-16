@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}بطاقات التهنئة — المصطفى{% endblock %}
+{% block heading %}{{ ic('gift') }} بطاقات تهنئة المواسم{% endblock %}
+{% block subhead %}<div class="season">بطاقة بشعارك ورقمك والسنة الهجرية لكل مناسبة — نزّلها أو شاركها مع عملائك على الواتساب بضغطة</div>{% endblock %}
+{% block content %}
+<div class="gr-grid">
+  {% for o in items %}
+  <article class="panel gr-card{{ ' now' if o.now }}{{ ' pick' if pick == o.key }}" id="g-{{ o.key }}">
+    <a class="gr-img" href="{{ o.img }}" target="_blank" rel="noopener" aria-label="عرض بطاقة {{ o.title }} كاملة">
+      <img src="{{ o.img }}" alt="بطاقة تهنئة: {{ o.title }}" width="1080" height="1350" loading="lazy" decoding="async">
+      {% if o.now %}<span class="gr-badge">{{ ic('sparkles') }} وقتها الآن</span>{% endif %}
+    </a>
+    <div class="gr-body">
+      <h3>{{ o.name }}</h3>
+      <p class="gr-when">{{ ic('calendar') }} {{ o.hdate }} · <span>{{ o.when }}</span> <b>{{ o.left }}</b></p>
+      <div class="gr-acts">
+        <button type="button" class="btn primary sm gr-share" data-img="{{ o.img }}" data-msg="{{ o.msg }}" data-name="greeting-{{ o.key }}.jpg" hidden>{{ ic('send') }} مشاركة</button>
+        <a class="btn sm" href="{{ o.img }}&amp;dl=1" download>{{ ic('download') }} تنزيل</a>
+        <button type="button" class="btn ghost sm gr-copy" data-msg="{{ o.msg }}">{{ ic('copy') }} نسخ نصّ التهنئة</button>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+<p class="muted gr-note">{{ ic('info') }} التواريخ بتقويم أمّ القرى، وقد تختلف المناسبة يوماً حسب رؤية الهلال. تظهر البطاقة في لوحة التحكم تلقائياً حين يقترب موعدها.</p>
+<script>
+(function(){
+  var canFiles=false;
+  try{ canFiles=!!(navigator.canShare && navigator.canShare({files:[new File([''],'a.jpg',{type:'image/jpeg'})]})); }catch(e){}
+  document.querySelectorAll('.gr-share').forEach(function(b){
+    if(!canFiles) return;
+    b.hidden=false;
+    b.addEventListener('click',function(){
+      b.disabled=true;
+      fetch(b.dataset.img).then(function(r){return r.blob();}).then(function(bl){
+        return navigator.share({files:[new File([bl],b.dataset.name,{type:'image/jpeg'})], text:b.dataset.msg});
+      }).catch(function(){}).then(function(){ b.disabled=false; });
+    });
+  });
+  document.querySelectorAll('.gr-copy').forEach(function(b){
+    b.addEventListener('click',function(){
+      var done=function(){ var t=b.lastChild.textContent; b.lastChild.textContent=' نُسخ ✓'; setTimeout(function(){b.lastChild.textContent=t;},1600); };
+      if(navigator.clipboard){ navigator.clipboard.writeText(b.dataset.msg).then(done,function(){}); }
+    });
+  });
+  var pick=document.querySelector('.gr-card.pick'); if(pick) pick.scrollIntoView({block:'center'});
+})();
+</script>
+{% endblock %}

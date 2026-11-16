@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="{{ '#8A6E4B' if (prog or {}).get('mode') == 'hajj' else '#13795B' }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% if prog %}
+{% set og_full = prog.name ~ ' — ' ~ co.name_ar %}
+<meta name="description" content="{{ prog.name }} مع {{ co.name_ar }}: {{ prog.dep }}{% if prog.nights %} · {{ prog.nights }}{% endif %} — الطيران والفنادق والأسعار، واحجز مقعدك بخطوة.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ar_AE">
+<meta property="og:site_name" content="{{ co.name_ar }}">
+<meta property="og:url" content="{{ share_url }}">
+<meta property="og:title" content="{{ og_full }}">
+<meta property="og:description" content="{{ prog.dep }}{% if prog.nights %} · {{ prog.nights }}{% endif %}{% if low %} · من {{ low }} درهم للفرد{% endif %} — احجز مقعدك الآن.">
+<meta property="og:image" content="{{ og_img }}">
+<meta property="og:image:secure_url" content="{{ og_img }}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="الكعبة المشرّفة وشعار {{ co.name_ar }} — {{ prog.name }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ og_img }}">
+<title>{{ og_full }}</title>
+{% else %}
+<title>البرنامج غير متاح — {{ co.name_ar }}</title>
+{% endif %}
+</head><body class="mode-{{ (prog or {}).get('mode') or 'umrah' }} trip-body pub-trips pg-body">
+{% if prog %}
+{% set full = prog.left is not none and prog.left <= 0 %}
+<header class="pt-hero pg-hero">
+  <div class="pt-in">
+    <div class="tp-brand"><img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt=""><span>{{ co.name_ar }}</span></div>
+    <span class="pt-kicker">{{ ic('kaaba' if prog.mode == 'hajj' else 'moon') }} {{ 'برنامج الحج' if prog.mode == 'hajj' else ('عمرة رمضان' if prog.ramadan else 'برنامج عمرة') }}</span>
+    <h1>{{ prog.name }}</h1>
+    <p class="pg-when">{{ ic('calendar') }} {% if prog.legs[0].wday %}{{ prog.legs[0].wday }} {% endif %}{{ prog.dep }}{% if prog.legs|length > 1 %} ← {{ prog.legs[1].date }}{% endif %}{% if prog.nights %} · <b>{{ prog.nights }}</b>{% endif %}</p>
+    <div class="pt-cta">
+      <a class="pt-btn" href="#book">{{ ic('send') }} {{ 'قائمة الانتظار' if full else 'احجز مقعدك' }}</a>
+      {% if wa %}<a class="pt-btn ghost" href="{{ wa }}" target="_blank" rel="noopener">{{ ic('chat') }} اسألنا واتساب</a>{% endif %}
+    </div>
+  </div>
+</header>
+
+<main class="pt-main pg-main">
+  {% if sent %}
+  <div class="pt-done" id="done" role="status">
+    <span class="pt-done-ic">{{ ic('check') }}</span>
+    <div><b>وصلنا طلبك — شكراً لك</b><span>سيتواصل معك فريقنا قريباً لتأكيد الحجز وتفاصيل الدفع.</span></div>
+    {% if wa %}<a class="pt-btn sm pt-wa" href="{{ wa }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {# ---- مسار الرحلة: خريطة مبسّطة، والطائرة تطير من الإمارات إلى مكة ---- #}
+  <section class="pg-route" aria-label="مسار الرحلة">
+    <svg class="pg-map" id="pgMap" viewBox="0 0 480 372" role="img"
+         aria-label="مسار الرحلة من {{ rmap.uae_label }} إلى مكة المكرمة{% if rmap.madinah %} والمدينة المنورة{% endif %}">
+      <defs>
+        <linearGradient id="pgSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#DCEFE6"/><stop offset="1" stop-color="#C6E4D7"/></linearGradient>
+        <linearGradient id="pgLand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F8F1DF"/><stop offset="1" stop-color="#EDE0BF"/></linearGradient>
+      </defs>
+      <rect width="480" height="372" fill="url(#pgSea)"/>
+      <path d="{{ rmap.land }}" fill="url(#pgLand)" stroke="#D2BF8F" stroke-width="1.6" stroke-linejoin="round"/>
+      <text class="pg-sea" x="58" y="250" transform="rotate(-58 58 250)">البحر الأحمر</text>
+      <text class="pg-sea" x="372" y="58">الخليج العربي</text>
+      <path class="pg-fpath" d="{{ rmap.flight }}"/>
+      {% if rmap.road %}<path class="pg-road" d="{{ rmap.road }}"/>{% endif %}
+      {% set u = rmap.uae %}{% set m = rmap.makkah %}
+      <g class="pg-city"><circle cx="{{ u[0] }}" cy="{{ u[1] }}" r="7" class="pg-pulse"/><circle cx="{{ u[0] }}" cy="{{ u[1] }}" r="5"/>
+        <text x="{{ u[0] }}" y="{{ u[1] + 24 }}">{{ rmap.uae_label }}</text></g>
+      <g class="pg-city holy"><circle cx="{{ m[0] }}" cy="{{ m[1] }}" r="6"/>
+        <text x="{{ m[0] }}" y="{{ m[1] + 24 }}">مكة المكرمة</text></g>
+      {% if rmap.madinah %}{% set d = rmap.madinah %}
+      <g class="pg-city holy"><circle cx="{{ d[0] }}" cy="{{ d[1] }}" r="6"/>
+        <text x="{{ d[0] }}" y="{{ d[1] - 13 }}">المدينة المنورة</text></g>
+      <g class="pg-car"><circle r="9" fill="#fff" stroke="#13795B" stroke-width="1.5"/>
+        <path d="M-5 1.5h10M-4.2 1.5l1.4-3.6h5.6l1.4 3.6v2.7h-8.4z M-2.6 4.6a1 1 0 1 0 0.1 0 M2.6 4.6a1 1 0 1 0 0.1 0" fill="none" stroke="#13795B" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <animateMotion dur="7s" repeatCount="indefinite" path="{{ rmap.road }}" keyPoints="0;1;1" keyTimes="0;.7;1" calcMode="linear"/></g>
+      {% endif %}
+      <g class="pg-plane">
+        <path d="M14 0 L-6 -3 L-12 -11 L-15 -11 L-11 -2.5 L-18 -2 L-21 -6 L-23 -6 L-21 0 L-23 6 L-21 6 L-18 2 L-11 2.5 L-15 11 L-12 11 L-6 3 Z" fill="#B8862F" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+        <animateMotion id="pgFly" dur="5.5s" repeatCount="indefinite" rotate="auto" path="{{ rmap.flight }}" keyPoints="0;1;1" keyTimes="0;.78;1" calcMode="linear"/>
+      </g>
+    </svg>
+    <ul class="pg-legend">
+      {% if prog.airline %}<li>{{ ic('plane') }} {{ prog.airline }}{% if prog.city %} <small>من {{ prog.city }}</small>{% endif %}</li>{% endif %}
+      {% for icon, city, hotel, nights in prog.hotels %}<li>{{ ic(icon) }} {{ city }}{% if nights %} <small>{{ nights }}</small>{% endif %}</li>{% endfor %}
+      {% if prog.car %}<li>{{ ic(prog.car[0]) }} {{ prog.car[1] }}{% if rmap.madinah %} <small>بين مكة والمدينة</small>{% endif %}</li>{% endif %}
+    </ul>
+  </section>
+
+  {# ---- رحلتك يوماً بيوم: الذهاب ثم الإقامة ثم العودة ---- #}
+  <section class="pg-sec">
+    <h2 class="pt-h">{{ ic('clock') }} رحلتك خطوة بخطوة</h2>
+    <ol class="pg-steps">
+      {% set out = prog.legs[0] %}
+      <li><span class="pg-dot">{{ ic('takeoff') }}</span>
+        <div><b>الذهاب — {% if out.wday %}{{ out.wday }} {% endif %}{{ out.date }}</b>
+          <span>{% if out.flight %}رحلة <bdi dir="ltr">{{ out.flight }}</bdi>{% endif %}{% if out.dep %} · إقلاع <bdi dir="ltr">{{ out.dep }}</bdi>{% endif %}{% if out.arr %} · وصول <bdi dir="ltr">{{ out.arr }}</bdi>{% endif %}</span></div></li>
+      {% for icon, city, hotel, nights in prog.hotels %}
+      <li><span class="pg-dot">{{ ic(icon) }}</span>
+        <div><b>{{ city }}{% if nights %} — {{ nights }}{% endif %}</b><span>{{ hotel }}</span></div></li>
+      {% endfor %}
+      {% if prog.legs|length > 1 %}{% set back = prog.legs[1] %}
+      <li><span class="pg-dot">{{ ic('landing') }}</span>
+        <div><b>العودة — {% if back.wday %}{{ back.wday }} {% endif %}{{ back.date }}</b>
+          <span>{% if back.flight %}رحلة <bdi dir="ltr">{{ back.flight }}</bdi>{% endif %}{% if back.dep %} · إقلاع <bdi dir="ltr">{{ back.dep }}</bdi>{% endif %}{% if back.arr %} · وصول <bdi dir="ltr">{{ back.arr }}</bdi>{% endif %}</span></div></li>
+      {% endif %}
+    </ol>
+  </section>
+
+  {% if prices %}
+  <section class="pg-sec" id="prices">
+    <h2 class="pt-h">{{ ic('tag') }} الأسعار <small>للفرد حسب الغرفة · درهم</small></h2>
+    <div class="pg-prices">
+      {% for room, price in prices %}
+      <a class="pg-price" href="?r={{ room|urlencode }}{% if src %}&amp;src={{ src }}{% endif %}#book" data-room="{{ room }}">
+        <span>{{ ic('bed') }} {{ room }}</span><b>{{ price }}</b><small>اختر هذه الغرفة</small></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="pg-sec">
+    <h2 class="pt-h">{{ ic('check') }} يشمل البرنامج</h2>
+    <ul class="pg-incl">
+      <li>{{ ic('plane') }} تذاكر الطيران ذهاباً وعودة</li>
+      {% for icon, city, hotel, nights in prog.hotels %}<li>{{ ic('hotel') }} الإقامة في {{ hotel }}</li>{% endfor %}
+      {% if prog.car %}<li>{{ ic(prog.car[0]) }} {{ prog.car[1] }}</li>{% endif %}
+      <li>{{ ic('users') }} مرشد يرافقكم ورابط «رحلتي» بكل التفاصيل</li>
+    </ul>
+  </section>
+
+  {% if reviews %}
+  <section class="pt-revs pg-sec">
+    <h2 class="pt-h">{{ ic('heart') }} آراء معتمرينا</h2>
+    <div class="pt-rgrid">
+      {% for r in reviews %}
+      <figure class="pt-rev">
+        <div class="pt-stars" role="img" aria-label="{{ r.stars }} من 5">{% for n in range(5) %}<span class="{{ 'on' if n < r.stars }}">★</span>{% endfor %}</div>
+        {% if r.comment %}<blockquote>«{{ r.comment }}»</blockquote>{% endif %}
+        <figcaption>— {{ r.first }}{% if r.kind or r.when %} <small>· {{ r.kind }} {{ r.when }}</small>{% endif %}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="pt-book" id="book">
+    <h2 class="pt-h">{{ ic('send') }} {{ 'انضمّ لقائمة الانتظار' if full else 'احجز مقعدك' }}</h2>
+    <p class="pt-sub">املأ بياناتك وسيتواصل معك فريقنا لتأكيد الحجز — لا دفع الآن.</p>
+    {% if err %}<div class="pt-err" role="alert">{{ ic('alert') }} {{ err }}</div>{% endif %}
+    <form method="post" action="{{ url_for('public_trip_request') }}" class="pt-form">
+      <input type="hidden" name="program" value="{{ pkey }}">
+      <input type="hidden" name="back" value="prog">
+      <div class="pg-picked wide">{{ ic('kaaba' if prog.mode == 'hajj' else 'moon') }} <b>{{ prog.name }}</b> <small>{{ prog.dep }}</small></div>
+      <label>الاسم الكامل<input name="name" required minlength="5" maxlength="80" autocomplete="name"></label>
+      <label>رقم الهاتف (واتساب)<input name="phone" required inputmode="tel" maxlength="20" dir="ltr" autocomplete="tel" placeholder="05x xxx xxxx"></label>
+      <label>عدد الأشخاص<input name="count" type="number" min="1" max="20" value="1" inputmode="numeric"></label>
+      <label>نوع الغرفة
+        <select name="room" id="pgRoom"><option value="">لا يهمّ</option>
+          {% if prices %}{% for r, pr in prices %}<option value="{{ r }}" {{ 'selected' if pick_room == r }}>{{ r }} — {{ pr }} درهم للفرد</option>{% endfor %}
+          {% else %}{% for r in rooms %}<option value="{{ r }}" {{ 'selected' if pick_room == r }}>{{ r }}</option>{% endfor %}{% endif %}
+        </select></label>
+      <label class="wide">ملاحظة (اختياري)<textarea name="note" rows="2" maxlength="300" placeholder="مثلاً: نحتاج كرسياً متحرّكاً، أو أوقات الاتصال المناسبة"></textarea></label>
+      <label class="hp" aria-hidden="true">لا تملأ هذا الحقل<input name="website" tabindex="-1" autocomplete="off"></label>
+      {% if src %}<input type="hidden" name="src" value="{{ src }}">{% endif %}
+      <button class="pt-btn wide" type="submit">{{ ic('send') }} أرسل طلب الحجز</button>
+      <p class="pt-priv wide">{{ ic('lock') }} بياناتك تُستعمل للتواصل معك بخصوص الحجز فقط.</p>
+    </form>
+  </section>
+
+  <p class="pg-more"><a href="{{ trips_url }}">{{ ic('calendar') }} كل برامجنا</a></p>
+</main>
+
+{# ---- شريط ثابت أسفل الشاشة: السعر وزرّ الحجز ---- #}
+<div class="pg-bar" id="pgBar">
+  <div class="pg-bar-in">
+    <div class="pg-bar-t">{% if low %}<small>يبدأ من</small><b>{{ low }} <small>درهم للفرد</small></b>{% else %}<small>{{ prog.dep }}</small><b>{{ prog.name }}</b>{% endif %}</div>
+    <a class="pt-btn" href="#book">{{ ic('send') }} {{ 'قائمة الانتظار' if full else 'احجز الآن' }}</a>
+  </div>
+</div>
+
+<footer class="pt-foot pg-foot">
+  <b>{{ co.name_ar }}</b>
+  <span>{% for v in [co.get('phone'), co.get('email'), co.get('address')] if v %}{{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+</footer>
+<script>
+(function(){
+  // الحركة الهادئة: الطائرة ثابتة عند مكة
+  var map=document.getElementById('pgMap');
+  if(map && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches && map.pauseAnimations){
+    try{ map.setCurrentTime(4.4); map.pauseAnimations(); }catch(e){}
+  }
+  // اختيار الغرفة من بطاقات الأسعار بلا إعادة تحميل
+  var room=document.getElementById('pgRoom');
+  document.querySelectorAll('.pg-price[data-room]').forEach(function(a){
+    a.addEventListener('click',function(e){
+      if(!room) return;
+      e.preventDefault(); room.value=a.dataset.room;
+      document.getElementById('book').scrollIntoView({behavior:'smooth'});
+      setTimeout(function(){ var n=document.querySelector('#book input[name=name]'); if(n) n.focus({preventScroll:true}); },450);
+    });
+  });
+  // الشريط الثابت يختفي حين يظهر نموذج الحجز
+  var bar=document.getElementById('pgBar'), book=document.getElementById('book');
+  if(bar && book && 'IntersectionObserver' in window){
+    new IntersectionObserver(function(es){ bar.classList.toggle('hide', es[0].isIntersecting); },{threshold:.05}).observe(book);
+  }
+})();
+</script>
+{% else %}
+<div class="login-wrap">
+  <div class="login-card pub-card">
+    <img class="pub-logo" src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="{{ co.name_ar }}">
+    <div class="pub-bad">{{ ic('calendar') }} هذا البرنامج لم يعد متاحاً</div>
+    <p class="sub">ربما اكتمل أو انتهى موعده — اطّلع على برامجنا القادمة.</p>
+    <a class="pt-btn" href="{{ trips_url }}">{{ ic('calendar') }} برامجنا القادمة</a>
+  </div>
+</div>
+{% endif %}
+</body></html>

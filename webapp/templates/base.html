@@ -56,20 +56,23 @@
         <a class="navlink {{ 'active' if active=='quality' }}" href="{{ url_for('quality_report') }}">فحص الجودة والجاهزية</a>
       </details>
 
-      <details class="nav-group" {% if active in ['import','whatsapp','season'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['import','whatsapp','season','greetings'] %}open{% endif %}>
         <summary>{{ ring('sliders', 25, '#16A085', 'ng-ring', badge=nav_badges.get('tools'), glyph='gold') }} الأدوات</summary>
         <a class="navlink {{ 'active' if active=='season' }}" href="{{ url_for('season_page') }}">تحديد الموسم</a>
         {% if can_edit %}<a class="navlink {{ 'active' if active=='import' }}" href="{{ url_for('data_import') }}">استيراد من إكسل</a>{% endif %}
         <a class="navlink {{ 'active' if active=='whatsapp' }}" href="{{ url_for('whatsapp_page') }}">رسائل واتساب</a>
+        <a class="navlink {{ 'active' if active=='greetings' }}" href="{{ url_for('greetings_page') }}">بطاقات التهنئة</a>
       </details>
 
       {% if is_admin %}
-      <details class="nav-group" {% if active in ['accounts','sessions','audit','backup'] %}open{% endif %}>
+      <details class="nav-group" {% if active in ['accounts','sessions','audit','backup','daycard','officetv'] %}open{% endif %}>
         <summary>{{ ring('shield', 25, '#C0392B', 'ng-ring', badge=nav_badges.get('admin'), glyph='gold') }} الإدارة</summary>
         <a class="navlink {{ 'active' if active=='accounts' }}" href="{{ url_for('accounts') }}">إدارة الحسابات</a>
         <a class="navlink {{ 'active' if active=='sessions' }}" href="{{ url_for('sessions_page') }}">الجلسات النشطة</a>
         <a class="navlink {{ 'active' if active=='audit' }}" href="{{ url_for('audit_log') }}">سجلّ التدقيق</a>
         <a class="navlink {{ 'active' if active=='backup' }}" href="{{ url_for('backup_page') }}">النسخ الاحتياطي</a>
+        <a class="navlink {{ 'active' if active=='daycard' }}" href="{{ url_for('day_card_page') }}">بطاقة ختام اليوم</a>
+        <a class="navlink {{ 'active' if active=='officetv' }}" href="{{ url_for('office_screen') }}">شاشة المكتب</a>
       </details>
       {% endif %}
     </nav>

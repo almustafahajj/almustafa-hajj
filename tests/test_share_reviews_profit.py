@@ -8,7 +8,7 @@ import sys
 import tempfile
 from datetime import date, timedelta
 from html import unescape
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -70,7 +70,9 @@ assert 'id="share"' in bk and 'id="shSrc"' in bk
 urls = [unescape(u) for u in re.findall(r'class="sh-row[^"]*" data-url="([^"]+)"', bk)]
 assert len(urls) == 3 and "/trips?v=" in urls[0], urls
 u1 = next(u for u in urls if "U1" in unquote(u))
-assert "p=umrah" in u1 and "&v=" in u1
+assert "/trips/umrah/U1?v=" in u1, u1                  # رابط البرنامج يفتح صفحته الخاصة
+_u = urlsplit(u1)
+assert anon.get(_u.path, query_string=_u.query).status_code == 200
 assert "برنامج عمرة" in bk.split('id="share"')[1].split("</section>")[0]
 assert 'id="share"' in v.get("/bookings").get_data(as_text=True), "روابط المشاركة للجميع"
 one = anon.get("/trips", query_string={"p": "umrah:U2"}).get_data(as_text=True)
