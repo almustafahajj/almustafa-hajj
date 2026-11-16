@@ -161,11 +161,15 @@ function toggleNav(){
 /* على الجوال: الجداول تصير بطاقات — كل خانة تحمل اسم عمودها */
 document.querySelectorAll('table.data, table.acc-table').forEach(function(t){
   var hs=[].map.call(t.querySelectorAll('thead th'),function(th){return th.textContent.trim();});
-  t.querySelectorAll('tbody tr').forEach(function(tr){var i=0;
+  /* أول عمود له معنى (ليس «#» أو «م») يصير عنوان البطاقة على الجوال */
+  var ti=-1;hs.some(function(h,k){if(h&&!/^(#|م)$/.test(h)){ti=k;return true;}return false;});
+  t.querySelectorAll('tbody tr').forEach(function(tr){var i=0,cells=0;
     [].forEach.call(tr.children,function(td){
       if(td.tagName==='TD'&&!td.hasAttribute('data-label')&&hs[i]&&(td.colSpan||1)===1)
         td.setAttribute('data-label',hs[i]);
-      i+=td.colSpan||1;});});
+      if(td.tagName==='TD'&&i===ti&&(td.colSpan||1)===1)td.classList.add('td-title');
+      cells++;i+=td.colSpan||1;});
+    if(cells>1)tr.classList.add('tcard');});
 });
 /* تثبيت البورتال كتطبيق (يظهر الزرّ حين يسمح المتصفّح) */
 (function(){var ev=null,b=document.getElementById('installBtn');if(!b)return;

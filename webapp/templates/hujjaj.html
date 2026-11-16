@@ -69,22 +69,22 @@
 <table class="data list-table">
   <thead><tr>
     <th>م</th><th>الاسم</th><th>رقم الجواز</th><th>البرنامج</th>
-    <th>الهاتف</th><th>الحالة</th><th>المتبقّي والسداد</th><th><span class="sr-only">إجراءات</span></th>
+    <th>الهاتف</th>{% if has_status %}<th>الحالة</th>{% endif %}<th>المتبقّي والسداد</th><th><span class="sr-only">إجراءات</span></th>
   </tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
       <td class="num">{{ loop.index + offset }}</td>
-      <td><a class="who" href="{{ url_for('hujjaj_edit', idx=r.idx) }}" data-peek="{{ url_for('hujjaj_peek', idx=r.idx, fp=r.fp) }}">
+      <td class="c-who"><a class="who" href="{{ url_for('hujjaj_edit', idx=r.idx) }}" data-peek="{{ url_for('hujjaj_peek', idx=r.idx, fp=r.fp) }}">
         <span class="av av{{ r.hue }}" aria-hidden="true">{{ r.initial }}</span>
         <span class="who-t"><b>{{ r.name }}</b>{% if r.name_en %}<small dir="ltr">{{ r.name_en }}</small>{% endif %}
           {% if r.missing %}<small class="miss">ينقص: {{ r.missing|join('، ') }}</small>{% endif %}</span></a></td>
-      <td><span dir="ltr" class="mono">{{ r.passport }}</span></td>
-      <td>{{ r.program }}</td>
-      <td><span dir="ltr">{{ r.phone }}</span></td>
-      <td>{% if r.status %}<span class="st {{ r.status_cls }}">{{ r.status }}</span>{% endif %}</td>
-      <td><div class="pay">
-        <div class="pay-top"><span class="tag">{{ r.remaining }}</span>
+      <td class="c-pp"><span dir="ltr" class="mono">{{ r.passport }}</span></td>
+      <td class="c-prog">{{ r.program }}</td>
+      <td class="c-ph"><span dir="ltr">{{ r.phone }}</span></td>
+      {% if has_status %}<td class="c-st">{% if r.status %}<span class="st {{ r.status_cls }}">{{ r.status }}</span>{% endif %}</td>{% endif %}
+      <td class="c-pay"><div class="pay">
+        <div class="pay-top">{% if r.over %}<span class="tag over" title="دفع أكثر من قيمة البرنامج">زيادة {{ r.over }}</span>{% else %}<span class="tag">{{ r.remaining }}</span>{% endif %}
           {% if r.pay %}<span class="st {{ r.pay_cls }}">{{ ic(r.pay_icon) }} {{ r.pay_lbl }}</span>{% endif %}</div>
         {% if r.pay %}<div class="pay-bar" title="مدفوع {{ r.pct }}%"><i class="pb-{{ r.pay_cls }}" style="width:{{ r.pct }}%"></i></div>{% endif %}
       </div></td>
@@ -93,7 +93,7 @@
         <a class="icon-btn" href="{{ url_for('record_docs', idx=r.idx) }}" title="المستندات" aria-label="مستندات {{ r.name }}">{{ ic('file-text') }}</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="8">
+    <tr><td colspan="{{ 8 if has_status else 7 }}">
       {% if q or any_filter %}
       <div class="empty-state"><span class="es-ic">{{ ic('search') }}</span>
         <b>لا نتائج مطابقة</b><p>جرّب كلمة أخرى أو ألغِ بعض الفلاتر.</p>

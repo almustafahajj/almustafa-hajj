@@ -102,7 +102,7 @@
                     class="inline" onsubmit="return confirm('إلغاء الدخول بخطوتين لـ«{{ a.username }}»؟ (حين يضيع جواله)');">
                 <button class="acc-btn" type="submit" title="إلغاء الدخول بخطوتين">{{ ic('undo') }}</button>
               </form>{% else %}<span class="muted">—</span>{% endif %}</td>
-            <td class="muted">{{ a.updated or '—' }}</td>
+            <td class="muted acc-when">{% if a.updated %}{% set _u = a.updated.split(' · ') %}<b>{{ _u[0] }}</b>{% if _u|length > 1 %}<small>{{ _u[1] }}</small>{% endif %}{% else %}—{% endif %}</td>
             <td>
               <form method="post" action="{{ url_for('accounts_password', username=a.username) }}"
                     class="inline pw-reset">

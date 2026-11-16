@@ -852,6 +852,18 @@ def dashboard():
         **_ctx())
 
 
+def _nice_stamp(iso) -> str:
+    """«16 نوفمبر 2026 · 15:47» من ختم ISO (أو النصّ كما هو إن لم يُفهم)."""
+    txt = str(iso or "").strip()
+    if not txt:
+        return ""
+    try:
+        d = datetime.fromisoformat(txt)
+    except ValueError:
+        return txt.replace("T", "  ")
+    return f"{d.day} {_AR_MONTHS[d.month - 1]} {d.year} · {d:%H:%M}"
+
+
 _AR_MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
               "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
 _AR_DAYS = ("الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد")
@@ -1897,8 +1909,20 @@ def notifications():
     if _sess() is None:
         return redirect(url_for("login"))
     items = [dict(a, link=_alert_link(a)) for a in _alerts()]
+    groups = []
+    for lv, title, icon, note in _ALERT_GROUPS:
+        its = [a for a in items if a.get("level") == lv]
+        if its:
+            groups.append({"level": lv, "title": title, "icon": icon, "note": note, "rows": its})
     return render_template("notifications.html", active="notifications",
-                           items=items, **_ctx())
+                           items=items, groups=groups, **_ctx())
+
+
+_ALERT_GROUPS = (
+    ("danger", "عاجل", "alert", "تجاوز السعة أو الغرف، أو سداد ناقص قبل المغادرة بأسبوع"),
+    ("warn", "تنبيه", "clock", "غرف قاربت النفاد، جوازات تنتهي قبل ٦ أشهر من السفر، سداد ناقص قبل المغادرة بشهر"),
+    ("info", "للعلم", "info", "مغادرة خلال أسبوعين، اكتمال المقاعد"),
+)
 
 
 def _search_groups(q: str) -> list:
@@ -2060,7 +2084,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-16 · بطاقات تهنئة بصور حقيقية وخطّ الرقعة وصورة خاصة لكل مناسبة"
+_BUILD_TAG = "2026-11-16 · لمسات جمالية: بطاقات أوضح على الجوال وإشعارات مرتّبة حسب الأهمية"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2221,7 +2245,7 @@ def accounts():
                                forbidden=True, accounts=[], roles=[], **_ctx())
     rows = [{"username": a["username"], "role": a["role"],
              "role_label": auth.ROLE_LABELS.get(a["role"], a["role"]),
-             "updated": (a.get("updated_at") or "").replace("T", "  "),
+             "updated": _nice_stamp(a.get("updated_at")),
              "totp": a.get("totp", False),
              "email": a.get("email", ""), "email_2fa": a.get("email_2fa", False),
              "locked": bool(_FAILS.get(("user", _ukey(a["username"])))
@@ -2758,7 +2782,8 @@ def hujjaj():
             "program": str(getattr(r, gattr, "") or "") or "—",
             "phone": getattr(r, "phone", "") or "—",
             "status": st, "status_cls": _STATUS_CLS.get(st, ""),
-            "remaining": format_amount(rem) or "0",
+            "remaining": format_amount(rem) if rem > 0 else "0",
+            "over": format_amount(-rem) if rem < 0 else "",
             "pay": ps, "pay_lbl": _PAY_STATES[ps][0] if ps else "",
             "pay_cls": _PAY_STATES[ps][1] if ps else "",
             "pay_icon": _PAY_STATES[ps][2] if ps else "",
@@ -2783,6 +2808,7 @@ def hujjaj():
                            qs=qs, qs_nopay=qs_nopay, pay=pay, pay_states=pay_states,
                            grp=grp, need=need,
                            counts=counts, total=total, page=page, pages=pages,
+                           has_status=any(r["status"] for r in rows),
                            pay_moment=session.pop("pay_moment", None), pay_methods=_PAY_METHODS,
                            offset=offset, **_ctx())
 

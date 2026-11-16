@@ -4,16 +4,25 @@
 {% block subhead %}<div class="season">ما يحتاج انتباهاً الآن في نظام {{ theme.noun }} — يُحدَّث تلقائياً من البيانات</div>{% endblock %}
 {% block content %}
 {% if items %}
-<div class="alerts-box">
-  {% for a in items %}
-  <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon|iconize }} {{ a.text }}</a>
+<nav class="nt-sum" aria-label="ملخّص الإشعارات">
+  {% for g in groups %}
+  <a class="nt-chip lv-{{ g.level }}" href="#nt-{{ g.level }}">{{ ic(g.icon) }} {{ g.title }} <b>{{ g.rows|length }}</b></a>
   {% endfor %}
-</div>
+</nav>
+{% for g in groups %}
+<section class="nt-group lv-{{ g.level }}" id="nt-{{ g.level }}">
+  <header class="nt-head"><span class="nt-ic">{{ ic(g.icon) }}</span>
+    <div><h3>{{ g.title }} <span class="nt-n">{{ g.rows|length }}</span></h3><small>{{ g.note }}</small></div></header>
+  <div class="alerts-box">
+    {% for a in g.rows %}
+    <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}"><span class="ar-ic">{{ a.icon|iconize }}</span><span class="ar-t">{{ a.text }}</span><span class="ar-go">{{ ic('arrow-left') }}</span></a>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+<p class="hint-note">الرقم على الجرس = العاجل والتنبيهات. اضغط أي إشعار لفتح الصفحة التي تعالجه.</p>
 {% else %}
-<div class="acc-msg ok" data-keep>{{ ic('check') }} لا شيء يحتاج انتباهاً الآن.</div>
+<div class="empty-state nt-empty" data-keep><span class="es-ic">{{ ic('check') }}</span> <b>لا شيء يحتاج انتباهاً الآن</b>
+  <p>كل البرامج ضمن سعتها، ولا سداد متأخّر قبل مغادرة قريبة، ولا جوازات تنتهي قبل السفر.</p></div>
 {% endif %}
-<p class="hint-note">🟥 عاجل (تجاوز السعة أو الغرف، سداد ناقص قبل المغادرة بأسبوع) ·
-  🟧 تنبيه (غرف قاربت النفاد، جوازات تنتهي قبل ٦ أشهر من السفر، سداد ناقص قبل المغادرة
-  بشهر) · 🟦 للعلم (مغادرة خلال أسبوعين، اكتمال المقاعد). الرقم على الجرس = العاجل
-  والتنبيهات.</p>
 {% endblock %}

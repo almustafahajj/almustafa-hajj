@@ -2724,3 +2724,147 @@ body.tv-body{ position:relative; isolation:isolate; margin:0; height:100vh; over
 .tv-dots{ display:flex; gap:.6vw; }
 .tv-dots i{ width:.7vw; height:.7vw; min-width:7px; min-height:7px; border-radius:50%; background:rgba(255,255,255,.3); transition:background .3s, transform .3s; }
 .tv-dots i.on{ background:#F2C96A; transform:scale(1.3); }
+
+/* ======================================================================
+   جولة جمالية: الشريط العلوي، بطاقات الجوال، الدفع السريع، الإشعارات
+   ====================================================================== */
+/* دفع زائد عن قيمة البرنامج: شارة زرقاء بدل رقم سالب */
+.tag.over{ display:inline-block; color:#1F5FAD; background:#E3EEF9; padding:2px 9px; border-radius:99px;
+  font-size:12.5px; font-weight:700; }
+
+/* الشريط العلوي: سطر واحد على الشاشات الواسعة مهما طال وصف الصفحة */
+@media (min-width:1360px){
+  .topbar{ flex-wrap:nowrap; }
+  .topbar .tb-left{ flex:1 1 0; min-width:240px; }
+  .topbar .tb-left > div{ min-width:0; }
+  .topbar h2{ white-space:nowrap; }
+  .topbar .season{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .topbar .actions{ flex:none; flex-wrap:nowrap; }
+}
+
+/* الجوال: البحث في الشريط السفلي، فلا حاجة لخانة بحث ثانية تأخذ سطراً كاملاً */
+@media (max-width:760px){
+  .topbar .tb-search{ display:none; }
+}
+
+/* مؤشّرات الأرقام على الجوال: الرقم الكبير يبقى داخل بطاقته */
+@media (max-width:760px){
+  .card.kpi{ column-gap:10px; }
+  .card.kpi .val{ font-size:clamp(17px, 5.3vw, 22px); letter-spacing:-.2px; }
+  .kpi-ring{ --s:42px; }
+}
+
+/* ---- تسجيل دفعة سريعة (صفحة المالية): سطر واحد مرتّب ---- */
+.qpay{ display:flex; align-items:center; gap:6px; }
+.qpay input, .qpay select{ font:inherit; font-size:13.5px; height:36px; padding:0 10px; min-width:0;
+  border:1px solid var(--border); border-radius:10px; background:var(--panel); color:var(--ink); }
+.qpay input{ flex:1 1 90px; max-width:130px; }
+.qpay select{ flex:none; }
+.qpay input:focus, .qpay select:focus{ outline:none; border-color:var(--bronze); box-shadow:0 0 0 3px var(--focus); }
+.qp-btn{ flex:none; display:inline-flex; align-items:center; gap:5px; height:36px; padding:0 14px; border:0;
+  border-radius:10px; font:inherit; font-size:13.5px; font-weight:700; color:#fff; background:var(--bronze);
+  cursor:pointer; transition:background-color .15s, transform .1s; }
+.qp-btn:hover{ background:var(--bronze-d); }
+.qp-btn:active{ transform:scale(.97); }
+.qp-btn:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--focus); }
+.qp-btn .ico{ width:16px; height:16px; }
+.due{ display:inline-block; font-weight:700; color:#B03A2E; background:#FBE9E6; padding:2px 10px;
+  border-radius:99px; font-variant-numeric:tabular-nums; }
+@media (max-width:760px){ .qpay input{ max-width:none; } }
+
+/* ---- صفوف الإشعارات: أيقونة في مربّع، نصّ، وسهم يظهر عند المرور ---- */
+.alert-row{ display:flex; align-items:center; gap:10px; padding:8px 10px 8px 12px; border-radius:12px; margin:6px 0;
+  border:1px solid transparent; border-inline-start:4px solid #888; line-height:1.6;
+  transition:background-color .15s, border-color .15s; }
+.alert-row:hover{ filter:none; }
+.alert-row .ar-ic{ flex:none; width:30px; height:30px; border-radius:9px; display:grid; place-items:center; }
+.alert-row .ar-ic .ico{ margin:0; width:16px; height:16px; opacity:1; vertical-align:0; }
+.alert-row .ar-t{ flex:1; min-width:0; }
+.alert-row .ar-go{ flex:none; display:grid; color:var(--muted); opacity:0; transform:translateX(4px);
+  transition:opacity .15s, transform .2s var(--ease); }
+.alert-row .ar-go .ico{ width:16px; height:16px; margin:0; }
+.alert-row:hover .ar-go, .alert-row:focus-visible .ar-go{ opacity:1; transform:none; }
+.alert-row:focus-visible{ outline:none; box-shadow:0 0 0 3px var(--focus); }
+@media (hover:none){ .alert-row .ar-go{ opacity:.7; transform:none; } }
+.alert-row.lv-danger{ border-color:#F3D3CD; border-inline-start-color:#C0392B; background:#FDF4F2; }
+.alert-row.lv-danger .ar-ic{ background:#FBE1DC; color:#B03A2E; }
+.alert-row.lv-danger:hover{ background:#FBE9E5; }
+.alert-row.lv-warn{ border-color:#F2DFC0; border-inline-start-color:#C26A00; background:#FEF9F0; }
+.alert-row.lv-warn .ar-ic{ background:#FBEBD2; color:#9A5800; }
+.alert-row.lv-warn:hover{ background:#FDF1DE; }
+.alert-row.lv-info{ border-color:#D3E1F4; border-inline-start-color:#1F5FAD; background:#F4F8FD; }
+.alert-row.lv-info .ar-ic{ background:#E1ECFA; color:#1F5FAD; }
+.alert-row.lv-info:hover{ background:#E9F1FB; }
+
+/* ---- صفحة الإشعارات: ملخّص بالأعداد ثم مجموعات حسب الأهمية ---- */
+.nt-sum{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.nt-chip{ display:inline-flex; align-items:center; gap:7px; padding:6px 8px 6px 14px; border-radius:99px;
+  font-weight:700; font-size:14px; background:var(--panel); border:1px solid var(--border); box-shadow:var(--sh-1);
+  transition:transform .15s var(--ease), box-shadow .15s; }
+.nt-chip:hover{ transform:translateY(-1px); box-shadow:0 6px 16px rgba(28,24,16,.08); }
+.nt-chip .ico{ width:16px; height:16px; }
+.nt-chip b{ min-width:24px; text-align:center; padding:1px 8px; border-radius:99px; color:#fff; font-size:12.5px;
+  font-variant-numeric:tabular-nums; }
+.nt-chip.lv-danger{ color:#B03A2E; } .nt-chip.lv-danger b{ background:#C0392B; }
+.nt-chip.lv-warn{ color:#9A5800; }   .nt-chip.lv-warn b{ background:#C26A00; }
+.nt-chip.lv-info{ color:#1F5FAD; }   .nt-chip.lv-info b{ background:#1F5FAD; }
+.nt-group{ margin-bottom:20px; scroll-margin-top:96px; }
+.nt-head{ display:flex; align-items:center; gap:11px; margin:0 4px 8px; }
+.nt-head h3{ margin:0; font-size:16px; display:flex; align-items:center; gap:8px; }
+.nt-head small{ display:block; color:var(--muted); font-size:12.5px; line-height:1.6; }
+.nt-ic{ flex:none; width:36px; height:36px; border-radius:11px; display:grid; place-items:center; }
+.nt-ic .ico{ width:18px; height:18px; vertical-align:0; }
+.nt-group.lv-danger .nt-ic{ background:#FBE1DC; color:#B03A2E; }
+.nt-group.lv-warn .nt-ic{ background:#FBEBD2; color:#9A5800; }
+.nt-group.lv-info .nt-ic{ background:#E1ECFA; color:#1F5FAD; }
+.nt-n{ font-size:12px; font-weight:700; padding:1px 9px; border-radius:99px; background:var(--soft); color:var(--muted);
+  font-variant-numeric:tabular-nums; }
+.nt-group .alerts-box{ margin-bottom:0; padding:6px 10px; }
+.nt-empty{ background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:34px 18px; }
+.nt-empty .es-ic{ background:#E3F4EA; color:#1E8A5A; }
+
+/* ---- الجداول على الجوال: كل صفّ بطاقة لها عنوان واضح ---- */
+@media (max-width:760px){
+  table.data tr.tcard td.td-title, table.acc-table tr.tcard td.td-title{ padding-inline-start:12px; padding-block:10px 9px;
+    font-weight:700; font-size:15px; color:var(--ink); border-bottom:1px dashed var(--border); margin-bottom:3px; }
+  table.data tr.tcard td.td-title::before, table.acc-table tr.tcard td.td-title::before{ display:none; }
+
+  /* كشف السجلّات: بطاقة مضغوطة — الاسم والأزرار، ثم الجواز والبرنامج والهاتف في سطر، ثم السداد */
+  .list-panel table.data.list-table{ background:none; border:0; border-radius:0; box-shadow:none; overflow:visible; }
+  table.data.list-table tr.tcard{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.75fr) minmax(0,1.1fr) auto;
+    gap:10px 12px; align-items:start; padding:12px 12px 11px; margin-bottom:10px; background:var(--panel);
+    border:1px solid var(--border); border-radius:16px; box-shadow:var(--sh-1); }
+  table.data.list-table tr.tcard td{ padding:0; border:0; min-height:0; background:none; font-size:13.5px; }
+  table.data.list-table tr.tcard:hover td{ background:none; }
+  table.data.list-table tr.tcard td[data-label]::before{ position:static; display:block; width:auto; margin-bottom:1px;
+    font-size:11px; font-weight:600; color:var(--muted); }
+  table.data.list-table tr.tcard td.c-who{ grid-column:1 / 4; grid-row:1; margin:0; }
+  table.data.list-table tr.tcard td.c-who::before,
+  table.data.list-table tr.tcard td.c-pay::before,
+  table.data.list-table tr.tcard td.row-acts::before{ display:none; }
+  table.data.list-table tr.tcard td.c-who .who b{ font-size:15.5px; }
+  table.data.list-table tr.tcard td.row-acts{ grid-column:4; grid-row:1; align-self:center; display:flex; gap:6px; }
+  table.data.list-table tr.tcard td.c-pp{ grid-column:1; }
+  table.data.list-table tr.tcard td.c-prog{ grid-column:2; }
+  table.data.list-table tr.tcard td.c-ph{ grid-column:3 / 5; }
+  table.data.list-table tr.tcard td.c-st{ grid-column:1 / -1; }
+  table.data.list-table tr.tcard td.c-st:empty{ display:none; }
+  table.data.list-table tr.tcard td.c-pay{ grid-column:1 / -1; padding-top:10px; border-top:1px dashed var(--border); }
+  table.data.list-table tr.tcard .pay-top .tag:not(.over)::before{ content:"المتبقّي "; font-weight:500; font-size:12px;
+    color:var(--muted); }
+}
+
+/* زرّ البحث العائم في الشريط السفلي يصير زرّاً عادياً في صفحات شريط الحفظ حتى لا يغطّي «حفظ» */
+@media (max-width:760px){
+  body:has(.savebar) .bb-search .bb-ic, body:has(.rb-save) .bb-search .bb-ic{ width:46px; height:30px; margin-top:0;
+    border-radius:99px; color:inherit; background:none; box-shadow:none; }
+  body:has(.savebar) .bb-search .bb-ic .ico, body:has(.rb-save) .bb-search .bb-ic .ico{ width:21px; height:21px; }
+}
+
+/* إدارة الحسابات: «آخر تحديث» تاريخ في سطر ووقت تحته */
+.acc-when b{ display:block; white-space:nowrap; font-weight:500; color:var(--ink); font-size:13px; }
+.acc-when small{ display:block; font-size:12px; color:var(--muted); text-align:start; }
+@media (max-width:760px){
+  table.acc-table form.pw-reset{ display:flex; gap:6px; min-width:0; }
+  table.acc-table form.pw-reset input{ min-width:0 !important; flex:1 1 auto; width:100%; }
+}

@@ -172,7 +172,7 @@
     <div class="alerts-head"><b>{{ ic('bell') }} يحتاج انتباهك</b>
       <a href="{{ url_for('notifications') }}">كل الإشعارات {{ ic('arrow-left') }}</a></div>
     {% for a in alerts_top %}
-    <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}">{{ a.icon|iconize }} {{ a.text }}</a>
+    <a class="alert-row lv-{{ a.level }}" href="{{ a.link }}"><span class="ar-ic">{{ a.icon|iconize }}</span><span class="ar-t">{{ a.text }}</span><span class="ar-go">{{ ic('arrow-left') }}</span></a>
     {% endfor %}
   </div>
   {% endif %}
