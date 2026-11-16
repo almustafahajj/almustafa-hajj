@@ -1987,7 +1987,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-13 · روابط البرامج والمصادر وما قبل السفر والآراء والأرباح"
+_BUILD_TAG = "2026-11-13 · لحظة الدفعة ورفيق الحرم وختم الأصالة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2869,15 +2869,30 @@ def doc_manual(kind):
 def _attach_verify(kind: str, data: dict, uid: str = "") -> None:
     """يسجّل الفاوتشر/طلب المواصلات في سجلّ التحقّق العام ويضع رابطه في البيانات
     (فيُرسم QR على المستند، ويبقى عند إعادة توليده من الأرشيف)."""
-    if kind not in ("voucher", "treq") or not isinstance(data, dict):
+    if kind not in _DOC_TITLES or not isinstance(data, dict):
+        return
+    s = _sess()
+    if s is None or not s.can_edit:                # المطّلع لا يُصدر مستنداً «أصلياً» للتحقّق العام
         return
     from webapp import public
+    from hajj_app.fields import parse_amount
     guest = (data.get("guest_ar") or data.get("guest_en") or data.get("to")
              or data.get("name") or "")
     info = {"mode": _mode(), "kind": kind, "number": str(data.get("number") or ""),
             "date": str(data.get("date") or ""), "guest": public.mask_name(guest),
             "uid": uid or ""}
-    if kind == "voucher":
+    if kind in ("receipt", "invoice", "contract"):
+        # رقم هذه المستندات مشترك بين أفراد العائلة الواحدة، فالرمز يُربط بالشخص
+        # (uid) وبالمبلغ (السند بمبلغٍ آخر = رمزٌ آخر) حتى لا يحلّ مستندُ فردٍ محلّ آخر.
+        amt = parse_amount(data.get("amount")) if kind != "contract" else None
+        info["variant"] = f"{uid or ''}|{amt:.2f}" if amt is not None else f"{uid or ''}|"
+        if amt is not None:
+            info["amount"] = format_amount(amt) or "0"
+        if kind == "receipt" and str(data.get("bank") or "").strip():
+            info["method"] = str(data["bank"]).strip()[:60]
+        if kind == "contract" and str(data.get("title_ar") or "").strip():
+            info["subject"] = str(data["title_ar"]).strip()[:80]
+    elif kind == "voucher":
         info["stays"] = [[str(x or "") for x in (list(r)[:2] + list(r)[5:8])]
                          for r in (data.get("stays") or [])
                          if isinstance(r, (list, tuple)) and len(r) >= 8
@@ -2894,13 +2909,36 @@ def _attach_verify(kind: str, data: dict, uid: str = "") -> None:
         pass
 
 
+def _public_contact(mode=None) -> dict:
+    """بيانات التواصل للصفحات العامة: اسم الشركة وهاتفها ورابط واتساب «راسلنا»."""
+    from hajj_app import whatsapp as _wa
+    cur = app_mode.get_mode()
+    co, wa = {}, ""
+    try:
+        for m in ([mode] if mode in app_mode.MODES else []) + [app_mode.UMRAH, app_mode.HAJJ]:
+            app_mode.set_mode(m)
+            st = storage.load_settings()
+            if not co and isinstance(st.get("company"), dict):
+                co = {k: v for k, v in st["company"].items() if v}
+            wa = wa or _public_cfg(st)["wa"]
+    finally:
+        app_mode.set_mode(cur)
+    phone = str(co.get("phone") or "").strip()
+    return {"name": co.get("name_ar") or "المصطفى للحج والعمرة", "phone": phone,
+            "tel": re.sub(r"[^\d+]", "", phone),
+            "wa": _wa.wa_link(wa or _PUB_WA_DEFAULT, "السلام عليكم، أستفسر عن مستند صادر منكم") or ""}
+
+
 @app.get("/v/<token>")
 def verify_doc(token):
-    """صفحة عامة يفتحها مسح QR المستند: تؤكّد أنه صادر من المصطفى (بلا دخول)."""
+    """صفحة عامة يفتحها مسح QR المستند: ختم أصالة متحرّك يؤكّد أنه صادر من المصطفى
+    مع بياناته المطبوعة للمطابقة (بلا دخول)."""
     from webapp import public
     d = public.get_doc(token)
     return render_template("public_verify.html", d=d,
-                           title=_DOC_TITLES.get((d or {}).get("kind"), ("مستند", ""))[0]
+                           title=_DOC_TITLES.get((d or {}).get("kind"), ("مستند", ""))[0],
+                           contact=_public_contact((d or {}).get("mode")),
+                           trips_url=url_for("public_trips", _external=True)
                            ), (200 if d else 404)
 
 
@@ -3019,10 +3057,40 @@ def person_page(token):
     from markupsafe import Markup
     checkin_qr = Markup(_qr_svg(code)) if code else ""
     return render_template("public_person.html", p=p, trip=trip, guide=guide,
-                           checkin_qr=checkin_qr,
+                           checkin_qr=checkin_qr, haram=_haram_data(trip, today),
                            phones=phones, docs=docs, mode=mode,
                            co_name=co.get("name_ar") or "المصطفى للحج والعمرة",
                            noun="الحاج" if mode == app_mode.HAJJ else "المعتمر")
+
+
+# بداية رمضان وبداية شوّال بتقويم أمّ القرى (من UmAlQuraCalendar) — العشاء في
+# رمضان بعد المغرب بساعتين؛ والتقويم الحسابي قد يخالف أمّ القرى بيوم عند أطراف الشهر.
+_UQ_RAMADAN = (("2025-03-01", "2025-03-30"), ("2026-02-18", "2026-03-20"),
+               ("2027-02-08", "2027-03-09"), ("2028-01-28", "2028-02-26"),
+               ("2029-01-16", "2029-02-14"), ("2030-01-05", "2030-02-04"),
+               ("2030-12-26", "2031-01-24"), ("2031-12-15", "2032-01-14"))
+
+
+def _uq_ramadan(d) -> bool:
+    iso = d.isoformat()
+    if _UQ_RAMADAN[0][0] <= iso < _UQ_RAMADAN[-1][1]:
+        return any(a <= iso < b for a, b in _UQ_RAMADAN)
+    return _hijri_month(d) == 9                     # خارج الجدول: التقويم الحسابي
+
+
+def _haram_data(trip, today):
+    """قسم «في الحرم» في «رحلتي»: مواقيت مكة والمدينة لأيام الرحلة (من أمس حتى
+    اليوم التالي للعودة) — يظهر قبل المغادرة بثلاثة أيام وطوال الرحلة."""
+    from webapp import prayer
+    st = trip.get("status") or {}
+    if not (st.get("state") == "during" or (st.get("state") == "before" and st.get("n", 99) <= 3)):
+        return None
+    start = today - timedelta(days=1)
+    end = (trip.get("ret") or trip.get("dep") or today) + timedelta(days=1)
+    days = max(3, min(45, (end - start).days + 1))
+    return {"days": prayer.table(start, days, _uq_ramadan),
+            "names": list(prayer.NAMES),
+            "cities": {k: v[0] for k, v in prayer.CITIES.items()}}
 
 
 def _person_info(rec) -> dict:
@@ -4206,6 +4274,8 @@ def _render_edit(rec, saved=False, is_new=False, idx=None):
                          "file-text")
     return render_template(
         "hujjaj_edit.html", active="hujjaj", groups=groups, saved=saved,
+        pay_moment=session.pop("pay_moment", None) if idx is not None else None,
+        pay_methods=_PAY_METHODS,
         has_docs=has_docs, prof=_profile(rec, idx) if idx is not None else None,
         is_new=is_new, idx=idx, room_prices=room_prices,
         fp=_rec_token(rec) if idx is not None else "",
@@ -4279,8 +4349,25 @@ def _profile(rec, idx) -> dict:
         "total": format_amount(total) if total else "", "paid": format_amount(paid),
         "remaining": format_amount(max(0.0, remaining_amount(rec))), "pct": pct,
         "plink": url_for("person_page", token=tok) if tok else "",
-        "wa": wa,
+        "wa": wa, "payments": _payment_rows(rec, total),
     }
+
+
+def _payment_rows(rec, total: float) -> list:
+    """دفعات السجلّ بترتيبها مع الرصيد المتبقّي بعد كلٍّ منها (للخطّ الزمني)."""
+    from hajj_app.fields import parse_amount
+    out, run = [], 0.0
+    for i, p in enumerate(getattr(rec, "payments", None) or []):
+        if not isinstance(p, dict):
+            continue
+        amt = parse_amount(p.get("amount")) or 0.0
+        run += amt
+        out.append({"n": i + 1, "amount": format_amount(amt) or "0", "date": str(p.get("date") or ""),
+                    "method": str(p.get("method") or ""), "note": str(p.get("note") or ""),
+                    "left": format_amount(max(0.0, total - run)) if total > 0 else "",
+                    "pct": max(0, min(100, round(100 * run / total))) if total > 0 else 0,
+                    "opening": str(p.get("method") or "") == "رصيد سابق"})
+    return out
 
 
 @app.get("/hujjaj/<int:idx>/avatar.jpg")
@@ -5955,12 +6042,20 @@ def _web_doc_number(settings, rec, store_key, prefix, start):
     return f"{prefix}{n:04d}"
 
 
-def _doc_build(kind, rec, co, settings):
-    """يبني بيانات المستند القابلة للتحرير + مخطّطه حسب النوع."""
+def _doc_build(kind, rec, co, settings, pay=None):
+    """يبني بيانات المستند القابلة للتحرير + مخطّطه حسب النوع.
+    ``pay`` (للسند): {"amount", "bank"} لدفعةٍ بعينها بدل المجموع المدفوع."""
     from hajj_app import pdf_io, umrah
     prog = str(getattr(rec, "trip", "") or getattr(rec, "program", "") or "")
     if kind == "receipt":
         num = _web_doc_number(settings, rec, "receipts", "", 119)
+        if pay:
+            data = pdf_io.build_receipt_data(
+                rec, company=co, number=num, amount=pay["amount"],
+                date_str=datetime.now(_UAE).strftime("%B %d, %Y"))
+            if pay.get("bank"):
+                data["bank"] = pay["bank"]
+            return data, pdf_io.RECEIPT_SCHEMA
         return pdf_io.build_receipt_data(rec, company=co, number=num), \
             pdf_io.RECEIPT_SCHEMA
     if kind == "invoice":
@@ -6110,15 +6205,22 @@ def doc_edit(idx, kind):
     if kind not in _DOC_TITLES:
         return redirect(url_for("hujjaj"))
     records = _load_records()
-    moved = _follow(records, idx, "doc_edit", kind=kind)
+    keep = {k: request.args[k] for k in ("amount", "method") if request.args.get(k)}
+    moved = _follow(records, idx, "doc_edit", kind=kind, **keep)
     if moved:
         return moved
     if not (0 <= idx < len(records)):
         return redirect(url_for("hujjaj"))
     from hajj_app import webdoc
+    from hajj_app.fields import parse_amount
     settings = storage.load_settings()
     co = settings.get("company") if isinstance(settings, dict) else None
-    data, schema = _doc_build(kind, records[idx], co, settings)
+    pay = None
+    if kind == "receipt" and keep.get("amount"):   # من «لحظة الدفعة»: سند هذه الدفعة
+        a = parse_amount(keep["amount"])
+        if a and a > 0:
+            pay = {"amount": a, "bank": _PAY_BANK_EN.get(keep.get("method", "").strip(), "")}
+    data, schema = _doc_build(kind, records[idx], co, settings, pay=pay)
     data["_rec"] = _rec_token(records[idx])        # يتحقّق منه الحفظ (الموضع قد يتغيّر)
     title, icon = _DOC_TITLES[kind]
     return webdoc._doc_html(
@@ -7110,6 +7212,9 @@ def camp_tents_manual_assign():
 
 # ==================== المصروفات والمحاسبة ==================================
 _EXPENSE_CATS = ("فنادق", "نقل", "إعاشة", "تصاريح", "رواتب", "طيران", "أخرى")
+_PAY_METHODS = ("تحويل", "نقد", "بطاقة", "شيك")
+# طريقة الدفع كما تُطبع في سند القبض (السند بالإنجليزية)
+_PAY_BANK_EN = {"تحويل": "Bank Transfer", "نقد": "Cash", "بطاقة": "Card", "شيك": "Cheque"}
 
 
 @app.route("/expenses", methods=["GET", "POST"])
@@ -7799,7 +7904,8 @@ def finance():
             "paid": format_amount(parse_amount(r.paid_amount) or 0) or "0",
             "remaining": format_amount(amt) or "0"})
     return render_template("finance.html", active="finance", cards=cards,
-                           progs=progs, arrears=arrears, **_ctx())
+                           progs=progs, arrears=arrears,
+                           pay_moment=session.pop("pay_moment", None), **_ctx())
 
 
 @app.post("/finance/<int:idx>/pay")
@@ -7808,17 +7914,18 @@ def finance_pay(idx):
         return redirect(url_for("login"))
     if not _sess().can_edit:
         return redirect(url_for("finance"))
-    from datetime import date as _date
     from hajj_app.fields import parse_amount, format_amount as _fmt, sync_paid_amount
     records = _load_records()
+    back_edit = request.form.get("back") == "edit"
     j = _resolve_idx(records, idx, request.form.get("fp", ""))
     if j is None:                                  # تغيّر الكشف منذ فتح الصفحة
-        return redirect(url_for("finance", msg="stale"))
+        return redirect(url_for("hujjaj", msg="stale") if back_edit else url_for("finance", msg="stale"))
     idx = j
     if 0 <= idx < len(records):
         amt = parse_amount(request.form.get("amount"))
         if amt and amt > 0:
             rec = records[idx]
+            paid_before = parse_amount(getattr(rec, "paid_amount", "")) or 0.0
             pays = list(getattr(rec, "payments", None) or [])
             # مبلغ مدفوع سابق أُدخل مباشرةً بلا سجلّ دفعات: نُدرجه كرصيد افتتاحي
             # حتى لا يُلغيه sync_paid_amount عند إعادة الحساب من مجموع الدفعات.
@@ -7827,7 +7934,7 @@ def finance_pay(idx):
                 if prev > 0:
                     pays.append({"amount": _fmt(prev), "date": "",
                                  "method": "رصيد سابق"})
-            pays.append({"amount": _fmt(amt), "date": _date.today().isoformat(),
+            pays.append({"amount": _fmt(amt), "date": datetime.now(_UAE).date().isoformat(),
                          "method": (request.form.get("method") or "").strip()
                          or "تحويل"})
             rec.payments = pays
@@ -7837,6 +7944,49 @@ def finance_pay(idx):
                 _nm = getattr(rec, "full_name_ar", "") or getattr(
                     rec, "full_name_en", "") or getattr(rec, "passport_number", "")
                 _audit("تسجيل دفعة", f"{_nm} — {_fmt(amt)}")
+                session["pay_moment"] = _pay_moment(rec, idx, amt, paid_before, len(pays))
             except Exception:
                 pass
+    if back_edit and 0 <= idx < len(records):
+        return redirect(url_for("hujjaj_edit", idx=idx, fp=_rec_token(records[idx])) + "#payments")
     return redirect(url_for("finance"))
+
+
+def _pay_moment(rec, idx, amt, before, n) -> dict:
+    """بيانات «لحظة استلام الدفعة» (تُعرض مرّة واحدة بعد التسجيل)."""
+    from hajj_app.fields import parse_amount
+    from hajj_app import whatsapp as _wa
+    total = parse_amount(rec.program_value) or 0.0
+    after = parse_amount(rec.paid_amount) or 0.0
+    left = max(0.0, total - after)
+    full = total > 0 and left <= 0.005
+    name = rec.full_name_ar or rec.full_name_en or ""
+    first = (name.split() or [""])[0]
+    gval = str(getattr(rec, _group_attr(), "") or "")
+    if full:
+        msg = (f"السلام عليكم {first}،\nوصلتنا دفعتكم بمبلغ {format_amount(amt)} درهم، "
+               f"واكتمل بها سداد برنامجكم{f' «{gval}»' if gval else ''} بالكامل.\n"
+               "شكراً لثقتكم، وتقبّل الله منكم — المصطفى للحج والعمرة.")
+    else:
+        msg = (f"السلام عليكم {first}،\nوصلتنا دفعتكم بمبلغ {format_amount(amt)} درهم — شكراً لكم.\n"
+               + (f"المتبقّي من قيمة البرنامج: {format_amount(left)} درهم.\n" if total > 0 else "")
+               + "مع تحيات المصطفى للحج والعمرة.")
+    wa = None
+    if rec.phone:
+        try:
+            wa = _wa.wa_link(rec.phone, msg, str(storage.load_settings().get("whatsapp_cc") or "971"))
+        except Exception:                          # noqa: BLE001
+            wa = None
+    fp = _rec_token(rec)
+    last = (rec.payments or [{}])[-1]
+    method = str(last.get("method") or "")
+    return {"name": name or "—", "amt": round(float(amt), 2), "amt_txt": format_amount(amt) or "0",
+            "before": max(0, min(100, round(100 * before / total))) if total > 0 else 0,
+            "after": max(0, min(100, round(100 * after / total))) if total > 0 else 0,
+            "total": format_amount(total) if total > 0 else "", "left": format_amount(left) or "0",
+            "full": full, "n": n, "method": method,
+            "date": str(last.get("date") or datetime.now(_UAE).date().isoformat()), "wa": wa,
+            # السند لهذه الدفعة: مبلغها وطريقتها (لا المجموع المدفوع حتى الآن)
+            "receipt": url_for("doc_edit", idx=idx, kind="receipt", fp=fp,
+                               amount=f"{float(amt):.2f}", method=method or None),
+            "profile": url_for("hujjaj_edit", idx=idx, fp=fp)}

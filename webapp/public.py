@@ -58,11 +58,13 @@ def doc_token(info: dict) -> str:
     عند إعادة إصدار الفاوتشر نفسه، وتُحدَّث بياناته."""
     with _LOCK:
         reg = _load()
-        key = (info.get("mode"), info.get("kind"), str(info.get("number") or ""))
+        key = (info.get("mode"), info.get("kind"), str(info.get("number") or ""),
+               str(info.get("variant") or ""))
         tok = None
         if key[2]:
             tok = next((t for t, d in reg["docs"].items()
-                        if (d.get("mode"), d.get("kind"), str(d.get("number") or "")) == key),
+                        if (d.get("mode"), d.get("kind"), str(d.get("number") or ""),
+                            str(d.get("variant") or "")) == key),
                        None)
         tok = tok or secrets.token_urlsafe(12)
         old = reg["docs"].get(tok, {})

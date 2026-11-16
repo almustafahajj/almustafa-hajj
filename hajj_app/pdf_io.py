@@ -2241,7 +2241,8 @@ def export_receipt_pdf(rec, path: str | Path, *,
         from reportlab.graphics import renderPDF
         qs = 58
         if py - 40 - (cy0 + 16) >= qs + 12:
-            qd = _qr_drawing(f"{co['name_ar']} | سند {number} | {name} | "
+            vurl = str((data or {}).get("verify_url") or "").strip()
+            qd = _qr_drawing(vurl or f"{co['name_ar']} | سند {number} | {name} | "
                              f"AED {amount:,.2f} | {date_str}", qs)
             if qd is not None:
                 qy = cy0 + 22
@@ -2635,7 +2636,8 @@ def export_invoice_pdf(rec, path: str | Path, *, company=None,
     ]))
 
     # يمين الإجماليات: رمز التحقّق وختم «مدفوع» عند السداد الكامل
-    _qr = _qr_drawing(f"{co['name_ar']} | فاتورة {number} | {guest} | "
+    _vurl = str((data or {}).get("verify_url") or "").strip()
+    _qr = _qr_drawing(_vurl or f"{co['name_ar']} | فاتورة {number} | {guest} | "
                       f"{money(total)} AED | {date_str}", 62)
     _qcap = ParagraphStyle("iqc", parent=st["cell"], alignment=1, fontSize=7.5,
                            textColor=B.MUTED, leading=10)
@@ -2988,7 +2990,19 @@ def export_contract_pdf(rec, path: str | Path, *, company=None,
                  colWidths=[sw, sgap, sw])
     srow.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
                               ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-    story.append(KeepTogether([srow]))
+    _sig = [srow]
+    _vurl = str((data or {}).get("verify_url") or "").strip()
+    _qr = _qr_drawing(_vurl, 54) if _vurl else None
+    if _qr is not None:                    # رمز التحقّق من أصالة العقد (البورتال)
+        _qcap = ParagraphStyle("cqc", parent=st["cell"], alignment=1, fontSize=7.5,
+                               textColor=B.MUTED, leading=10)
+        qbox = Table([[_qr], [Paragraph(ar("امسح للتحقّق من أصالة العقد"), _qcap)]],
+                     colWidths=[120])
+        qbox.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                  ("TOPPADDING", (0, 0), (-1, -1), 1),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+        _sig += [Spacer(1, 8), qbox]
+    story.append(KeepTogether(_sig))
 
     def _page(c, dd):
         B.page_decor(c, dd, co=co, title_ar=title_ar, title_en=title_en,

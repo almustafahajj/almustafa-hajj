@@ -65,7 +65,7 @@ tok = url.rsplit("/v/", 1)[1]
 assert url.startswith("http") and public.get_doc(tok)["number"] == "MA0042"
 anon = server.app.test_client()                                   # بلا تسجيل دخول
 page = anon.get(f"/v/{tok}").get_data(as_text=True)
-assert "مستند صحيح" in page and "MA0042" in page and "خالد س. ا." in page
+assert "مستند أصلي" in page and "MA0042" in page and "خالد س. ا." in page
 assert "سويس أوتيل" in page and "الكعبي" not in page               # الاسم مختصر
 assert anon.get("/v/مزوّر123").status_code == 404
 # إعادة إصدار الرقم نفسه ← الرمز نفسه (QR المطبوع يبقى صالحاً)

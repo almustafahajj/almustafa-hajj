@@ -54,7 +54,40 @@
     {% if prof.wa %}<a class="btn ghost sm wa" href="{{ prof.wa }}" target="_blank" rel="noopener">{{ ic('chat') }} واتساب</a>{% endif %}
   </div>
 </section>
+
+<details class="panel pay-hist" id="payments"{% if pay_moment %} open{% endif %}>
+  <summary>{{ ic('banknote') }} الدفعات والأقساط <span class="ph-count">{{ prof.payments|length }}</span>
+    {% if prof.total %}<span class="ph-sum">مدفوع {{ prof.paid }} من {{ prof.total }}</span>{% endif %}</summary>
+  {% if prof.payments %}
+  <ol class="ph-line">
+    {% for p in prof.payments %}
+    <li class="{{ 'opening' if p.opening }}{{ ' last' if loop.last }}">
+      <span class="ph-dot" aria-hidden="true"></span>
+      <div class="ph-main">
+        <b class="ph-amt">{{ p.amount }} <small>درهم</small></b>
+        <span class="ph-meta">{% if p.opening %}رصيد افتتاحي (قبل سجلّ الدفعات){% else %}{{ p.method or '—' }}{% endif %}
+          {% if p.date %} · <span dir="ltr">{{ p.date }}</span><span class="ph-hijri" data-iso="{{ p.date }}"></span>{% endif %}</span>
+        {% if p.note %}<span class="ph-note">{{ p.note }}</span>{% endif %}
+      </div>
+      {% if p.left != '' %}
+      <div class="ph-bal"><small>المتبقّي بعدها</small><b>{{ p.left }}</b>
+        <span class="pay-bar"><i class="pb-{{ 'good' if p.pct >= 100 else 'warn' }}" style="width:{{ p.pct }}%"></i></span></div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="muted ph-empty">لا دفعات مسجّلة بعد{% if prof.paid and prof.paid != '0' %} — المدفوع الحالي ({{ prof.paid }}) سيُدرج رصيداً افتتاحياً عند أول دفعة{% endif %}.</p>{% endif %}
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('finance_pay', idx=idx) }}" class="ph-add">
+    <input type="hidden" name="fp" value="{{ fp }}"><input type="hidden" name="back" value="edit">
+    <label>المبلغ<input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" placeholder="0" required></label>
+    <label>الطريقة<select name="method">{% for mth in pay_methods %}<option>{{ mth }}</option>{% endfor %}</select></label>
+    <button class="acc-btn add" type="submit">{{ ic('banknote') }} سجّل الدفعة</button>
+  </form>
+  {% endif %}
+</details>
 {% endif %}
+{% include "_pay_moment.html" %}
 
 <nav class="sec-nav" id="secNav" aria-label="أقسام السجلّ">
   {% for g in groups %}<a href="#sec-{{ loop.index }}">{{ ic(g.icon) }}<span>{{ g.title }}</span></a>{% endfor %}
@@ -189,4 +222,13 @@
 {% endif %}
 
 {# المستندات والصور: أزرارها في رأس الملف الشخصي أعلى الصفحة #}
+<script>
+(function(){
+  var f; try{ f=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{day:'numeric',month:'long',year:'numeric'}); }catch(e){ return; }
+  document.querySelectorAll('.ph-hijri[data-iso]').forEach(function(el){
+    if(/^\d{4}-\d{2}-\d{2}$/.test(el.dataset.iso)){ try{ el.textContent=' · '+f.format(new Date(el.dataset.iso+'T12:00:00')); }catch(e){} }
+  });
+  var d=document.getElementById('payments'); if(d&&location.hash==='#payments') d.open=true;
+})();
+</script>
 {% endblock %}

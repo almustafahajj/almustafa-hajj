@@ -1,0 +1,108 @@
+{# «لحظة استلام الدفعة» — تظهر مرّة واحدة بعد تسجيل دفعة (finance_pay). تُغلق بـ Esc أو «تم» أو النقر خارجها. #}
+{% if pay_moment %}{% set m = pay_moment %}
+<div class="pm-overlay{{ ' full' if m.full }}" id="pmOverlay" role="dialog" aria-modal="true" aria-labelledby="pmTitle">
+  <div class="pm-card">
+    <div class="pm-slot" aria-hidden="true"></div>
+    <article class="pm-receipt">
+      <header class="pm-head">
+        <span>{{ ic('receipt') }} سند قبض</span>
+        <span class="pm-n">الدفعة رقم {{ m.n }}</span>
+      </header>
+      <h2 id="pmTitle" class="pm-name">{{ m.name }}</h2>
+      <div class="pm-amount">
+        <b id="pmAmt" data-to="{{ m.amt }}" aria-hidden="true">{{ m.amt_txt }}</b><small aria-hidden="true">درهم</small>
+        <span class="sr-only">{{ m.amt_txt }} درهم</span>
+      </div>
+      <p class="pm-meta">{% if m.method %}{{ m.method }} · {% endif %}<span dir="ltr">{{ m.date }}</span><span class="pm-hijri" data-iso="{{ m.date }}"></span></p>
+      {% if m.total %}
+      <div class="pm-progress">
+        <svg class="pm-ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle cx="60" cy="60" r="52" class="pm-r-bg"/>
+          {% if m.before %}<circle cx="60" cy="60" r="52" class="pm-r-was" pathLength="100" stroke-dasharray="{{ m.before }} 100"/>{% endif %}
+          {# هذه الدفعة وحدها: من حيث انتهى المدفوع سابقاً #}
+          <circle cx="60" cy="60" r="52" class="pm-r-now" id="pmRing" pathLength="100"
+                  stroke-dasharray="{{ m.after - m.before }} 100" stroke-dashoffset="{{ -m.before }}"
+                  data-from="{{ m.before }}" data-to="{{ m.after }}"{% if m.after - m.before < 1 %} style="visibility:hidden"{% endif %}/>
+        </svg>
+        <div class="pm-pct"><b id="pmPct">{{ m.after }}%</b><small>من {{ m.total }}</small></div>
+      </div>
+      <p class="pm-left">{% if m.full %}{{ ic('check') }} اكتمل السداد{% else %}المتبقّي <b>{{ m.left }}</b> درهم{% endif %}</p>
+      {% else %}<p class="pm-left muted">لم تُحدَّد قيمة البرنامج بعد</p>{% endif %}
+      {% if m.full %}
+      <div class="pm-seal" aria-label="مدفوع بالكامل">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <defs><linearGradient id="pmGold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#F6DE9A"/><stop offset=".5" stop-color="#C9973A"/><stop offset="1" stop-color="#EBCB7C"/></linearGradient></defs>
+          <circle cx="100" cy="100" r="92" fill="none" stroke="url(#pmGold)" stroke-width="7"/>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="url(#pmGold)" stroke-width="2" stroke-dasharray="3 5"/>
+          <g transform="translate(100 100)" fill="none" stroke="url(#pmGold)" stroke-width="2">
+            <rect x="-62" y="-62" width="124" height="124" opacity=".35"/>
+            <rect x="-62" y="-62" width="124" height="124" transform="rotate(45)" opacity=".35"/>
+          </g>
+          <text x="100" y="94" text-anchor="middle" class="pm-seal-t1">مدفوع</text>
+          <text x="100" y="128" text-anchor="middle" class="pm-seal-t2">بالكامل</text>
+        </svg>
+      </div>
+      {% endif %}
+      <div class="pm-tear" aria-hidden="true"></div>
+    </article>
+    <div class="pm-acts">
+      {% if m.wa %}<a class="btn wa-btn sm" href="{{ m.wa }}" target="_blank" rel="noopener">{{ ic('chat') }} {{ 'شكر وإشعار بالاكتمال' if m.full else 'إشعار بالاستلام' }}</a>{% endif %}
+      <a class="btn ghost sm" href="{{ m.receipt }}" target="_blank" rel="noopener">{{ ic('file-text') }} إصدار سند قبض</a>
+      <button type="button" class="btn primary sm" id="pmClose">{{ ic('check') }} تم</button>
+    </div>
+    <p class="pm-hint">Esc أو اضغط خارج البطاقة للإغلاق</p>
+  </div>
+</div>
+<script>
+(function(){
+  var ov=document.getElementById('pmOverlay'); if(!ov) return;
+  // خارج .content (حركة دخول الصفحة تجعلها سياق تكديس فيعلوها الشريطان العلوي والسفلي)
+  document.body.appendChild(ov);
+  var calm=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var prev=document.activeElement, closeBtn=document.getElementById('pmClose');
+  document.documentElement.classList.add('pm-lock');
+  // نافذة حوار حقيقية: ما خلفها لا يُركَّز عليه ولا يُضغط حتى تُغلق
+  var behind=[].filter.call(document.body.children,function(el){ return el!==ov&&el.tagName!=='SCRIPT'&&!el.inert; });
+  behind.forEach(function(el){ el.inert=true; el.setAttribute('aria-hidden','true'); });
+  function close(){ if(!ov) return; ov.classList.add('out'); document.documentElement.classList.remove('pm-lock');
+    behind.forEach(function(el){ el.inert=false; el.removeAttribute('aria-hidden'); });
+    setTimeout(function(){ if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); ov=null; },calm?0:220);
+    try{ (prev&&prev.focus?prev:document.body).focus(); }catch(e){} }
+  closeBtn.addEventListener('click',close);
+  ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+  document.addEventListener('keydown',function(e){
+    if(!ov) return;
+    if(e.key==='Escape'){ close(); return; }
+    if(e.key==='Tab'){                            // يبقى التركيز داخل النافذة (للمتصفّحات بلا inert)
+      var f=ov.querySelectorAll('a[href],button:not([disabled])'); if(!f.length) return;
+      var first=f[0], last=f[f.length-1];
+      if(e.shiftKey&&(document.activeElement===first||!ov.contains(document.activeElement))){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey&&(document.activeElement===last||!ov.contains(document.activeElement))){ e.preventDefault(); first.focus(); }
+    }
+  });
+  setTimeout(function(){ try{closeBtn.focus({preventScroll:true});}catch(e){} },calm?0:600);
+  // التاريخ الهجري
+  var h=ov.querySelector('.pm-hijri[data-iso]');
+  try{ h.textContent=' · '+new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',{day:'numeric',month:'long',year:'numeric'}).format(new Date(h.dataset.iso+'T12:00:00')); }catch(e){}
+  if(calm) return;
+  // عدّ المبلغ ونسبة السداد
+  var a=document.getElementById('pmAmt'), finalTxt=a.textContent, to=parseFloat(a.dataset.to)||0, fmt=new Intl.NumberFormat('en-US',{maximumFractionDigits:2});
+  var ring=document.getElementById('pmRing'), pct=document.getElementById('pmPct');
+  var r0=ring?+ring.dataset.from:0, r1=ring?+ring.dataset.to:0;
+  function arc(v){ ring.setAttribute('stroke-dasharray',Math.max(0,v-r0).toFixed(2)+' 100');
+    ring.style.visibility=(v-r0)<0.5?'hidden':''; }    // طولٌ صفر برأسٍ دائري يُرسم نقطة
+  if(ring){ arc(r0); }
+  var t0=null, D=1100;
+  function step(ts){ if(t0===null) t0=ts; var k=Math.min(1,(ts-t0-380)/D); if(k<0){requestAnimationFrame(step);return;}
+    var e=1-Math.pow(1-k,3);
+    a.textContent=k>=1?finalTxt:fmt.format(Math.round(to*e*100)/100);
+    if(ring){ var v=r0+(r1-r0)*e; arc(v); pct.textContent=Math.round(v)+'%'; }
+    if(k<1) requestAnimationFrame(step);
+    else if(ov&&ov.classList.contains('full')&&navigator.vibrate&&navigator.userActivation&&navigator.userActivation.hasBeenActive){
+      setTimeout(function(){try{navigator.vibrate([30,40,60]);}catch(e){}},420); }
+  }
+  a.textContent='0'; requestAnimationFrame(step);
+})();
+</script>
+{% endif %}

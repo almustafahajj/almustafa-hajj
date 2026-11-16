@@ -61,6 +61,50 @@
     {% endif %}
   </header>
 
+  {% if haram %}
+  <section class="tp-sec hr-sec" id="haram" data-key="{{ p.uid or p.first }}">
+    <h2>{{ ic('kaaba') }} في الحرم</h2>
+    <div class="hr-seg" id="hrCity" role="group" aria-label="المدينة">
+      <button type="button" data-city="makkah" aria-pressed="true">{{ ic('kaaba') }} مكة المكرمة</button>
+      <button type="button" data-city="madinah" aria-pressed="false">{{ ic('moon') }} المدينة المنورة</button>
+    </div>
+    <article class="hr-pray">
+      <svg class="hr-arc" viewBox="0 0 220 112" aria-hidden="true">
+        <path class="hr-arc-bg" d="M 18 100 A 92 92 0 0 1 202 100"/>
+        <path class="hr-arc-day" id="hrDay" pathLength="100" d="M 202 100 A 92 92 0 0 0 18 100"/>
+        <line class="hr-hz" x1="6" y1="100" x2="214" y2="100"/>
+        <g id="hrSun" class="hr-sun"><circle r="13" class="hr-glow"/><circle r="8"/></g>
+        <g id="hrMoon" class="hr-moon" transform="translate(110 52)"><circle r="11"/><circle r="11" cx="6" cy="-4" class="hr-cut"/></g>
+        <g class="hr-stars" id="hrStars"><circle cx="50" cy="30" r="1.4"/><circle cx="160" cy="24" r="1.2"/><circle cx="84" cy="14" r="1"/><circle cx="182" cy="56" r="1.1"/><circle cx="34" cy="62" r="1"/></g>
+      </svg>
+      <div class="hr-next">
+        <small>الصلاة القادمة في <span id="hrCityName">مكة المكرمة</span></small>
+        <b id="hrName">—</b>
+        <span class="hr-at"><span id="hrTime" dir="ltr">--:--</span> · بعد <b id="hrLeft" dir="ltr">--:--:--</b></span>
+      </div>
+      <ol class="hr-list" id="hrList" aria-label="مواقيت اليوم"></ol>
+      <p class="hr-note">{{ ic('info') }} مواقيت تقريبية بتقويم أمّ القرى — اتّبع أذان الحرم.</p>
+    </article>
+    <article class="hr-count" id="hrCount">
+      <div class="hr-seg" id="hrMode" role="group" aria-label="العدّاد">
+        <button type="button" data-mode="tawaf" aria-pressed="true">الطواف</button>
+        <button type="button" data-mode="sai" aria-pressed="false">السعي</button>
+      </div>
+      <button type="button" class="hr-tap" id="hrTap" aria-describedby="hrLap">
+        <svg viewBox="0 0 120 120" aria-hidden="true" id="hrRing"></svg>
+        <span class="hr-n"><b id="hrN">0</b><small>من 7 أشواط</small></span>
+      </button>
+      <p class="hr-lap" id="hrLap" aria-live="polite">اضغط الدائرة عند إتمام كل شوط</p>
+      <div class="hr-ctl">
+        <button type="button" id="hrUndo">{{ ic('undo') }} تراجع</button>
+        <button type="button" id="hrReset">{{ ic('redo') }} من جديد</button>
+      </div>
+    </article>
+    <script type="application/json" id="haramData">{{ haram|tojson }}</script>
+  </section>
+  <script src="{{ url_for('static', filename='haram.js') }}?v=2" defer></script>
+  {% endif %}
+
   {% if trip.flights %}
   <section class="tp-sec">
     <h2>{{ ic('plane') }} الطيران{% if trip.airline %} <small>{{ trip.airline }}</small>{% endif %}</h2>

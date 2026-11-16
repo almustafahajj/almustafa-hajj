@@ -1,32 +1,119 @@
 <!doctype html>
 <html lang="ar" dir="rtl"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>التحقّق من مستند — المصطفى للحج والعمرة</title>
+<meta name="theme-color" content="{{ '#8A6E4B' if (d or {}).get('mode') == 'hajj' else '#13795B' }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<title>{{ 'مستند أصلي' if d else 'تحقّق من مستند' }} — {{ contact.name }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head><body class="mode-{{ (d or {}).get('mode') or 'umrah' }}">
-<div class="login-wrap">
-  <div class="login-card pub-card">
-    <img class="pub-logo" src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="المصطفى للحج والعمرة">
-    {% if d %}
-    <div class="pub-ok">{{ ic('check') }} مستند صحيح صادر من المصطفى للحج والعمرة</div>
-    <table class="pub-tbl">
-      <tr><th>نوع المستند</th><td>{{ title }}</td></tr>
-      <tr><th>الرقم</th><td dir="ltr">{{ d.number or '—' }}</td></tr>
-      <tr><th>تاريخ المستند</th><td dir="ltr">{{ d.date or d.issued[:10] }}</td></tr>
-      <tr><th>الاسم</th><td>{{ d.guest }}</td></tr>
-      {% for s in d.stays or [] %}
-      <tr><th>{{ ic('hotel') }} {{ s[0] }}</th><td>{{ s[1] }}{% if s[2] %}<br><span class="muted" dir="ltr">{{ s[2] }} {{ ic('arrow-right') }} {{ s[3] }}</span>{% endif %}{% if s[4] %} · {{ s[4] }} ليالٍ{% endif %}</td></tr>
-      {% endfor %}
-      {% if d.moves %}<tr><th>{{ ic('bus') }} التنقّلات</th><td>{{ d.moves }} حركة{% if d['from'] %}<br><span class="muted" dir="ltr">{{ d['from'] }} {{ ic('arrow-right') }} {{ d['to'] }}</span>{% endif %}</td></tr>{% endif %}
-      <tr><th>آخر تحديث</th><td dir="ltr">{{ (d.updated or '')[:16]|replace('T', ' ') }}</td></tr>
-    </table>
-    <p class="sub" style="font-size:12px">تطابق هذه البيانات المطبوعة على المستند. لأي استفسار تواصل مع مكتب المصطفى.</p>
-    {% else %}
-    <div class="pub-bad">{{ ic('x-circle') }} لا يوجد مستند بهذا الرمز</div>
-    <p class="sub">قد يكون الرمز منسوخاً بشكل خاطئ أو المستند غير صادر منّا. تواصل مع مكتب المصطفى للتأكّد.</p>
-    {% endif %}
+</head><body class="mode-{{ (d or {}).get('mode') or 'umrah' }} vf-body">
+<main class="vf-page">
+  <header class="vf-brand">
+    <img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt="">
+    <span>{{ contact.name }}</span>
+  </header>
+
+  {% if d %}
+  <div class="vf-stage" aria-hidden="true">
+    <span class="vf-ink"></span>
+    <svg class="vf-seal" viewBox="0 0 240 240">
+      <defs>
+        <linearGradient id="vfGold" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#F6DE9A"/><stop offset=".45" stop-color="#D4A94C"/>
+          <stop offset=".75" stop-color="#B8862F"/><stop offset="1" stop-color="#E9C878"/>
+        </linearGradient>
+        <radialGradient id="vfCore" cx=".42" cy=".38" r=".7">
+          <stop offset="0" stop-color="#FFF8E4"/><stop offset="1" stop-color="#F3E3B8"/>
+        </radialGradient>
+        <path id="vfTop" d="M 42 120 A 78 78 0 0 1 198 120"/>
+        <path id="vfBot" d="M 36 120 A 84 84 0 0 0 204 120"/>
+      </defs>
+      <circle cx="120" cy="120" r="114" fill="url(#vfGold)"/>
+      <circle cx="120" cy="120" r="106" fill="none" stroke="#FFF3D1" stroke-width="1.6" stroke-dasharray="2 4"/>
+      <circle cx="120" cy="120" r="100" fill="#8A5F14" opacity=".14"/>
+      <text class="vf-ring-ar"><textPath href="#vfTop" startOffset="50%" text-anchor="middle">{{ contact.name }}</textPath></text>
+      <text class="vf-ring-en"><textPath href="#vfBot" startOffset="50%" text-anchor="middle">AL MUSTAFA · HAJJ &amp; UMRAH</textPath></text>
+      <circle cx="120" cy="120" r="62" fill="url(#vfCore)" stroke="#B8862F" stroke-width="1.5"/>
+      <g transform="translate(120 120)" fill="none" stroke="url(#vfGold)" stroke-width="2.4" stroke-linejoin="round">
+        <rect x="-38" y="-38" width="76" height="76"/>
+        <rect x="-38" y="-38" width="76" height="76" transform="rotate(45)"/>
+      </g>
+      <path class="vf-check" d="M 98 121 L 114 137 L 145 104" fill="none" stroke="#13795B" stroke-width="9"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="56" cy="120" r="3" fill="#FFF3D1"/><circle cx="184" cy="120" r="3" fill="#FFF3D1"/>
+    </svg>
+    <span class="vf-shine"></span>
   </div>
-</div>
+  <div class="vf-ribbon"><span>مستند أصلي</span></div>
+  <p class="vf-sub">صادر من {{ contact.name }} — وبياناته مطابقة لسجلّاتنا</p>
+
+  <article class="vf-card">
+    <header>
+      <span class="vf-kind">{{ ic({'receipt': 'receipt', 'invoice': 'receipt', 'contract': 'scroll', 'voucher': 'hotel', 'treq': 'bus'}.get(d.kind, 'file-text')) }} {{ title }}</span>
+      <span class="vf-num" dir="ltr">{{ d.number or '—' }}</span>
+    </header>
+    <dl class="vf-rows">
+      <div><dt>الاسم</dt><dd>{{ d.guest or '—' }}</dd></div>
+      {% if d.subject %}<div><dt>الموضوع</dt><dd>{{ d.subject }}</dd></div>{% endif %}
+      {% if d.amount %}<div class="vf-amt"><dt>{{ 'المبلغ المستلَم' if d.kind == 'receipt' else 'المبلغ' }}</dt><dd><b dir="ltr">{{ d.amount }}</b> درهم</dd></div>{% endif %}
+      {% if d.method %}<div><dt>طريقة الدفع</dt><dd>{{ d.method }}</dd></div>{% endif %}
+      <div><dt>تاريخ المستند</dt><dd><span dir="ltr">{{ d.date or (d.issued or '')[:10] }}</span><span class="vf-hijri" data-date="{{ d.date or (d.issued or '')[:10] }}"></span></dd></div>
+    </dl>
+    {% if d.stays %}
+    <ol class="vf-stays">
+      {% for s in d.stays %}
+      <li><span class="vf-dot">{{ ic('hotel') }}</span>
+        <div><b>{{ s[1] }}</b><small>{{ s[0] }}{% if s[4] %} · {{ s[4] }} ليالٍ{% endif %}</small>
+          {% if s[2] %}<small dir="ltr" class="vf-dates">{{ s[2] }} → {{ s[3] }}</small>{% endif %}</div></li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+    {% if d.moves %}
+    <p class="vf-moves">{{ ic('bus') }} {{ d.moves }} {{ 'حركة' if d.moves in [1, 2] or d.moves > 10 else 'حركات' }}{% if d['from'] %} <small dir="ltr">{{ d['from'] }} → {{ d['to'] }}</small>{% endif %}</p>
+    {% endif %}
+    <footer>{{ ic('clock') }} آخر تحديث <span dir="ltr">{{ (d.updated or '')[:16]|replace('T', ' ') }}</span></footer>
+  </article>
+  <p class="vf-note">طابِق الاسم والمبلغ والتاريخ مع المطبوع على المستند — وإن وجدت أيّ اختلاف فتواصل معنا فوراً.</p>
+  {% else %}
+  <div class="vf-stage bad" aria-hidden="true">
+    <svg class="vf-seal" viewBox="0 0 240 240">
+      <circle cx="120" cy="120" r="114" fill="#D9D6CF"/>
+      <circle cx="120" cy="120" r="106" fill="none" stroke="#F3F1EC" stroke-width="1.6" stroke-dasharray="2 4"/>
+      <circle cx="120" cy="120" r="62" fill="#F3F1EC" stroke="#B9B4AA" stroke-width="1.5"/>
+      <path d="M 120 6 L 108 52 L 128 84 L 104 120 L 132 152 L 112 192 L 122 234" fill="none" stroke="#F7F5F0" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M 96 96 L 144 144 M 144 96 L 96 144" stroke="#A7392F" stroke-width="9" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div class="vf-ribbon bad"><span>لا يوجد مستند بهذا الرمز</span></div>
+  <p class="vf-sub">قد يكون الرمز منسوخاً بشكل خاطئ، أو المستند غير صادر منّا. تواصل معنا للتأكّد قبل أيّ دفع.</p>
+  {% endif %}
+
+  <nav class="vf-acts">
+    {% if contact.tel %}<a class="tp-btn" href="tel:{{ contact.tel }}">{{ ic('phone') }}<span>اتصال</span></a>{% endif %}
+    {% if contact.wa %}<a class="tp-btn wa" href="{{ contact.wa }}" target="_blank" rel="noopener">{{ ic('chat') }}<span>واتساب</span></a>{% endif %}
+    <a class="tp-btn" href="{{ trips_url }}">{{ ic('calendar') }}<span>برامجنا</span></a>
+  </nav>
+  <footer class="tp-foot">{{ contact.name }}<br><span>تقبّل الله منّا ومنكم صالح الأعمال</span></footer>
+</main>
+<script>
+(function(){
+  // التاريخ الهجري — نقرأ الصيغ المعروفة فقط: 2026-11-05 · 05/11/2026 (يوم/شهر) · November 5, 2026
+  function parse(s){
+    var m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+    if(m) return new Date(+m[1],m[2]-1,+m[3],12);
+    m=/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/.exec(s);
+    if(m) return new Date(+m[3],m[2]-1,+m[1],12);
+    if(/[A-Za-z]{3}/.test(s)){ var d=new Date(s); if(!isNaN(d)) return d; }
+    return null;
+  }
+  var h=document.querySelector('.vf-hijri[data-date]');
+  if(h&&h.dataset.date){
+    var d=parse(h.dataset.date.trim());
+    if(d&&!isNaN(d)){try{h.textContent=new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura-nu-latn',
+      {day:'numeric',month:'long',year:'numeric'}).format(d);}catch(e){}}
+  }
+})();
+</script>
 </body></html>
