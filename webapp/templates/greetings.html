@@ -3,6 +3,8 @@
 {% block heading %}{{ ic('gift') }} بطاقات تهنئة المواسم{% endblock %}
 {% block subhead %}<div class="season">بطاقة بشعارك ورقمك والسنة الهجرية لكل مناسبة — نزّلها أو شاركها مع عملائك على الواتساب بضغطة</div>{% endblock %}
 {% block content %}
+{% if msg %}<div class="acc-msg ok">{{ msg }}</div>{% endif %}
+{% if err %}<div class="acc-msg err">{{ err }}</div>{% endif %}
 <div class="gr-grid">
   {% for o in items %}
   <article class="panel gr-card{{ ' now' if o.now }}{{ ' pick' if pick == o.key }}" id="g-{{ o.key }}">
@@ -18,6 +20,22 @@
         <a class="btn sm" href="{{ o.img }}&amp;dl=1" download>{{ ic('download') }} تنزيل</a>
         <button type="button" class="btn ghost sm gr-copy" data-msg="{{ o.msg }}">{{ ic('copy') }} نسخ نصّ التهنئة</button>
       </div>
+      {% if can_edit %}
+      <details class="gr-photo"{% if o.custom %} open{% endif %}>
+        <summary>{{ ic('image') }} {{ 'البطاقة بصورتك الخاصة' if o.custom else 'استعمل صورة من رحلاتكم' }}</summary>
+        <form method="post" action="{{ url_for('greeting_photo', key=o.key) }}" enctype="multipart/form-data" class="gr-up">
+          <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required aria-label="صورة بطاقة {{ o.name }}">
+          <button class="btn primary sm" type="submit">{{ ic('upload') }} حفظ الصورة</button>
+        </form>
+        {% if o.custom %}
+        <form method="post" action="{{ url_for('greeting_photo', key=o.key) }}">
+          <input type="hidden" name="action" value="reset">
+          <button class="btn ghost sm" type="submit">{{ ic('undo') }} العودة للصورة الأصلية</button>
+        </form>
+        {% endif %}
+        <small>تُقصّ تلقائياً على مقاس البطاقة، ويُضاف فوقها الإطار والخطّ والشعار.</small>
+      </details>
+      {% endif %}
     </div>
   </article>
   {% endfor %}

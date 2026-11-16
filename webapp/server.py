@@ -2060,7 +2060,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-16 · بطاقة المعتمر وصفحة البرنامج وسماء مكة والتهنئة والنظرة السريعة وختام اليوم وشاشة المكتب"
+_BUILD_TAG = "2026-11-16 · بطاقات تهنئة بصور حقيقية وخطّ الرقعة وصورة خاصة لكل مناسبة"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -8195,8 +8195,9 @@ def greetings_page():
     items = []
     for o in hijri.occasions(today):
         title, line, _k = cards.GREET[o["key"]]
-        img = url_for("greeting_img", key=o["key"], y=o["hy"], v=cards.VERSION)
-        items.append(dict(o, title=title, line=line, img=img,
+        _p, sig = _greet_photo(o["key"])
+        img = url_for("greeting_img", key=o["key"], y=o["hy"], v=f"{cards.VERSION}.{sig or 0}")
+        items.append(dict(o, title=title, line=line, img=img, custom=bool(sig),
                           when=_day_txt(o["date"], today), hdate=hijri.fmt(o["date"]),
                           left=_occ_left(o["days"]),
                           msg=f"{_GREET_MSG[o['key']]}\n— {name}"))
@@ -8204,7 +8205,71 @@ def greetings_page():
     if pick:
         items.sort(key=lambda x: x["key"] != pick)
     return render_template("greetings.html", active="greetings", items=items, pick=pick,
-                           hy=hijri.to_hijri(today)[0], **_ctx())
+                           hy=hijri.to_hijri(today)[0], msg=session.pop("acc_msg", None),
+                           err=session.pop("acc_err", None), **_ctx())
+
+
+def _greet_photo(key: str) -> tuple:
+    """صورة خاصة رفعها الموظفون لمناسبة (المسار وبصمة لتجاوز الذاكرة) أو ("", "")."""
+    from hajj_app.paths import data_dir
+    p = data_dir() / "greet_photos" / f"{key}.jpg"
+    try:
+        return (str(p), str(int(p.stat().st_mtime * 1000))) if p.is_file() else ("", "")
+    except OSError:
+        return "", ""
+
+
+@app.post("/greetings/<key>/photo")
+def greeting_photo(key):
+    """صورة خاصة لبطاقة مناسبة (من رحلاتكم مثلاً) أو العودة للصورة الأصلية — زرّ صريح.
+    تُقصّ على مقاس البطاقة ٤:٥ وتُحفظ JPEG؛ والزينة والشعار تُضاف فوقها عند الرسم."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    from webapp import cards
+    if key not in cards.GREET:
+        return redirect(url_for("greetings_page"))
+    back = url_for("greetings_page", o=key) + f"#g-{key}"
+    if not s.can_edit:
+        session["acc_err"] = "صلاحيتك اطّلاع فقط — تغيير الصورة للمحرّر والمدير."
+        return redirect(back)
+    from hajj_app.paths import data_dir
+    path = data_dir() / "greet_photos" / f"{key}.jpg"
+    name = cards.GREET[key][0]
+    if request.form.get("action") == "reset":
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        _audit("بطاقات التهنئة", f"الصورة الأصلية لـ «{name}»")
+        session["acc_msg"] = f"عادت بطاقة «{name}» إلى صورتها الأصلية."
+        return redirect(back)
+    f = request.files.get("photo")
+    data = f.read(16 * 1024 * 1024 + 1) if f and f.filename else b""
+    if not data:
+        session["acc_err"] = "اختر صورة أولاً ثم اضغط «حفظ الصورة»."
+        return redirect(back)
+    if len(data) > 16 * 1024 * 1024:
+        session["acc_err"] = "الصورة أكبر من ١٦ ميغابايت — صغّرها ثم أعد الرفع."
+        return redirect(back)
+    try:
+        from PIL import Image, ImageOps
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        if min(im.size) < 400:
+            session["acc_err"] = "الصورة صغيرة جداً — اختر صورة أوضح (٤٠٠ بكسل على الأقل)."
+            return redirect(back)
+        im = cards.cover(ImageOps.exif_transpose(im))
+    except Exception:                              # noqa: BLE001
+        session["acc_err"] = "الملف ليس صورة صالحة — اختر صورة JPG أو PNG."
+        return redirect(back)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    im.save(tmp, "JPEG", quality=90, optimize=True)
+    os.replace(tmp, path)
+    _audit("بطاقات التهنئة", f"صورة خاصة لـ «{name}»")
+    session["acc_msg"] = f"حُفظت الصورة — بطاقة «{name}» تستعملها الآن."
+    return redirect(back)
 
 
 @app.get("/greetings/<key>.jpg")
@@ -8220,7 +8285,8 @@ def greeting_img(key):
         y = 0
     y = y if 1440 <= y <= 1500 else hijri.to_hijri(datetime.now(_UAE).date())[0]
     name, phone = _company_card()
-    data = cards.greeting(key, y, name, phone)
+    photo, sig = _greet_photo(key)
+    data = cards.greeting(key, y, name, phone, photo, sig)
     return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=3600,
                      as_attachment=bool(request.args.get("dl")), download_name=f"greeting-{key}-{y}.jpg")
 

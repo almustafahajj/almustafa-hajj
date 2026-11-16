@@ -28,7 +28,7 @@ WHITE = (255, 255, 255)
 SOFT = (214, 232, 222)
 MUTED = (105, 112, 100)
 GREEN = (19, 121, 91)
-VERSION = 1          # يُضاف لروابط الصور: تغييره يتجاوز النسخ المحفوظة في المتصفّحات
+VERSION = 2          # يُضاف لروابط الصور: تغييره يتجاوز النسخ المحفوظة في المتصفّحات
 
 
 def ar(text: str) -> str:
@@ -163,23 +163,62 @@ GREET = {
 }
 
 
-@lru_cache(maxsize=32)
-def greeting(key: str, hy: int, company: str, phone: str) -> bytes:
-    title, line, kicker = GREET.get(key, GREET["fitr"])
-    img = Image.open(os.path.join(SHARE, "greet-base.jpg")).convert("RGB")
+GREET_DIR = os.path.join(SHARE, "greet")
+GW, GH = 1080, 1350
+
+
+def cover(img, fx: float = .5, fy: float = .5):
+    """قصّ «يغطّي» ١٠٨٠×١٣٥٠ حول (fx, fy) — لصورة يرفعها الموظفون."""
+    img = img.convert("RGB")
+    sw, sh = img.size
+    k = max(GW / sw, GH / sh)
+    cw, ch = GW / k, GH / k
+    x0 = min(max(fx * sw - cw / 2, 0), sw - cw)
+    y0 = min(max(fy * sh - ch / 2, 0), sh - ch)
+    return img.crop((round(x0), round(y0), round(x0 + cw), round(y0 + ch))).resize((GW, GH), Image.LANCZOS)
+
+
+def _logo_card(img, x, y, w, h) -> None:
+    """الشعار على بطاقة كريمية بحدّ ذهبي رفيع وظلّ خفيف."""
+    from PIL import ImageFilter
+    sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle((x + 4, y + 8, x + w + 4, y + h + 8), 22, fill=(0, 0, 0, 110))
+    sh = sh.filter(ImageFilter.GaussianBlur(10))
+    img.paste(sh, (0, 0), sh)
     d = ImageDraw.Draw(img)
-    cx = 540
-    _pill(d, kicker, cx, 300, size=30)
-    center(d, title, cx, 366, 150, GOLD, bold=True, max_w=900)
-    center(d, line, cx, 628, 44, WHITE, max_w=880)
-    center(d, f"{hy} هـ", cx, 698, 40, CREAM)
-    center(d, company, cx, 782, 46, WHITE, bold=True, max_w=640)
+    d.rounded_rectangle((x, y, x + w, y + h), 22, fill=(255, 253, 247), outline=(222, 186, 104), width=2)
+    logo = Image.open(os.path.join(_ROOT, "webapp", "static", "logo.png")).convert("RGBA")
+    pad = 16
+    k = min((w - 2 * pad) / logo.width, (h - 2 * pad) / logo.height)
+    logo = logo.resize((int(logo.width * k), int(logo.height * k)), Image.LANCZOS)
+    img.paste(logo, (x + (w - logo.width) // 2, y + (h - logo.height) // 2), logo)
+
+
+@lru_cache(maxsize=32)
+def greeting(key: str, hy: int, company: str, phone: str, photo: str = "", photo_sig: str = "") -> bytes:
+    """بطاقة التهنئة: صورة حقيقية (الافتراضية للمناسبة أو صورة رفعها الموظفون) + طبقة الزينة
+    المرسومة مسبقاً (خطّ الرقعة والإطار والتظليل — tools/make_greet_cards.py) + الشعار
+    + السنة الهجرية واسم الشركة ورقمها. photo_sig يتغيّر برفع صورة جديدة (يُبطل الذاكرة)."""
+    key = key if key in GREET else "fitr"
+    if photo and os.path.isfile(photo):
+        img = cover(Image.open(photo))
+    else:
+        img = Image.open(os.path.join(GREET_DIR, key + ".jpg")).convert("RGB")
+    layer = Image.open(os.path.join(GREET_DIR, key + "-layer.png")).convert("RGBA")
+    img = img.convert("RGBA")
+    img.alpha_composite(layer)
+    img = img.convert("RGB")
+    _logo_card(img, GW - 58 - 196, 60, 196, 150)
+    d = ImageDraw.Draw(img)
+    cx = GW // 2
+    center(d, f"{hy} هـ", cx, 1106, 38, GOLD)
+    d.line((cx - 70, 1172, cx + 70, 1172), fill=(222, 186, 104), width=2)
+    center(d, company, cx, 1180, 46, WHITE, bold=True, max_w=760)
     if phone:
-        t = phone
-        f = font(36)
-        w = d.textlength(t, font=f)
-        d.text((cx - w / 2, 848), t, font=f, fill=SOFT)
-    return _jpeg(img)
+        f = font(34)
+        w = d.textlength(phone, font=f)
+        d.text((cx - w / 2, 1244), phone, font=f, fill=SOFT)
+    return _jpeg(img, 90)
 
 
 # ============================== بطاقة ختام اليوم ==============================

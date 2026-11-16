@@ -2561,6 +2561,12 @@ body.vf-body{ min-height:100vh; background:radial-gradient(900px 420px at 50% -1
 .gr-when b{ margin-inline-start:auto; padding:2px 9px; border-radius:99px; font-size:12px; color:var(--bronze-d); background:var(--soft); }
 .gr-acts{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
 .gr-note{ display:flex; align-items:center; gap:6px; margin-top:16px; font-size:13px; }
+.gr-photo{ margin-top:8px; padding-top:10px; border-top:1px dashed var(--border); }
+.gr-photo > summary{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13.5px; font-weight:700; color:var(--bronze-d); }
+.gr-photo > summary .ico{ width:15px; height:15px; color:var(--bronze); }
+.gr-photo form{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px; }
+.gr-up input[type=file]{ flex:1 1 180px; min-width:0; font:inherit; font-size:13px; }
+.gr-photo small{ display:block; margin-top:6px; font-size:12px; color:var(--muted); }
 .dc-wrap{ display:grid; grid-template-columns:minmax(0, 420px) minmax(0, 1fr); gap:18px; align-items:start; }
 .dc-img{ display:block; border-radius:18px; overflow:hidden; box-shadow:var(--sh-2); aspect-ratio:4 / 5; max-width:100%; background:#FAF6EC; }
 .dc-img img{ display:block; width:100%; height:100%; object-fit:cover; }

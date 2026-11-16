@@ -276,24 +276,6 @@ def story_scene():
     return img
 
 
-def greet_scene():
-    """بطاقة التهنئة ١٠٨٠×١٣٥٠: سماء ليلية بهلال كبير ونجوم، والكعبة أسفلها، والشعار أعلى."""
-    set_size(1080, 1350)
-    rnd = random.Random(23)
-    arr = sky() * np.array([0.62, 0.66, 0.70], dtype=np.float32)
-    glow(arr, 540 * S, 1180 * S, 640 * S, GOLD, 0.34)
-    glow(arr, 860 * S, 360 * S, 230 * S, CREAM, 0.16)
-    img = to_img(arr)
-    star_lattice(img, 104 * S, 16)
-    crescent(img, 860 * S, 360 * S, 70 * S)
-    sparkles(img, rnd, 60, (30 * S, 40 * S, 1050 * S, 880 * S))
-    ground = 1060 * S
-    haram(img, -30 * S, 1110 * S, ground, k=1.15)
-    kaaba(img, 560 * S, 1265 * S, rnd, k=1.2)
-    logo_card(img, 540 * S - 130 * S, 60 * S, 260 * S, 200 * S)
-    return img
-
-
 def day_scene():
     """بطاقة ختام اليوم ١٠٨٠×١٣٥٠: ترويسة خضراء بنقش وشعار، وجسم كريمي تُكتب عليه الأرقام."""
     set_size(1080, 1350)
@@ -336,7 +318,6 @@ def main():
         yield save(img, f"{kind}-og.jpg", 86)
     # خلفيات البطاقات (يكتب الخادم عليها النصوص — webapp/cards.py)
     yield save(story_scene(), "story-base.jpg", 90)
-    yield save(greet_scene(), "greet-base.jpg", 90)
     yield save(day_scene(), "day-base.jpg", 90)
 
 

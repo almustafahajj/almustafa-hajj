@@ -155,6 +155,28 @@ assert "عيد الفطر" in gp and "يوم عرفة" in gp and "/greetings/fit
 assert jpeg(c.get("/greetings/fitr.jpg?y=1448")) and jpeg(v.get("/greetings/adha.jpg"))
 assert c.get("/greetings/nope.jpg").status_code == 404 and anon.get("/greetings/fitr.jpg").status_code == 401
 assert anon.get("/greetings").status_code == 302
+# صورة خاصة للمناسبة: ترفع فتحلّ محلّ الأصلية، والعودة للأصلية، والمطّلع لا يغيّر
+from PIL import Image as _Im  # noqa: E402
+_buf = io.BytesIO()
+_Im.new("RGB", (1600, 1200), (180, 40, 40)).save(_buf, "PNG")
+orig = c.get("/greetings/fitr.jpg?y=1448").data
+r = c.post("/greetings/fitr/photo", data={"photo": (io.BytesIO(_buf.getvalue()), "trip.png")},
+           content_type="multipart/form-data")
+assert r.status_code == 302 and "#g-fitr" in r.headers["Location"]
+gp2 = c.get("/greetings").get_data(as_text=True)
+assert "حُفظت الصورة" in gp2 and "البطاقة بصورتك الخاصة" in gp2 and "العودة للصورة الأصلية" in gp2
+mine = c.get("/greetings/fitr.jpg?y=1448").data
+assert mine != orig and _Im.open(io.BytesIO(mine)).size == (1080, 1350)
+assert _Im.open(io.BytesIO(mine)).getpixel((540, 420))[0] > 120, "الصورة المرفوعة (حمراء) تظهر في البطاقة"
+v.post("/greetings/fitr/photo", data={"action": "reset"})
+assert c.get("/greetings/fitr.jpg?y=1448").data == mine, "المطّلع لا يغيّر الصورة"
+r = c.post("/greetings/fitr/photo", data={"photo": (io.BytesIO(b"not an image"), "x.png")},
+           content_type="multipart/form-data")
+assert "ليس صورة صالحة" in c.get("/greetings").get_data(as_text=True)
+c.post("/greetings/fitr/photo", data={"action": "reset"})
+assert c.get("/greetings/fitr.jpg?y=1448").data == orig, "العودة للصورة الأصلية"
+assert "استعمل صورة من رحلاتكم" in c.get("/greetings").get_data(as_text=True)
+assert "استعمل صورة من رحلاتكم" not in v.get("/greetings").get_data(as_text=True)
 _occ = hijri.occasions
 hijri.occasions = lambda today: [{"key": "fitr", "name": "عيد الفطر", "date": today + timedelta(days=2),
                                   "hy": 1448, "start": today, "end": today, "now": True, "days": 2}]
