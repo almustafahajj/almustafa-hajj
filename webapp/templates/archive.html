@@ -29,6 +29,7 @@
         <td style="white-space:nowrap">
           <a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=r.id) }}">{{ ic('file-text') }} فتح/طباعة</a>
           {% if r.wa %}<a class="btn sm wa-btn" target="_blank" rel="noopener" href="{{ r.wa }}" title="إرسال التأكيد للضيف عبر واتساب">{{ ic('chat') }} إرسال للضيف</a>{% endif %}
+          {% if r.tconf %}<a class="btn ghost sm" target="_blank" href="{{ r.tconf }}" title="تأكيد حجز للضيف من هذا الطلب ثم إرساله واتساب">{{ ic('bus') }} تأكيد للضيف</a>{% endif %}
           {% if can_edit %}
           <form method="post" action="{{ url_for('archive_delete', doc_id=r.id) }}"
                 class="inline" onsubmit="return confirm('حذف هذا المستند من الأرشيف؟');" style="display:inline">

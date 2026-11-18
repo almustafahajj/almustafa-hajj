@@ -2084,7 +2084,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-18 · تأكيد المواصلات للضيف: مستند جديد يُرسل عبر واتساب"
+_BUILD_TAG = "2026-11-18 · تأكيد للضيف من طلب المواصلات مباشرةً (سجلّ أو عرض سعر أو يدوي)"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2959,8 +2959,7 @@ def doc_manual(kind):
     co = settings.get("company") if isinstance(settings, dict) else None
     data, schema = _doc_build(kind, PassportData(), co, settings)
     title, icon = _DOC_TITLES[kind]
-    submit = (webdoc.web_submit_action_wa if kind == "tconf"
-              else webdoc.web_submit_action)
+    submit = _doc_submit(kind)
     return webdoc._doc_html(
         data, schema, f"{title} (يدوي)", icon,
         submit_action=submit(url_for("doc_manual_pdf", kind=kind)),
@@ -4216,12 +4215,15 @@ def doc_manual_pdf(kind):
     co = settings.get("company") if isinstance(settings, dict) else None
     data = request.get_json(force=True, silent=True) or {}
     _attach_verify(kind, data)                               # QR للتحقّق
-    _archive_doc(kind, data, idx=None, name="يدوي بلا اسم")   # أرشفة تلقائية
+    guest = str(data.get("guest_ar") or "").strip()
+    did = _archive_doc(kind, data, idx=None,                  # أرشفة تلقائية
+                       name=f"{guest} (يدوي)" if guest and kind in ("treq", "tconf")
+                       else "يدوي بلا اسم")
     _audit("إصدار مستند يدوي", _DOC_TITLES[kind][0])
     resp = _pdf_response(
         lambda p: _doc_export(kind, PassportData(), co, data, p),
         f"{kind}-manual.pdf")
-    return _with_wa(resp, kind, data, settings)
+    return _with_next(_with_wa(resp, kind, data, settings), kind, did)
 
 
 @app.route("/hujjaj/new", methods=["GET", "POST"])
@@ -4700,7 +4702,9 @@ def record_docs(idx):
                           "title": d.get("title") or d.get("kind"),
                           "number": d.get("number") or "—",
                           "wa": (_tconf_wa(d.get("data"), _st)
-                                 if d.get("kind") == "tconf" else None)})
+                                 if d.get("kind") == "tconf" else None),
+                          "tconf": (url_for("archive_tconf", doc_id=d.get("id"))
+                                    if d.get("kind") == "treq" and d.get("id") else "")})
     from webapp import public
     from hajj_app import whatsapp as _wa
     tok = public.find_person(_mode(), getattr(rec, "uid", "") or "")
@@ -5545,7 +5549,7 @@ def quote_doc(code, num, kind):
     title, icon = _DOC_TITLES[kind]
     html = webdoc._doc_html(
         data, schema, f"{title} — من العرض {num}", icon,
-        submit_action=webdoc.web_submit_action(
+        submit_action=_doc_submit(kind)(
             url_for("quote_doc_pdf", code=code, num=num, kind=kind)),
         back_url=url_for("quotes"), mode=_mode(),
         build=_BUILD_ID)
@@ -5567,11 +5571,12 @@ def quote_doc_pdf(code, num, kind):
     guest = str(data.get("guest_ar") or data.get("guest_en") or "").strip()
     name = f"{guest or 'بلا اسم'} — عرض {num}"
     _attach_verify(kind, data)                      # QR للتحقّق
-    _archive_doc(kind, data, idx=None, name=name)   # أرشفة تلقائية
+    did = _archive_doc(kind, data, idx=None, name=name)   # أرشفة تلقائية
     _audit("إصدار مستند من عرض سعر", f"{_DOC_TITLES[kind][0]} — {name}")
-    return _pdf_response(
+    resp = _pdf_response(
         lambda p: _doc_export(kind, PassportData(), co, data, p),
         f"{data.get('number', '') or kind}.pdf")
+    return _with_next(resp, kind, did)
 
 
 @app.get("/documents/<kind>/from-quote")
@@ -6271,12 +6276,13 @@ _DOC_TITLES = {"receipt": ("سند قبض", "🧾"), "invoice": ("فاتورة �
                "tconf": ("تأكيد حجز مواصلات", "🚐")}
 
 
-def _web_doc_number(settings, rec, store_key, prefix, start):
-    """رقم مستند ثابت لكل سجلّ (نفس منطق سطح المكتب: عدّاد محفوظ + ثبات للسجلّ)."""
-    key = (str(getattr(rec, "reference_number", "") or "").strip()
-           or str(getattr(rec, "family_number", "") or "").strip()
-           or (getattr(rec, "full_name_ar", "") or
-               getattr(rec, "full_name_en", "") or "").strip())
+def _web_doc_number(settings, rec, store_key, prefix, start, key=None):
+    """رقم مستند ثابت لكل سجلّ (نفس منطق سطح المكتب: عدّاد محفوظ + ثبات للسجلّ).
+    ``key`` يثبّت الرقم لمفتاح آخر غير السجلّ (مثل طلب مواصلات بعينه)."""
+    key = key or (str(getattr(rec, "reference_number", "") or "").strip()
+                  or str(getattr(rec, "family_number", "") or "").strip()
+                  or (getattr(rec, "full_name_ar", "") or
+                      getattr(rec, "full_name_en", "") or "").strip())
     store = settings.setdefault(store_key, {})
     if key and key in store:
         n = int(store[key])
@@ -6290,6 +6296,14 @@ def _web_doc_number(settings, rec, store_key, prefix, start):
         except Exception:
             pass
     return f"{prefix}{n:04d}"
+
+
+def _doc_submit(kind):
+    """سلوك «حفظ ومعاينة PDF» في محرّر المستند: التأكيد يُظهر زرّ الإرسال واتساب،
+    وطلب المواصلات يُظهر زرّ «إصدار تأكيد للضيف» منه."""
+    from hajj_app import webdoc
+    return {"tconf": webdoc.web_submit_action_wa,
+            "treq": webdoc.web_submit_action_treq}.get(kind, webdoc.web_submit_action)
 
 
 def _last_treq(rec):
@@ -6440,14 +6454,16 @@ def _doc_export(kind, rec, co, data, path):
 def _archive_doc(kind, data, *, idx=None, name=None):
     """أرشفة تلقائية للمستند المُنشأ (بياناته فقط — يُعاد توليد PDF لاحقاً).
 
-    لا يرفع استثناءً كي لا يُعطّل توليد المستند إن تعذّرت الأرشفة.
+    لا يرفع استثناءً كي لا يُعطّل توليد المستند إن تعذّرت الأرشفة. يعيد معرّف
+    المستند المؤرشف (أو None).
     """
     try:
         import secrets as _secrets
         from datetime import datetime as _dt
         docs = storage.load_documents(session=_sess())
+        new_id = _secrets.token_hex(6)
         docs.append({
-            "id": _secrets.token_hex(6),
+            "id": new_id,
             "ts": _dt.now().replace(microsecond=0).isoformat(),
             "kind": kind,
             "title": _DOC_TITLES.get(kind, (kind, ""))[0],
@@ -6459,8 +6475,83 @@ def _archive_doc(kind, data, *, idx=None, name=None):
         if len(docs) > 5000:                       # حدّ أمان لعدم تضخّم الملف
             docs = docs[-5000:]
         storage.save_documents(docs, session=_sess())
+        return new_id
     except Exception:                              # noqa: BLE001
-        pass
+        return None
+
+
+def _with_next(resp, kind, doc_id):
+    """طلب المواصلات: يضع رابط «تأكيد للضيف» المبني من الطلب المحفوظ في ترويسة
+    الاستجابة، فيُظهر المحرّر بعد الحفظ زرّ إصدار التأكيد."""
+    if kind == "treq" and doc_id:
+        resp.headers["X-Next-Link"] = url_for("archive_tconf", doc_id=doc_id)
+    return resp
+
+
+def _treq_owner(entry, records=None):
+    """السجلّ صاحب طلب المواصلات المؤرشف (إن كان مربوطاً بسجلّ ولم يتغيّر موضعه)."""
+    idx = entry.get("idx")
+    if not isinstance(idx, int):
+        return None
+    records = _load_records() if records is None else records
+    if 0 <= idx < len(records) and _rec_name(records[idx]) == entry.get("name"):
+        return records[idx]
+    return None
+
+
+@app.get("/archive/<doc_id>/tconf")
+def archive_tconf(doc_id):
+    """تأكيد المواصلات للضيف من طلب مواصلات محفوظ (من سجلّ أو عرض سعر أو يدوي):
+    محرّر معبّأ بحركات الطلب وبيانات الضيف، ثم زرّ الإرسال واتساب بعد الحفظ."""
+    if _sess() is None:
+        return redirect(url_for("login"))
+    from hajj_app import pdf_io, webdoc
+    from hajj_app.mrz import PassportData
+    entry = next((d for d in storage.load_documents(session=_sess())
+                  if d.get("id") == doc_id), None)
+    if not entry or entry.get("kind") != "treq" or not isinstance(entry.get("data"), dict):
+        return redirect(url_for("archive"))
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    rec = _treq_owner(entry)
+    # رقم ثابت: للشخص إن كان الطلب من سجلّه، وإلّا لهذا الطلب بعينه
+    num = _web_doc_number(settings, rec or PassportData(), "tconfs", "MA-C", 1,
+                          key=None if rec else f"treq:{doc_id}")
+    data = pdf_io.build_transport_confirm_data(rec or PassportData(), company=co,
+                                               number=num, treq=entry["data"])
+    tnum = str(entry["data"].get("number") or "")
+    return webdoc._doc_html(
+        data, pdf_io.TCONF_SCHEMA,
+        f"{_DOC_TITLES['tconf'][0]} — من الطلب {tnum}" if tnum else _DOC_TITLES["tconf"][0],
+        _DOC_TITLES["tconf"][1],
+        submit_action=webdoc.web_submit_action_wa(url_for("archive_tconf_pdf", doc_id=doc_id)),
+        back_url=url_for("archive"), mode=_mode(), build=_BUILD_ID), \
+        200, {"Cache-Control": "no-store, max-age=0"}
+
+
+@app.post("/archive/<doc_id>/tconf/pdf")
+def archive_tconf_pdf(doc_id):
+    """يُصدر تأكيد الضيف المبني من طلب مواصلات محفوظ: QR + أرشفة باسم صاحب الطلب +
+    رابط واتساب لجوال الضيف في الترويسة."""
+    if _sess() is None:
+        return ("", 401)
+    from hajj_app.mrz import PassportData
+    entry = next((d for d in storage.load_documents(session=_sess())
+                  if d.get("id") == doc_id), None)
+    if not entry or entry.get("kind") != "treq":
+        return ("لم يُعثر على طلب المواصلات — أعد فتحه من الأرشيف.", 404)
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    data = request.get_json(force=True, silent=True) or {}
+    data.pop("_rec", None)
+    rec = _treq_owner(entry)
+    _attach_verify("tconf", data, uid=getattr(rec, "uid", "") or "")
+    name = entry.get("name") or str(data.get("guest_ar") or "") or "بلا اسم"
+    _archive_doc("tconf", data, idx=entry.get("idx"), name=name)
+    _audit("إصدار مستند", f"{_DOC_TITLES['tconf'][0]} — {name} (من طلب {entry.get('number') or '—'})")
+    resp = _pdf_response(lambda p: _doc_export("tconf", rec or PassportData(), co, data, p),
+                         f"{_DOC_TITLES['tconf'][0]}-{data.get('number', '') or ''}.pdf")
+    return _with_wa(resp, "tconf", data, settings)
 
 
 @app.get("/archive")
@@ -6484,7 +6575,9 @@ def archive():
                            "ts": (d.get("ts") or "").replace("T", "  "),
                            "number": d.get("number") or "—",
                            "name": d.get("name") or "—",
-                           "wa": _tconf_wa(d.get("data"), _st) if k == "tconf" else None})
+                           "wa": _tconf_wa(d.get("data"), _st) if k == "tconf" else None,
+                           "tconf": (url_for("archive_tconf", doc_id=d.get("id"))
+                                     if k == "treq" and d.get("id") else "")})
         shown += 1
     groups = [{"title": _DOC_TITLES.get(k, (k, ""))[0],
                "icon": _DOC_TITLES.get(k, ("", ""))[1], "rows": buckets[k]}
@@ -6559,8 +6652,7 @@ def doc_edit(idx, kind):
     data, schema = _doc_build(kind, records[idx], co, settings, pay=pay)
     data["_rec"] = _rec_token(records[idx])        # يتحقّق منه الحفظ (الموضع قد يتغيّر)
     title, icon = _DOC_TITLES[kind]
-    submit = (webdoc.web_submit_action_wa if kind == "tconf"   # التأكيد: زرّ إرسال للضيف
-              else webdoc.web_submit_action)
+    submit = _doc_submit(kind)
     return webdoc._doc_html(
         data, schema, title, icon,
         submit_action=submit(url_for("doc_pdf", idx=idx, kind=kind)),
@@ -6586,12 +6678,12 @@ def doc_pdf(idx, kind):
     _name = getattr(records[idx], "full_name_ar", "") or getattr(
         records[idx], "full_name_en", "") or ""
     _attach_verify(kind, data, uid=getattr(records[idx], "uid", "") or "")
-    _archive_doc(kind, data, idx=idx, name=_name)   # أرشفة تلقائية
+    did = _archive_doc(kind, data, idx=idx, name=_name)   # أرشفة تلقائية
     _audit("إصدار مستند", f"{title} — {_name}")
     resp = _pdf_response(
         lambda p: _doc_export(kind, records[idx], co, data, p),
         f"{title}-{data.get('number','') or ''}.pdf")
-    return _with_wa(resp, kind, data, settings)
+    return _with_next(_with_wa(resp, kind, data, settings), kind, did)
 
 
 def _with_wa(resp, kind, data, settings):

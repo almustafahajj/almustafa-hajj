@@ -425,38 +425,58 @@ def web_submit_action(save_url: str) -> str:
         ".catch(e=>alert('تعذّر إنشاء PDF: '+(e&&e.message?e.message:e)));")
 
 
-def web_submit_action_wa(save_url: str) -> str:
+def _submit_with_bar(save_url: str, header: str, ok_msg: str, bad_msg: str,
+                     btn: str, color: str, new_tab: bool) -> str:
     """مثل :func:`web_submit_action` (يفتح الـ PDF في تبويب جديد)، ثم يُظهر شريطاً
-    بزرّ «إرسال للضيف عبر واتساب» من ترويسة ``X-WA-Link`` التي يعيدها الخادم.
-    الزرّ رابط يضغطه المستخدم بنفسه فلا يحجبه المتصفّح كنافذة منبثقة."""
+    عائماً فيه زرّ للخطوة التالية من رابطٍ يعيده الخادم في الترويسة ``header``.
+    الزرّ رابط يضغطه المستخدم بنفسه فلا يحجبه المتصفّح كنافذة منبثقة. إن لم يأتِ
+    رابط تظهر ``bad_msg`` (أو لا يظهر الشريط إن كانت فارغة)."""
     return (
-        "var _wa='';"
+        "var _nx='';"
         "fetch(" + _js_str(save_url) + ",{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
         ".then(r=>{if(!r.ok)return r.text().then(t=>{throw new Error("
         "(t&&t.length<300?t:'')||('HTTP '+r.status));});"
-        "_wa=r.headers.get('X-WA-Link')||'';return r.blob();})"
+        "_nx=r.headers.get(" + _js_str(header) + ")||'';return r.blob();})"
         ".then(b=>{var u=URL.createObjectURL(b);"
         "var w=window.open(u,'_blank');"
         "if(!w){var a=document.createElement('a');a.href=u;a.target='_blank';"
         "a.download='document.pdf';document.body.appendChild(a);a.click();"
         "a.remove();}"
         "setTimeout(function(){URL.revokeObjectURL(u);},60000);"
-        "var bar=document.getElementById('waBar');"
-        "if(!bar){bar=document.createElement('div');bar.id='waBar';"
+        "if(!_nx&&!" + _js_str(bad_msg) + ")return;"
+        "var bar=document.getElementById('nextBar');"
+        "if(!bar){bar=document.createElement('div');bar.id='nextBar';"
         "bar.style.cssText='position:fixed;bottom:86px;left:50%;transform:translateX(-50%);"
-        "z-index:60;background:#fff;border:1px solid #CFE9D8;border-radius:14px;"
+        "z-index:60;background:#fff;border:1px solid var(--border);border-radius:14px;"
         "box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px 14px;display:flex;gap:10px;"
         "align-items:center;flex-wrap:wrap;justify-content:center;font-size:15px;"
         "width:max-content;max-width:calc(100% - 24px)';document.body.appendChild(bar);}"
         "bar.textContent='';var s=document.createElement('span');"
-        "s.textContent=_wa?'✅ حُفظ التأكيد':'⚠️ حُفظ التأكيد — لكن جوال الضيف غير صالح، صحّحه ثم احفظ من جديد';"
+        "s.textContent=_nx?" + _js_str(ok_msg) + ":" + _js_str(bad_msg) + ";"
         "bar.appendChild(s);"
-        "if(_wa){var g=document.createElement('a');g.href=_wa;g.target='_blank';g.rel='noopener';"
-        "g.textContent='🟢 إرسال للضيف عبر واتساب';"
-        "g.style.cssText='background:#1FA855;color:#fff;padding:10px 18px;border-radius:10px;"
-        "text-decoration:none;font-weight:700';bar.appendChild(g);}})"
+        "if(_nx){var g=document.createElement('a');g.href=_nx;"
+        + ("g.target='_blank';g.rel='noopener';" if new_tab else "") +
+        "g.textContent=" + _js_str(btn) + ";"
+        "g.style.cssText='background:" + color + ";color:#fff;padding:10px 18px;"
+        "border-radius:10px;text-decoration:none;font-weight:700';bar.appendChild(g);}})"
         ".catch(e=>alert('تعذّر إنشاء PDF: '+(e&&e.message?e.message:e)));")
+
+
+def web_submit_action_wa(save_url: str) -> str:
+    """تأكيد المواصلات: بعد الحفظ زرّ «إرسال للضيف عبر واتساب» (ترويسة X-WA-Link)."""
+    return _submit_with_bar(
+        save_url, "X-WA-Link", "✅ حُفظ التأكيد",
+        "⚠️ حُفظ التأكيد — لكن جوال الضيف غير صالح، صحّحه ثم احفظ من جديد",
+        "🟢 إرسال للضيف عبر واتساب", "#1FA855", new_tab=True)
+
+
+def web_submit_action_treq(save_url: str) -> str:
+    """طلب المواصلات: بعد الحفظ زرّ «إصدار تأكيد للضيف» (ترويسة X-Next-Link) يفتح
+    محرّر التأكيد معبّأً من هذا الطلب في الصفحة نفسها."""
+    return _submit_with_bar(
+        save_url, "X-Next-Link", "✅ حُفظ طلب المواصلات", "",
+        "🚐 إصدار تأكيد للضيف وإرساله", "var(--bronze)", new_tab=False)
 
 
 def web_submit_action_url(save_url: str) -> str:

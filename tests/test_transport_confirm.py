@@ -49,7 +49,7 @@ assert "تأكيد مواصلات للضيف" in rd and "/doc/0/tconf" in rd
 
 # ---- ٢) المحرّر بلا طلب مواصلات سابق: الحركات من البرنامج + زرّ الإرسال بعد الحفظ ----
 ed = c.get("/doc/0/tconf").get_data(as_text=True)
-assert "تأكيد حجز مواصلات" in ed and "X-WA-Link" in ed and "waBar" in ed, "محرّر التأكيد بزرّ واتساب"
+assert "تأكيد حجز مواصلات" in ed and "X-WA-Link" in ed and "nextBar" in ed, "محرّر التأكيد بزرّ واتساب"
 assert DEP in ed, "أوّل حركة بتاريخ مغادرة البرنامج"
 assert "جوال الضيف" in ed and "اسم السائق" in ed and "وقت الانطلاق" in ed
 assert "X-WA-Link" not in c.get("/doc/0/treq").get_data(as_text=True), "طلب الناقل بلا زرّ إرسال للضيف"
@@ -146,5 +146,79 @@ with server.app.test_request_context():
     assert "حجّاً مبروراً" in server._tconf_message({"guest_ar": "سعيد"}, {})
 with server.app.test_request_context():
     assert server._tconf_wa(None) is None and server._tconf_wa({"phone": "12"}) is None
+
+# ---- ١٣) من طلب المواصلات مباشرةً: بعد حفظ الطلب زرّ «إصدار تأكيد للضيف» ----
+import json  # noqa: E402
+assert "X-Next-Link" in c.get("/doc/0/treq").get_data(as_text=True), "محرّر الطلب يُظهر زرّ التأكيد بعد الحفظ"
+assert "X-Next-Link" in c.get("/documents/treq/manual").get_data(as_text=True)
+assert "X-Next-Link" not in c.get("/doc/0/receipt").get_data(as_text=True), "السند بلا زرّ تأكيد"
+r = c.post("/documents/treq/manual/pdf", json={
+    "number": "MA-T0050", "recipient": "شركة النقل", "honorific": "السيدة",
+    "guest_ar": "مريم سعيد النعيمي", "phone_code": "+966 السعودية", "phone": "0559876543", "persons": "4",
+    "movements": [[DEP, "من مطار المدينة الى الفندق في المدينة", "2", "FORD", "2027", "22:45"]]})
+assert r.status_code == 200 and r.data[:4] == b"%PDF"
+nxt = r.headers.get("X-Next-Link", "")
+assert nxt.startswith("/archive/") and nxt.endswith("/tconf"), nxt
+tdoc = storage.load_documents(session=S)[-1]
+assert tdoc["kind"] == "treq" and tdoc["name"] == "مريم سعيد النعيمي (يدوي)", "الطلب اليدوي يُؤرشف باسم ضيفه"
+ed = c.get(nxt)
+et = ed.get_data(as_text=True)
+assert ed.status_code == 200 and "من الطلب MA-T0050" in et and "X-WA-Link" in et
+assert "22:45" in et and "مريم سعيد النعيمي" in et and "من مطار المدينة الى الفندق في المدينة" in et
+assert "0559876543" in et and "+966" in et, "جوال الضيف ورمز دولته من الطلب"
+n1 = re.search(r'"number": "([^"]+)"', et).group(1)
+assert re.search(r'"number": "([^"]+)"', c.get(nxt).get_data(as_text=True)).group(1) == n1, \
+    "رقم التأكيد ثابت لهذا الطلب"
+cd = json.loads(re.search(r"const D = (\{.*?\});\n", et, re.S).group(1))
+cd["driver"] = "سالم"
+r = c.post(nxt + "/pdf", json=cd)
+assert r.status_code == 200 and r.data[:4] == b"%PDF"
+lk = r.headers.get("X-WA-Link", "")
+assert lk.startswith("https://wa.me/966559876543?text="), lk
+m2 = wa_text(lk)
+assert "السلام عليكم السيدة مريم" in m2 and "الانطلاق 22:45" in m2 and "السائق: سالم" in m2 and "/v/" in m2
+last = storage.load_documents(session=S)[-1]
+assert last["kind"] == "tconf" and last["name"] == "مريم سعيد النعيمي (يدوي)" and last["data"]["verify_url"]
+assert "مريم س. ا." in server.app.test_client().get(
+    "/v/" + last["data"]["verify_url"].rsplit("/v/", 1)[1]).get_data(as_text=True)
+
+# الأرشيف وصفحة الشخص: زرّ «تأكيد للضيف» بجانب كل طلب مواصلات
+ap = c.get("/archive").get_data(as_text=True)
+assert f'href="{nxt}"' in ap and "تأكيد للضيف" in ap
+treq0 = next(d for d in storage.load_documents(session=S) if d["kind"] == "treq" and d["number"] == "MA-T0009")
+assert f"/archive/{treq0['id']}/tconf" in c.get("/hujjaj/0/docs").get_data(as_text=True)
+# طلب مربوط بسجلّ: رقم الشخص نفسه، والرمز العام نفسه (لا تأكيدان للشخص الواحد)
+et0 = c.get(f"/archive/{treq0['id']}/tconf").get_data(as_text=True)
+assert '"number": "MA-C0001"' in et0 and "10:30" in et0
+r = c.post(f"/archive/{treq0['id']}/tconf/pdf", json=json.loads(
+    re.search(r"const D = (\{.*?\});\n", et0, re.S).group(1)))
+assert r.status_code == 200 and r.headers.get("X-WA-Link", "").startswith("https://wa.me/971501234567")
+last = storage.load_documents(session=S)[-1]
+assert last["idx"] == 0 and last["name"] == "أحمد سالم العلي" and last["data"]["verify_url"].endswith(tok)
+
+# من عرض سعر: حفظ طلب المواصلات يعيد زرّ التأكيد أيضاً
+st = storage.load_settings()
+umrah.save_quote(st, "U1", {"number": "MA-Q0031", "lang": "ar", "date": T.isoformat(),
+                            "addressed_title": "السيد", "addressed_to": "محمد أحمد",
+                            "car_type": "GMC", "car_model": "2026", "car_count": "1",
+                            "transport_lines": [[DEP, "مطار جدة", "الفندق في مكة"]],
+                            "show_transport": True})
+storage.save_settings(st)
+qe = c.get("/quotes/U1/MA-Q0031/doc/treq").get_data(as_text=True)
+assert "X-Next-Link" in qe
+qd = json.loads(re.search(r"const D = (\{.*?\});\n", qe, re.S).group(1))
+qd["phone"] = "0507770000"
+r = c.post("/quotes/U1/MA-Q0031/doc/treq/pdf", json=qd)
+assert r.status_code == 200 and r.headers.get("X-Next-Link", "").endswith("/tconf")
+qt = c.get(r.headers["X-Next-Link"]).get_data(as_text=True)
+assert "محمد أحمد" in qt and "0507770000" in qt
+# الفاوتشر من العرض بلا زرّ تأكيد، ومعرّفات غير صالحة تُرفض
+assert "X-Next-Link" not in c.get("/quotes/U1/MA-Q0031/doc/voucher").get_data(as_text=True)
+assert c.get(f"/archive/{last['id']}/tconf").status_code == 302, "التأكيد يُبنى من طلب مواصلات فقط"
+assert c.get("/archive/nope/tconf").status_code == 302
+assert c.post("/archive/nope/tconf/pdf", json={}).status_code == 404
+assert server.app.test_client().get(nxt).status_code == 302, "يحتاج تسجيل دخول"
+# المحرّر (صلاحية تحرير) يستخدمه أيضاً
+assert e.get(nxt).status_code == 200
 
 print("ALL OK")
