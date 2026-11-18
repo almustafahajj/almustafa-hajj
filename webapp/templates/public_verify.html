@@ -51,7 +51,7 @@
 
   <article class="vf-card">
     <header>
-      <span class="vf-kind">{{ ic({'receipt': 'receipt', 'invoice': 'receipt', 'contract': 'scroll', 'voucher': 'hotel', 'treq': 'bus'}.get(d.kind, 'file-text')) }} {{ title }}</span>
+      <span class="vf-kind">{{ ic({'receipt': 'receipt', 'invoice': 'receipt', 'contract': 'scroll', 'voucher': 'hotel', 'treq': 'bus', 'tconf': 'bus'}.get(d.kind, 'file-text')) }} {{ title }}</span>
       <span class="vf-num" dir="ltr">{{ d.number or '—' }}</span>
     </header>
     <dl class="vf-rows">
@@ -67,6 +67,16 @@
       <li><span class="vf-dot">{{ ic('hotel') }}</span>
         <div><b>{{ s[1] }}</b><small>{{ s[0] }}{% if s[4] %} · {{ s[4] }} ليالٍ{% endif %}</small>
           {% if s[2] %}<small dir="ltr" class="vf-dates">{{ s[2] }} → {{ s[3] }}</small>{% endif %}</div></li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+    {% if legs %}
+    <ol class="vf-stays vf-legs">
+      {% for g in legs %}
+      <li><span class="vf-dot">{{ ic('bus') }}</span>
+        <div><b>{{ g.route or 'تنقّل' }}</b>
+          <small>{{ g.day }}{% if g.day and g.time %} · {% endif %}{% if g.time %}الانطلاق <span dir="ltr">{{ g.time }}</span>{% endif %}</small>
+          {% if g.car %}<small dir="ltr" class="vf-dates">{{ g.car }}</small>{% endif %}</div></li>
       {% endfor %}
     </ol>
     {% endif %}

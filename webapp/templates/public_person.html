@@ -227,7 +227,7 @@
     <h2>{{ ic('file-text') }} مستنداتك</h2>
     <div class="tp-rows">
       {% for link, title, num, kind in docs %}
-      <a href="{{ link }}"><span>{{ ic('hotel' if kind == 'voucher' else 'bus' if kind == 'treq' else 'file-text') }} {{ title }}</span><b dir="ltr">{{ num }}</b><i>{{ ic('arrow-left') }}</i></a>
+      <a href="{{ link }}"><span>{{ ic('hotel' if kind == 'voucher' else 'bus' if kind in ['treq', 'tconf'] else 'file-text') }} {{ title }}</span><b dir="ltr">{{ num }}</b><i>{{ ic('arrow-left') }}</i></a>
       {% endfor %}
     </div>
   </section>

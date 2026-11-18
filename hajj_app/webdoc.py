@@ -425,6 +425,40 @@ def web_submit_action(save_url: str) -> str:
         ".catch(e=>alert('تعذّر إنشاء PDF: '+(e&&e.message?e.message:e)));")
 
 
+def web_submit_action_wa(save_url: str) -> str:
+    """مثل :func:`web_submit_action` (يفتح الـ PDF في تبويب جديد)، ثم يُظهر شريطاً
+    بزرّ «إرسال للضيف عبر واتساب» من ترويسة ``X-WA-Link`` التي يعيدها الخادم.
+    الزرّ رابط يضغطه المستخدم بنفسه فلا يحجبه المتصفّح كنافذة منبثقة."""
+    return (
+        "var _wa='';"
+        "fetch(" + _js_str(save_url) + ",{method:'POST',"
+        "headers:{'Content-Type':'application/json'},body:JSON.stringify(out)})"
+        ".then(r=>{if(!r.ok)return r.text().then(t=>{throw new Error("
+        "(t&&t.length<300?t:'')||('HTTP '+r.status));});"
+        "_wa=r.headers.get('X-WA-Link')||'';return r.blob();})"
+        ".then(b=>{var u=URL.createObjectURL(b);"
+        "var w=window.open(u,'_blank');"
+        "if(!w){var a=document.createElement('a');a.href=u;a.target='_blank';"
+        "a.download='document.pdf';document.body.appendChild(a);a.click();"
+        "a.remove();}"
+        "setTimeout(function(){URL.revokeObjectURL(u);},60000);"
+        "var bar=document.getElementById('waBar');"
+        "if(!bar){bar=document.createElement('div');bar.id='waBar';"
+        "bar.style.cssText='position:fixed;bottom:86px;left:50%;transform:translateX(-50%);"
+        "z-index:60;background:#fff;border:1px solid #CFE9D8;border-radius:14px;"
+        "box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px 14px;display:flex;gap:10px;"
+        "align-items:center;flex-wrap:wrap;justify-content:center;font-size:15px;"
+        "width:max-content;max-width:calc(100% - 24px)';document.body.appendChild(bar);}"
+        "bar.textContent='';var s=document.createElement('span');"
+        "s.textContent=_wa?'✅ حُفظ التأكيد':'⚠️ حُفظ التأكيد — لكن جوال الضيف غير صالح، صحّحه ثم احفظ من جديد';"
+        "bar.appendChild(s);"
+        "if(_wa){var g=document.createElement('a');g.href=_wa;g.target='_blank';g.rel='noopener';"
+        "g.textContent='🟢 إرسال للضيف عبر واتساب';"
+        "g.style.cssText='background:#1FA855;color:#fff;padding:10px 18px;border-radius:10px;"
+        "text-decoration:none;font-weight:700';bar.appendChild(g);}})"
+        ".catch(e=>alert('تعذّر إنشاء PDF: '+(e&&e.message?e.message:e)));")
+
+
 def web_submit_action_url(save_url: str) -> str:
     """حفظ البيانات ثم فتح الـ PDF من **رابط حقيقي** يعيده الخادم (JSON: pdf).
 

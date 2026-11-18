@@ -2084,7 +2084,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-16 · لمسات جمالية: بطاقات أوضح على الجوال وإشعارات مرتّبة حسب الأهمية"
+_BUILD_TAG = "2026-11-18 · تأكيد المواصلات للضيف: مستند جديد يُرسل عبر واتساب"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2820,6 +2820,7 @@ _DOC_KINDS = [
     ("contract", "📜", "عقد خدمات", "عقد الخدمات بين المكتب والعميل."),
     ("voucher", "🏨", "فاوتشر فندق", "قسيمة حجز الفندق للإبراز عند الوصول."),
     ("treq", "🚖", "طلب حجز مواصلات", "طلب حجز مواصلات موجّه للناقل."),
+    ("tconf", "🚐", "تأكيد مواصلات للضيف", "تأكيد حجز المواصلات يُرسل للضيف عبر واتساب."),
     ("packet", "📦", "حزمة المستندات", "الجواز والبطاقة والسند والعقد في PDF واحد."),
 ]
 _DOC_KIND_LABEL = {k: lbl for k, _ic, lbl, _d in _DOC_KINDS}
@@ -2958,10 +2959,11 @@ def doc_manual(kind):
     co = settings.get("company") if isinstance(settings, dict) else None
     data, schema = _doc_build(kind, PassportData(), co, settings)
     title, icon = _DOC_TITLES[kind]
+    submit = (webdoc.web_submit_action_wa if kind == "tconf"
+              else webdoc.web_submit_action)
     return webdoc._doc_html(
         data, schema, f"{title} (يدوي)", icon,
-        submit_action=webdoc.web_submit_action(
-            url_for("doc_manual_pdf", kind=kind)),
+        submit_action=submit(url_for("doc_manual_pdf", kind=kind)),
         back_url=url_for("documents"), mode=_mode(),
         build=_BUILD_ID)
 
@@ -2997,6 +2999,15 @@ def _attach_verify(kind: str, data: dict, uid: str = "") -> None:
                          for r in (data.get("stays") or [])
                          if isinstance(r, (list, tuple)) and len(r) >= 8
                          and str(r[1] or "").strip()]
+    elif kind == "tconf":
+        # رقم التأكيد ثابت للشخص فقد يتشاركه أفراد العائلة؛ يُربط الرمز بالشخص.
+        info["variant"] = uid or ""
+        rows = [[str(x or "").strip()[:80] for x in (list(m) + [""] * 5)[:5]]
+                for m in (data.get("movements") or [])
+                if isinstance(m, (list, tuple)) and any(str(x or "").strip() for x in m)]
+        # للصفحة العامة: التاريخ، خط السير، السيارة، وقت الانطلاق — بلا أسماء ولا هواتف
+        info["legs"] = [[r[0], r[1], " ".join(x for x in (r[2], r[3]) if x), r[4]]
+                        for r in rows[:12]]
     else:
         days = sorted(str(m[0]) for m in (data.get("movements") or [])
                       if isinstance(m, (list, tuple)) and m and str(m[0] or "").strip())
@@ -3035,7 +3046,16 @@ def verify_doc(token):
     مع بياناته المطبوعة للمطابقة (بلا دخول)."""
     from webapp import public
     d = public.get_doc(token)
-    return render_template("public_verify.html", d=d,
+    legs = []                                      # تأكيد المواصلات: جدول الحركة
+    for g in (d or {}).get("legs") or []:
+        g = [str(x or "") for x in (list(g) + [""] * 4)[:4]]
+        try:
+            dd = datetime.strptime(g[0], "%Y-%m-%d").date()
+            day = f"{_AR_DAYS[dd.weekday()]} {dd.day} {_AR_MONTHS[dd.month - 1]} {dd.year}"
+        except ValueError:
+            day = g[0]
+        legs.append({"day": day, "route": g[1], "car": g[2], "time": g[3]})
+    return render_template("public_verify.html", d=d, legs=legs,
                            title=_DOC_TITLES.get((d or {}).get("kind"), ("مستند", ""))[0],
                            contact=_public_contact((d or {}).get("mode")),
                            trips_url=url_for("public_trips", _external=True)
@@ -4198,9 +4218,10 @@ def doc_manual_pdf(kind):
     _attach_verify(kind, data)                               # QR للتحقّق
     _archive_doc(kind, data, idx=None, name="يدوي بلا اسم")   # أرشفة تلقائية
     _audit("إصدار مستند يدوي", _DOC_TITLES[kind][0])
-    return _pdf_response(
+    resp = _pdf_response(
         lambda p: _doc_export(kind, PassportData(), co, data, p),
         f"{kind}-manual.pdf")
+    return _with_wa(resp, kind, data, settings)
 
 
 @app.route("/hujjaj/new", methods=["GET", "POST"])
@@ -4652,6 +4673,7 @@ _RECORD_DOCS = [
     ("contract", "📜", "عقد خدمات", "عقد الخدمات بين المكتب والعميل."),
     ("voucher", "🏨", "فاوتشر فندق", "قسيمة حجز الفندق للإبراز عند الوصول."),
     ("treq", "🚖", "طلب حجز مواصلات", "طلب حجز مواصلات موجّه للناقل."),
+    ("tconf", "🚐", "تأكيد مواصلات للضيف", "تأكيد حجز المواصلات يُرسل للضيف عبر واتساب."),
 ]
 
 
@@ -4670,12 +4692,15 @@ def record_docs(idx):
     name = getattr(rec, "full_name_ar", "") or getattr(
         rec, "full_name_en", "") or "—"
     saved = []                                     # مستندات هذا الشخص المؤرشفة
+    _st = storage.load_settings()
     for d in reversed(storage.load_documents(session=_sess())):
         if d.get("idx") == idx or (name != "—" and d.get("name") == name):
             saved.append({"id": d.get("id"),
                           "ts": (d.get("ts") or "").replace("T", "  "),
                           "title": d.get("title") or d.get("kind"),
-                          "number": d.get("number") or "—"})
+                          "number": d.get("number") or "—",
+                          "wa": (_tconf_wa(d.get("data"), _st)
+                                 if d.get("kind") == "tconf" else None)})
     from webapp import public
     from hajj_app import whatsapp as _wa
     tok = public.find_person(_mode(), getattr(rec, "uid", "") or "")
@@ -6242,7 +6267,8 @@ def program_rooming_pdf(code, city):
 # ======================= مستندات كل معتمر/حاج ==============================
 _DOC_TITLES = {"receipt": ("سند قبض", "🧾"), "invoice": ("فاتورة ضريبية", "🧾"),
                "contract": ("عقد خدمات", "📜"), "voucher": ("فاوتشر فندق", "🏨"),
-               "treq": ("طلب حجز مواصلات", "🚖")}
+               "treq": ("طلب حجز مواصلات", "🚖"),
+               "tconf": ("تأكيد حجز مواصلات", "🚐")}
 
 
 def _web_doc_number(settings, rec, store_key, prefix, start):
@@ -6264,6 +6290,82 @@ def _web_doc_number(settings, rec, store_key, prefix, start):
         except Exception:
             pass
     return f"{prefix}{n:04d}"
+
+
+def _last_treq(rec):
+    """بيانات آخر «طلب حجز مواصلات» صدر لهذا الشخص (من الأرشيف) — ليُبنى منه
+    تأكيد الضيف بالحركات نفسها التي حُجزت مع الناقل."""
+    name = _rec_name(rec)
+    if not name:
+        return None
+    try:
+        docs = storage.load_documents(session=_sess())
+    except Exception:                              # noqa: BLE001
+        return None
+    for d in reversed(docs):
+        if d.get("kind") == "treq" and d.get("name") == name and isinstance(d.get("data"), dict):
+            return d["data"]
+    return None
+
+
+def _tconf_message(data: dict, settings=None) -> str:
+    """نصّ رسالة واتساب لتأكيد المواصلات: جدول الحركة بلغة بسيطة + السائق
+    والملاحظات + رابط التحقّق من التأكيد."""
+    settings = settings if isinstance(settings, dict) else storage.load_settings()
+    co = settings.get("company") if isinstance(settings.get("company"), dict) else {}
+    co_name = co.get("name_ar") or "المصطفى للحج والعمرة"
+    hon = str(data.get("honorific") or "").strip()
+    first = (str(data.get("guest_ar") or "").split() or [""])[0]
+    out = [" ".join(x for x in ("السلام عليكم", hon, first) if x) + "،",
+           f"يسعدنا تأكيد حجز المواصلات الخاصة برحلتكم مع {co_name} ✅", ""]
+    for m in data.get("movements") or []:
+        if not isinstance(m, (list, tuple)):
+            continue
+        m = [str(x or "").strip() for x in (list(m) + [""] * 5)[:5]]
+        if not any(m):
+            continue
+        try:
+            d = datetime.strptime(m[0], "%Y-%m-%d").date()
+            when = f"{_AR_DAYS[d.weekday()]} {d.day} {_AR_MONTHS[d.month - 1]}"
+        except ValueError:
+            when = m[0]
+        head = " — ".join(x for x in (when, m[1]) if x)
+        car = " ".join(x for x in (m[2], m[3]) if x)
+        tail = " · ".join(x for x in (f"🚐 {car}" if car else "",
+                                      f"الانطلاق {m[4]}" if m[4] else "") if x)
+        out += [x for x in (f"📅 {head}" if head else "", tail) if x] + [""]
+    drv = str(data.get("driver") or "").strip()
+    dph = str(data.get("driver_phone") or "").strip()
+    if drv or dph:
+        out.append("👤 السائق: " + " — ".join(x for x in (drv, dph) if x))
+    notes = " ".join(str(data.get("notes") or "").split())
+    if notes:
+        out.append(f"📝 {notes}")
+    if drv or dph or notes:
+        out.append("")
+    if str(data.get("number") or "").strip():
+        out.append(f"رقم التأكيد: {str(data['number']).strip()}")
+    if str(data.get("verify_url") or "").strip():
+        out.append(f"تفاصيل التأكيد: {str(data['verify_url']).strip()}")
+    out.append("نتمنّى لكم رحلة ميسّرة، و" +
+               ("حجّاً مبروراً 🤍" if _mode() == app_mode.HAJJ else "عمرة مقبولة 🤍"))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def _tconf_wa(data: dict, settings=None):
+    """رابط واتساب لجوال الضيف برسالة التأكيد، أو None إن لم يكن رقمه صالحاً.
+    رمز النداء المختار في المستند يُقدَّم على رمز الدولة الافتراضي."""
+    if not isinstance(data, dict):
+        return None
+    from hajj_app import whatsapp as _wa
+    settings = settings if isinstance(settings, dict) else storage.load_settings()
+    code = str(data.get("phone_code") or "").split()
+    cc = re.sub(r"\D", "", code[0]) if code else ""
+    try:
+        return _wa.wa_link(str(data.get("phone") or ""), _tconf_message(data, settings),
+                           cc or str(settings.get("whatsapp_cc") or "971"))
+    except Exception:                              # noqa: BLE001
+        return None
 
 
 def _doc_build(kind, rec, co, settings, pay=None):
@@ -6299,6 +6401,12 @@ def _doc_build(kind, rec, co, settings, pay=None):
         return pdf_io.build_voucher_data(rec, trip=None, program_name=prog,
                                          company=co, number=num), \
             pdf_io.VOUCHER_SCHEMA
+    if kind == "tconf":
+        num = _web_doc_number(settings, rec, "tconfs", "MA-C", 1)
+        trip = (_trip_or_none(prog) if prog and _mode() == app_mode.UMRAH else None)
+        return pdf_io.build_transport_confirm_data(
+            rec, trip=trip, company=co, number=num,
+            treq=_last_treq(rec)), pdf_io.TCONF_SCHEMA
     num = umrah.next_transport_number(settings)   # treq
     try:
         storage.save_settings(settings)
@@ -6322,6 +6430,8 @@ def _doc_export(kind, rec, co, data, path):
     elif kind == "voucher":
         pdf_io.export_umrah_voucher_pdf(rec, path, trip=None, company=co,
                                         data=data)
+    elif kind == "tconf":
+        pdf_io.export_transport_confirm_pdf(rec, path, company=co, data=data)
     else:                                          # treq
         pdf_io.export_umrah_transport_request_pdf(rec, path, company=co,
                                                   data=data)
@@ -6363,6 +6473,7 @@ def archive():
     ql = q.lower()
     buckets = {k: [] for k in _DOC_TITLES}          # مجموعة لكل نوع مستند
     shown = 0
+    _st = storage.load_settings()
     for d in reversed(docs):
         if ql and ql not in " ".join(str(d.get(k, "")) for k in
                                      ("title", "number", "name")).lower():
@@ -6372,7 +6483,8 @@ def archive():
         buckets[k].append({"id": d.get("id"),
                            "ts": (d.get("ts") or "").replace("T", "  "),
                            "number": d.get("number") or "—",
-                           "name": d.get("name") or "—"})
+                           "name": d.get("name") or "—",
+                           "wa": _tconf_wa(d.get("data"), _st) if k == "tconf" else None})
         shown += 1
     groups = [{"title": _DOC_TITLES.get(k, (k, ""))[0],
                "icon": _DOC_TITLES.get(k, ("", ""))[1], "rows": buckets[k]}
@@ -6447,10 +6559,11 @@ def doc_edit(idx, kind):
     data, schema = _doc_build(kind, records[idx], co, settings, pay=pay)
     data["_rec"] = _rec_token(records[idx])        # يتحقّق منه الحفظ (الموضع قد يتغيّر)
     title, icon = _DOC_TITLES[kind]
+    submit = (webdoc.web_submit_action_wa if kind == "tconf"   # التأكيد: زرّ إرسال للضيف
+              else webdoc.web_submit_action)
     return webdoc._doc_html(
         data, schema, title, icon,
-        submit_action=webdoc.web_submit_action(
-            url_for("doc_pdf", idx=idx, kind=kind)),
+        submit_action=submit(url_for("doc_pdf", idx=idx, kind=kind)),
         back_url=url_for("hujjaj_edit", idx=idx), mode=_mode(),
         build=_BUILD_ID)
 
@@ -6475,9 +6588,18 @@ def doc_pdf(idx, kind):
     _attach_verify(kind, data, uid=getattr(records[idx], "uid", "") or "")
     _archive_doc(kind, data, idx=idx, name=_name)   # أرشفة تلقائية
     _audit("إصدار مستند", f"{title} — {_name}")
-    return _pdf_response(
+    resp = _pdf_response(
         lambda p: _doc_export(kind, records[idx], co, data, p),
         f"{title}-{data.get('number','') or ''}.pdf")
+    return _with_wa(resp, kind, data, settings)
+
+
+def _with_wa(resp, kind, data, settings):
+    """تأكيد المواصلات: يضع رابط واتساب الضيف في ترويسة الاستجابة فيُظهر المحرّر
+    زرّ «إرسال للضيف» بعد الحفظ (الرابط مُرمَّز بحروف ASCII فقط)."""
+    if kind == "tconf":
+        resp.headers["X-WA-Link"] = _tconf_wa(data, settings) or ""
+    return resp
 
 
 @app.get("/hujjaj/<int:idx>/packet.pdf")

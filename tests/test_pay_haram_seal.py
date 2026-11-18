@@ -226,10 +226,24 @@ try:
     import fitz
     import numpy as np
     for path, url in ((rp, d1["verify_url"]), (cp, dc["verify_url"])):
-        with fitz.open(path) as doc:
-            pix = doc[-1].get_pixmap(dpi=200)
-        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-        txt, _pts, _s = cv2.QRCodeDetector().detectAndDecode(img[:, :, :3].copy())
+        txt = ""
+        # كاشف OpenCV العادي يُخفق أحياناً (أو يرفع خطأً) على الصفحة كاملة — الرمز
+        # عشوائي في كل تشغيل؛ نجرّب عدّة دقّات ثم كاشف Aruco قبل الحكم بأنّه غير مقروء.
+        dets = [cv2.QRCodeDetector()] + ([cv2.QRCodeDetectorAruco()]
+                                         if hasattr(cv2, "QRCodeDetectorAruco") else [])
+        for det in dets:
+            for dpi in (200, 300, 150, 250):
+                with fitz.open(path) as doc:
+                    pix = doc[-1].get_pixmap(dpi=dpi)
+                img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+                try:
+                    txt = det.detectAndDecode(img[:, :, :3].copy())[0]
+                except cv2.error:
+                    txt = ""
+                if txt:
+                    break
+            if txt:
+                break
         assert txt == url, (path, txt, url)
     print("[ok] رمز QR في السند والعقد يُقرأ رابطَ التحقّق")
 except ImportError:

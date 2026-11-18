@@ -44,7 +44,9 @@
 </div>
 
 <p class="hint-note">يفتح المستند في تبويب جديد للتحرير ثم «حفظ ومعاينة PDF»
-  (يُفتح الـ PDF في تبويب جديد). كل مستند تنشئه يُحفظ تلقائياً في الأرشيف أدناه.</p>
+  (يُفتح الـ PDF في تبويب جديد). كل مستند تنشئه يُحفظ تلقائياً في الأرشيف أدناه.
+  و«تأكيد مواصلات للضيف» يأخذ حركاته من آخر طلب مواصلات لنفس الشخص، وبعد حفظه يظهر
+  زرّ أخضر لإرساله للضيف عبر واتساب (ويبقى الزرّ بجانبه في القائمة أدناه).</p>
 
 {% if saved %}
 <div class="panel" style="margin-top:16px">
@@ -57,7 +59,8 @@
         <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ s.ts }}</td>
         <td>{{ s.title }}</td>
         <td dir="ltr">{{ s.number }}</td>
-        <td><a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=s.id) }}">{{ ic('file-text') }} فتح/طباعة</a></td>
+        <td style="white-space:nowrap"><a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=s.id) }}">{{ ic('file-text') }} فتح/طباعة</a>
+          {% if s.wa %}<a class="btn sm wa-btn" target="_blank" rel="noopener" href="{{ s.wa }}">{{ ic('chat') }} إرسال للضيف</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
