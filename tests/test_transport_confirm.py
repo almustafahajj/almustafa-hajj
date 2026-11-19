@@ -221,4 +221,15 @@ assert server.app.test_client().get(nxt).status_code == 302, "يحتاج تسج�
 # المحرّر (صلاحية تحرير) يستخدمه أيضاً
 assert e.get(nxt).status_code == 200
 
+# ---- ١٤) ختم الأصالة على الآيفون: اسم الشركة المنحني بحروف مُشكَّلة جاهزة ----
+# Safari يرصّ حروف textPath منفصلة بلا وصل ولا ترتيب؛ نرسل الأشكال الجاهزة بترتيب العرض.
+ring = server._svg_ar("المصطفى للحج والعمرة")
+assert all(0xFE70 <= ord(ch) <= 0xFEFF or ch == " " for ch in ring), "كل الحروف بأشكالها المتّصلة الجاهزة"
+assert ring[0] == "ﺓ" and ring[-1] == "ﺍ", "ترتيب العرض: التاء المربوطة يساراً والألف يميناً"
+assert server._svg_ar("") == "" and server._svg_ar("AL") == "AL"
+pv = server.app.test_client().get(f"/v/{tok}").get_data(as_text=True)
+assert f'unicode-bidi="bidi-override"><textPath href="#vfTop" startOffset="50%" text-anchor="middle">{ring}<' in pv
+css = open(os.path.join(ROOT, "webapp", "static", "style.css"), encoding="utf-8").read()
+assert "unicode-bidi:bidi-override" in css.split(".vf-ring-ar{", 1)[1].split("}", 1)[0]
+
 print("ALL OK")

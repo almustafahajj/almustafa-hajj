@@ -67,6 +67,24 @@ _GROUP_ICONS = (("البرنامج", "briefcase"), ("بيانات", "user"), ("�
 app = Flask(__name__)
 from webapp import icons as _icons  # noqa: E402
 _icons.install(app)                     # ic('…') و|iconize في القوالب
+
+
+def _svg_ar(text) -> str:
+    """نصّ عربي جاهز للرسم على مسار SVG منحنٍ (textPath): حروف مُشكَّلة (متّصلة)
+    بترتيب العرض. Safari على الآيفون يرصّ حروف textPath واحداً واحداً بلا وصل
+    ولا ترتيب، فتظهر مبعثرة؛ نعطيه الأشكال الجاهزة مع ``bidi-override`` فيرسمها
+    كما هي — ويطابقه Chrome."""
+    s = str(text or "")
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+        s = get_display(arabic_reshaper.reshape(s))
+    except Exception:                              # noqa: BLE001
+        return s
+    return s.replace("‎", "").replace("‏", "")
+
+
+app.jinja_env.filters["svg_ar"] = _svg_ar
 # خلف وكيل Railway: عنوان الزائر الحقيقي (لإيقاف محاولات الدخول) وبروتوكول https
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 # حماية النماذج من الطلبات المزوّرة (تُعطَّل في الاختبارات فقط)
@@ -2084,7 +2102,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-18 · تأكيد للضيف من طلب المواصلات مباشرةً (سجلّ أو عرض سعر أو يدوي)"
+_BUILD_TAG = "2026-11-19 · ختم الأصالة: اسم الشركة يظهر سليماً على الآيفون"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
