@@ -2869,3 +2869,6 @@ body.tv-body{ position:relative; isolation:isolate; margin:0; height:100vh; over
   table.acc-table form.pw-reset{ display:flex; gap:6px; min-width:0; }
   table.acc-table form.pw-reset input{ min-width:0 !important; flex:1 1 auto; width:100%; }
 }
+/* الأرشيف: علامة «عُدّل» تحت تاريخ المستند */
+.doc-edited{ font-size:12px; color:var(--muted); margin-top:2px; white-space:nowrap; }
+.doc-edited svg{ width:12px; height:12px; vertical-align:-1px; }

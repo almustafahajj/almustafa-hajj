@@ -56,10 +56,12 @@
     <tbody>
       {% for s in saved %}
       <tr>
-        <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ s.ts }}</td>
+        <td style="font-variant-numeric:tabular-nums"><span dir="ltr">{{ s.ts }}</span>
+          {% if s.edited %}<div class="doc-edited">{{ ic('pen') }} عُدّل <span dir="ltr">{{ s.edited }}</span></div>{% endif %}</td>
         <td>{{ s.title }}</td>
         <td dir="ltr">{{ s.number }}</td>
         <td style="white-space:nowrap"><a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=s.id) }}">{{ ic('file-text') }} فتح/طباعة</a>
+          {% if can_edit and s.id %}<a class="btn ghost sm" href="{{ url_for('archive_edit', doc_id=s.id, back=url_for('record_docs', idx=idx)) }}">{{ ic('pen') }} تعديل</a>{% endif %}
           {% if s.wa %}<a class="btn sm wa-btn" target="_blank" rel="noopener" href="{{ s.wa }}">{{ ic('chat') }} إرسال للضيف</a>{% endif %}
           {% if s.tconf %}<a class="btn ghost sm" target="_blank" href="{{ s.tconf }}">{{ ic('bus') }} تأكيد للضيف</a>{% endif %}</td>
       </tr>

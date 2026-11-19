@@ -2102,7 +2102,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-19 · ختم الأصالة: اسم الشركة يظهر سليماً على الآيفون"
+_BUILD_TAG = "2026-11-19 · تعديل المستندات المحفوظة في الأرشيف"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -4717,6 +4717,7 @@ def record_docs(idx):
         if d.get("idx") == idx or (name != "—" and d.get("name") == name):
             saved.append({"id": d.get("id"),
                           "ts": (d.get("ts") or "").replace("T", "  "),
+                          "edited": (d.get("edited") or "").replace("T", "  "),
                           "title": d.get("title") or d.get("kind"),
                           "number": d.get("number") or "—",
                           "wa": (_tconf_wa(d.get("data"), _st)
@@ -6591,6 +6592,7 @@ def archive():
         buckets.setdefault(k, [])
         buckets[k].append({"id": d.get("id"),
                            "ts": (d.get("ts") or "").replace("T", "  "),
+                           "edited": (d.get("edited") or "").replace("T", "  "),
                            "number": d.get("number") or "—",
                            "name": d.get("name") or "—",
                            "wa": _tconf_wa(d.get("data"), _st) if k == "tconf" else None,
@@ -6643,6 +6645,136 @@ def archive_delete(doc_id):
         except Exception:
             pass
     return redirect(url_for("archive"))
+
+
+def _doc_schema(kind, data=None):
+    """مخطّط محرّر المستند حسب نوعه (لتعديل مستند محفوظ). الفاوتشر بقوائم لغته."""
+    from hajj_app import pdf_io
+    if kind == "voucher":
+        return pdf_io.voucher_schema(str((data or {}).get("lang") or "ar"))
+    return {"receipt": pdf_io.RECEIPT_SCHEMA, "invoice": pdf_io.INVOICE_SCHEMA,
+            "contract": pdf_io.CONTRACT_SCHEMA,
+            "tconf": pdf_io.TCONF_SCHEMA}.get(kind, pdf_io.TREQ_SCHEMA)
+
+
+def _safe_back(url):
+    """رابط عودة داخلي فقط (يمنع التحويل لموقع خارجي)."""
+    url = str(url or "")
+    return url if url.startswith("/") and not url.startswith("//") and "\\" not in url else ""
+
+
+def _entry_uid(entry, owner):
+    """معرّف صاحب المستند لرمز التحقّق: من سجلّ التحقّق الحالي (فيبقى رمز QR
+    نفسه بعد التعديل)، وإلّا من السجلّ المربوط."""
+    url = str((entry.get("data") or {}).get("verify_url") or "")
+    if "/v/" in url:
+        try:
+            from webapp import public
+            info = public.get_doc(url.rsplit("/v/", 1)[1].split("?")[0].strip("/"))
+            if info and info.get("uid"):
+                return str(info["uid"])
+        except Exception:                          # noqa: BLE001
+            pass
+    return getattr(owner, "uid", "") or ""
+
+
+def _edited_name(entry, data):
+    """اسم المستند في الأرشيف بعد التعديل: المستند المربوط بسجلّ يبقى باسم صاحبه،
+    واليدوي/من عرض السعر يتبع اسم الضيف الجديد."""
+    name = str(entry.get("name") or "")
+    if isinstance(entry.get("idx"), int):
+        return name
+    guest = str(data.get("guest_ar") or data.get("guest_en") or "").strip()
+    if not guest:
+        return name
+    m = re.match(r"^.* — عرض (\S+)$", name)
+    if m:
+        return f"{guest} — عرض {m.group(1)}"
+    if name.endswith(" (يدوي)") or (name == "يدوي بلا اسم"
+                                    and entry.get("kind") in ("treq", "tconf")):
+        return f"{guest} (يدوي)"
+    return name
+
+
+def _refresh_receipt_words(old, new):
+    """السند: إن تغيّر المبلغ وبقي «المبلغ كتابةً» كما كان، يُكتب للمبلغ الجديد
+    (وإن عدّله المستخدم بنفسه يبقى كما كتبه)."""
+    from hajj_app.fields import num_to_words_en, parse_amount
+    a_new = parse_amount(new.get("amount"))
+    if a_new is None or a_new == parse_amount(old.get("amount")):
+        return
+    if str(new.get("amount_words") or "").strip() == str(old.get("amount_words") or "").strip():
+        new["amount_words"] = num_to_words_en(a_new)
+
+
+@app.get("/archive/<doc_id>/edit")
+def archive_edit(doc_id):
+    """تعديل مستند محفوظ: المحرّر نفسه معبّأً ببياناته، والحفظ يحدّثه في مكانه
+    (الرقم ورمز التحقّق كما هما)."""
+    s = _sess()
+    if s is None:
+        return redirect(url_for("login"))
+    if not s.can_edit:                             # المطّلع يفتح ويطبع فقط
+        return redirect(url_for("archive"))
+    entry = next((d for d in storage.load_documents(session=s)
+                  if d.get("id") == doc_id), None)
+    if (not entry or entry.get("kind") not in _DOC_TITLES
+            or not isinstance(entry.get("data"), dict)):
+        return redirect(url_for("archive"))
+    from hajj_app import webdoc
+    kind, data = entry["kind"], dict(entry["data"])
+    data.pop("_rec", None)
+    title, icon = _DOC_TITLES[kind]
+    back = _safe_back(request.args.get("back")) or url_for("archive")
+    submit = {"tconf": webdoc.web_submit_action_wa,
+              "treq": webdoc.web_submit_action_treq}.get(kind, webdoc.web_submit_action_saved)
+    return webdoc._doc_html(
+        data, _doc_schema(kind, data), f"تعديل {title}", icon,
+        submit_action=submit(url_for("archive_edit_pdf", doc_id=doc_id, back=back)),
+        back_url=back, mode=_mode(), build=_BUILD_ID), \
+        200, {"Cache-Control": "no-store, max-age=0"}
+
+
+@app.post("/archive/<doc_id>/edit/pdf")
+def archive_edit_pdf(doc_id):
+    """يحفظ تعديل المستند المؤرشف في مكانه ثم يعيد الـ PDF المحدَّث."""
+    s = _sess()
+    if s is None:
+        return ("", 401)
+    if not s.can_edit:
+        return ("تعديل المستندات للمحرّرين فقط.", 403)
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return ("بيانات غير صالحة — أعد فتح المستند من الأرشيف.", 400)
+    data.pop("_rec", None)
+    from hajj_app.mrz import PassportData
+    docs = storage.load_documents(session=s)
+    entry = next((d for d in docs if d.get("id") == doc_id), None)
+    if not entry or entry.get("kind") not in _DOC_TITLES:
+        return ("لم يُعثر على المستند — ربما حُذف من الأرشيف.", 404)
+    kind = entry["kind"]
+    if kind == "receipt":
+        _refresh_receipt_words(entry.get("data") or {}, data)
+    owner = _treq_owner(entry)
+    _attach_verify(kind, data, uid=_entry_uid(entry, owner))   # يحدّث صفحة التحقّق
+    entry["data"] = data
+    entry["number"] = str(data.get("number") or "")
+    entry["name"] = _edited_name(entry, data)
+    entry["edited"] = datetime.now().replace(microsecond=0).isoformat()
+    entry["edited_by"] = getattr(s, "username", "") or ""
+    try:
+        storage.save_documents(docs, session=s)
+    except Exception:                              # noqa: BLE001
+        return ("تعذّر حفظ التعديل — حاول مرة أخرى.", 500)
+    title = _DOC_TITLES[kind][0]
+    _audit("تعديل مستند مؤرشف",
+           f"{title} {entry['number'] or ''} — {entry['name'] or 'بلا اسم'}".strip())
+    settings = storage.load_settings()
+    co = settings.get("company") if isinstance(settings, dict) else None
+    resp = _pdf_response(lambda p: _doc_export(kind, owner or PassportData(), co, data, p),
+                         f"{title}-{entry['number']}.pdf")
+    resp.headers["X-Back-Link"] = _safe_back(request.args.get("back")) or url_for("archive")
+    return _with_next(_with_wa(resp, kind, data, settings), kind, doc_id)
 
 
 @app.get("/doc/<int:idx>/<kind>")

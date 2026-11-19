@@ -479,6 +479,14 @@ def web_submit_action_treq(save_url: str) -> str:
         "🚐 إصدار تأكيد للضيف وإرساله", "var(--bronze)", new_tab=False)
 
 
+def web_submit_action_saved(save_url: str) -> str:
+    """تعديل مستند من الأرشيف: بعد الحفظ رسالة «حُفظ التعديل» وزرّ العودة
+    (ترويسة X-Back-Link) في الصفحة نفسها."""
+    return _submit_with_bar(
+        save_url, "X-Back-Link", "✅ حُفظ التعديل في الأرشيف", "",
+        "↩ العودة للمستندات", "var(--bronze)", new_tab=False)
+
+
 def web_submit_action_url(save_url: str) -> str:
     """حفظ البيانات ثم فتح الـ PDF من **رابط حقيقي** يعيده الخادم (JSON: pdf).
 

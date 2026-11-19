@@ -23,11 +23,13 @@
     <tbody>
       {% for r in g.rows %}
       <tr>
-        <td dir="ltr" style="font-variant-numeric:tabular-nums">{{ r.ts }}</td>
+        <td style="font-variant-numeric:tabular-nums"><span dir="ltr">{{ r.ts }}</span>
+          {% if r.edited %}<div class="doc-edited">{{ ic('pen') }} عُدّل <span dir="ltr">{{ r.edited }}</span></div>{% endif %}</td>
         <td dir="ltr">{{ r.number }}</td>
         <td>{{ r.name }}</td>
         <td style="white-space:nowrap">
           <a class="btn primary sm" target="_blank" href="{{ url_for('archive_pdf', doc_id=r.id) }}">{{ ic('file-text') }} فتح/طباعة</a>
+          {% if can_edit and r.id %}<a class="btn ghost sm" href="{{ url_for('archive_edit', doc_id=r.id) }}" title="تعديل بيانات المستند ثم حفظه في مكانه">{{ ic('pen') }} تعديل</a>{% endif %}
           {% if r.wa %}<a class="btn sm wa-btn" target="_blank" rel="noopener" href="{{ r.wa }}" title="إرسال التأكيد للضيف عبر واتساب">{{ ic('chat') }} إرسال للضيف</a>{% endif %}
           {% if r.tconf %}<a class="btn ghost sm" target="_blank" href="{{ r.tconf }}" title="تأكيد حجز للضيف من هذا الطلب ثم إرساله واتساب">{{ ic('bus') }} تأكيد للضيف</a>{% endif %}
           {% if can_edit %}
@@ -44,5 +46,7 @@
 {% endfor %}
 {% endif %}
 <p class="hint-note">كل مستند يُنشأ يُحفظ هنا تلقائياً تحت نوعه. يُعاد توليد الـPDF عند
-  الفتح (توفيراً للمساحة)، والبيانات مشفّرة ومستقلّة لكل وضع (حج/عمرة).</p>
+  الفتح (توفيراً للمساحة)، والبيانات مشفّرة ومستقلّة لكل وضع (حج/عمرة).
+  زرّ «تعديل» يفتح المستند بحقوله لتصحيحها، و«حفظ» يحدّثه في مكانه بنفس الرقم ونفس رمز
+  التحقّق (QR)، ويظهر تحت تاريخه وقت آخر تعديل.</p>
 {% endblock %}
