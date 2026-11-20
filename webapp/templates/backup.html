@@ -5,11 +5,17 @@
 {% block content %}
 {% if msg %}<div class="acc-msg ok">{{ msg|iconize }}</div>{% endif %}
 {% if err %}<div class="acc-msg err">{{ err|iconize }}</div>{% endif %}
+{% for level, text in problems %}
+<div class="acc-msg {{ 'err' if level == 'danger' else 'warn' }} bk-problem">{{ ic('alert') }} {{ text }}</div>
+{% endfor %}
 <div class="panel offsite {{ 'on' if off.enabled and not off.last_err else ('bad' if off.enabled else '') }}">
   <h3 style="margin-top:0">{{ ic('mail') }} نسخة خارج الخادم — تلقائياً بالبريد</h3>
   {% if off.enabled %}
     {% if off.last_err %}
     <div class="acc-msg err">{{ ic('alert') }} آخر محاولة فشلت: {{ off.last_err }}</div>
+    {% elif off.stale %}
+    <div class="acc-msg err">{{ ic('alert') }} لم تصل نسخة منذ مدّة أطول من المتوقّع — اضغط «أرسل نسخة الآن»
+      وتأكّد أنها وصلت لبريدك (وافحص Spam).</div>
     {% endif %}
     <p class="off-state">{% if off.last_ok %}{{ ic('check') }} آخر نسخة وصلت: <b dir="ltr">{{ off.last_ok }}</b>
       ({{ off.size_kb }} KB){% if off.next %} · القادمة: <span dir="ltr">{{ off.next }}</span>{% endif %}
@@ -98,5 +104,28 @@
     {% endfor %}
     </tbody>
   </table>
+</div>
+
+<div class="panel offsite {{ 'on' if mon_on }}" id="monitor" style="margin-top:16px">
+  <h3 style="margin-top:0">{{ ic('shield') }} مراقبة الأخطاء والتوقّف</h3>
+  <p class="off-state"><b>مراقبة الأخطاء (Sentry):</b>
+    {% if mon_on %}{{ ic('check') }} مفعّلة — أي خطأ يظهر لموظف يصلك تنبيه به مع مكانه في البرنامج.
+    {% else %}غير مفعّلة.{% endif %}</p>
+  {% if mon_on %}
+  <form method="post" action="{{ url_for('backup_monitor_test') }}" class="inline">
+    <button class="acc-btn" type="submit">{{ ic('send') }} أرسل خطأ تجريبياً</button></form>
+  {% else %}
+  <ol class="mon-steps">
+    <li>أنشئ حساباً مجانياً في <span dir="ltr">sentry.io</span> ثم مشروعاً جديداً من نوع <b dir="ltr">Flask</b>.</li>
+    <li>انسخ قيمة <b dir="ltr">DSN</b> التي تظهر لك (تبدأ بـ <span dir="ltr">https://</span>).</li>
+    <li>في Railway ← المشروع ← <b dir="ltr">Variables</b> أضف متغيّراً اسمه <b dir="ltr">SENTRY_DSN</b> والصق القيمة.</li>
+    <li>بعد إعادة التشغيل التلقائية افتح هذه الصفحة واضغط «أرسل خطأ تجريبياً».</li>
+  </ol>
+  {% endif %}
+  <p class="hint-note">{{ ic('lock') }} لا يُرسل إلى Sentry أي بيانات معتمرين: لا محتوى نماذج ولا بحث ولا روابط
+    خاصة، وأرقام الجوازات والهواتف في نصّ الخطأ تُخفى. يصله نوع الخطأ ومكانه في البرنامج فقط.</p>
+  <p class="off-state" style="margin-bottom:0"><b>مراقبة التوقّف (UptimeRobot):</b> أضف مراقباً من نوع
+    <b dir="ltr">HTTP(s)</b> كل 5 دقائق على هذا الرابط، ليصلك بريد إن توقّف الموقع:</p>
+  <div class="mon-url"><code dir="ltr">{{ health_url }}</code></div>
 </div>
 {% endblock %}

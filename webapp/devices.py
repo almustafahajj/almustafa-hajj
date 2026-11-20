@@ -40,6 +40,14 @@ def _h(tok: str) -> str:
     return hashlib.sha256(("dev:" + tok).encode("utf-8")).hexdigest()[:32]
 
 
+def known(username: str, tok: str | None) -> bool:
+    """هل هذا المتصفّح دخل إلى هذا الحساب بنجاح من قبل؟"""
+    if not valid_token(tok):
+        return False
+    h = _h(tok)
+    return any(x.get("h") == h for x in _load().get((username or "").strip().lower(), []))
+
+
 def remember(username: str, tok: str, label: str = "") -> tuple[bool, bool]:
     """يسجّل الجهاز للحساب. يعيد (جهاز جديد؟، كان للحساب أجهزة قبله؟)."""
     key, h, now = (username or "").strip().lower(), _h(tok), time.time()

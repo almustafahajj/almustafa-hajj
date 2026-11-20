@@ -16,6 +16,7 @@ import os
 import secrets
 import struct
 import tempfile
+import time
 import zipfile
 from datetime import datetime, date
 from pathlib import Path
@@ -27,7 +28,11 @@ _ITER = 300_000
 # ما يُنسخ (أسماء في مجلّد البيانات) — لا مفتاح توقيع الجلسات ولا الملفّات المؤقّتة
 _DATA_PATTERNS = ("auth.json", "hajjaj.json", "umrah.json", "settings.json",
                   "settings_umrah.json", "documents_*.json", "camps_*.json",
-                  "audit.log", "public_links.json")
+                  "audit.log", "public_links.json",
+                  # طلبات الحجز والآراء + مفتاحها الثابت (كي تُستعاد على أي خادم)
+                  "booking_requests.enc", "reviews.enc", "server_data.key")
+# أُضيفت للنسخ لاحقاً: نسخة أقدم لا تحويها لا تمسح الحالية عند الاستعادة
+_KEEP_IF_ABSENT = ("booking_requests.enc", "reviews.enc", "server_data.key")
 _IMAGES_DIR = "images"
 _SEASONS_DIR = "seasons"          # المواسم المحفوظة: seasons/<الوضع>/<السنة>/<ملف>
 _SEASON_FILES = ("hajjaj.json", "umrah.json", "documents_*.json", "camps_*.json",
@@ -176,8 +181,12 @@ def snapshot(tag: str = "auto", with_images: bool = False) -> Path:
     """نسخة zip على الخادم (بلا تشفير إضافي: ملفّات الكشف مشفّرة أصلاً)."""
     p = snaps_dir() / f"{datetime.now():%Y-%m-%d_%H%M%S}_{tag}.zip"
     tmp = p.with_suffix(".tmp")
-    build_zip(tmp, with_images)
-    os.replace(tmp, p)
+    try:
+        build_zip(tmp, with_images)
+        os.replace(tmp, p)
+    except BaseException:
+        tmp.unlink(missing_ok=True)                # لا يبقى ملف ناقص يملأ القرص
+        raise
     return p
 
 
@@ -194,13 +203,15 @@ def prune(keep: int = KEEP_DAYS) -> None:
         p.unlink(missing_ok=True)
 
 
-_LAST_CHECK = {"day": None}
+_LAST_CHECK = {"day": None, "retry": 0.0, "err": ""}
+RETRY_AFTER = 3600                  # إن فشلت نسخة اليوم: محاولة أخرى بعد ساعة
 
 
 def daily(today: date | None = None) -> Path | None:
-    """نسخة اليوم إن لم تُؤخذ بعد (يُستدعى مع الطلبات؛ يتحقّق مرّة في اليوم)."""
+    """نسخة اليوم إن لم تُؤخذ بعد (يُستدعى مع الطلبات؛ يتحقّق مرّة في اليوم).
+    إن فشلت تُعاد المحاولة بعد ساعة، ويبقى سبب الفشل لصفحة المدير."""
     today = today or date.today()
-    if _LAST_CHECK["day"] == today:
+    if _LAST_CHECK["day"] == today or time.time() < _LAST_CHECK["retry"]:
         return None
     _LAST_CHECK["day"] = today
     stamp = today.strftime("%Y-%m-%d")
@@ -209,9 +220,39 @@ def daily(today: date | None = None) -> Path | None:
         return None
     if not (data_dir() / "auth.json").exists():
         return None
-    p = snapshot("auto")
+    try:
+        p = snapshot("auto")
+    except Exception as exc:
+        _LAST_CHECK.update(day=None, retry=time.time() + RETRY_AFTER,
+                           err=f"{type(exc).__name__}: {exc}"[:200])
+        raise
+    _LAST_CHECK["err"] = ""
     prune()
     return p
+
+
+def last_auto_age_hours() -> float | None:
+    """عمر آخر نسخة يومية بالساعات (None إن لم توجد أي نسخة)."""
+    autos = [p for p in list_snapshots() if p.stem.endswith("_auto")]
+    if not autos:
+        return None
+    try:
+        return max(0.0, (time.time() - autos[0].stat().st_mtime) / 3600)
+    except OSError:
+        return None
+
+
+def daily_problem() -> str:
+    """نصّ تحذير إن كانت النسخ اليومية متوقّفة (فارغ إن كانت سليمة)."""
+    if not (data_dir() / "auth.json").exists():
+        return ""
+    age = last_auto_age_hours()
+    if age is not None and age <= 36:
+        return ""
+    why = f" — آخر خطأ: {_LAST_CHECK['err']}" if _LAST_CHECK.get("err") else ""
+    if age is None:
+        return "لا توجد أي نسخة يومية على الخادم بعد" + why
+    return f"آخر نسخة يومية عمرها {int(age // 24)} يوم — النسخ اليومية متوقّفة" + why
 
 
 # ------------------------------------------------------------- الاستعادة
@@ -270,6 +311,8 @@ def restore_zip(zpath: Path) -> list:
             has_img = any(n.startswith(_IMAGES_DIR + "/") for n in wanted)
             has_seasons = any(n.startswith(_SEASONS_DIR + "/") for n in wanted)
             for p in _current_files(root, has_img, has_seasons):
+                if p.name in _KEEP_IF_ABSENT and p.name not in wanted:
+                    continue
                 rel = p.relative_to(root)
                 dst = old / rel
                 dst.parent.mkdir(parents=True, exist_ok=True)

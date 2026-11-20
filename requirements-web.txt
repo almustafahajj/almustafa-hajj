@@ -1,5 +1,5 @@
 # متطلّبات النشر السحابي (نسخة الويب فقط — بلا مكتبات الواجهة/الـ OCR)
-flask>=3.0
+flask>=3.1
 gunicorn>=21
 cryptography
 reportlab
@@ -7,3 +7,5 @@ pillow
 openpyxl
 arabic-reshaper
 python-bidi
+# مراقبة الأخطاء (تعمل فقط إن وُضع SENTRY_DSN في Railway)
+sentry-sdk[flask]>=2,<3

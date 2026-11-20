@@ -210,6 +210,8 @@ def export_airline_excel(records: list[PassportData], path: str | Path) -> Path:
     ws.freeze_panes = "A2"
     if records:
         ws.auto_filter.ref = f"A1:{_col_letter(len(_EXCEL_COLUMNS))}{ws.max_row}"
+    from .excel_io import neutralize_formulas
+    neutralize_formulas(wb)                        # نصّ يبدأ بـ«=» لا يصير معادلة
     wb.save(path)
     return path
 

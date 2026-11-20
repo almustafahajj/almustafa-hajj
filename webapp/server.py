@@ -65,6 +65,8 @@ _GROUP_ICONS = (("البرنامج", "briefcase"), ("بيانات", "user"), ("�
                 ("المالية", "wallet"), ("الصحة", "heart"), ("ملاحظات", "pen"))
 
 app = Flask(__name__)
+from webapp import monitoring as _monitoring  # noqa: E402
+_monitoring.init(app)                   # Sentry — فقط إن وُضع SENTRY_DSN في Railway
 from webapp import icons as _icons  # noqa: E402
 _icons.install(app)                     # ic('…') و|iconize في القوالب
 
@@ -89,11 +91,39 @@ app.jinja_env.filters["svg_ar"] = _svg_ar
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 # حماية النماذج من الطلبات المزوّرة (تُعطَّل في الاختبارات فقط)
 app.config["CSRF_ENABLED"] = True
-# أكبر رفع مسموح (نسخة احتياطية مع الصور)
-app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024
+# أكبر رفع مسموح عموماً (صور الجوازات وملفات Excel أصغر بكثير)؛ استعادة النسخة
+# الاحتياطية مع الصور وحدها تُعطى 2GB — كي لا يشغل أيّ زائر الخادم بطلب ضخم.
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+_BIG_UPLOAD_ENDPOINTS = {"backup_restore": 2 * 1024 * 1024 * 1024}
 # صفحة تعديل التسكين ترسل كل الصفوف (مع رمز كل سجلّ): نرفع حدّ النموذج
 # الافتراضي (500KB) كي لا يُرفض حفظ كشفٍ كبير (~2000 شخص)
 app.config["MAX_FORM_MEMORY_SIZE"] = 32 * 1024 * 1024
+
+
+@app.before_request
+def _upload_limit():
+    """يُسجَّل أولاً (قبل فحص CSRF الذي يقرأ النموذج): حدّ أكبر لمسار الاستعادة فقط."""
+    big = _BIG_UPLOAD_ENDPOINTS.get(request.endpoint or "")
+    if big:
+        request.max_content_length = big
+
+
+@app.after_request
+def _security_headers(resp):
+    """ترويسات أمان لكل الصفحات، ومنع حفظ الصفحات التي فيها بيانات المعتمرين في
+    ذاكرة المتصفّح (جهاز مكتب مشترك يبقى نظيفاً بعد الخروج)."""
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "SAMEORIGIN")
+    h.setdefault("Referrer-Policy", "same-origin")
+    if request.is_secure:
+        h.setdefault("Strict-Transport-Security", "max-age=31536000")
+    ep = request.endpoint or ""
+    if ep not in ("static", "service_worker") and (
+            session.get("sid") or ep in ("verify_doc", "person_page", "person_card")):
+        h["Cache-Control"] = "no-store, max-age=0"
+        h.pop("Expires", None)
+    return resp
 
 
 def _session_secret() -> str:
@@ -374,13 +404,27 @@ def _fail_keys(username: str) -> list:
     return keys
 
 
-def _lock_wait(username: str = "") -> int:
-    """الثواني المتبقّية حتى يُفكّ الإيقاف (0 = الدخول مسموح)."""
+def _own_device(username: str) -> bool:
+    """متصفّح دخل منه صاحب الحساب بنجاح من قبل (ملف ارتباط الجهاز المعروف)."""
+    try:
+        from webapp import devices
+        return devices.known(username, request.cookies.get(devices.COOKIE))
+    except Exception:                              # noqa: BLE001
+        return False
+
+
+def _lock_wait(username: str = "", own_device_ok: bool = False) -> int:
+    """الثواني المتبقّية حتى يُفكّ الإيقاف (0 = الدخول مسموح).
+    في صفحة الدخول (``own_device_ok``): إيقاف «الحساب» لا يمنع صاحبه من جهازه
+    المعتاد — وإلّا استطاع أي أحد على الإنترنت قفل حساب المدير بخمس محاولات
+    خاطئة. إيقاف «العنوان» يبقى للجميع."""
     now, wait = time.time(), 0
     if len(_FAILS) > 5000:                     # تنظيف عناوين قديمة
         for k in [k for k, v in _FAILS.items() if not v or now - v[-1] > _LOCK_WINDOW]:
             _FAILS.pop(k, None)
     for k in _fail_keys(username):
+        if k[0] == "user" and own_device_ok and _own_device(username):
+            continue
         times = [t for t in _FAILS.get(k, []) if now - t < _LOCK_WINDOW]
         if times:
             _FAILS[k] = times
@@ -509,7 +553,7 @@ def login():
         password = request.form.get("password") or ""
         mode = _form_mode()
         remember = bool(request.form.get("remember"))
-        wait = _lock_wait(username)
+        wait = _lock_wait(username, own_device_ok=True)
         if wait:
             error = _lock_msg(wait)
         else:
@@ -773,6 +817,7 @@ def recover():
                 hs = auth.reset_with_recovery_key(rk, pw,
                                                   allowed_roles=("admin",))
                 _pw_mark(hs.username)
+                _end_user(hs.username)             # أي جلسة قديمة لهذا الحساب تُغلق
                 sid = secrets.token_hex(16)
                 _SESSIONS[sid] = hs
                 session["sid"] = sid
@@ -1367,6 +1412,44 @@ def _csrf_inject(resp):
 
 
 # ---- النسخ الاحتياطي: نسخة يومية تلقائية + تنزيل مشفّر + استعادة (للمدير) ----
+def _storage_problem() -> str:
+    """على Railway: مجلّد البيانات يجب أن يكون على قرص دائم (Volume)، وإلّا تضيع
+    البيانات كلّها مع النشر القادم دون أي إنذار."""
+    if not (os.environ.get("RAILWAY_ENVIRONMENT_NAME") or os.environ.get("RAILWAY_PROJECT_ID")):
+        return ""
+    d = os.environ.get("HAJJ_DATA_DIR", "").strip()
+    if not d:
+        return "متغيّر HAJJ_DATA_DIR غير مضبوط في Railway — البيانات قد تضيع مع النشر القادم"
+    vol = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if not vol:
+        return "لم يُكتشف قرص دائم (Volume) مربوط بالخادم في Railway — البيانات قد تضيع مع النشر القادم"
+    try:
+        rd, rv = os.path.realpath(d), os.path.realpath(vol)
+        inside = os.path.commonpath([rd, rv]) == rv
+    except ValueError:
+        inside = False
+    return "" if inside else f"مجلّد البيانات ليس على القرص الدائم ({vol}) — البيانات قد تضيع مع النشر القادم"
+
+
+def _backup_problems() -> list:
+    """[(المستوى، النصّ)] لما يهدّد البيانات: التخزين، النسخ اليومية، النسخة الخارجية."""
+    out = []
+    try:
+        msg = _storage_problem()
+        if msg:
+            out.append(("danger", msg))
+        from webapp import backup, offsite
+        msg = backup.daily_problem()
+        if msg:
+            out.append(("danger", msg))
+        level, msg = offsite.problem()
+        if msg:
+            out.append((level, msg))
+    except Exception:                              # noqa: BLE001
+        pass
+    return out
+
+
 @app.before_request
 def _daily_backup():
     if _sess() is None or request.endpoint in ("static", "service_worker"):
@@ -1411,6 +1494,8 @@ def backup_page():
     return render_template("backup.html", active="backup", snaps=snaps,
                            off=offsite.status(s), off_freqs=offsite.FREQS,
                            mail_ok=_mailer().configured(),
+                           mon_on=_monitoring.ENABLED, problems=_backup_problems(),
+                           health_url=url_for("healthz", _external=True),
                            keep=backup.KEEP_DAYS, msg=session.pop("bk_msg", ""),
                            err=session.pop("bk_err", ""), **_ctx())
 
@@ -1457,6 +1542,22 @@ def backup_offsite_send():
     ok, msg = offsite.send_now(pw, cfg["email"])
     _audit("نسخة خارجية بالبريد" if ok else "فشل النسخة الخارجية", msg)
     session["bk_msg" if ok else "bk_err"] = ("✅ " if ok else "") + msg
+    return redirect(url_for("backup_page"))
+
+
+@app.post("/backup/monitor-test")
+def backup_monitor_test():
+    """خطأ تجريبي إلى Sentry — ليتأكّد المدير أن مراقبة الأخطاء تعمل."""
+    s, bad = _backup_admin()
+    if bad:
+        return bad
+    if not _monitoring.ENABLED:
+        session["bk_err"] = "مراقبة الأخطاء غير مفعّلة — أضف SENTRY_DSN في متغيّرات Railway أولاً."
+    elif _monitoring.send_test():
+        _audit("تجربة مراقبة الأخطاء")
+        session["bk_msg"] = "✅ أُرسل خطأ تجريبي — يظهر في Sentry خلال دقيقة (Issues)."
+    else:
+        session["bk_err"] = "تعذّر إرسال الخطأ التجريبي — تأكّد من قيمة SENTRY_DSN."
     return redirect(url_for("backup_page"))
 
 
@@ -1857,12 +1958,11 @@ def _nav_badges() -> dict:
             k = sum(1 for r in resets.pending() if r.get("status") == "pending")
             if k:
                 out["admin"] = {"n": k, "level": "warn"}
-            from webapp import offsite                 # النسخة الخارجية متعطّلة
-            cfg = offsite.load()
-            if cfg.get("enabled") and cfg.get("last_err"):
+            for level, _msg in _backup_problems():     # النسخ متوقّفة/غير مفعّلة/التخزين
                 b = out.setdefault("admin", {"n": 0, "level": "warn"})
                 b["n"] += 1
-                b["level"] = "danger"
+                if level == "danger":
+                    b["level"] = "danger"
     except Exception:                              # noqa: BLE001
         pass
     return out
@@ -2102,7 +2202,7 @@ def _package_cards(records, settings) -> list:
     return cards
 
 
-_BUILD_TAG = "2026-11-19 · تعديل المستندات المحفوظة في الأرشيف"
+_BUILD_TAG = "2026-11-20 · فحص أمني: سدّ الثغرات + مراقبة الأخطاء وتنبيهات النسخ"
 _BUILD_ID = _BUILD_TAG.split(" · ")[0]      # يظهر في رأس صفحات المحرّر
 
 
@@ -2433,6 +2533,8 @@ def accounts_password(username):
         rk = auth.admin_set_password(s, username,
                                      request.form.get("password") or "")
         _pw_mark(username)
+        if username.lower() != s.username.lower():
+            _end_user(username)                    # جلساته القديمة (جوال مسروق مثلاً) تُغلق
         session["acc_msg"] = f"غُيّرت كلمة مرور «{username}» — سلّمها لصاحبه."
         _audit("إعادة تعيين كلمة مرور", username)
         _em = auth.get_email(username)
@@ -2457,6 +2559,8 @@ def accounts_2fa_reset(username):
         return redirect(url_for("login"))
     try:
         auth.admin_clear_totp(s, username)
+        if username.lower() != s.username.lower():
+            _end_user(username)                    # يدخل من جديد ثم يفعّلها
         session["acc_msg"] = (f"أُلغي الدخول بخطوتين لـ«{username}» — يفعّله من "
                               "جديد من «🔐 الدخول بخطوتين».")
         _audit("إلغاء الدخول بخطوتين (المدير)", username)
@@ -3287,6 +3391,14 @@ _BOOK_HITS: dict = {}                    # عنوان IP ← أوقات الطل
 _BOOK_STATUS = {"new": ("جديد", "warn"), "contacted": ("تم التواصل", "info"),
                 "converted": ("صار سجلّاً", "good"), "rejected": ("مؤرشف", "muted")}
 _BOOK_ROOMS = ("مفرد", "ثنائي", "ثلاثي", "رباعي")
+# رسائل نموذج الحجز العام المسموح عرضها فقط — لا يُعرض نصّ كُتب في الرابط
+# (كان يمكن إرسال رابط للموقع الحقيقي فيه «حوّل العربون إلى حساب كذا»).
+_BOOK_ERRS = ("كثرت الطلبات من جهازك — حاول بعد قليل", "اختر البرنامج",
+              "اكتب الاسم الكامل", "اكتب رقم هاتف صحيحاً")
+
+
+def _book_err(text) -> str:
+    return text if text in _BOOK_ERRS else ""
 _PUB_WA_DEFAULT = "00971549964801"
 # مصادر روابط المشاركة (?src=) — لمعرفة أي قناة تجلب الزيارات والطلبات
 _BOOK_SOURCES = (("instagram", "إنستغرام"), ("status", "حالة واتساب"), ("whatsapp", "واتساب"),
@@ -3304,32 +3416,87 @@ def _book_path():
     return data_dir() / "booking_requests.enc"
 
 
-def _book_fernet():
+_SERVER_KEY_LOCK = threading.Lock()
+
+
+def _server_data_key() -> bytes:
+    """مفتاح ثابت لبيانات الخادم التي تُكتب بلا جلسة (طلبات الحجز والآراء من الصفحات
+    العامة). يُحفظ في مجلّد البيانات ويُنسخ مع النسخ الاحتياطية — فلا تضيع هذه
+    البيانات إن تغيّر SECRET_KEY أو نُقلت البيانات لخادم جديد."""
+    from cryptography.fernet import Fernet
+    from hajj_app.paths import data_dir
+    p = data_dir() / "server_data.key"
+    with _SERVER_KEY_LOCK:
+        try:
+            got = p.read_bytes().strip()
+            if got:
+                Fernet(got)                        # صالح؟
+                return got
+        except (OSError, ValueError):
+            pass
+        key = Fernet.generate_key()
+        tmp = p.with_suffix(".tmp")
+        tmp.write_bytes(key)
+        os.replace(tmp, p)
+        return key
+
+
+def _legacy_fernet(label: str):
+    """المفتاح القديم (مشتقّ من SECRET_KEY) — لقراءة ما كُتب قبل المفتاح الثابت."""
     import base64 as _b64
     from cryptography.fernet import Fernet
-    key = hashlib.sha256((_session_secret() + "|booking-requests").encode("utf-8")).digest()
+    key = hashlib.sha256((_session_secret() + "|" + label).encode("utf-8")).digest()
     return Fernet(_b64.urlsafe_b64encode(key))
 
 
-def _book_load() -> list:
-    """طلبات الحجز (مشفّرة على القرص بمفتاح الخادم — فيها أسماء وهواتف)."""
+def _enc_load(p, label: str) -> list:
+    """يقرأ قائمة مشفّرة. ما كُتب بالمفتاح القديم يُعاد تشفيره بالثابت فوراً. وملف
+    لا يُفتح بأيّ منهما يُنقل جانباً (لا يُكتب فوقه فيضيع) ويُسجَّل ذلك."""
     import json as _json
-    p = _book_path()
+    from cryptography.fernet import Fernet, InvalidToken
     if not p.is_file():
         return []
+    raw = p.read_bytes()
     try:
-        data = _json.loads(_book_fernet().decrypt(p.read_bytes()).decode("utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:                              # noqa: BLE001
+        plain = Fernet(_server_data_key()).decrypt(raw)
+    except InvalidToken:
+        try:
+            plain = _legacy_fernet(label).decrypt(raw)
+        except InvalidToken:
+            aside = p.with_name(f"{p.name}.unreadable-{time.strftime('%Y%m%d-%H%M%S')}")
+            try:
+                os.replace(p, aside)
+                _audit("ملف بيانات تعذّر فتحه", f"{p.name} ← نُقل إلى {aside.name}")
+            except OSError:
+                pass
+            return []
+        try:
+            _enc_save(p, _json.loads(plain.decode("utf-8")))   # ترحيل للمفتاح الثابت
+        except Exception:                          # noqa: BLE001
+            pass
+    try:
+        data = _json.loads(plain.decode("utf-8"))
+    except ValueError:
         return []
+    return data if isinstance(data, list) else []
+
+
+def _enc_save(p, items: list) -> None:
+    import json as _json
+    from cryptography.fernet import Fernet
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(Fernet(_server_data_key()).encrypt(
+        _json.dumps(items, ensure_ascii=False).encode("utf-8")))
+    os.replace(tmp, p)
+
+
+def _book_load() -> list:
+    """طلبات الحجز (مشفّرة على القرص بمفتاح الخادم الثابت — فيها أسماء وهواتف)."""
+    return _enc_load(_book_path(), "booking-requests")
 
 
 def _book_save(items: list) -> None:
-    import json as _json
-    p = _book_path()
-    tmp = p.with_suffix(".tmp")
-    tmp.write_bytes(_book_fernet().encrypt(_json.dumps(items, ensure_ascii=False).encode("utf-8")))
-    os.replace(tmp, p)
+    _enc_save(_book_path(), items)
 
 
 def _public_cfg(settings) -> dict:
@@ -3553,7 +3720,7 @@ def public_trips():
         og_img=url_for("trips_og", p=pick if pick_prog else None, v=share_v, _external=True),
         share_url=url_for("public_trips", p=pick if pick_prog else None, v=share_v, _external=True),
         noun=noun, rooms=_BOOK_ROOMS, sent=request.args.get("sent"),
-        err=request.args.get("err", ""), pick=pick,
+        err=_book_err(request.args.get("err")), pick=pick,
         room_opts=(pick_prog or {}).get("prices") or [(r, "") for r in _BOOK_ROOMS],
         pick_room=request.args.get("r", "")))
     return _track_visit(resp, src)
@@ -3640,7 +3807,7 @@ def public_program(mode, key):
         og_img=url_for("trips_og", p=pkey, v=share_v, _external=True),
         share_url=url_for("public_program", mode=mode, key=key, v=share_v, _external=True),
         trips_url=url_for("public_trips", src=src or None), sent=request.args.get("sent"),
-        err=request.args.get("err", ""), pick_room=request.args.get("r", "")))
+        err=_book_err(request.args.get("err")), pick_room=request.args.get("r", "")))
     return _track_visit(resp, src)
 
 
@@ -3702,9 +3869,27 @@ def public_trip_request():
             "status": "new"}
     with _BOOK_LOCK:
         items = _book_load()
+        if sum(1 for x in items if x.get("status") in _BOOK_ACTIVE) >= _BOOK_MAX_ACTIVE:
+            return redirect(url_for("public_trips", err=_BOOK_ERRS[0]) + "#book")  # إغراق
         items.append(item)
-        _book_save(items[-2000:])
+        _book_save(_book_trim(items))
     return redirect(back + "?sent=1#done")
+
+
+_BOOK_ACTIVE = ("new", "contacted")
+_BOOK_MAX_ACTIVE = 3000
+
+
+def _book_trim(items: list, cap: int = 2000) -> list:
+    """يبقي آخر ``cap`` طلباً، لكن الطلبات الجديدة وقيد التواصل لا تُحذف أبداً
+    (إغراق النموذج بطلبات وهمية لا يمحو طلبات عملاء حقيقية لم يُردّ عليها)."""
+    if len(items) <= cap:
+        return items
+    active = [x for x in items if x.get("status") in _BOOK_ACTIVE]
+    rest = [x for x in items if x.get("status") not in _BOOK_ACTIVE]
+    room = max(0, cap - len(active))
+    keep = {id(x) for x in active + (rest[-room:] if room else [])}
+    return [x for x in items if id(x) in keep]
 
 
 def _visits_path():
@@ -4461,6 +4646,13 @@ def hujjaj_delete(idx):
             imgmod.delete_all(image_id)
         except Exception:                          # noqa: BLE001
             pass
+    uid = str(getattr(rec, "uid", "") or "").strip()
+    if uid:                                        # رابطه الخاص (/p/…) يتوقّف فوراً
+        try:
+            from webapp import public
+            public.revoke_person(_mode(), uid)
+        except Exception:                          # noqa: BLE001
+            pass
     _reindex_after_delete(idx)
     _audit("حذف سجلّ", name)
     return redirect(url_for("hujjaj", msg="deleted", name=name))
@@ -4948,9 +5140,43 @@ def hujjaj_scan():
 
 # ------------------------------------------------------------------ التقارير
 def _tmp(suffix):
+    """ملف مؤقّت لتقرير/PDF. يُحذف تلقائياً بعد إرسال الاستجابة: فيه كشوف كاملة
+    (جوازات وهواتف) غير مشفّرة، فلا يبقى على قرص الخادم."""
     fd, p = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            g.setdefault("tmp_files", []).append(p)
+    except Exception:                              # noqa: BLE001
+        pass
     return p
+
+
+def _rm_tmp(paths) -> None:
+    for p in paths or ():
+        try:
+            os.unlink(p)
+        except OSError:
+            pass
+
+
+@app.after_request
+def _tmp_cleanup(resp):
+    """يحذف الملفات المؤقّتة بعد أن يُرسَل الملف كاملاً للمتصفّح."""
+    files = g.pop("tmp_files", None)
+    if files:
+        # send_file يمرّر الملف مباشرةً (direct_passthrough) فلا تُستدعى دوال الإغلاق؛
+        # نُلغي التمرير المباشر كي يُقرأ الملف كاملاً ثم يُحذف.
+        resp.direct_passthrough = False
+        resp.call_on_close(lambda: _rm_tmp(files))
+    return resp
+
+
+@app.teardown_request
+def _tmp_cleanup_on_error(_exc=None):
+    """إن فشل الطلب قبل الاستجابة: تُحذف ملفاته المؤقّتة هنا."""
+    _rm_tmp(g.pop("tmp_files", None))
 
 
 @app.get("/reports")
@@ -6476,10 +6702,13 @@ def _archive_doc(kind, data, *, idx=None, name=None):
     لا يرفع استثناءً كي لا يُعطّل توليد المستند إن تعذّرت الأرشفة. يعيد معرّف
     المستند المؤرشف (أو None).
     """
+    s = _sess()
+    if s is None or not s.can_edit:                # المطّلع يأخذ الـPDF فقط ولا يكتب في الأرشيف
+        return None
     try:
         import secrets as _secrets
         from datetime import datetime as _dt
-        docs = storage.load_documents(session=_sess())
+        docs = storage.load_documents(session=s)
         new_id = _secrets.token_hex(6)
         docs.append({
             "id": new_id,
@@ -6657,10 +6886,14 @@ def _doc_schema(kind, data=None):
             "tconf": pdf_io.TCONF_SCHEMA}.get(kind, pdf_io.TREQ_SCHEMA)
 
 
+_SAFE_BACK_RE = re.compile(r"/(?![/\\])[A-Za-z0-9_\-./]{0,200}")
+
+
 def _safe_back(url):
-    """رابط عودة داخلي فقط (يمنع التحويل لموقع خارجي)."""
+    """رابط عودة داخلي فقط: مسار بحروف لاتينية وأرقام و/ـ-. لا غير — يمنع التحويل
+    لموقع خارجي (//، \\، رموز التحكّم كالـTab) وحقن HTML."""
     url = str(url or "")
-    return url if url.startswith("/") and not url.startswith("//") and "\\" not in url else ""
+    return url if _SAFE_BACK_RE.fullmatch(url) else ""
 
 
 def _entry_uid(entry, owner):
@@ -7461,6 +7694,8 @@ def camps_reset():
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:
         return redirect(url_for("reports"))
+    if not _sess().can_edit:                       # المطّلع لا يمسح التسكين
+        return redirect(url_for("camps_page"))
     _save_camps({})                                # يمسح التسكين الدائم لكل المخيمات
     _audit("إعادة تعيين تسكين المخيمات")
     return redirect(url_for("camps_page", reset=1))
@@ -7564,6 +7799,8 @@ def camp_tents_export():
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:
         return ("", 404)
+    if not _sess().can_edit:                       # المطّلع لا يثبّت خياماً
+        return redirect(url_for("camps_page"))
     from hajj_app import camps as campmod
     camp_slug = request.form.get("camp", "mina")
     camp = _CAMP_SLUGS.get(camp_slug)
@@ -7612,6 +7849,10 @@ def camp_tents_reset():
     """يمسح كل الخيام المثبّتة ويبدأ من جديد."""
     if _sess() is None:
         return redirect(url_for("login"))
+    if _mode() != app_mode.HAJJ:
+        return ("", 404)
+    if not _sess().can_edit:                       # المطّلع لا يمسح الخيام
+        return redirect(url_for("camps_page"))
     camp_slug = request.form.get("camp", "mina")
     camps = _load_camps()
     st = _camp_entry(camps, camp_slug)
@@ -7751,6 +7992,8 @@ def camp_tents_manual_assign():
         return redirect(url_for("login"))
     if _mode() != app_mode.HAJJ:
         return ("", 404)
+    if not _sess().can_edit:                       # المطّلع لا يثبّت خياماً
+        return redirect(url_for("camps_page"))
     from hajj_app import camps as campmod
     camp_slug = request.form.get("camp", "mina")
     camp = _CAMP_SLUGS.get(camp_slug)
@@ -8199,32 +8442,13 @@ def _rev_path():
     return data_dir() / "reviews.enc"
 
 
-def _rev_fernet():
-    import base64 as _b64
-    from cryptography.fernet import Fernet
-    key = hashlib.sha256((_session_secret() + "|reviews").encode("utf-8")).digest()
-    return Fernet(_b64.urlsafe_b64encode(key))
-
-
 def _rev_load() -> list:
-    """دعوات الآراء والآراء (مشفّرة بمفتاح الخادم — فيها أسماء وتعليقات)."""
-    import json as _json
-    p = _rev_path()
-    if not p.is_file():
-        return []
-    try:
-        data = _json.loads(_rev_fernet().decrypt(p.read_bytes()).decode("utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:                              # noqa: BLE001
-        return []
+    """دعوات الآراء والآراء (مشفّرة بمفتاح الخادم الثابت — فيها أسماء وتعليقات)."""
+    return _enc_load(_rev_path(), "reviews")
 
 
 def _rev_save(items: list) -> None:
-    import json as _json
-    p = _rev_path()
-    tmp = p.with_suffix(".tmp")
-    tmp.write_bytes(_rev_fernet().encrypt(_json.dumps(items, ensure_ascii=False).encode("utf-8")))
-    os.replace(tmp, p)
+    _enc_save(_rev_path(), items)
 
 
 def _public_reviews(limit: int = 6) -> list:

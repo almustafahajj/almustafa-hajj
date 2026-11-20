@@ -99,7 +99,7 @@
               </form></td>
             <td>{% if a.totp or a.email_2fa %}{{ ic('check') }} {{ 'تطبيق' if a.totp }}{{ ' + ' if a.totp and a.email_2fa }}{{ 'إيميل' if a.email_2fa }}
               <form method="post" action="{{ url_for('accounts_2fa_reset', username=a.username) }}"
-                    class="inline" onsubmit="return confirm('إلغاء الدخول بخطوتين لـ«{{ a.username }}»؟ (حين يضيع جواله)');">
+                    class="inline" onsubmit="return confirm({{ ('إلغاء الدخول بخطوتين لـ«' ~ a.username ~ '»؟ (حين يضيع جواله)')|tojson|forceescape }});">
                 <button class="acc-btn" type="submit" title="إلغاء الدخول بخطوتين">{{ ic('undo') }}</button>
               </form>{% else %}<span class="muted">—</span>{% endif %}</td>
             <td class="muted acc-when">{% if a.updated %}{% set _u = a.updated.split(' · ') %}<b>{{ _u[0] }}</b>{% if _u|length > 1 %}<small>{{ _u[1] }}</small>{% endif %}{% else %}—{% endif %}</td>
@@ -113,7 +113,7 @@
               </form>
               {% if not a.me %}
               <form method="post" action="{{ url_for('accounts_delete', username=a.username) }}"
-                    class="inline" onsubmit="return confirm('حذف الحساب «{{ a.username }}» نهائياً؟');">
+                    class="inline" onsubmit="return confirm({{ ('حذف الحساب «' ~ a.username ~ '» نهائياً؟')|tojson|forceescape }});">
                 <button class="acc-btn del" type="submit">{{ ic('trash') }} حذف</button>
               </form>
               {% endif %}

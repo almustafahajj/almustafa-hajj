@@ -78,7 +78,7 @@
 {% endif %}
 {% if not is_new and is_admin %}
 <form method="post" action="{{ url_for('program_delete', code=code) }}"
-      onsubmit="return confirm('حذف البرنامج «{{ code }}» نهائياً؟');"
+      onsubmit="return confirm({{ ('حذف البرنامج «' ~ code ~ '» نهائياً؟')|tojson|forceescape }});"
       style="margin-top:10px">
   <button class="btn ghost" type="submit" style="color:#C0392B">{{ ic('trash') }} حذف البرنامج</button>
 </form>

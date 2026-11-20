@@ -117,5 +117,7 @@ def export_transport_excel(records: list[PassportData], path: str | Path,
             occupant(rec, serial)
 
     ws.freeze_panes = "A3"
+    from .excel_io import neutralize_formulas
+    neutralize_formulas(wb)                        # نصّ يبدأ بـ«=» لا يصير معادلة
     wb.save(path)
     return path

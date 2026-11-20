@@ -21,7 +21,7 @@
         {% if can_edit %}
         <form method="post" class="inline"
               action="{{ url_for('pricing_delete', num=r.number) }}"
-              onsubmit="return confirm('حذف التسعير «{{ r.number }}» نهائياً؟');">
+              onsubmit="return confirm({{ ('حذف التسعير «' ~ r.number ~ '» نهائياً؟')|tojson|forceescape }});">
           <button class="acc-btn del" type="submit">{{ ic('trash') }} حذف</button>
         </form>
         {% endif %}

@@ -69,6 +69,8 @@ def configure(hs, email: str, freq: str, password: str = "") -> dict:
         raise ValueError("اختر كلمة مرور للنسخ (تلزم لفتح النسخة عند الاستعادة).")
     if email.lower() != str(cfg.get("email", "")).lower() or password:
         cfg.pop("last_ok", None)                   # بريد/كلمة جديدة: أرسل قريباً
+        cfg["since"] = time.time()                 # منه يُحسب «تأخّرت أول نسخة»
+    cfg.setdefault("since", time.time())
     cfg.update(email=email, freq=freq, enabled=True, last_err="", last_try=0)
     _save(cfg)
     return cfg
@@ -195,4 +197,32 @@ def status(hs=None) -> dict:
             "freq": cfg.get("freq", "weekly"), "has_pw": bool(cfg.get("pw")),
             "last_ok": fmt(cfg.get("last_ok")), "last_err": cfg.get("last_err", ""),
             "size_kb": int(cfg.get("last_size") or 0) // 1024, "next": nxt,
+            "stale": stale(cfg),
             "pw_ok": (hs is None or not cfg.get("pw") or _password(hs, cfg) is not None)}
+
+
+def stale(cfg: dict | None = None, now: float | None = None) -> bool:
+    """مفعّلة لكن آخر نسخة وصلت أقدم من ضعف موعدها + يوم (أو لم تصل أي نسخة بعد
+    يومين من التفعيل) — يعني أن الإرسال متوقّف بصمت."""
+    cfg = load() if cfg is None else cfg
+    if not cfg.get("enabled"):
+        return False
+    now = time.time() if now is None else now
+    days = FREQS.get(cfg.get("freq"), FREQS["weekly"])[1]
+    since = float(cfg.get("last_ok") or cfg.get("since") or 0)
+    if not since:
+        return False
+    limit = (days * 2 + 1) * 86400 if cfg.get("last_ok") else 2 * 86400
+    return now - since > limit
+
+
+def problem() -> tuple[str, str]:
+    """(المستوى، النصّ) لتنبيه المدير: لا نسخة خارج الخادم، أو فشلت، أو متأخّرة."""
+    cfg = load()
+    if not cfg.get("enabled"):
+        return "warn", "النسخة خارج الخادم غير مفعّلة — كل النسخ على قرص الخادم نفسه"
+    if cfg.get("last_err"):
+        return "danger", "آخر محاولة للنسخة الخارجية فشلت"
+    if stale(cfg):
+        return "danger", "النسخة الخارجية متأخّرة — لم تصل نسخة منذ مدّة"
+    return "", ""

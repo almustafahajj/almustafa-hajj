@@ -70,6 +70,25 @@ def _normalize_date(text: str) -> str:
     return text  # نُبقيه كما هو بدل حذف بيانات المستخدم
 
 
+def _append_text(ws: Worksheet, values) -> None:
+    """يضيف صفّاً كنصوص فقط: قيمة تبدأ بـ«=» (من نموذج الحجز العام مثلاً) لا تصير
+    معادلة Excel قد تسرّب خلايا الجوازات والهواتف عند فتح الملف."""
+    ws.append(list(values))
+    for cell in ws[ws.max_row]:
+        if cell.data_type == "f":
+            cell.data_type = "s"
+
+
+def neutralize_formulas(wb) -> None:
+    """قبل الحفظ: أي خلية صارت «معادلة» لأن نصّها يبدأ بـ«=» تُحفظ نصّاً كما هو
+    (لا معادلات مقصودة في تصديرات البرنامج)."""
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
+
+
 def export_excel(records: list[PassportData], path: str | Path) -> Path:
     """يصدّر السجلات إلى ملف إكسل منسّق."""
     path = Path(path)
@@ -99,7 +118,7 @@ def export_excel(records: list[PassportData], path: str | Path) -> Path:
     # البيانات
     for idx, rec in enumerate(records, start=1):
         data = row_dict(rec, idx)
-        ws.append([data.get(f.key, "") for f in FIELDS])
+        _append_text(ws, [data.get(f.key, "") for f in FIELDS])
         row = ws.max_row
         has_warning = bool(data.get("warnings"))
         for col, f in enumerate(FIELDS, start=1):
@@ -157,7 +176,7 @@ def export_answer_excel(title: str, headers, rows, path: str | Path) -> Path:
     ws.row_dimensions[2].height = 28
 
     for row in rows:
-        ws.append([str(v) for v in row])
+        _append_text(ws, [str(v) for v in row])
         r = ws.max_row
         for col in range(1, ncols + 1):
             cell = ws.cell(row=r, column=col)
@@ -209,7 +228,7 @@ def export_umrah_excel(records: list[PassportData], path: str | Path, *,
 
     for idx, rec in enumerate(records, start=1):
         row = report_row(rec, idx, program_name)
-        ws.append([row[k] for k, _l in REPORT_COLUMNS])
+        _append_text(ws, [row[k] for k, _l in REPORT_COLUMNS])
         r = ws.max_row
         for col, (key, _lbl) in enumerate(REPORT_COLUMNS, start=1):
             cell = ws.cell(row=r, column=col)
@@ -344,7 +363,7 @@ def export_grouped_excel(records, path: str | Path, *, title: str = "كشف ال
     ws.row_dimensions[1].height = 30
 
     def add_room_header(text: str) -> None:
-        ws.append([text] + [""] * (ncols - 1))
+        _append_text(ws, [text] + [""] * (ncols - 1))
         row = ws.max_row
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ncols)
         cell = ws.cell(row=row, column=1)
@@ -354,7 +373,7 @@ def export_grouped_excel(records, path: str | Path, *, title: str = "كشف ال
 
     def add_occupant(rec, serial: int) -> None:
         data = row_dict(rec, serial)
-        ws.append([data.get(f.key, "") for f in cols])
+        _append_text(ws, [data.get(f.key, "") for f in cols])
         row = ws.max_row
         for col in range(1, ncols + 1):
             cell = ws.cell(row=row, column=col)

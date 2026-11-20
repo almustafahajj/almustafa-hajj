@@ -227,8 +227,14 @@ def _ar_para(text, style, maxw: float) -> "Paragraph":
                 cur = w
         if cur:
             lines.append(cur)
-    html = "<br/>".join(ar(ln) for ln in lines) or " "
+    # النصّ عادي دائماً (أسماء/ملاحظات): «&» و«<» تُهرَّب بعد ar() وإلّا أسقط
+    # محلّل reportlab التقرير كله بسبب سجلّ واحد فيه «<» أو أدخل وسوماً فيه.
+    html = "<br/>".join(_xml_escape(ar(ln)) for ln in lines) or " "
     return Paragraph(html, style)
+
+
+def _xml_escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _ar_cells(values, style, colw, pad: float = 2) -> list:

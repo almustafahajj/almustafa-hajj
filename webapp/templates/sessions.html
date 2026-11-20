@@ -27,7 +27,7 @@
         <td dir="ltr">{{ r.since }}</td>
         <td>{% if r.active %}<span class="sess-live">نشطة الآن</span>{% else %}{{ r.ago }}{% endif %}</td>
         <td>{% if not r.mine %}<form method="post" action="{{ url_for('sessions_end', sess_id=r.id) }}" class="inline"
-              onsubmit="return confirm('إنهاء جلسة {{ r.user }} على {{ r.device }}؟');">
+              onsubmit="return confirm({{ ('إنهاء جلسة ' ~ r.user ~ ' على ' ~ r.device ~ '؟')|tojson|forceescape }});">
             <button class="acc-btn del" type="submit">{{ ic('logout') }} إنهاء</button></form>{% endif %}</td>
       </tr>
     {% else %}

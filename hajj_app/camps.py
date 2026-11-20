@@ -415,6 +415,8 @@ def export_camp_excel(plan: CampPlan, path: str | Path,
                 cell.border = _BORDER
 
     ws.freeze_panes = "A3"
+    from .excel_io import neutralize_formulas
+    neutralize_formulas(wb)                        # نصّ يبدأ بـ«=» لا يصير معادلة
     wb.save(path)
     return path
 
@@ -476,6 +478,8 @@ def export_tents_excel(plan: CampPlan, path: str | Path,
 
     if not wb.sheetnames:                     # لا خيام — نترك ورقة فارغة
         wb.create_sheet("لا خيام")
+    from .excel_io import neutralize_formulas
+    neutralize_formulas(wb)                        # نصّ يبدأ بـ«=» لا يصير معادلة
     wb.save(path)
     return path
 

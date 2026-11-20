@@ -2872,3 +2872,8 @@ body.tv-body{ position:relative; isolation:isolate; margin:0; height:100vh; over
 /* الأرشيف: علامة «عُدّل» تحت تاريخ المستند */
 .doc-edited{ font-size:12px; color:var(--muted); margin-top:2px; white-space:nowrap; }
 .doc-edited svg{ width:12px; height:12px; vertical-align:-1px; }
+/* النسخ الاحتياطي: لوحة مراقبة الأخطاء والتوقّف */
+.mon-steps{ margin:6px 0 10px; padding-inline-start:22px; line-height:1.9; font-size:14px; }
+.mon-url{ margin-top:6px; }
+.mon-url code{ display:inline-block; max-width:100%; overflow-wrap:anywhere; user-select:all;
+  background:var(--bg, #f6f3ee); border:1px solid var(--border); border-radius:8px; padding:6px 10px; }

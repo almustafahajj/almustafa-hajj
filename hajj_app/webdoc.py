@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import webbrowser
 from html import escape as _esc
@@ -100,36 +101,40 @@ def _doc_html(data: dict, schema: list, doc_title: str, header_icon: str,
               lang_reload: str | None = None,
               mode: str | None = None, build: str | None = None) -> str:
     en = str(lang) == "en"
-    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    sch = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
     back_txt = "↩ Back" if en else "↩ رجوع"
-    back = (_BACK_LINK.replace("__URL__", back_url).replace("__BACKTXT__",
-            back_txt) if back_url else "")
+    back = (_BACK_LINK.replace("__BACKTXT__", back_txt)
+            .replace("__URL__", _esc(str(back_url), quote=True)) if back_url else "")
     m_icon, m_css, m_chip = mode_bits(mode)
     # علامة النسخة الجارية فعلاً (من الخادم) — تُخفى في سطح المكتب
     ver = (f'<span class="num ver" style="opacity:.7">🆕 {_esc(build)}</span>'
            if build else "")
-    # علامات الوضع قبل إدراج البيانات كي لا تطابق نصّاً كتبه المستخدم
-    return (_TEMPLATE.replace("__MODE_ICON__", m_icon)
-            .replace("__MODE_CSS__", m_css)
-            .replace("__MODE_CHIP__", m_chip)
-            .replace("__BUILD__", ver)
-            .replace("__DATA__", payload)
-            .replace("__SCHEMA__", sch)
-            .replace("__TITLE__", _esc(doc_title, quote=False))   # قد يحوي رقماً من المستخدم
-            .replace("__ICON__", header_icon)
-            .replace("__LANG__", "en" if en else "ar")
-            .replace("__DIR__", "ltr" if en else "rtl")
-            .replace("__SAVE__", "💾 Save & preview PDF" if en
-                     else "💾 حفظ ومعاينة PDF")
-            .replace("__HINT__", "Fill freely — Arabic & English supported."
-                     if en else "اكتب بحرّية — العربية تعمل هنا تماماً.")
-            .replace("__NUMLBL__", "No." if en else "الرقم")
-            .replace("__LANG_RELOAD__",
-                     json.dumps(lang_reload or "", ensure_ascii=False))
-            .replace("__SUBMIT_ACTION__",
-                     submit_action or _SUBMIT_ACTION_DESKTOP)
-            .replace("__BACK__", back))
+    vals = {
+        "MODE_ICON": m_icon, "MODE_CSS": m_css, "MODE_CHIP": m_chip, "BUILD": ver,
+        "DATA": _script_json(data), "SCHEMA": _script_json(schema),
+        "TITLE": _esc(str(doc_title), quote=True),          # قد يحوي رقماً من المستخدم
+        "ICON": header_icon,
+        "LANG": "en" if en else "ar", "DIR": "ltr" if en else "rtl",
+        "SAVE": "💾 Save & preview PDF" if en else "💾 حفظ ومعاينة PDF",
+        "HINT": ("Fill freely — Arabic & English supported." if en
+                 else "اكتب بحرّية — العربية تعمل هنا تماماً."),
+        "NUMLBL": "No." if en else "الرقم",
+        "LANG_RELOAD": _script_json(lang_reload or ""),
+        "SUBMIT_ACTION": submit_action or _SUBMIT_ACTION_DESKTOP,
+        "BACK": back,
+    }
+    # تعويض بمرور واحد على القالب فقط: نصّ كتبه المستخدم (ولو كان «__TITLE__»)
+    # لا يُعاد فحصه ولا تعويضه أبداً.
+    return _PLACEHOLDER.sub(lambda m: vals.get(m.group(1), m.group(0)), _TEMPLATE)
+
+
+_PLACEHOLDER = re.compile(r"__([A-Z][A-Z_]*[A-Z])__")
+
+
+def _script_json(value) -> str:
+    """JSON آمن داخل <script>: لا يستطيع نصّ المستخدم إغلاق الوسم ولا فتح تعليق HTML."""
+    return (json.dumps(value, ensure_ascii=False)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
 _TEMPLATE = r"""<!doctype html>

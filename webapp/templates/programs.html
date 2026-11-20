@@ -92,7 +92,7 @@
         {% elif is_admin %}
         <form method="post" class="inline" id="pdel-{{ r.code }}"
               action="{{ url_for('program_delete', code=r.code) }}"
-              onsubmit="return confirm('حذف البرنامج «{{ r.code }}» نهائياً؟');">
+              onsubmit="return confirm({{ ('حذف البرنامج «' ~ r.code ~ '» نهائياً؟')|tojson|forceescape }});">
           <button class="acc-btn del" type="submit">{{ ic('trash') }}</button></form>
         {% endif %}
       </td>

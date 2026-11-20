@@ -44,9 +44,11 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if can_edit %}
     <div class="formbar" style="margin-top:12px">
       <button class="btn primary" type="submit">{{ ic('hand') }} تثبيت الخيمة بالمختارين</button>
     </div>
+    {% endif %}
   {% endif %}
   </div>
 </form>
